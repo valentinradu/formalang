@@ -1,7 +1,6 @@
 {
   "recommendations": [
     "rust-analyzer.rust-analyzer",
-    "tamasfe.even-better-toml",
     "streetsidesoftware.code-spell-checker",
     "DavidAnson.vscode-markdownlint"
   ]
