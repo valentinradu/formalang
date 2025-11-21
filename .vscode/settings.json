@@ -1,10 +1,10 @@
 {
   "files.associations": {
-    "*.fv": "formalang"
+    "*.fv": "rust"
   },
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
-  "[formalang]": {
+  "[rust]": {
     "editor.tabSize": 2,
     "editor.insertSpaces": true
   },
