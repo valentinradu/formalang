@@ -10,7 +10,11 @@
   },
   "rust-analyzer.files.excludeDirs": [
     "*.fv",
-    "stdlib.fv"
+    "stdlib.fv",
+    "formalens/grammar"
+  ],
+  "rust-analyzer.linkedProjects": [
+    "formalens/semantic/Cargo.toml"
   ],
   "search.exclude": {
     "**/node_modules": true,
