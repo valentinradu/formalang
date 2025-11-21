@@ -16,6 +16,7 @@ npm run test
 ```
 
 Use with ast-grep:
+
 ```bash
 ast-grep --lang formalang -p 'pub struct $NAME { $$$ }'
 ```
@@ -44,6 +45,7 @@ cargo run -- clear
 ### VSCode
 
 Add to `.vscode/settings.json`:
+
 ```json
 {
   "files.associations": {
@@ -55,6 +57,7 @@ Add to `.vscode/settings.json`:
 ### Claude Code
 
 The semantic search CLI can be used to find relevant context:
+
 ```bash
 formalens search "trait implementation patterns"
 ```
@@ -62,6 +65,7 @@ formalens search "trait implementation patterns"
 ## File Patterns
 
 By default, indexes:
+
 - `*.md` - Markdown documentation (chunked by headers)
 - `*.fv` - FormaLang source (chunked by definitions)
 - `*.rs` - Rust source (chunked by items)
