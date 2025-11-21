@@ -8,6 +8,10 @@
     "editor.tabSize": 2,
     "editor.insertSpaces": true
   },
+  "rust-analyzer.files.excludeDirs": [
+    "*.fv",
+    "stdlib.fv"
+  ],
   "search.exclude": {
     "**/node_modules": true,
     "**/target": true,
