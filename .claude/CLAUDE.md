@@ -1,6 +1,6 @@
 # Claude Agent Guidelines
 
-**Last Updated**: 2025-11-18
+**Last Updated**: 2025-11-19
 **Status**: Active
 
 ## General Principles
@@ -58,8 +58,14 @@ Forma is a declarative language compiler written in Rust. Project references use
 
 ### Code Formatting
 
-- Use ` ```forma ` for Forma language code blocks in documentation.
+- Use ` ```formalang ` for Forma language code blocks in documentation.
 - Use ` ```rust ` for Rust implementation examples.
+
+### Documentation Linting
+
+- **Markdownlint**: All markdown files must pass `markdownlint-cli2` with zero errors
+- **Spell-check**: All markdown files must pass `cspell` with zero errors
+- **Custom words**: Add project-specific terms to `.cspell.json` (e.g., Renderable, chumsky, FormaLang, ariadne, salsa)
 
 ---
 
@@ -83,8 +89,9 @@ Forma is a declarative language compiler written in Rust. Project references use
 
 - Write/update CLAUDE.md, docs/, RFCs, research documents
 - Update documentation dates and status fields
-- Format code blocks correctly (```forma```, ```rust```)
+- Format code blocks correctly (```formalang```, ```rust```)
 - Maintain concise, token-efficient documentation
+- **Single source of truth**: Never duplicate detailed info - use links/references
 - **Critical**: Update all relevant docs before PR creation
 
 **Code Examples**:
@@ -98,11 +105,16 @@ Forma is a declarative language compiler written in Rust. Project references use
 **Mandatory Steps**:
 
 1. Read existing docs to understand context
-2. Make updates with correct formatting
-3. Update date/status metadata
-4. Verify all code blocks use proper syntax highlighting
-5. Confirm changes are minimal and necessary
-6. Ensure only FormaLang examples in docs, no Rust code suggestions
+2. Check for existing information - search for duplicates
+3. Consolidate if needed - merge duplicates into single source of truth
+4. Make updates with correct formatting
+5. Use references - link to canonical sources instead of duplicating
+6. Update date/status metadata
+7. Verify all code blocks use proper syntax highlighting (```formalang``` for FormaLang, ```rust``` for Rust)
+8. Run `markdownlint-cli2` to ensure zero markdown linting errors
+9. Run `cspell` to ensure zero spelling errors (add technical terms to `.cspell.json` if needed)
+10. Confirm changes are minimal and necessary
+11. Ensure only FormaLang examples in docs, no Rust code suggestions
 
 **Triggers**:
 
@@ -122,7 +134,8 @@ Forma is a declarative language compiler written in Rust. Project references use
 - `cargo clippy` for lint violations
 - `cargo fmt --check` for formatting
 - `cargo check` for compilation errors
-- Spell-check markdown/comments (must integrate with VSCode - no errors shown in IDE)
+- `markdownlint-cli2` for markdown linting (must pass with zero errors)
+- `cspell` for spell-check on markdown/comments (must integrate with VSCode - no errors shown in IDE)
 - Verify doc comment syntax
 - Check all files (new AND old) before PR
 
@@ -138,10 +151,11 @@ Forma is a declarative language compiler written in Rust. Project references use
 1. Run `cargo fmt --check`
 2. Run `cargo clippy --all-targets --all-features`
 3. Run `cargo check --all-targets --all-features`
-4. Run spell-check on all markdown files
-5. Run spell-check on all Rust comments
-6. Verify VSCode shows no errors
-7. Report all findings with exact locations
+4. Run `markdownlint-cli2` on all markdown files (must pass with 0 errors)
+5. Run `cspell` on all markdown files (must pass with 0 errors)
+6. Run `cspell` on all Rust comments
+7. Verify VSCode shows no errors
+8. Report all findings with exact locations
 
 **Triggers**:
 
@@ -468,20 +482,104 @@ Forma is a declarative language compiler written in Rust. Project references use
 
 ---
 
+### 9. API Feasibility Agent (`api-check`)
+
+**Purpose**: Validate FormaLang language features and compiler changes for cross-language compatibility and implementation feasibility.
+
+**Critical Function**: Prevents introduction of language features that cannot be implemented in target languages (Swift, TypeScript, Rust, Kotlin) or that break the compiler.
+
+**Checks**:
+
+- **Cross-language compatibility**:
+  - Can this FormaLang feature be implemented in Swift?
+  - Can this FormaLang feature be implemented in TypeScript?
+  - Can this FormaLang feature be implemented in Rust?
+  - Can this FormaLang feature be implemented in Kotlin?
+  - Even with small adaptations, is translation possible for ALL four languages?
+  - Are there language-specific limitations that make this impossible?
+- **Compiler implementation**:
+  - How complex is this change to implement in the compiler?
+  - Will this break existing compiler code (Lexer/Parser/Semantic Analyser)?
+  - Is this backwards compatible with existing FormaLang code?
+  - Does this require major refactoring of compiler internals?
+  - Are there cascading changes required across multiple compiler phases?
+- **Documentation conflicts**:
+  - Does proposed feature contradict existing docs/RFCs?
+  - Are there conflicting examples in documentation?
+  - Does this match documented FormaLang semantics?
+- **Breaking changes**:
+  - Does this break existing FormaLang programs?
+  - Are there migration paths for users?
+  - Is the breakage justified by the value?
+
+**Responsibilities**:
+
+- Review proposed FormaLang language features
+- Analyze translatability to Swift/TypeScript/Rust/Kotlin
+- Assess compiler implementation complexity
+- Check for breaking changes (language and compiler)
+- Verify backwards compatibility
+- Identify documentation inconsistencies
+- **Require user confirmation** for problematic changes
+- Suggest alternatives or modifications
+- **Does NOT implement**: Only validates and reports
+
+**Output Format**: Feasibility report with:
+
+- **Cross-language analysis**: Per-language assessment (Swift/TS/Rust/Kotlin)
+- **Compiler impact**: Implementation complexity and breaking changes
+- **Severity**: BLOCKING (impossible) / WARNING (difficult/breaking) / INFO (minor concerns)
+- **Recommendations**: Alternatives or modifications
+
+**Mandatory Steps**:
+
+1. Read proposed FormaLang feature (from RFC, docs, or description)
+2. Analyze translatability to each target language:
+   - Swift: Check Swift language capabilities
+   - TypeScript: Check TypeScript language capabilities
+   - Rust: Check Rust language capabilities
+   - Kotlin: Check Kotlin language capabilities
+3. Review existing compiler code for impact
+4. Assess implementation complexity in compiler phases
+5. Check backwards compatibility with existing FormaLang code
+6. Check documentation for inconsistencies
+7. Identify breaking changes (language and compiler)
+8. Categorize issues by severity:
+   - **BLOCKING**: Impossible in one or more target languages, or fundamentally breaks compiler
+   - **WARNING**: Difficult to implement, breaks backwards compatibility, or problematic
+   - **INFO**: Minor concerns or suggestions
+9. Provide detailed report with specific concerns per language/compiler phase
+10. Suggest alternatives or modifications
+11. **Require user decision** on how to proceed if issues found
+
+**Triggers**:
+
+- "Check API feasibility"
+- "Validate FormaLang feature"
+- Before implementing new FormaLang language features
+- When modifying existing FormaLang semantics
+- After research/design phase, before implementation
+
+**Integration Point**: Runs AFTER research/design but BEFORE implementation agent.
+
+---
+
 ## Agent Collaboration Flow
 
 **Typical feature workflow**:
 
 1. `gitflow` → Creates git worktree with feature branch (FIRST STEP)
-2. `audit` → If adding dependencies, verify licenses/maintenance
-3. `implement` → Writes code with tests/benchmarks (follows coding standards, no hidden errors)
-4. `test-debug` → Validates functionality (runs all tests including markdown)
-5. `perf` → Runs benchmarks if performance-critical feature
-6. `quality` → Checks standards (ensures VSCode clean)
-7. `knowledge` → Updates documentation (before PR, FormaLang examples only)
-8. `gitflow` → Creates PR (only when all above pass)
-9. `gitflow` → Squash merge to main (only with user approval)
-10. `gitflow` → Delete branch and cleanup worktree (automatic after confirmed squash)
+2. `research` → If needed, research technical approaches (optional, as needed)
+3. `api-check` → Validate FormaLang feature for cross-language compatibility and compiler feasibility
+4. `audit` → If adding dependencies, verify licenses/maintenance
+5. `implement` → Writes code with tests/benchmarks (follows coding standards, no hidden errors)
+6. `test-debug` → Validates functionality (runs all tests including markdown)
+7. `perf` → Runs benchmarks if performance-critical feature
+8. `quality` → Checks standards (ensures VSCode clean)
+9. `knowledge` → Updates documentation (before PR, FormaLang examples only)
+10. `gitflow` → Creates PR (only when all above pass)
+11. `gitflow` → Squash merge to main (only with user approval)
+12. `gitflow` → Delete branch and cleanup worktree (automatic after confirmed squash)
 
 **Research workflow** (decoupled, as needed):
 
