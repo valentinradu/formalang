@@ -1,6 +1,6 @@
 # Claude Agent Guidelines
 
-**Last Updated**: 2025-11-19
+**Last Updated**: 2025-11-21
 **Status**: Active
 
 ## General Principles
@@ -66,6 +66,81 @@ Forma is a declarative language compiler written in Rust. Project references use
 - **Markdownlint**: All markdown files must pass `markdownlint-cli2` with zero errors
 - **Spell-check**: All markdown files must pass `cspell` with zero errors
 - **Custom words**: Add project-specific terms to `.cspell.json` (e.g., Renderable, chumsky, FormaLang, ariadne, salsa)
+
+---
+
+## FormaLens - Enhanced Search Tools
+
+FormaLens (`formalens/`) provides enhanced navigation and search capabilities.
+
+### rust-analyzer
+
+Use for semantic Rust code understanding:
+
+```bash
+# Find all references to a symbol
+rust-analyzer analysis-stats .
+
+# Available through LSP in VSCode
+```
+
+### ast-grep
+
+Structural code search (tree-sitter based):
+
+```bash
+# Install
+cargo install ast-grep --locked
+
+# Find all public structs
+ast-grep -p 'pub struct $NAME { $$$ }' --lang rust
+
+# Find all trait implementations
+ast-grep -p 'impl $TRAIT for $TYPE { $$$ }' --lang rust
+
+# Find function definitions
+ast-grep -p 'fn $NAME($$$) -> $RET { $$$ }' --lang rust
+```
+
+### FormaLens Semantic Search
+
+LanceDB-powered semantic search using local embeddings:
+
+```bash
+# Build the CLI
+cd formalens/semantic
+cargo build --release
+
+# Index the codebase (indexes *.md, *.fv, *.rs)
+cargo run -- index --root /path/to/project
+
+# Search semantically
+cargo run -- search "how does error handling work"
+cargo run -- search "trait implementation patterns" --limit 10
+
+# Clear and rebuild index
+cargo run -- clear
+cargo run -- index
+```
+
+**Chunking strategy**:
+
+- Markdown: Split by headers (## sections)
+- FormaLang: Split by top-level definitions (struct, trait, enum, mod)
+- Rust: Split by items (fn, struct, impl blocks)
+
+**Index location**: `~/.formalens/index.lancedb`
+
+### tree-sitter Grammar
+
+FormaLang grammar for syntax highlighting and structural queries:
+
+```bash
+cd formalens/grammar
+npm install
+npm run generate
+npm run test
+```
 
 ---
 

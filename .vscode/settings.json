@@ -1,0 +1,22 @@
+{
+  "files.associations": {
+    "*.fv": "formalang"
+  },
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "[formalang]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/target": true,
+    "**/.formalens": true,
+    "**/formalens/grammar/src/parser.c": true
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/node_modules": true,
+    "**/target": true
+  }
+}
