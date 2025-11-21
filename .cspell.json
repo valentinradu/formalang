@@ -6,7 +6,11 @@
     "chumsky",
     "FormaLang",
     "ariadne",
-    "salsa"
+    "salsa",
+    "formalens",
+    "lancedb",
+    "Layerable",
+    "STDLIB"
   ],
   "ignorePaths": [
     "node_modules",
