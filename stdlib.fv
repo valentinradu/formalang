@@ -52,18 +52,18 @@ pub trait Shape {
 
 /// Base trait for path drawing primitives.
 ///
-/// ContourSegments define individual path commands (move, line, curve)
-/// that compose into complex vector paths via the Contour component.
+/// ContourSegments are terminal path commands (move, line, curve).
+/// They don't compose other segments - use Contour to combine them.
 ///
 /// # Example
 ///
 /// ```formalang
 /// pub struct CustomSegment: ContourSegment {
-///   mount body: ContourSegment
+///   mount body: Never
 /// }
 /// ```
 pub trait ContourSegment {
-  mount body: ContourSegment
+  mount body: Never
 }
 
 // =============================================================================
