@@ -928,16 +928,22 @@ default Image {
 /// # Example
 ///
 /// ```formalang
-/// Button(disabled: false) {
+/// pub enum Event { submit, cancel }
+///
+/// Button<Event>(
+///   disabled: false,
+///   action: () -> .submit
+/// ) {
 ///   background: Rect(width: .auto, height: .auto, fill: fill::Solid(color: .hex(value: "#007AFF")))
 ///   label: Label(content: "Click Me")
 /// }
 /// ```
-pub struct Button: Control {
+pub struct Button<E>: Control {
   padding: Padding,
   margin: Margin,
   tint: Color?,
   disabled: Boolean,
+  action: (() -> E)?,
   mount background: View,
   mount label: View,
   mount foreground: View
@@ -948,6 +954,7 @@ default Button {
   margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
+  action: nil,
   background: Empty(),
   foreground: Empty()
 }
@@ -957,17 +964,25 @@ default Button {
 /// # Example
 ///
 /// ```formalang
-/// Input(disabled: false) {
+/// pub enum Event { textChanged(value: String), submitted }
+///
+/// Input<Event>(
+///   disabled: false,
+///   onChange: x -> .textChanged(value: x),
+///   onSubmit: () -> .submitted
+/// ) {
 ///   placeholder: Label(content: "Enter text...")
 ///   value: Label(content: inputValue)
 ///   label: Label(content: "Username")
 /// }
 /// ```
-pub struct Input: Control {
+pub struct Input<E>: Control {
   padding: Padding,
   margin: Margin,
   tint: Color?,
   disabled: Boolean,
+  onChange: (String -> E)?,
+  onSubmit: (() -> E)?,
   mount background: View,
   mount caret: View,
   mount placeholder: View,
@@ -981,6 +996,8 @@ default Input {
   margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
+  onChange: nil,
+  onSubmit: nil,
   background: Empty(),
   caret: Empty(),
   placeholder: Empty(),
@@ -993,17 +1010,23 @@ default Input {
 /// # Example
 ///
 /// ```formalang
-/// Checkbox(checked: isSelected) {
+/// pub enum Event { termsChanged(checked: Boolean) }
+///
+/// Checkbox<Event>(
+///   checked: isSelected,
+///   onChange: x -> .termsChanged(checked: x)
+/// ) {
 ///   checkmark: Image(source: /checkmark.svg)
 ///   label: Label(content: "Accept terms")
 /// }
 /// ```
-pub struct Checkbox: Control {
+pub struct Checkbox<E>: Control {
   padding: Padding,
   margin: Margin,
   tint: Color?,
   disabled: Boolean,
   checked: Boolean,
+  onChange: (Boolean -> E)?,
   mount background: View,
   mount checkmark: View,
   mount label: View,
@@ -1016,6 +1039,7 @@ default Checkbox {
   tint: nil,
   disabled: false,
   checked: false,
+  onChange: nil,
   background: Empty(),
   checkmark: Empty(),
   foreground: Empty()
@@ -1026,17 +1050,23 @@ default Checkbox {
 /// # Example
 ///
 /// ```formalang
-/// Toggle(checked: darkMode) {
+/// pub enum Event { darkModeChanged(enabled: Boolean) }
+///
+/// Toggle<Event>(
+///   checked: darkMode,
+///   onChange: x -> .darkModeChanged(enabled: x)
+/// ) {
 ///   thumb: Circle(radius: .px(value: 12), fill: fill::Solid(color: .hex(value: "#FFFFFF")))
 ///   label: Label(content: "Dark Mode")
 /// }
 /// ```
-pub struct Toggle: Control {
+pub struct Toggle<E>: Control {
   padding: Padding,
   margin: Margin,
   tint: Color?,
   disabled: Boolean,
   checked: Boolean,
+  onChange: (Boolean -> E)?,
   mount background: View,
   mount thumb: View,
   mount label: View,
@@ -1049,6 +1079,7 @@ default Toggle {
   tint: nil,
   disabled: false,
   checked: false,
+  onChange: nil,
   background: Empty(),
   thumb: Empty(),
   foreground: Empty()
@@ -1059,12 +1090,20 @@ default Toggle {
 /// # Example
 ///
 /// ```formalang
-/// Slider(value: volume, min: 0, max: 100, step: 1) {
+/// pub enum Event { volumeChanged(level: Number) }
+///
+/// Slider<Event>(
+///   value: volume,
+///   min: 0,
+///   max: 100,
+///   step: 1,
+///   onChange: x -> .volumeChanged(level: x)
+/// ) {
 ///   track: Rect(width: .auto, height: .px(value: 4))
 ///   thumb: Circle(radius: .px(value: 10))
 /// }
 /// ```
-pub struct Slider: View + Layerable {
+pub struct Slider<E>: View + Layerable {
   padding: Padding,
   margin: Margin,
   tint: Color?,
@@ -1073,6 +1112,7 @@ pub struct Slider: View + Layerable {
   min: Number,
   max: Number,
   step: Number,
+  onChange: (Number -> E)?,
   mount background: View,
   mount track: View,
   mount thumb: View,
@@ -1088,6 +1128,7 @@ default Slider {
   min: 0,
   max: 100,
   step: 1,
+  onChange: nil,
   background: Empty(),
   track: Empty(),
   thumb: Empty(),
@@ -1099,7 +1140,11 @@ default Slider {
 /// # Example
 ///
 /// ```formalang
-/// Dropdown() {
+/// pub enum Event { countrySelected(index: Number) }
+///
+/// Dropdown<Event>(
+///   onChange: x -> .countrySelected(index: x)
+/// ) {
 ///   input: Label(content: selectedItem)
 ///   placeholder: Label(content: "Select...")
 ///   indicator: Image(source: /chevron-down.svg)
@@ -1109,11 +1154,12 @@ default Slider {
 ///   label: Label(content: "Country")
 /// }
 /// ```
-pub struct Dropdown: Control {
+pub struct Dropdown<E>: Control {
   padding: Padding,
   margin: Margin,
   tint: Color?,
   disabled: Boolean,
+  onChange: (Number -> E)?,
   mount background: View,
   mount input: View,
   mount placeholder: View,
@@ -1129,6 +1175,7 @@ default Dropdown {
   margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
+  onChange: nil,
   background: Empty(),
   input: Empty(),
   placeholder: Empty(),
