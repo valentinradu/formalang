@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use symbol_table::SymbolTable;
 use type_graph::TypeGraph;
 
-/// A context binding tracks the type and mutability of a value provided via context
+/// A context binding tracks the type and mutability of a value provided via provides/consumes
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct ContextBinding {
@@ -51,7 +51,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
     /// Current file path being analyzed
     current_file: Option<PathBuf>,
-    /// Stack of context scopes (each ContextExpr creates a new scope)
+    /// Stack of context scopes (for provides/consumes)
     context_scopes: Vec<HashMap<String, ContextBinding>>,
     /// Stack of generic scopes (for tracking type parameters)
     generic_scopes: Vec<GenericScope>,
@@ -1074,6 +1074,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     });
                 }
             }
+            Type::Dictionary { key, value } => {
+                // Recursively validate key and value types
+                self.validate_type(key);
+                self.validate_type(value);
+            }
+            Type::Closure { params, ret } => {
+                // Recursively validate parameter and return types
+                for param in params {
+                    self.validate_type(param);
+                }
+                self.validate_type(ret);
+            }
         }
     }
 
@@ -1283,22 +1295,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Group { expr, .. } => {
                 self.validate_expr(expr, file);
             }
-            Expr::ContextExpr { items, body, .. } => {
-                // Kept for backward compatibility
-                // Validate each context item expression
-                for item in items {
-                    self.validate_expr(&item.expr, file);
-                }
-
-                // Push context scope with validated items
-                self.push_context_scope(items, file);
-
-                // Validate the body within the context scope
-                self.validate_expr(body, file);
-
-                // Pop the context scope
-                self.pop_context_scope();
-            }
             Expr::ProvidesExpr { items, body, .. } => {
                 // Validate each provide item expression
                 for item in items {
@@ -1326,6 +1322,39 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
 
                 // Validate the body (consumed names are already in scope from parent)
+                self.validate_expr(body, file);
+            }
+            Expr::DictLiteral { entries, .. } => {
+                // Validate all key-value expressions
+                for (key, value) in entries {
+                    self.validate_expr(key, file);
+                    self.validate_expr(value, file);
+                }
+            }
+            Expr::DictAccess { dict, key, .. } => {
+                // Validate dictionary and key expressions
+                self.validate_expr(dict, file);
+                self.validate_expr(key, file);
+            }
+            Expr::ClosureExpr { params, body, .. } => {
+                // Validate parameter type annotations if present
+                for param in params {
+                    if let Some(ty) = &param.ty {
+                        self.validate_type(ty);
+                    }
+                }
+                // Validate body expression
+                self.validate_expr(body, file);
+            }
+            Expr::LetExpr {
+                ty, value, body, ..
+            } => {
+                // Validate type annotation if present
+                if let Some(type_ann) = ty {
+                    self.validate_type(type_ann);
+                }
+                // Validate value and body expressions
+                self.validate_expr(value, file);
                 self.validate_expr(body, file);
             }
         }
@@ -1919,6 +1948,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 PrimitiveType::Boolean => "Boolean".to_string(),
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
+                PrimitiveType::Never => "Never".to_string(),
             },
             Type::Ident(ident) => ident.name.clone(),
             Type::Array(element_type) => {
@@ -1944,6 +1974,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Type::TypeParameter(param) => param.name.clone(),
+            Type::Dictionary { key, value } => {
+                format!(
+                    "[{}: {}]",
+                    self.type_to_string(key),
+                    self.type_to_string(value)
+                )
+            }
+            Type::Closure { params, ret } => {
+                if params.is_empty() {
+                    format!("() -> {}", self.type_to_string(ret))
+                } else if params.len() == 1 {
+                    format!(
+                        "{} -> {}",
+                        self.type_to_string(&params[0]),
+                        self.type_to_string(ret)
+                    )
+                } else {
+                    let param_types: Vec<String> =
+                        params.iter().map(|p| self.type_to_string(p)).collect();
+                    format!("{} -> {}", param_types.join(", "), self.type_to_string(ret))
+                }
+            }
         }
     }
 
@@ -2179,14 +2231,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Extract from grouped expression
                 references.extend(self.extract_let_references(expr));
             }
-            Expr::ContextExpr { items, body, .. } => {
-                // Extract from context item expressions
-                for item in items {
-                    references.extend(self.extract_let_references(&item.expr));
-                }
-                // Extract from body
-                references.extend(self.extract_let_references(body));
-            }
             Expr::ProvidesExpr { items, body, .. } => {
                 // Extract from provide item expressions
                 for item in items {
@@ -2197,6 +2241,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::ConsumesExpr { body, .. } => {
                 // Extract from body (consumed names are not let references)
+                references.extend(self.extract_let_references(body));
+            }
+            Expr::DictLiteral { entries, .. } => {
+                // Extract from all key-value expressions
+                for (key, value) in entries {
+                    references.extend(self.extract_let_references(key));
+                    references.extend(self.extract_let_references(value));
+                }
+            }
+            Expr::DictAccess { dict, key, .. } => {
+                // Extract from dictionary and key expressions
+                references.extend(self.extract_let_references(dict));
+                references.extend(self.extract_let_references(key));
+            }
+            Expr::ClosureExpr { body, .. } => {
+                // Extract from closure body
+                references.extend(self.extract_let_references(body));
+            }
+            Expr::LetExpr { value, body, .. } => {
+                // Extract from value and body expressions
+                references.extend(self.extract_let_references(value));
                 references.extend(self.extract_let_references(body));
             }
         }
@@ -2242,6 +2307,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Type::TypeParameter(_) => {
                 // TODO: Phase 3 - Type parameters don't create dependencies
                 // as they are resolved within their generic context
+            }
+            Type::Dictionary { key, value } => {
+                // Recursively add dependencies for key and value types
+                Self::add_type_dependencies(graph, from, key);
+                Self::add_type_dependencies(graph, from, value);
+            }
+            Type::Closure { params, ret } => {
+                // Recursively add dependencies for parameter and return types
+                for param in params {
+                    Self::add_type_dependencies(graph, from, param);
+                }
+                Self::add_type_dependencies(graph, from, ret);
             }
         }
     }
@@ -2344,16 +2421,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .unwrap_or_else(|| "Unknown".to_string())
             }
             Expr::Group { expr, .. } => self.infer_type(expr, file),
-            Expr::ContextExpr { body, .. } => {
-                // The type of a context expression is the type of its body
-                self.infer_type(body, file)
-            }
             Expr::ProvidesExpr { body, .. } => {
                 // The type of a provides expression is the type of its body
                 self.infer_type(body, file)
             }
             Expr::ConsumesExpr { body, .. } => {
                 // The type of a consumes expression is the type of its body
+                self.infer_type(body, file)
+            }
+            Expr::DictLiteral { .. } => {
+                // Dictionary literals - type would need to be inferred from entries
+                "Dictionary".to_string()
+            }
+            Expr::DictAccess { .. } => {
+                // Dictionary access returns the value type - simplified
+                "Unknown".to_string()
+            }
+            Expr::ClosureExpr { .. } => {
+                // Closures are function types
+                "Closure".to_string()
+            }
+            Expr::LetExpr { body, .. } => {
+                // Let expressions have the type of their body
                 self.infer_type(body, file)
             }
         }
@@ -2417,12 +2506,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Grouped expressions delegate to inner expression
             Expr::Group { expr, .. } => self.is_expr_mutable(expr, file),
 
-            // Context expressions result in new values
-            Expr::ContextExpr { .. } => false,
-
             // Provides and consumes expressions are not mutable
             Expr::ProvidesExpr { .. } => false,
             Expr::ConsumesExpr { .. } => false,
+
+            // Dictionary expressions are not mutable
+            Expr::DictLiteral { .. } => false,
+            Expr::DictAccess { .. } => false,
+
+            // Closure expressions are not mutable
+            Expr::ClosureExpr { .. } => false,
+
+            // Let expressions delegate to their body
+            Expr::LetExpr { body, .. } => self.is_expr_mutable(body, file),
         }
     }
 
@@ -2510,46 +2606,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
         "Unknown".to_string()
-    }
-
-    /// Extract the name from a context item (either from alias or from the expression)
-    fn extract_context_item_name(&self, item: &crate::ast::ContextItem) -> Option<String> {
-        // If there's an alias, use it
-        if let Some(alias) = &item.alias {
-            return Some(alias.name.clone());
-        }
-
-        // Otherwise, try to extract from the expression
-        // For simple references like `context user { ... }`, extract "user"
-        if let Expr::Reference { path, .. } = &*item.expr {
-            if let Some(first) = path.first() {
-                return Some(first.name.clone());
-            }
-        }
-
-        // For other expression types, we can't determine a name
-        None
-    }
-
-    /// Push a new context scope with the given items
-    fn push_context_scope(&mut self, items: &[crate::ast::ContextItem], file: &File) {
-        let mut scope = HashMap::new();
-
-        for item in items {
-            if let Some(name) = self.extract_context_item_name(item) {
-                // Infer the type of the item expression
-                let ty = self.infer_type(&item.expr, file);
-
-                let binding = ContextBinding {
-                    ty,
-                    mutable: item.mutable,
-                };
-
-                scope.insert(name, binding);
-            }
-        }
-
-        self.context_scopes.push(scope);
     }
 
     /// Push a new provides scope with the given items

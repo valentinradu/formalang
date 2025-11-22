@@ -1,7 +1,7 @@
 // Error reporting with ariadne for beautiful, user-friendly error messages
 
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 use crate::error::CompilerError;
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 
 /// Report a single compiler error with beautiful formatting
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
@@ -44,20 +44,20 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_help("Consider renaming one of the definitions")
         }
 
-        CompilerError::TypeMismatch { expected, found, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E004")
-                .with_message("Type mismatch")
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "expected {}, found {}",
-                            expected.fg(Color::Green),
-                            found.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-        }
+        CompilerError::TypeMismatch {
+            expected, found, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E004")
+            .with_message("Type mismatch")
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "expected {}, found {}",
+                        expected.fg(Color::Green),
+                        found.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
 
         CompilerError::ModuleNotFound { name, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
@@ -65,7 +65,10 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_message(format!("Module '{}' not found", name))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("module '{}' could not be found", name.fg(Color::Red)))
+                        .with_message(format!(
+                            "module '{}' could not be found",
+                            name.fg(Color::Red)
+                        ))
                         .with_color(Color::Red),
                 )
                 .with_help("Check that the module file exists in the expected location")
@@ -95,54 +98,67 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_help("Remove the circular dependency by breaking the cycle")
         }
 
-        CompilerError::MissingTraitField { field, trait_name, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E008")
-                .with_message(format!("Missing required field '{}' from trait '{}'", field, trait_name))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "trait '{}' requires field '{}'",
-                            trait_name.fg(Color::Blue),
-                            field.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("Add the '{}' field to satisfy the trait requirement", field))
-        }
+        CompilerError::MissingTraitField {
+            field, trait_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E008")
+            .with_message(format!(
+                "Missing required field '{}' from trait '{}'",
+                field, trait_name
+            ))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' requires field '{}'",
+                        trait_name.fg(Color::Blue),
+                        field.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!(
+                "Add the '{}' field to satisfy the trait requirement",
+                field
+            )),
 
-        CompilerError::TraitFieldTypeMismatch { field, trait_name, expected, actual, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E009")
-                .with_message(format!("Field '{}' type mismatch", field))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "trait '{}' requires type {}, found {}",
-                            trait_name.fg(Color::Blue),
-                            expected.fg(Color::Green),
-                            actual.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("Change the field type to {}", expected))
-        }
+        CompilerError::TraitFieldTypeMismatch {
+            field,
+            trait_name,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E009")
+            .with_message(format!("Field '{}' type mismatch", field))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' requires type {}, found {}",
+                        trait_name.fg(Color::Blue),
+                        expected.fg(Color::Green),
+                        actual.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Change the field type to {}", expected)),
 
-        CompilerError::InvalidBinaryOp { op, left_type, right_type, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E010")
-                .with_message(format!("Invalid binary operation '{}'", op))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "cannot apply '{}' to {} and {}",
-                            op.fg(Color::Yellow),
-                            left_type.fg(Color::Cyan),
-                            right_type.fg(Color::Cyan)
-                        ))
-                        .with_color(Color::Red),
-                )
-        }
+        CompilerError::InvalidBinaryOp {
+            op,
+            left_type,
+            right_type,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E010")
+            .with_message(format!("Invalid binary operation '{}'", op))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "cannot apply '{}' to {} and {}",
+                        op.fg(Color::Yellow),
+                        left_type.fg(Color::Cyan),
+                        right_type.fg(Color::Cyan)
+                    ))
+                    .with_color(Color::Red),
+            ),
 
         CompilerError::ForLoopNotArray { actual, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
@@ -150,7 +166,10 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_message("For loop requires an array")
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("found {}, expected an array", actual.fg(Color::Red)))
+                        .with_message(format!(
+                            "found {}, expected an array",
+                            actual.fg(Color::Red)
+                        ))
                         .with_color(Color::Red),
                 )
         }
@@ -175,7 +194,10 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_message("Match scrutinee must be an enum")
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("found {}, expected an enum type", actual.fg(Color::Red)))
+                        .with_message(format!(
+                            "found {}, expected an enum type",
+                            actual.fg(Color::Red)
+                        ))
                         .with_color(Color::Red),
                 )
         }
@@ -198,7 +220,10 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_message(format!("Duplicate match arm for variant '{}'", variant))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("variant '{}' is already handled", variant.fg(Color::Red)))
+                        .with_message(format!(
+                            "variant '{}' is already handled",
+                            variant.fg(Color::Red)
+                        ))
                         .with_color(Color::Red),
                 )
                 .with_help("Remove the duplicate arm")
@@ -216,22 +241,32 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_help(format!("Make '{}' public with the 'pub' keyword", name))
         }
 
-        CompilerError::ImportItemNotFound { item, module, available, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E017")
-                .with_message(format!("Item '{}' not found in module '{}'", item, module))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("'{}' is not exported by '{}'", item.fg(Color::Red), module))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("Available items: {}", available))
-        }
+        CompilerError::ImportItemNotFound {
+            item,
+            module,
+            available,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E017")
+            .with_message(format!("Item '{}' not found in module '{}'", item, module))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' is not exported by '{}'",
+                        item.fg(Color::Red),
+                        module
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Available items: {}", available)),
 
         CompilerError::ViewTraitInModel { name, model, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E018")
-                .with_message(format!("View trait '{}' cannot be used in model '{}'", name, model))
+                .with_message(format!(
+                    "View trait '{}' cannot be used in model '{}'",
+                    name, model
+                ))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
                         .with_message(format!("'{}' is a view trait", name.fg(Color::Red)))
@@ -243,7 +278,10 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
         CompilerError::ModelTraitInView { name, view, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E019")
-                .with_message(format!("Model trait '{}' cannot be used in view '{}'", name, view))
+                .with_message(format!(
+                    "Model trait '{}' cannot be used in view '{}'",
+                    name, view
+                ))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
                         .with_message(format!("'{}' is a model trait", name.fg(Color::Red)))
@@ -252,88 +290,110 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 .with_help("Views can only implement view traits")
         }
 
-        CompilerError::NotATrait { name, actual_kind, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E020")
-                .with_message(format!("'{}' is not a trait", name))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("'{}' is a {}, not a trait", name.fg(Color::Red), actual_kind))
-                        .with_color(Color::Red),
-                )
-        }
+        CompilerError::NotATrait {
+            name, actual_kind, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E020")
+            .with_message(format!("'{}' is not a trait", name))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' is a {}, not a trait",
+                        name.fg(Color::Red),
+                        actual_kind
+                    ))
+                    .with_color(Color::Red),
+            ),
 
-        CompilerError::UnknownEnumVariant { variant, enum_name, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E021")
-                .with_message(format!("Unknown variant '{}' for enum '{}'", variant, enum_name))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("'{}' does not have a variant '{}'", enum_name, variant.fg(Color::Red)))
-                        .with_color(Color::Red),
-                )
-        }
+        CompilerError::UnknownEnumVariant {
+            variant, enum_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E021")
+            .with_message(format!(
+                "Unknown variant '{}' for enum '{}'",
+                variant, enum_name
+            ))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' does not have a variant '{}'",
+                        enum_name,
+                        variant.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
 
-        CompilerError::VariantArityMismatch { variant, expected, actual, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E022")
-                .with_message(format!("Variant '{}' arity mismatch", variant))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "expected {} associated value(s), found {}",
-                            expected.to_string().fg(Color::Green),
-                            actual.to_string().fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-        }
+        CompilerError::VariantArityMismatch {
+            variant,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E022")
+            .with_message(format!("Variant '{}' arity mismatch", variant))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "expected {} associated value(s), found {}",
+                        expected.to_string().fg(Color::Green),
+                        actual.to_string().fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
 
-        CompilerError::MissingTraitMountingPoint { mount, trait_name, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E023")
-                .with_message(format!("Missing required mounting point '{}' from trait '{}'", mount, trait_name))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "trait '{}' requires mounting point '{}'",
-                            trait_name.fg(Color::Blue),
-                            mount.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("Add the '{}' mounting point to satisfy the trait requirement", mount))
-        }
+        CompilerError::MissingTraitMountingPoint {
+            mount, trait_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E023")
+            .with_message(format!(
+                "Missing required mounting point '{}' from trait '{}'",
+                mount, trait_name
+            ))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' requires mounting point '{}'",
+                        trait_name.fg(Color::Blue),
+                        mount.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!(
+                "Add the '{}' mounting point to satisfy the trait requirement",
+                mount
+            )),
 
-        CompilerError::TraitMountingPointTypeMismatch { mount, trait_name, expected, actual, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E024")
-                .with_message(format!("Mounting point '{}' type mismatch", mount))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "trait '{}' requires type {}, found {}",
-                            trait_name.fg(Color::Blue),
-                            expected.fg(Color::Green),
-                            actual.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-                .with_help(format!("Change the mounting point type to {}", expected))
-        }
+        CompilerError::TraitMountingPointTypeMismatch {
+            mount,
+            trait_name,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E024")
+            .with_message(format!("Mounting point '{}' type mismatch", mount))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' requires type {}, found {}",
+                        trait_name.fg(Color::Blue),
+                        expected.fg(Color::Green),
+                        actual.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Change the mounting point type to {}", expected)),
 
         // Add more specific error formatting as needed
         // For errors without specific formatting, use a generic format
-        _ => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E999")
-                .with_message(error.to_string())
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(error.to_string())
-                        .with_color(Color::Red),
-                )
-        }
+        _ => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E999")
+            .with_message(error.to_string())
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(error.to_string())
+                    .with_color(Color::Red),
+            ),
     };
 
     report

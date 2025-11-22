@@ -169,6 +169,18 @@ pub enum Type {
     Optional(Box<Type>),    // Optional type: T?
     Tuple(Vec<TupleField>), // Named tuple type: (name1: T1, name2: T2)
 
+    // Dictionary type: [K: V]
+    Dictionary {
+        key: Box<Type>,
+        value: Box<Type>,
+    },
+
+    // Closure type: () -> T, T -> U, or T, U -> V
+    Closure {
+        params: Vec<Type>, // Parameter types (empty for () -> T)
+        ret: Box<Type>,    // Return type
+    },
+
     // Reference to a type parameter: T in Box<T>(value: T)
     TypeParameter(Ident),
 }
@@ -189,15 +201,8 @@ pub enum PrimitiveType {
     Boolean,
     Path,
     Regex,
-}
-
-/// Context item (expression with optional alias)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ContextItem {
-    pub mutable: bool,
-    pub expr: Box<Expr>,
-    pub alias: Option<Ident>, // From 'as' clause
-    pub span: Span,
+    /// Uninhabited type - has no values, used for terminal structs
+    Never,
 }
 
 /// Provide item for ProvidesExpr
@@ -292,26 +297,58 @@ pub enum Expr {
         span: Span,
     },
 
-    // Context provision expression (kept for backward compatibility)
-    ContextExpr {
-        items: Vec<ContextItem>,
-        body: Box<Expr>,
-        span: Span,
-    },
-
-    // New provides expression
+    // Provides expression
     ProvidesExpr {
         items: Vec<ProvideItem>,
         body: Box<Expr>,
         span: Span,
     },
 
-    // New consumes expression
+    // Consumes expression
     ConsumesExpr {
         names: Vec<Ident>, // Just names, types inferred
         body: Box<Expr>,
         span: Span,
     },
+
+    // Dictionary literal: ["key": value, "key2": value2] or [:]
+    DictLiteral {
+        entries: Vec<(Expr, Expr)>, // Key-value pairs
+        span: Span,
+    },
+
+    // Dictionary access: dict["key"] or dict[index]
+    DictAccess {
+        dict: Box<Expr>,
+        key: Box<Expr>,
+        span: Span,
+    },
+
+    // Closure expression: x -> expr, x, y -> expr, () -> expr, x: T -> expr
+    ClosureExpr {
+        params: Vec<ClosureParam>, // Parameters (empty for () -> expr)
+        body: Box<Expr>,
+        span: Span,
+    },
+
+    // Let expression: let name = value, let name: Type = value, let mut name = value
+    // Local binding inside blocks (for, if, match, mount children)
+    LetExpr {
+        mutable: bool,
+        name: Ident,
+        ty: Option<Type>, // Optional type annotation
+        value: Box<Expr>,
+        body: Box<Expr>, // Continuation expression after the let
+        span: Span,
+    },
+}
+
+/// Closure parameter (name with optional type annotation)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClosureParam {
+    pub name: Ident,
+    pub ty: Option<Type>, // Optional type annotation
+    pub span: Span,
 }
 
 /// Literal values
@@ -398,9 +435,12 @@ impl Expr {
             Expr::IfExpr { span, .. } => *span,
             Expr::MatchExpr { span, .. } => *span,
             Expr::Group { span, .. } => *span,
-            Expr::ContextExpr { span, .. } => *span,
             Expr::ProvidesExpr { span, .. } => *span,
             Expr::ConsumesExpr { span, .. } => *span,
+            Expr::DictLiteral { span, .. } => *span,
+            Expr::DictAccess { span, .. } => *span,
+            Expr::ClosureExpr { span, .. } => *span,
+            Expr::LetExpr { span, .. } => *span,
         }
     }
 }

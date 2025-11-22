@@ -18,10 +18,7 @@ impl TypeGraph {
 
     /// Add a type dependency edge from `from` type to `to` type
     pub fn add_dependency(&mut self, from: impl Into<String>, to: impl Into<String>) {
-        self.edges
-            .entry(from.into())
-            .or_default()
-            .insert(to.into());
+        self.edges.entry(from.into()).or_default().insert(to.into());
     }
 
     /// Detect all cycles in the type dependency graph
@@ -89,4 +86,3 @@ impl Default for TypeGraph {
         Self::new()
     }
 }
-

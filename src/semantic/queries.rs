@@ -4,9 +4,9 @@
 //! hover, go-to-definition, etc. These queries use the SemanticAnalyzer's symbol
 //! table and the AST node finder to provide context-aware information.
 
+use super::symbol_table::{EnumInfo, LetInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo};
 use crate::ast::*;
 use crate::location::Span;
-use super::symbol_table::{SymbolTable, SymbolKind, TraitInfo, StructInfo, EnumInfo, LetInfo};
 
 /// Kind of completion item
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,7 +118,10 @@ impl<'a> QueryProvider<'a> {
 
         // Add let bindings
         for name in self.symbols.lets.keys() {
-            completions.push(CompletionCandidate::new(name.clone(), CompletionKind::LetBinding));
+            completions.push(CompletionCandidate::new(
+                name.clone(),
+                CompletionKind::LetBinding,
+            ));
         }
 
         completions
@@ -232,15 +235,23 @@ impl<'a> QueryProvider<'a> {
     // ========== Helper Methods ==========
 
     fn trait_info_to_hover(&self, name: &str, info: &TraitInfo, kind: SymbolKind) -> HoverInfo {
-        let vis = if matches!(info.visibility, Visibility::Public) { "pub " } else { "" };
+        let vis = if matches!(info.visibility, Visibility::Public) {
+            "pub "
+        } else {
+            ""
+        };
 
         let generics = if info.generics.is_empty() {
             String::new()
         } else {
-            format!("<{}>", info.generics.iter()
-                .map(|g| g.name.name.clone())
-                .collect::<Vec<_>>()
-                .join(", "))
+            format!(
+                "<{}>",
+                info.generics
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         };
 
         HoverInfo {
@@ -253,15 +264,23 @@ impl<'a> QueryProvider<'a> {
     }
 
     fn struct_info_to_hover(&self, name: &str, info: &StructInfo) -> HoverInfo {
-        let vis = if matches!(info.visibility, Visibility::Public) { "pub " } else { "" };
+        let vis = if matches!(info.visibility, Visibility::Public) {
+            "pub "
+        } else {
+            ""
+        };
 
         let generics = if info.generics.is_empty() {
             String::new()
         } else {
-            format!("<{}>", info.generics.iter()
-                .map(|g| g.name.name.clone())
-                .collect::<Vec<_>>()
-                .join(", "))
+            format!(
+                "<{}>",
+                info.generics
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         };
 
         HoverInfo {
@@ -274,15 +293,23 @@ impl<'a> QueryProvider<'a> {
     }
 
     fn enum_info_to_hover(&self, name: &str, info: &EnumInfo) -> HoverInfo {
-        let vis = if matches!(info.visibility, Visibility::Public) { "pub " } else { "" };
+        let vis = if matches!(info.visibility, Visibility::Public) {
+            "pub "
+        } else {
+            ""
+        };
 
         let generics = if info.generics.is_empty() {
             String::new()
         } else {
-            format!("<{}>", info.generics.iter()
-                .map(|g| g.name.name.clone())
-                .collect::<Vec<_>>()
-                .join(", "))
+            format!(
+                "<{}>",
+                info.generics
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         };
 
         HoverInfo {
@@ -295,7 +322,11 @@ impl<'a> QueryProvider<'a> {
     }
 
     fn let_info_to_hover(&self, name: &str, info: &LetInfo) -> HoverInfo {
-        let vis = if matches!(info.visibility, Visibility::Public) { "pub " } else { "" };
+        let vis = if matches!(info.visibility, Visibility::Public) {
+            "pub "
+        } else {
+            ""
+        };
 
         let signature = if let Some(ty) = &info.inferred_type {
             format!("{}let {}: {}", vis, name, ty)
@@ -312,4 +343,3 @@ impl<'a> QueryProvider<'a> {
         }
     }
 }
-

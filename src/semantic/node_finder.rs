@@ -3,9 +3,9 @@
 //! This module provides utilities for finding AST nodes at a given position in the source code.
 //! Used for LSP features like hover, go-to-definition, completion, etc.
 
+use super::position::span_contains_offset;
 use crate::ast::*;
 use crate::location::Span;
-use super::position::span_contains_offset;
 
 /// Result of finding a node at a position
 #[derive(Debug, Clone)]
@@ -69,18 +69,23 @@ pub struct PositionContext<'ast> {
 impl<'ast> PositionContext<'ast> {
     /// Find the enclosing definition (trait, model, view, enum)
     pub fn enclosing_definition(&self) -> Option<&NodeAtPosition<'ast>> {
-        self.parents.iter().find(|node| matches!(
-            node,
-            NodeAtPosition::TraitDef(_)
-                | NodeAtPosition::StructDef(_)
-                | NodeAtPosition::EnumDef(_)
-        ))
+        self.parents.iter().find(|node| {
+            matches!(
+                node,
+                NodeAtPosition::TraitDef(_)
+                    | NodeAtPosition::StructDef(_)
+                    | NodeAtPosition::EnumDef(_)
+            )
+        })
     }
 
     /// Check if we're inside an expression context
     pub fn is_in_expression(&self) -> bool {
         matches!(self.node, NodeAtPosition::Expression(_))
-            || self.parents.iter().any(|n| matches!(n, NodeAtPosition::Expression(_)))
+            || self
+                .parents
+                .iter()
+                .any(|n| matches!(n, NodeAtPosition::Expression(_)))
     }
 
     /// Check if we're in a type position
@@ -498,6 +503,22 @@ impl<'ast> NodeFinder<'ast> {
                     self.found_node = Some(NodeAtPosition::Identifier(ident));
                 }
             }
+            Type::Dictionary { key, value } => {
+                self.visit_type(key);
+                if self.found_node.is_some() {
+                    return;
+                }
+                self.visit_type(value);
+            }
+            Type::Closure { params, ret } => {
+                for param in params {
+                    self.visit_type(param);
+                    if self.found_node.is_some() {
+                        return;
+                    }
+                }
+                self.visit_type(ret);
+            }
         }
     }
 
@@ -526,7 +547,12 @@ impl<'ast> NodeFinder<'ast> {
                             self.visit_expr(right);
                         }
                     }
-                    Expr::ForExpr { var, collection, body, .. } => {
+                    Expr::ForExpr {
+                        var,
+                        collection,
+                        body,
+                        ..
+                    } => {
                         if span_contains_offset(&var.span, self.offset) {
                             self.found_node = Some(NodeAtPosition::Identifier(var));
                         } else {
@@ -536,7 +562,12 @@ impl<'ast> NodeFinder<'ast> {
                             }
                         }
                     }
-                    Expr::IfExpr { condition, then_branch, else_branch, .. } => {
+                    Expr::IfExpr {
+                        condition,
+                        then_branch,
+                        else_branch,
+                        ..
+                    } => {
                         self.visit_expr(condition);
                         if self.found_node.is_none() {
                             self.visit_expr(then_branch);
@@ -547,7 +578,9 @@ impl<'ast> NodeFinder<'ast> {
                             }
                         }
                     }
-                    Expr::MatchExpr { scrutinee, arms, .. } => {
+                    Expr::MatchExpr {
+                        scrutinee, arms, ..
+                    } => {
                         self.visit_expr(scrutinee);
                         if self.found_node.is_none() {
                             for arm in arms {
@@ -611,10 +644,12 @@ impl<'ast> NodeFinder<'ast> {
             | Expr::IfExpr { span, .. }
             | Expr::MatchExpr { span, .. }
             | Expr::Group { span, .. }
-            | Expr::ContextExpr { span, .. }
             | Expr::ProvidesExpr { span, .. }
-            | Expr::ConsumesExpr { span, .. } => Some(*span),
+            | Expr::ConsumesExpr { span, .. }
+            | Expr::DictLiteral { span, .. }
+            | Expr::DictAccess { span, .. }
+            | Expr::ClosureExpr { span, .. }
+            | Expr::LetExpr { span, .. } => Some(*span),
         }
     }
 }
-

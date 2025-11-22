@@ -61,9 +61,10 @@ pub use semantic::SemanticAnalyzer;
 /// }
 /// ```
 pub fn compile(source: &str) -> Result<File, Vec<CompilerError>> {
-    compile_with_resolver(source, FileSystemResolver::new(
-        std::env::current_dir().unwrap_or_else(|_| ".".into())
-    ))
+    compile_with_resolver(
+        source,
+        FileSystemResolver::new(std::env::current_dir().unwrap_or_else(|_| ".".into())),
+    )
 }
 
 /// Compile FormaLang source code with a custom module resolver
@@ -91,10 +92,7 @@ where
     let mut file = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError {
-                message: msg,
-                span,
-            })
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
 
@@ -152,10 +150,7 @@ where
     let mut file = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError {
-                message: msg,
-                span,
-            })
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
 
@@ -240,10 +235,7 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
     let file = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError {
-                message: msg,
-                span,
-            })
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
 

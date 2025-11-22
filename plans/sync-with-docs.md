@@ -8,25 +8,26 @@
 
 ## Phase 1: Setup
 
-- [ ] Pull latest main and create worktree at /tmp/feature-sync-with-docs
+- [x] Pull latest main and create worktree at /tmp/feature-sync-with-docs
 
 ## Phase 2: Remove Legacy Features
 
-- [ ] Remove Token::Mounting from lexer/token.rs
-- [ ] Remove Token::Question from lexer/token.rs
-- [ ] Remove ContextExpr from ast/mod.rs
-- [ ] Remove ContextItem from ast/mod.rs
-- [ ] Remove associated parser logic
-- [ ] Remove associated semantic logic
+- [x] Remove Token::Mounting from lexer/token.rs
+- [x] Remove Token::Context from lexer/token.rs (legacy context keyword)
+- [x] Remove ContextExpr from ast/mod.rs
+- [x] Remove ContextItem from ast/mod.rs
+- [x] Remove associated parser logic
+- [x] Remove associated semantic logic
+
+Note: Token::Question was kept - it's used for optional type syntax (T?)
 
 ## Phase 3: Never Type
 
-- [ ] Write tests for Never type parsing
-- [ ] Write tests for Never type semantic validation
-- [ ] Add Never to PrimitiveType enum
-- [ ] Update lexer
-- [ ] Update parser
-- [ ] Update semantic analyzer
+- [x] Write tests for Never type parsing
+- [x] Add Never to PrimitiveType enum
+- [x] Update lexer (Token::NeverType)
+- [x] Update parser
+- [x] Update semantic analyzer (type_to_string)
 
 ## Phase 4: Dictionary Types
 
@@ -90,4 +91,5 @@
 
 ## Notes
 
-Add implementation notes here as you progress.
+- 2025-11-22: Phase 2 complete. Removed legacy context system (ContextExpr, ContextItem, Token::Context, Token::Mounting). Kept provides/consumes system which is documented.
+- Need to create Cargo.toml before we can build/test.

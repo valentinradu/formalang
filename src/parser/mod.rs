@@ -251,6 +251,16 @@ fn fill_type_span(ty: &mut Type, source: &str) {
             fill_span(span, source);
         }
         Type::TypeParameter(ident) => fill_span(&mut ident.span, source),
+        Type::Dictionary { key, value } => {
+            fill_type_span(key, source);
+            fill_type_span(value, source);
+        }
+        Type::Closure { params, ret } => {
+            for param in params {
+                fill_type_span(param, source);
+            }
+            fill_type_span(ret, source);
+        }
     }
 }
 
@@ -372,17 +382,6 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(expr, source);
             fill_span(span, source);
         }
-        Expr::ContextExpr { items, body, span } => {
-            for item in items {
-                fill_expr_span(&mut item.expr, source);
-                if let Some(alias) = &mut item.alias {
-                    fill_span(&mut alias.span, source);
-                }
-                fill_span(&mut item.span, source);
-            }
-            fill_expr_span(body, source);
-            fill_span(span, source);
-        }
         Expr::ProvidesExpr { items, body, span } => {
             for item in items {
                 fill_expr_span(&mut item.expr, source);
@@ -398,6 +397,45 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             for name in names {
                 fill_span(&mut name.span, source);
             }
+            fill_expr_span(body, source);
+            fill_span(span, source);
+        }
+        Expr::DictLiteral { entries, span } => {
+            for (key, value) in entries {
+                fill_expr_span(key, source);
+                fill_expr_span(value, source);
+            }
+            fill_span(span, source);
+        }
+        Expr::DictAccess { dict, key, span } => {
+            fill_expr_span(dict, source);
+            fill_expr_span(key, source);
+            fill_span(span, source);
+        }
+        Expr::ClosureExpr { params, body, span } => {
+            for param in params {
+                fill_span(&mut param.name.span, source);
+                if let Some(ty) = &mut param.ty {
+                    fill_type_span(ty, source);
+                }
+                fill_span(&mut param.span, source);
+            }
+            fill_expr_span(body, source);
+            fill_span(span, source);
+        }
+        Expr::LetExpr {
+            name,
+            ty,
+            value,
+            body,
+            span,
+            ..
+        } => {
+            fill_span(&mut name.span, source);
+            if let Some(type_ann) = ty {
+                fill_type_span(type_ann, source);
+            }
+            fill_expr_span(value, source);
             fill_expr_span(body, source);
             fill_span(span, source);
         }
@@ -932,6 +970,7 @@ where
             just(Token::BooleanType).to(Type::Primitive(PrimitiveType::Boolean)),
             just(Token::PathType).to(Type::Primitive(PrimitiveType::Path)),
             just(Token::RegexType).to(Type::Primitive(PrimitiveType::Regex)),
+            just(Token::NeverType).to(Type::Primitive(PrimitiveType::Never)),
         ));
 
         // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments
@@ -972,10 +1011,23 @@ where
                 }
             });
 
-        let array = type_ref
+        // Array or Dictionary type: [Type] or [KeyType: ValueType]
+        let array_or_dict = type_ref
             .clone()
+            .then(just(Token::Colon).ignore_then(type_ref.clone()).or_not())
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
-            .map(|t| Type::Array(Box::new(t)));
+            .map(|(key_or_elem, value_opt)| {
+                if let Some(value) = value_opt {
+                    // Dictionary: [KeyType: ValueType]
+                    Type::Dictionary {
+                        key: Box::new(key_or_elem),
+                        value: Box::new(value),
+                    }
+                } else {
+                    // Array: [Type]
+                    Type::Array(Box::new(key_or_elem))
+                }
+            });
 
         // Named tuple type: (name1: Type1, name2: Type2, ...)
         let tuple_field = ident_parser()
@@ -995,10 +1047,21 @@ where
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .map(Type::Tuple);
 
-        let base_type = choice((primitive, ident_or_generic, array, tuple));
+        // Grouped type: (Type) - used for applying modifiers like ? to closures
+        let grouped_type = type_ref
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen));
 
-        // Optional type: Type?
-        base_type
+        let base_type = choice((
+            primitive,
+            ident_or_generic,
+            array_or_dict,
+            tuple,
+            grouped_type,
+        ));
+
+        // Type with optional modifier: Type?
+        let optionable_type = base_type
             .then(just(Token::Question).or_not())
             .map(|(ty, opt)| {
                 if opt.is_some() {
@@ -1006,7 +1069,34 @@ where
                 } else {
                     ty
                 }
-            })
+            });
+
+        // Closure type: () -> T, T -> U, or T, U -> V
+        // No-param closure: () -> ReturnType
+        let no_param_closure = just(Token::LParen)
+            .ignore_then(just(Token::RParen))
+            .ignore_then(just(Token::Arrow))
+            .ignore_then(type_ref.clone())
+            .map(|ret| Type::Closure {
+                params: vec![],
+                ret: Box::new(ret),
+            });
+
+        // Single or multi-param closure: Type -> ReturnType OR Type, Type, ... -> ReturnType
+        let param_closure = optionable_type
+            .clone()
+            .separated_by(just(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .then_ignore(just(Token::Arrow))
+            .then(type_ref)
+            .map(|(params, ret)| Type::Closure {
+                params,
+                ret: Box::new(ret),
+            });
+
+        // Try closure types first (more specific), then fall back to regular type
+        choice((no_param_closure, param_closure, optionable_type))
     })
 }
 
@@ -1167,8 +1257,38 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Array literal: [expr, expr, ...] (commas required for now to avoid ambiguity)
-        let array = expr
+        // Dictionary entry: key_expr: value_expr
+        let dict_entry = expr
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .then(expr.clone())
+            .map(|(key, value)| (key, value));
+
+        // Dictionary literal: ["key": value, "key2": value2] or [:] for empty
+        let dict_literal = choice((
+            // Empty dictionary: [:]
+            just(Token::LBracket)
+                .ignore_then(just(Token::Colon))
+                .ignore_then(just(Token::RBracket))
+                .map_with(|_, e| Expr::DictLiteral {
+                    entries: vec![],
+                    span: span_from_simple(e.span()),
+                }),
+            // Non-empty dictionary: [key: value, key2: value2]
+            dict_entry
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .map_with(|entries, e| Expr::DictLiteral {
+                    entries,
+                    span: span_from_simple(e.span()),
+                }),
+        ));
+
+        // Array literal: [expr, expr, ...] or [] for empty
+        let array_literal = expr
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
@@ -1178,6 +1298,9 @@ where
                 elements,
                 span: span_from_simple(e.span()),
             });
+
+        // Array or dictionary: try dictionary first (more specific)
+        let array_or_dict = choice((dict_literal, array_literal));
 
         // Tuple literal: (name1: expr1, name2: expr2, ...)
         // Named tuple field: identifier : expression
@@ -1207,28 +1330,36 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Context expression: context mut? items { body } (kept for backward compatibility)
-        let context_expr = just(Token::Context)
-            .ignore_then(
-                mutability_parser()
-                    .then(expr.clone())
-                    .then(just(Token::As).ignore_then(ident_parser()).or_not())
-                    .map_with(|((mutable, expr), alias), e| ContextItem {
-                        mutable,
-                        expr: Box::new(expr),
-                        alias,
-                        span: span_from_simple(e.span()),
-                    })
-                    .separated_by(just(Token::Comma))
-                    .at_least(1)
-                    .collect::<Vec<_>>(),
-            )
-            .then(
-                expr.clone()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-            )
-            .map_with(|(items, body), e| Expr::ContextExpr {
-                items,
+        // Closure expression: () -> expr, x -> expr, x, y -> expr, x: T -> expr
+        // Closure parameter: identifier with optional type annotation
+        let closure_param = ident_parser()
+            .then(just(Token::Colon).ignore_then(type_parser()).or_not())
+            .map_with(|(name, ty), e| ClosureParam {
+                name,
+                ty,
+                span: span_from_simple(e.span()),
+            });
+
+        // No-param closure: () -> expr
+        let no_param_closure = just(Token::LParen)
+            .ignore_then(just(Token::RParen))
+            .ignore_then(just(Token::Arrow))
+            .ignore_then(expr.clone())
+            .map_with(|body, e| Expr::ClosureExpr {
+                params: vec![],
+                body: Box::new(body),
+                span: span_from_simple(e.span()),
+            });
+
+        // Single or multi-param closure: x -> expr OR x, y -> expr OR x: T -> expr
+        let param_closure = closure_param
+            .separated_by(just(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .then_ignore(just(Token::Arrow))
+            .then(expr.clone())
+            .map_with(|(params, body), e| Expr::ClosureExpr {
+                params,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -1330,23 +1461,42 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Atom: literal, instantiation, enum_instantiation, reference, array, tuple, grouped, for, if, match, context, provides, consumes
+        // Let expression: let name = value body OR let name: Type = value body OR let mut name = value body
+        let let_expr = just(Token::Let)
+            .ignore_then(just(Token::Mut).or_not())
+            .then(ident_parser())
+            .then(just(Token::Colon).ignore_then(type_parser()).or_not())
+            .then_ignore(just(Token::Equals))
+            .then(expr.clone())
+            .then(expr.clone())
+            .map_with(|((((mutable, name), ty), value), body), e| Expr::LetExpr {
+                mutable: mutable.is_some(),
+                name,
+                ty,
+                value: Box::new(value),
+                body: Box::new(body),
+                span: span_from_simple(e.span()),
+            });
+
+        // Atom: literal, instantiation, enum_instantiation, reference, array/dict, tuple, grouped, for, if, match, provides, consumes, closure, let
         // Order matters: try more specific parsers first
         let atom = choice((
             literal,
-            context_expr,  // Kept for backward compatibility
-            provides_expr, // New provides syntax
-            consumes_expr, // New consumes syntax
+            provides_expr,
+            consumes_expr,
             for_expr,
             if_expr,
             match_expr,
-            array,
-            tuple, // Must come before grouped (tuple is more specific)
+            let_expr,      // Let expressions
+            array_or_dict, // Handles both array and dictionary literals
+            tuple,         // Must come before grouped (tuple is more specific)
             grouped,
+            no_param_closure, // () -> expr (must come before other closures and tuples)
+            param_closure,    // x -> expr (must come before reference since starts with ident)
             inferred_enum_instantiation, // Must come first (.variant is most specific)
             enum_instantiation, // Must come before instantiation and reference (Type.variant(...))
-            instantiation,      // Must come before reference (Type(...))
-            reference,          // Most general (ident:ident:ident)
+            instantiation,    // Must come before reference (Type(...))
+            reference,        // Most general (ident:ident:ident)
         ));
 
         // Binary operators with precedence using pratt parser
@@ -1435,6 +1585,17 @@ where
                 right: Box::new(r),
                 span: span_from_simple(e.span()),
             }),
+            // Dictionary/array access: expr[key] (highest precedence: 7)
+            postfix(
+                7,
+                expr.clone()
+                    .delimited_by(just(Token::LBracket), just(Token::RBracket)),
+                |dict, key, e| Expr::DictAccess {
+                    dict: Box::new(dict),
+                    key: Box::new(key),
+                    span: span_from_simple(e.span()),
+                },
+            ),
         ))
     })
 }
@@ -1488,3 +1649,624 @@ fn span_from_simple(s: SimpleSpan) -> CustomSpan {
     CustomSpan::from_range(s.start, s.end)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+
+    fn parse_type_str(input: &str) -> Result<Type, Vec<(String, CustomSpan)>> {
+        // Parse the type as a struct field and extract it
+        let wrapper = format!("struct Test {{ field: {} }}", input);
+        let tokens = Lexer::tokenize_all(&wrapper);
+        let result = parse_file(&tokens)?;
+
+        // Extract the type from the parsed struct
+        if let Some(Statement::Definition(Definition::Struct(s))) = result.statements.first() {
+            if let Some(field) = s.fields.first() {
+                return Ok(field.ty.clone());
+            }
+        }
+        Err(vec![(
+            "Could not extract type".to_string(),
+            CustomSpan::default(),
+        )])
+    }
+
+    #[test]
+    fn test_never_type_parsing() {
+        let result = parse_type_str("Never");
+        assert!(result.is_ok(), "Failed to parse Never type: {:?}", result);
+        let ty = result.unwrap();
+        assert_eq!(ty, Type::Primitive(PrimitiveType::Never));
+    }
+
+    #[test]
+    fn test_never_in_struct_field() {
+        let input = r#"
+            pub struct Empty: View {
+                mount body: Never
+            }
+        "#;
+        let tokens = Lexer::tokenize_all(input);
+        let result = parse_file(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse struct with Never field: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_optional_never_type() {
+        let result = parse_type_str("Never?");
+        assert!(result.is_ok(), "Failed to parse Never? type: {:?}", result);
+        let ty = result.unwrap();
+        match ty {
+            Type::Optional(inner) => {
+                assert_eq!(*inner, Type::Primitive(PrimitiveType::Never));
+            }
+            _ => panic!("Expected Optional type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_array_of_never_type() {
+        let result = parse_type_str("[Never]");
+        assert!(result.is_ok(), "Failed to parse [Never] type: {:?}", result);
+        let ty = result.unwrap();
+        match ty {
+            Type::Array(inner) => {
+                assert_eq!(*inner, Type::Primitive(PrimitiveType::Never));
+            }
+            _ => panic!("Expected Array type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_type_parsing() {
+        let result = parse_type_str("[String: Number]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse [String: Number] type: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Dictionary { key, value } => {
+                assert_eq!(*key, Type::Primitive(PrimitiveType::String));
+                assert_eq!(*value, Type::Primitive(PrimitiveType::Number));
+            }
+            _ => panic!("Expected Dictionary type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_in_struct_field() {
+        let input = r#"
+            pub struct Config {
+                settings: [String: String]
+            }
+        "#;
+        let tokens = Lexer::tokenize_all(input);
+        let result = parse_file(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse struct with Dictionary field: {:?}",
+            result
+        );
+
+        let file = result.unwrap();
+        if let Some(Statement::Definition(Definition::Struct(s))) = file.statements.first() {
+            if let Some(field) = s.fields.first() {
+                match &field.ty {
+                    Type::Dictionary { key, value } => {
+                        assert_eq!(**key, Type::Primitive(PrimitiveType::String));
+                        assert_eq!(**value, Type::Primitive(PrimitiveType::String));
+                    }
+                    _ => panic!("Expected Dictionary type, got {:?}", field.ty),
+                }
+            } else {
+                panic!("No fields found");
+            }
+        } else {
+            panic!("No struct found");
+        }
+    }
+
+    #[test]
+    fn test_nested_dictionary_type() {
+        let result = parse_type_str("[String: [Number: Boolean]]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse nested dictionary type: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Dictionary { key, value } => {
+                assert_eq!(*key, Type::Primitive(PrimitiveType::String));
+                match *value {
+                    Type::Dictionary {
+                        key: inner_key,
+                        value: inner_value,
+                    } => {
+                        assert_eq!(*inner_key, Type::Primitive(PrimitiveType::Number));
+                        assert_eq!(*inner_value, Type::Primitive(PrimitiveType::Boolean));
+                    }
+                    _ => panic!("Expected inner Dictionary type, got {:?}", value),
+                }
+            }
+            _ => panic!("Expected Dictionary type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_optional_dictionary_type() {
+        let result = parse_type_str("[String: Number]?");
+        assert!(
+            result.is_ok(),
+            "Failed to parse optional dictionary type: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Optional(inner) => match *inner {
+                Type::Dictionary { key, value } => {
+                    assert_eq!(*key, Type::Primitive(PrimitiveType::String));
+                    assert_eq!(*value, Type::Primitive(PrimitiveType::Number));
+                }
+                _ => panic!("Expected Dictionary type inside Optional, got {:?}", inner),
+            },
+            _ => panic!("Expected Optional type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_with_custom_types() {
+        let result = parse_type_str("[UserId: UserData]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse dictionary with custom types: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Dictionary { key, value } => match (*key, *value) {
+                (Type::Ident(k), Type::Ident(v)) => {
+                    assert_eq!(k.name, "UserId");
+                    assert_eq!(v.name, "UserData");
+                }
+                _ => panic!("Expected Ident types"),
+            },
+            _ => panic!("Expected Dictionary type, got {:?}", ty),
+        }
+    }
+
+    // Helper to parse an expression from let binding
+    fn parse_expr_from_let(input: &str) -> Result<Expr, Vec<(String, CustomSpan)>> {
+        let wrapper = format!("let x = {}", input);
+        let tokens = Lexer::tokenize_all(&wrapper);
+        let result = parse_file(&tokens)?;
+
+        if let Some(Statement::Let(binding)) = result.statements.first() {
+            return Ok(binding.value.clone());
+        }
+        Err(vec![(
+            "Could not extract expression".to_string(),
+            CustomSpan::default(),
+        )])
+    }
+
+    #[test]
+    fn test_dictionary_literal_parsing() {
+        let result = parse_expr_from_let("[\"key\": 42, \"name\": 100]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse dictionary literal: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::DictLiteral { entries, .. } => {
+                assert_eq!(entries.len(), 2);
+                // Check first entry
+                match (&entries[0].0, &entries[0].1) {
+                    (Expr::Literal(Literal::String(k)), Expr::Literal(Literal::Number(v))) => {
+                        assert_eq!(k, "key");
+                        assert_eq!(*v, 42.0);
+                    }
+                    _ => panic!("Expected string key and number value"),
+                }
+            }
+            _ => panic!("Expected DictLiteral, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_empty_dictionary_literal() {
+        let result = parse_expr_from_let("[:]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse empty dictionary: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::DictLiteral { entries, .. } => {
+                assert!(entries.is_empty(), "Expected empty entries");
+            }
+            _ => panic!("Expected DictLiteral, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_access_parsing() {
+        let result = parse_expr_from_let("data[\"key\"]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse dictionary access: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
+                (Expr::Reference { path, .. }, Expr::Literal(Literal::String(k))) => {
+                    assert_eq!(path[0].name, "data");
+                    assert_eq!(k, "key");
+                }
+                _ => panic!("Expected reference and string key"),
+            },
+            _ => panic!("Expected DictAccess, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_chained_dictionary_access() {
+        let result = parse_expr_from_let("data[\"outer\"][\"inner\"]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse chained dict access: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::DictAccess { dict, key, .. } => {
+                // Outer access: dict is another DictAccess, key is "inner"
+                match (*key,) {
+                    (Expr::Literal(Literal::String(k)),) => {
+                        assert_eq!(k, "inner");
+                    }
+                    _ => panic!("Expected string key 'inner'"),
+                }
+                match *dict {
+                    Expr::DictAccess {
+                        dict: inner_dict,
+                        key: inner_key,
+                        ..
+                    } => {
+                        match (*inner_key,) {
+                            (Expr::Literal(Literal::String(k)),) => {
+                                assert_eq!(k, "outer");
+                            }
+                            _ => panic!("Expected string key 'outer'"),
+                        }
+                        match *inner_dict {
+                            Expr::Reference { path, .. } => {
+                                assert_eq!(path[0].name, "data");
+                            }
+                            _ => panic!("Expected reference 'data'"),
+                        }
+                    }
+                    _ => panic!("Expected inner DictAccess"),
+                }
+            }
+            _ => panic!("Expected DictAccess, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_dictionary_with_expression_key() {
+        let result = parse_expr_from_let("data[index]");
+        assert!(
+            result.is_ok(),
+            "Failed to parse dict access with expr key: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
+                (Expr::Reference { path: d, .. }, Expr::Reference { path: k, .. }) => {
+                    assert_eq!(d[0].name, "data");
+                    assert_eq!(k[0].name, "index");
+                }
+                _ => panic!("Expected two references"),
+            },
+            _ => panic!("Expected DictAccess, got {:?}", expr),
+        }
+    }
+
+    // Closure type tests
+    #[test]
+    fn test_closure_type_no_params() {
+        let result = parse_type_str("() -> Event");
+        assert!(result.is_ok(), "Failed to parse () -> Event: {:?}", result);
+        let ty = result.unwrap();
+        match ty {
+            Type::Closure { params, ret } => {
+                assert!(params.is_empty(), "Expected empty params");
+                match *ret {
+                    Type::Ident(ident) => assert_eq!(ident.name, "Event"),
+                    _ => panic!("Expected Ident return type"),
+                }
+            }
+            _ => panic!("Expected Closure type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_closure_type_single_param() {
+        let result = parse_type_str("String -> Event");
+        assert!(
+            result.is_ok(),
+            "Failed to parse String -> Event: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Closure { params, ret } => {
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0], Type::Primitive(PrimitiveType::String));
+                match *ret {
+                    Type::Ident(ident) => assert_eq!(ident.name, "Event"),
+                    _ => panic!("Expected Ident return type"),
+                }
+            }
+            _ => panic!("Expected Closure type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_closure_type_multi_params() {
+        let result = parse_type_str("Number, Number -> Point");
+        assert!(
+            result.is_ok(),
+            "Failed to parse Number, Number -> Point: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Closure { params, ret } => {
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0], Type::Primitive(PrimitiveType::Number));
+                assert_eq!(params[1], Type::Primitive(PrimitiveType::Number));
+                match *ret {
+                    Type::Ident(ident) => assert_eq!(ident.name, "Point"),
+                    _ => panic!("Expected Ident return type"),
+                }
+            }
+            _ => panic!("Expected Closure type, got {:?}", ty),
+        }
+    }
+
+    #[test]
+    fn test_optional_closure_type() {
+        let result = parse_type_str("(String -> Event)?");
+        assert!(
+            result.is_ok(),
+            "Failed to parse (String -> Event)?: {:?}",
+            result
+        );
+        let ty = result.unwrap();
+        match ty {
+            Type::Optional(inner) => match *inner {
+                Type::Closure { params, .. } => {
+                    assert_eq!(params.len(), 1);
+                }
+                _ => panic!("Expected Closure inside Optional"),
+            },
+            _ => panic!("Expected Optional type, got {:?}", ty),
+        }
+    }
+
+    // Closure expression tests
+    #[test]
+    fn test_closure_expr_no_params() {
+        let result = parse_expr_from_let("() -> .submit");
+        assert!(
+            result.is_ok(),
+            "Failed to parse () -> .submit: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::ClosureExpr { params, body, .. } => {
+                assert!(params.is_empty());
+                match *body {
+                    Expr::InferredEnumInstantiation { variant, .. } => {
+                        assert_eq!(variant.name, "submit");
+                    }
+                    _ => panic!("Expected InferredEnumInstantiation, got {:?}", body),
+                }
+            }
+            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_closure_expr_single_param() {
+        let result = parse_expr_from_let("x -> .changed(value: x)");
+        assert!(
+            result.is_ok(),
+            "Failed to parse x -> .changed(...): {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::ClosureExpr { params, .. } => {
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0].name.name, "x");
+                assert!(params[0].ty.is_none());
+            }
+            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_closure_expr_multi_params() {
+        let result = parse_expr_from_let("w, h -> .resized(width: w, height: h)");
+        assert!(result.is_ok(), "Failed to parse w, h -> ...: {:?}", result);
+        let expr = result.unwrap();
+        match expr {
+            Expr::ClosureExpr { params, .. } => {
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0].name.name, "w");
+                assert_eq!(params[1].name.name, "h");
+            }
+            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_closure_expr_with_type_annotation() {
+        let result = parse_expr_from_let("x: String -> .textChanged(value: x)");
+        assert!(
+            result.is_ok(),
+            "Failed to parse x: String -> ...: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::ClosureExpr { params, .. } => {
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0].name.name, "x");
+                match &params[0].ty {
+                    Some(Type::Primitive(PrimitiveType::String)) => {}
+                    _ => panic!("Expected String type annotation"),
+                }
+            }
+            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_closure_in_struct_field() {
+        let input = r#"
+            pub struct Button<E> {
+                action: () -> E
+            }
+        "#;
+        let tokens = Lexer::tokenize_all(input);
+        let result = parse_file(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse struct with closure field: {:?}",
+            result
+        );
+    }
+
+    // Let expression tests
+    #[test]
+    fn test_let_expr_basic() {
+        let result = parse_expr_from_let("let x = 42 x");
+        assert!(result.is_ok(), "Failed to parse let x = 42 x: {:?}", result);
+        let expr = result.unwrap();
+        match expr {
+            Expr::LetExpr {
+                mutable,
+                name,
+                ty,
+                value,
+                body,
+                ..
+            } => {
+                assert!(!mutable);
+                assert_eq!(name.name, "x");
+                assert!(ty.is_none());
+                match *value {
+                    Expr::Literal(Literal::Number(n)) => assert_eq!(n, 42.0),
+                    _ => panic!("Expected number literal"),
+                }
+                match *body {
+                    Expr::Reference { path, .. } => assert_eq!(path[0].name, "x"),
+                    _ => panic!("Expected reference in body"),
+                }
+            }
+            _ => panic!("Expected LetExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_let_expr_with_type() {
+        let result = parse_expr_from_let("let count: Number = 100 count");
+        assert!(
+            result.is_ok(),
+            "Failed to parse let with type: {:?}",
+            result
+        );
+        let expr = result.unwrap();
+        match expr {
+            Expr::LetExpr { name, ty, .. } => {
+                assert_eq!(name.name, "count");
+                match ty {
+                    Some(Type::Primitive(PrimitiveType::Number)) => {}
+                    _ => panic!("Expected Number type annotation"),
+                }
+            }
+            _ => panic!("Expected LetExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_let_expr_mutable() {
+        let result = parse_expr_from_let("let mut counter = 0 counter");
+        assert!(result.is_ok(), "Failed to parse let mut: {:?}", result);
+        let expr = result.unwrap();
+        match expr {
+            Expr::LetExpr { mutable, name, .. } => {
+                assert!(mutable);
+                assert_eq!(name.name, "counter");
+            }
+            _ => panic!("Expected LetExpr, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_let_expr_in_for() {
+        let input = r#"
+            impl App {
+                for item in items {
+                    let formatted = item
+                    Label(text: formatted)
+                }
+            }
+        "#;
+        let tokens = Lexer::tokenize_all(input);
+        let result = parse_file(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse let in for block: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_nested_let_exprs() {
+        let result = parse_expr_from_let("let x = 1 let y = 2 x");
+        assert!(result.is_ok(), "Failed to parse nested let: {:?}", result);
+        let expr = result.unwrap();
+        match expr {
+            Expr::LetExpr { name, body, .. } => {
+                assert_eq!(name.name, "x");
+                match *body {
+                    Expr::LetExpr {
+                        name: inner_name, ..
+                    } => {
+                        assert_eq!(inner_name.name, "y");
+                    }
+                    _ => panic!("Expected nested LetExpr"),
+                }
+            }
+            _ => panic!("Expected LetExpr, got {:?}", expr),
+        }
+    }
+}

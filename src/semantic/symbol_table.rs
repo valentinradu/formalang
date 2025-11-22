@@ -478,7 +478,8 @@ impl SymbolTable {
         }
 
         // Track the module origin
-        self.module_origins.insert(name.to_string(), Some(module_path));
+        self.module_origins
+            .insert(name.to_string(), Some(module_path));
 
         Ok(())
     }
@@ -542,10 +543,7 @@ impl SymbolTable {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportError {
     /// Imported item is not public
-    PrivateItem {
-        name: String,
-        kind: SymbolKind,
-    },
+    PrivateItem { name: String, kind: SymbolKind },
     /// Imported item not found in module
     ItemNotFound {
         name: String,

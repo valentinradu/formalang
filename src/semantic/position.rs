@@ -3,7 +3,7 @@
 //! This module provides utilities for bridging between LSP positions (0-indexed)
 //! and FormaLang's internal Location system (1-indexed).
 
-use crate::location::{Location, Span, offset_to_location};
+use crate::location::{offset_to_location, Location, Span};
 
 /// LSP Position (0-indexed line and character)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,8 @@ impl LspPosition {
             // If we've reached the target line
             if current_line == position.line {
                 // Count characters from the start of this line
-                for (char_count, (char_idx, _)) in source[byte_offset..].char_indices().enumerate() {
+                for (char_count, (char_idx, _)) in source[byte_offset..].char_indices().enumerate()
+                {
                     if char_count as u32 == position.character {
                         return byte_offset + char_idx;
                     }
@@ -123,8 +124,10 @@ pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize,
 }
 
 /// Get the word at a given LSP position
-pub fn get_word_at_lsp_position(source: &str, position: LspPosition) -> Option<(String, usize, usize)> {
+pub fn get_word_at_lsp_position(
+    source: &str,
+    position: LspPosition,
+) -> Option<(String, usize, usize)> {
     let offset = LspPosition::to_offset(source, position);
     get_word_at_offset(source, offset)
 }
-

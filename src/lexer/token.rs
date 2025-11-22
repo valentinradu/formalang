@@ -31,8 +31,6 @@ pub enum Token {
     Mut,
     #[token("mount")]
     Mount,
-    #[token("mounting")]
-    Mounting,
     #[token("match")]
     Match,
     #[token("for")]
@@ -49,8 +47,6 @@ pub enum Token {
     False,
     #[token("nil")]
     Nil,
-    #[token("context")]
-    Context,
     #[token("provides")]
     Provides,
     #[token("consumes")]
@@ -69,6 +65,8 @@ pub enum Token {
     PathType,
     #[token("Regex")]
     RegexType,
+    #[token("Never")]
+    NeverType,
 
     // Literals
     #[regex(r#""([^"\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
@@ -126,6 +124,8 @@ pub enum Token {
     Or,
     #[token("?")]
     Question,
+    #[token("->")]
+    Arrow,
 
     // Delimiters
     #[token("(")]
@@ -223,7 +223,6 @@ impl Token {
                 | Token::Let
                 | Token::Mut
                 | Token::Mount
-                | Token::Mounting
                 | Token::Match
                 | Token::For
                 | Token::In
@@ -232,7 +231,6 @@ impl Token {
                 | Token::True
                 | Token::False
                 | Token::Nil
-                | Token::Context
                 | Token::Provides
                 | Token::Consumes
                 | Token::As
@@ -242,7 +240,12 @@ impl Token {
     pub fn is_type_keyword(&self) -> bool {
         matches!(
             self,
-            Token::StringType | Token::NumberType | Token::BooleanType | Token::PathType | Token::RegexType
+            Token::StringType
+                | Token::NumberType
+                | Token::BooleanType
+                | Token::PathType
+                | Token::RegexType
+                | Token::NeverType
         )
     }
 
@@ -260,7 +263,6 @@ impl Token {
             Token::Let => "let",
             Token::Mut => "mut",
             Token::Mount => "mount",
-            Token::Mounting => "mounting",
             Token::Match => "match",
             Token::For => "for",
             Token::In => "in",
@@ -269,7 +271,6 @@ impl Token {
             Token::True => "true",
             Token::False => "false",
             Token::Nil => "nil",
-            Token::Context => "context",
             Token::Provides => "provides",
             Token::Consumes => "consumes",
             Token::As => "as",
@@ -278,6 +279,7 @@ impl Token {
             Token::BooleanType => "Boolean",
             Token::PathType => "Path",
             Token::RegexType => "Regex",
+            Token::NeverType => "Never",
             Token::Dot => ".",
             Token::Colon => ":",
             Token::DoubleColon => "::",
@@ -297,6 +299,7 @@ impl Token {
             Token::And => "&&",
             Token::Or => "||",
             Token::Question => "?",
+            Token::Arrow => "->",
             Token::LParen => "(",
             Token::RParen => ")",
             Token::LBrace => "{",
@@ -323,4 +326,3 @@ impl std::fmt::Display for Token {
         }
     }
 }
-

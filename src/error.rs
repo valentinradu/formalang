@@ -73,7 +73,9 @@ pub enum CompilerError {
         span: Span,
     },
 
-    #[error("Invalid child type '{child_type}' in mounting point '{mounting_point}' of '{component}'")]
+    #[error(
+        "Invalid child type '{child_type}' in mounting point '{mounting_point}' of '{component}'"
+    )]
     InvalidMountingPointChild {
         component: String,
         mounting_point: String,
@@ -95,10 +97,7 @@ pub enum CompilerError {
     UndefinedComponent { name: String, span: Span },
 
     #[error("Mounting point '{mounting_point}' cannot be on the same line as the component")]
-    MountingPointOnSameLine {
-        mounting_point: String,
-        span: Span,
-    },
+    MountingPointOnSameLine { mounting_point: String, span: Span },
 
     #[error("Property '{property}' must come before mounting points")]
     PropertyAfterMountingPoint { property: String, span: Span },
@@ -190,7 +189,9 @@ pub enum CompilerError {
         span: Span,
     },
 
-    #[error("Mounting point '{mount}' has type {actual} but trait '{trait_name}' requires {expected}")]
+    #[error(
+        "Mounting point '{mount}' has type {actual} but trait '{trait_name}' requires {expected}"
+    )]
     TraitMountingPointTypeMismatch {
         mount: String,
         trait_name: String,
@@ -263,7 +264,9 @@ pub enum CompilerError {
         span: Span,
     },
 
-    #[error("Enum variant '{variant}' requires data, use {enum_name}.{variant}(field: value, ...)")]
+    #[error(
+        "Enum variant '{variant}' requires data, use {enum_name}.{variant}(field: value, ...)"
+    )]
     EnumVariantRequiresData {
         variant: String,
         enum_name: String,
@@ -291,22 +294,13 @@ pub enum CompilerError {
     },
 
     #[error("Type parameter '{param}' is out of scope")]
-    OutOfScopeTypeParameter {
-        param: String,
-        span: Span,
-    },
+    OutOfScopeTypeParameter { param: String, span: Span },
 
     #[error("Generic type '{name}' requires type arguments")]
-    MissingGenericArguments {
-        name: String,
-        span: Span,
-    },
+    MissingGenericArguments { name: String, span: Span },
 
     #[error("Duplicate generic parameter '{param}'")]
-    DuplicateGenericParam {
-        param: String,
-        span: Span,
-    },
+    DuplicateGenericParam { param: String, span: Span },
 
     // Mount field errors
     #[error("Unknown mount field '{mount}' in struct '{struct_name}'")]
@@ -318,10 +312,7 @@ pub enum CompilerError {
 
     // Enum type inference errors
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
-    CannotInferEnumType {
-        variant: String,
-        span: Span,
-    },
+    CannotInferEnumType { variant: String, span: Span },
 }
 
 impl CompilerError {

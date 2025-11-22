@@ -55,4 +55,3 @@ impl<'source> Lexer<'source> {
         tokens
     }
 }
-

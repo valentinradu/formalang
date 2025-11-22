@@ -11,10 +11,7 @@ pub enum ModuleError {
         span: Span,
     },
     /// Circular import detected
-    CircularImport {
-        cycle: Vec<String>,
-        span: Span,
-    },
+    CircularImport { cycle: Vec<String>, span: Span },
     /// Failed to read module file
     ReadError {
         path: PathBuf,
@@ -154,4 +151,3 @@ impl ModuleResolver for FileSystemResolver {
         Ok((source, module_file))
     }
 }
-
