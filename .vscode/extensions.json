@@ -2,7 +2,6 @@
   "recommendations": [
     "rust-analyzer.rust-analyzer",
     "streetsidesoftware.code-spell-checker",
-    "DavidAnson.vscode-markdownlint",
-    "gitkraken.git-worktrees"
+    "DavidAnson.vscode-markdownlint"
   ]
 }
