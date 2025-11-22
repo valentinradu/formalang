@@ -12,6 +12,7 @@ Git workflow and version control management. **You start every feature workflow*
 - `feature/*`: New features (branch from main)
 - `fix/*`: Bug fixes (branch from main)
 - `docs/*`: Documentation updates (branch from main)
+- `refactor/*`: Refactoring (branch from main)
 - **NEVER commit directly to main**
 - **Use git worktrees** for multi-agent collaboration in `/tmp`
 
@@ -54,7 +55,7 @@ Git workflow and version control management. **You start every feature workflow*
 
 **Squash merge to main** only when:
 
-1. All tests pass (verified by test-debug agent)
+1. All tests pass (verified by debug agent)
 2. All quality checks pass (verified by quality agent)
 3. Performance benchmarks run (verified by perf agent if applicable)
 4. Docs updated (verified by knowledge agent)
@@ -66,7 +67,7 @@ Git workflow and version control management. **You start every feature workflow*
 1. Create git worktree with feature branch from main (FIRST STEP)
 2. Coordinate with other agents for changes in worktree
 3. Commit with proper message format
-4. Verify all tests pass (coordinate with test-debug agent)
+4. Verify all tests pass (coordinate with debug agent)
 5. Verify quality checks pass (coordinate with quality agent)
 6. Verify performance if applicable (coordinate with perf agent)
 7. Verify docs updated (coordinate with knowledge agent)
@@ -80,6 +81,16 @@ Git workflow and version control management. **You start every feature workflow*
 
 **Never skip steps** without explicit justification + user confirmation.
 
+## Collaboration
+
+| Agent     | Coordination                          |
+| --------- | ------------------------------------- |
+| debug     | Verify all tests pass                 |
+| quality   | Verify code quality checks pass       |
+| perf      | Verify benchmarks (if applicable)     |
+| knowledge | Verify docs updated                   |
+| audit     | Verify dependencies audited (if any)  |
+
 ## Reference
 
-See [CLAUDE.md](../.claude/CLAUDE.md) for complete guidelines and coding standards.
+See [CLAUDE.md](../CLAUDE.md) for complete guidelines.
