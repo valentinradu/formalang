@@ -12,6 +12,8 @@ You are conducting deep technical research. This workflow is for exploration and
 
 ## Phase 2: Context Gathering (knowledge)
 
+Use FormaLens semantic search and ast-grep for code searches (see CLAUDE.md).
+
 1. **Knowledge agent**: Retrieve internal context
    - Search codebase for related patterns
    - Find relevant docs, RFCs, prior decisions

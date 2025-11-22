@@ -16,6 +16,8 @@ You are fixing a bug. Follow this workflow.
 
 ## Phase 2: Investigation (knowledge + debug)
 
+Use FormaLens semantic search and ast-grep for code searches (see CLAUDE.md).
+
 1. **Knowledge agent**: Gather context
    - Find related code, docs, issues
    - Understand the expected behavior

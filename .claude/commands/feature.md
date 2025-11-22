@@ -17,6 +17,8 @@ You are starting a new feature implementation. Follow this workflow strictly.
 
 ## Phase 2: Knowledge Gathering (knowledge + research)
 
+Use FormaLens semantic search and ast-grep for code searches (see CLAUDE.md).
+
 1. **Knowledge agent**: Retrieve relevant context
    - Search existing docs, RFCs, code patterns
    - Identify related features and constraints
