@@ -73,6 +73,15 @@ Forma is a declarative language compiler written in Rust. Project references use
 
 FormaLens (`formalens/`) provides enhanced navigation and search capabilities.
 
+**IMPORTANT**: Always prefer FormaLens semantic search over grep/ripgrep for:
+
+- Finding code by concept/meaning (not exact text)
+- Exploring unfamiliar parts of the codebase
+- Answering questions about how things work
+- Finding related code across files
+
+Use `formalens search "query"` FIRST. Only fall back to grep for exact string matching.
+
 ### rust-analyzer
 
 Use for semantic Rust code understanding:
