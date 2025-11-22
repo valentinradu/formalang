@@ -26,3 +26,6 @@ formalens/grammar/src/
 formalens/grammar/build/
 formalens/grammar/*.node
 formalens/semantic/target/
+
+# FastEmbed cache
+.fastembed_cache/
