@@ -6,14 +6,20 @@ You are starting a new feature implementation. Follow this workflow strictly.
 
 ## Phase 1: Setup (gitflow)
 
-1. Create a git worktree in `/tmp` with a feature branch:
+1. Pull latest main from origin:
+
+   ```bash
+   git fetch origin && git pull origin main
+   ```
+
+2. Create a git worktree in `/tmp` with a feature branch:
 
    ```bash
    git worktree add /tmp/feature-<short-name> -b feature/<short-name>
    ```
 
-2. Change working directory to the worktree
-3. Confirm setup complete before proceeding
+3. Change working directory to the worktree
+4. Confirm setup complete before proceeding
 
 ## Phase 2: Knowledge Gathering (knowledge + research)
 

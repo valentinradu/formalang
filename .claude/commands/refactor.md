@@ -6,13 +6,19 @@ You are refactoring existing code. No new features, no behavior changes.
 
 ## Phase 1: Setup (gitflow)
 
-1. Create a git worktree in `/tmp` with a refactor branch:
+1. Pull latest main from origin:
+
+   ```bash
+   git fetch origin && git pull origin main
+   ```
+
+2. Create a git worktree in `/tmp` with a refactor branch:
 
    ```bash
    git worktree add /tmp/refactor-<short-name> -b refactor/<short-name>
    ```
 
-2. Change working directory to the worktree
+3. Change working directory to the worktree
 
 ## Phase 2: Analysis (knowledge + research)
 
