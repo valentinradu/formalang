@@ -36,6 +36,7 @@ module.exports = grammar({
     [$._expression, $.enum_variant],
     [$.struct_instantiation],
     [$.enum_variant],
+    [$.parenthesized_expression, $.tuple_literal],
   ],
 
   rules: {
@@ -47,7 +48,6 @@ module.exports = grammar({
       $.trait_definition,
       $.struct_definition,
       $.enum_definition,
-      $.let_binding,
       $.default_block,
     ),
 
@@ -84,7 +84,7 @@ module.exports = grammar({
 
     use_group: $ => seq(
       '{',
-      sepBy(',', $.identifier),
+      sepBy(',', choice($.identifier, $.type_identifier)),
       optional(','),
       '}',
     ),
@@ -215,11 +215,10 @@ module.exports = grammar({
     ),
 
     // =========================================================================
-    // LET BINDING
+    // LET EXPRESSION (scoped, inside blocks only)
     // =========================================================================
 
-    let_binding: $ => seq(
-      optional('pub'),
+    let_expression: $ => seq(
       'let',
       optional('mut'),
       choice(
@@ -274,8 +273,26 @@ module.exports = grammar({
       $.type_reference,
       $.array_type,
       $.dictionary_type,
+      $.tuple_type,
       $.optional_type,
       $.generic_type,
+    ),
+
+    // =========================================================================
+    // TUPLE TYPE
+    // =========================================================================
+
+    tuple_type: $ => seq(
+      '(',
+      sepBy1(',', $.tuple_type_field),
+      optional(','),
+      ')',
+    ),
+
+    tuple_type_field: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('type', $._type),
     ),
 
     primitive_type: $ => choice(
@@ -347,15 +364,34 @@ module.exports = grammar({
       $.struct_instantiation,
       $.array_literal,
       $.dictionary_literal,
+      $.tuple_literal,
       $.for_expression,
       $.if_expression,
       $.match_expression,
       $.provides_expression,
       $.consumes_expression,
+      $.let_expression,
       $.parenthesized_expression,
     ),
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),
+
+    // =========================================================================
+    // TUPLE LITERAL
+    // =========================================================================
+
+    tuple_literal: $ => seq(
+      '(',
+      sepBy1(',', $.tuple_field),
+      optional(','),
+      ')',
+    ),
+
+    tuple_field: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('value', $._expression),
+    ),
 
     // =========================================================================
     // LITERALS

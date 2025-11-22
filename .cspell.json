@@ -10,7 +10,10 @@
     "formalens",
     "lancedb",
     "Layerable",
-    "STDLIB"
+    "STDLIB",
+    "prec",
+    "PREC",
+    "gimsuyv"
   ],
   "ignorePaths": [
     "node_modules",

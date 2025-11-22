@@ -63,9 +63,13 @@
 
 ; Variables
 (identifier) @variable
-(let_binding (identifier) @variable)
+(let_expression (identifier) @variable)
 (for_expression variable: (identifier) @variable)
 (provides_binding (identifier) @variable)
+
+; Tuple fields
+(tuple_field name: (identifier) @property)
+(tuple_type_field name: (identifier) @property)
 
 ; Literals
 (string) @string

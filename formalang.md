@@ -203,6 +203,54 @@ pub let logo_type = assets[/logo.svg]
 - Empty dict: `[:]`
 - No destructuring support for dictionaries
 
+### Tuples
+
+Named tuples group related values with field names:
+
+```formalang
+// Tuple type syntax
+pub struct Config {
+  person: (name: String, age: Number),
+  point: (x: Number, y: Number),
+  nested: (user: (first: String, last: String), active: Boolean)
+}
+
+// Tuple literals
+for item in items {
+  let person = (name: "John", age: 30)
+  let point = (x: 10, y: 20)
+  let nested = (user: (first: "John", last: "Doe"), active: true)
+  Label(text: person.name)
+}
+
+// Tuple with type annotation
+for item in items {
+  let data: (label: String, value: Number) = (label: item.name, value: item.count)
+  Row(data: data)
+}
+
+// Accessing tuple fields
+for item in items {
+  let person = (name: "John", age: 30)
+  Label(text: person.name)      // Access by field name
+  Label(text: person.age)
+}
+
+// Nested tuple access
+for item in items {
+  let nested = (user: (first: "John", last: "Doe"), active: true)
+  Label(text: nested.user.first)
+}
+```
+
+**Rules**:
+
+- Tuples use parentheses: `(name: value, ...)`
+- All fields must be named (no positional tuples)
+- Access fields with dot notation: `tuple.fieldName`
+- Trailing comma allowed: `(x: 1, y: 2,)`
+- Tuples can be nested
+
 ### Generic Types
 
 Types parameterized with type variables:
@@ -503,58 +551,57 @@ pub let result1: Result<String, Number> = .ok(value: "success")
 pub let result2: Result<String, Number> = .error(err: 404)
 ```
 
-### Let Bindings
+### Let Expressions
 
-File-level constant bindings:
+Let expressions create local bindings inside blocks (if, for, match, mount children):
 
 ```formalang
-// Public constant
-pub let MAX_USERS = 100
-pub let API_URL = "https://api.example.com"
+// Let in for block
+for item in items {
+  let formatted = item.name + ": " + item.value
+  Label(text: formatted)
+}
 
-// Private constant
-let default_timeout = 30
-let secret = "xyz"
+// Let in if block
+if condition {
+  let temp = computeValue()
+  Label(text: temp)
+}
 
-// Mutable bindings (can be reassigned)
-pub let mut counter = 0
-pub let mut active = true
-let mut score = 100               // Private mutable binding
+// Let with type annotation
+for item in items {
+  let count: Number = item.count
+  Label(text: count)
+}
 
-// Struct instantiation
-pub let default_user = User(
-  name: "Guest",
-  email: "guest@example.com",
-  age: 0,
-  verified: false,
-  nickname: nil
-)
+// Mutable let (can be reassigned within scope)
+for item in items {
+  let mut counter = 0
+  Label(text: "test")
+}
 
-// Computed values (type inferred)
-pub let pi = 3.14159
-pub let double_max = MAX_USERS * 2
-pub let greeting = "Hello, " + "World"
+// Let in mount children block
+VStack(gap: 10) {
+  items: {
+    let user = currentUser
+    Label(text: user.name)
+    Button(label: "Edit")
+  }
+}
 
-// Array bindings
-pub let tags = ["urgent", "bug"]
-pub let scores = [10, 20, 30]
-pub let rgb: [Number, 3] = [255, 128, 0]  // Fixed-size array
-
-// Dictionary bindings
-pub let settings: [String: Number] = ["timeout": 30, "maxRetries": 3]
-pub let cache: [Number: String] = [1: "cached", 2: "fresh"]
-
-// Generic instantiation
-pub let box = Box<String>(value: "hello")
+// Let with tuple value
+for item in items {
+  let data = (name: item.name, count: item.count)
+  Row(label: data.name, value: data.count)
+}
 ```
 
 **Rules**:
 
-- File-level only (not inside definitions)
-- Can be `pub` for export
+- Only inside blocks (for, if, match, mount children)
 - Can be `mut` for mutability tracking
 - Type inference when annotation omitted
-- No circular dependencies
+- Scope limited to containing block
 
 ### Mutability
 
@@ -577,16 +624,21 @@ pub struct App {
 }
 ```
 
-#### 2. Mutable Let Bindings
+#### 2. Mutable Let Expressions
 
 ```formalang
-// Mutable bindings can be reassigned
-pub let mut counter = 0
-pub let mut theme = "dark"
-let mut score = 100
+// Mutable bindings can be reassigned within their scope
+for item in items {
+  let mut counter = 0
+  let mut theme = "dark"
+  Label(text: theme)
+}
 
 // Immutable bindings cannot be reassigned
-pub let version = "1.0"
+for item in items {
+  let version = "1.0"
+  Label(text: version)
+}
 ```
 
 #### 3. Mutable Struct Fields in Instantiation
@@ -597,10 +649,13 @@ pub struct State {
   mut count: Number
 }
 
-pub let app_state = State(
-  data: ["initial"],
-  count: 0
-)
+// Struct with mutable fields
+default Config {
+  app_state: State(
+    data: ["initial"],
+    count: 0
+  )
+}
 
 // The mut fields can be updated after creation
 ```
