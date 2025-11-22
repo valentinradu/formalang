@@ -6,13 +6,19 @@ You are making documentation changes only. Follow this workflow.
 
 ## Phase 1: Setup (gitflow)
 
-1. Create a git worktree in `/tmp` with a docs branch:
+1. Pull latest main from origin:
+
+   ```bash
+   git fetch origin && git pull origin main
+   ```
+
+2. Create a git worktree in `/tmp` with a docs branch:
 
    ```bash
    git worktree add /tmp/docs-<short-name> -b docs/<short-name>
    ```
 
-2. Change working directory to the worktree
+3. Change working directory to the worktree
 
 ## Phase 2: Research (knowledge + research)
 

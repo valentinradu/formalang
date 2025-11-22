@@ -14,14 +14,20 @@ gitflow -> knowledge -> research -> audit* -> api-check -> test -> implement -> 
 
 **Agent**: gitflow
 
-1. Create git worktree in `/tmp`:
+1. Pull latest main from origin:
+
+   ```bash
+   git fetch origin && git pull origin main
+   ```
+
+2. Create git worktree in `/tmp`:
 
    ```bash
    git worktree add /tmp/feature-<name> -b feature/<name>
    ```
 
-2. Change to worktree directory
-3. Confirm setup
+3. Change to worktree directory
+4. Confirm setup
 
 ## Phase 2: Knowledge Gathering
 

@@ -6,13 +6,19 @@ You are fixing a bug. Follow this workflow.
 
 ## Phase 1: Setup (gitflow)
 
-1. Create a git worktree in `/tmp` with a fix branch:
+1. Pull latest main from origin:
+
+   ```bash
+   git fetch origin && git pull origin main
+   ```
+
+2. Create a git worktree in `/tmp` with a fix branch:
 
    ```bash
    git worktree add /tmp/fix-<short-name> -b fix/<short-name>
    ```
 
-2. Change working directory to the worktree
+3. Change working directory to the worktree
 
 ## Phase 2: Investigation (knowledge + debug)
 

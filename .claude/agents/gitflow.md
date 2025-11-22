@@ -18,6 +18,7 @@ Git workflow and version control management. **You start every feature workflow*
 
 ## Git Worktrees
 
+- **Always pull latest main first**: `git fetch origin && git pull origin main`
 - Create isolated working directories for each branch
 - Syntax: `git worktree add <path> -b <branch-name>`
 - Example: `git worktree add /tmp/feature-xyz -b feature/xyz`
@@ -64,20 +65,21 @@ Git workflow and version control management. **You start every feature workflow*
 
 ## Mandatory Workflow
 
-1. Create git worktree with feature branch from main (FIRST STEP)
-2. Coordinate with other agents for changes in worktree
-3. Commit with proper message format
-4. Verify all tests pass (coordinate with debug agent)
-5. Verify quality checks pass (coordinate with quality agent)
-6. Verify performance if applicable (coordinate with perf agent)
-7. Verify docs updated (coordinate with knowledge agent)
-8. Verify dependencies audited if added (coordinate with audit agent)
-9. Create PR with complete description
-10. Wait for all validations
-11. Only merge when ALL criteria met + user approval
-12. Squash merge to main
-13. Confirm squash merge completed
-14. Delete branch and clean up worktree (automatic, no approval needed)
+1. Pull latest main from origin: `git fetch origin && git pull origin main` (FIRST STEP)
+2. Create git worktree with feature branch from main
+3. Coordinate with other agents for changes in worktree
+4. Commit with proper message format
+5. Verify all tests pass (coordinate with debug agent)
+6. Verify quality checks pass (coordinate with quality agent)
+7. Verify performance if applicable (coordinate with perf agent)
+8. Verify docs updated (coordinate with knowledge agent)
+9. Verify dependencies audited if added (coordinate with audit agent)
+10. Create PR with complete description
+11. Wait for all validations
+12. Only merge when ALL criteria met + user approval
+13. Squash merge to main
+14. Confirm squash merge completed
+15. Delete branch and clean up worktree (automatic, no approval needed)
 
 **Never skip steps** without explicit justification + user confirmation.
 
