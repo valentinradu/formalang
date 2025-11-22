@@ -30,16 +30,19 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Marker Traits
 
 ### View (trait)
+
 - **Type**: `pub trait View {}`
 - **Purpose**: Base trait for all visual components
 - **Properties**: None (marker trait)
 
 ### Shape (trait)
+
 - **Type**: `pub trait Shape {}`
 - **Purpose**: Base trait for geometric primitives
 - **Properties**: None (marker trait)
 
 ### ContourSegment (trait)
+
 - **Type**: `pub trait ContourSegment {}`
 - **Purpose**: Base trait for path drawing primitives
 - **Properties**: None (marker trait)
@@ -49,6 +52,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Behavior Traits
 
 ### Layerable (trait)
+
 - **Type**: `pub trait Layerable`
 - **Purpose**: Components that support background and foreground layers
 - **Properties**:
@@ -60,18 +64,21 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Category Traits
 
 ### Container (trait)
+
 - **Type**: `pub trait Container: View + Layerable`
 - **Inherits**: View + Layerable
 - **Properties**:
   - `items` (mount): [View] - Array of child views
 
 ### Control (trait)
+
 - **Type**: `pub trait Control: View + Layerable`
 - **Inherits**: View + Layerable
 - **Properties**:
   - `label` (mount): View - Label/content for the control
 
 ### Content (trait)
+
 - **Type**: `pub trait Content: View + Layerable`
 - **Inherits**: View + Layerable
 - **Properties**: None (composition trait)
@@ -81,6 +88,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Layout Components
 
 ### VStack (struct)
+
 - **Type**: `pub struct VStack: Container`
 - **Implements**: Container (which extends View + Layerable)
 - **Purpose**: Vertical stack layout
@@ -96,6 +104,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### HStack (struct)
+
 - **Type**: `pub struct HStack: Container`
 - **Implements**: Container (which extends View + Layerable)
 - **Purpose**: Horizontal stack layout
@@ -111,6 +120,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### ZStack (struct)
+
 - **Type**: `pub struct ZStack: View + Layerable`
 - **Implements**: View + Layerable
 - **Purpose**: Layered stack (z-axis)
@@ -125,6 +135,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Grid (struct)
+
 - **Type**: `pub struct Grid: Container`
 - **Implements**: Container (which extends View + Layerable)
 - **Purpose**: Grid layout with rows and columns
@@ -142,6 +153,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Scroll (struct)
+
 - **Type**: `pub struct Scroll: View + Layerable`
 - **Implements**: View + Layerable
 - **Purpose**: Scrollable container
@@ -155,6 +167,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Spacer (struct)
+
 - **Type**: `pub struct Spacer: View`
 - **Implements**: View
 - **Purpose**: Flexible spacing element
@@ -166,6 +179,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Content Components
 
 ### Label (struct)
+
 - **Type**: `pub struct Label: Content`
 - **Implements**: Content (which extends View + Layerable)
 - **Purpose**: Single-line text display
@@ -181,6 +195,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Paragraph (struct)
+
 - **Type**: `pub struct Paragraph: Content`
 - **Implements**: Content (which extends View + Layerable)
 - **Purpose**: Multi-line text display
@@ -196,6 +211,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Image (struct)
+
 - **Type**: `pub struct Image: Content`
 - **Implements**: Content (which extends View + Layerable)
 - **Purpose**: Image display
@@ -213,6 +229,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Control Components
 
 ### Button (struct)
+
 - **Type**: `pub struct Button: Control`
 - **Implements**: Control (which extends View + Layerable)
 - **Purpose**: Clickable button control
@@ -226,6 +243,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Input (struct)
+
 - **Type**: `pub struct Input: Control`
 - **Implements**: Control (which extends View + Layerable)
 - **Purpose**: Text input field
@@ -242,6 +260,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Checkbox (struct)
+
 - **Type**: `pub struct Checkbox: Control`
 - **Implements**: Control (which extends View + Layerable)
 - **Purpose**: Checkbox control
@@ -257,6 +276,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Toggle (struct)
+
 - **Type**: `pub struct Toggle: Control`
 - **Implements**: Control (which extends View + Layerable)
 - **Purpose**: Toggle switch control
@@ -272,6 +292,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Slider (struct)
+
 - **Type**: `pub struct Slider: View + Layerable`
 - **Implements**: View + Layerable
 - **Purpose**: Slider control for numeric values
@@ -290,6 +311,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `foreground` (mount): View - Foreground layer (default: Empty())
 
 ### Dropdown (struct)
+
 - **Type**: `pub struct Dropdown: Control`
 - **Implements**: Control (which extends View + Layerable)
 - **Purpose**: Dropdown/select control
@@ -312,6 +334,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Shape Components
 
 ### Rect (struct)
+
 - **Type**: `pub struct Rect: Shape`
 - **Implements**: Shape
 - **Purpose**: Rectangle shape
@@ -324,6 +347,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `stroke`: Fill? - Stroke color/gradient (default: nil)
 
 ### Circle (struct)
+
 - **Type**: `pub struct Circle: Shape`
 - **Implements**: Shape
 - **Purpose**: Circle shape
@@ -334,6 +358,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `stroke`: Fill? - Stroke color/gradient (default: nil)
 
 ### Ellipse (struct)
+
 - **Type**: `pub struct Ellipse: Shape`
 - **Implements**: Shape
 - **Purpose**: Ellipse shape
@@ -345,6 +370,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `stroke`: Fill? - Stroke color/gradient (default: nil)
 
 ### Contour (struct)
+
 - **Type**: `pub struct Contour: Shape`
 - **Implements**: Shape
 - **Purpose**: Custom vector path shape
@@ -361,6 +387,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Contour Segments
 
 ### Move (struct)
+
 - **Type**: `pub struct Move: ContourSegment`
 - **Implements**: ContourSegment
 - **Purpose**: Move to a point without drawing
@@ -368,6 +395,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `to`: Point - Target point
 
 ### LineTo (struct)
+
 - **Type**: `pub struct LineTo: ContourSegment`
 - **Implements**: ContourSegment
 - **Purpose**: Draw a straight line
@@ -375,6 +403,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `to`: Point - End point
 
 ### Arc (struct)
+
 - **Type**: `pub struct Arc: ContourSegment`
 - **Implements**: ContourSegment
 - **Purpose**: Draw an arc
@@ -385,6 +414,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `largeArc`: Boolean - Use large arc
 
 ### QuadBezier (struct)
+
 - **Type**: `pub struct QuadBezier: ContourSegment`
 - **Implements**: ContourSegment
 - **Purpose**: Draw a quadratic Bézier curve
@@ -393,6 +423,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `control`: Point - Control point
 
 ### CubicBezier (struct)
+
 - **Type**: `pub struct CubicBezier: ContourSegment`
 - **Implements**: ContourSegment
 - **Purpose**: Draw a cubic Bézier curve
@@ -406,6 +437,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Shape Operations
 
 ### ShapeUnion (struct)
+
 - **Type**: `pub struct ShapeUnion: Shape`
 - **Implements**: Shape
 - **Purpose**: Union of multiple shapes
@@ -414,6 +446,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `shapes` (mount): [Shape] - Shapes to union
 
 ### ShapeIntersection (struct)
+
 - **Type**: `pub struct ShapeIntersection: Shape`
 - **Implements**: Shape
 - **Purpose**: Intersection of multiple shapes
@@ -422,6 +455,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `shapes` (mount): [Shape] - Shapes to intersect
 
 ### ShapeSubtraction (struct)
+
 - **Type**: `pub struct ShapeSubtraction: Shape`
 - **Implements**: Shape
 - **Purpose**: Subtract shapes from a base shape
@@ -435,6 +469,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Layout Constraints
 
 ### Frame (struct)
+
 - **Type**: `pub struct Frame: View`
 - **Implements**: View
 - **Purpose**: Set explicit size constraints
@@ -445,6 +480,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Framed content
 
 ### SizeConstraint (struct)
+
 - **Type**: `pub struct SizeConstraint: View`
 - **Implements**: View
 - **Purpose**: Set minimum/maximum size constraints
@@ -456,6 +492,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Constrained content
 
 ### FixedSize (struct)
+
 - **Type**: `pub struct FixedSize: View`
 - **Implements**: View
 - **Purpose**: Fix size to content's ideal size
@@ -465,6 +502,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Fixed content
 
 ### AspectRatio (struct)
+
 - **Type**: `pub struct AspectRatio: View`
 - **Implements**: View
 - **Purpose**: Maintain aspect ratio
@@ -474,6 +512,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Content with aspect ratio
 
 ### LayoutPriority (struct)
+
 - **Type**: `pub struct LayoutPriority: View`
 - **Implements**: View
 - **Purpose**: Set layout priority
@@ -486,6 +525,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Visual Modifiers
 
 ### Offset (struct)
+
 - **Type**: `pub struct Offset: View`
 - **Implements**: View
 - **Purpose**: Offset position
@@ -495,6 +535,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Offset content
 
 ### Clipped (struct)
+
 - **Type**: `pub struct Clipped: View`
 - **Implements**: View
 - **Purpose**: Clip content to bounds
@@ -502,6 +543,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Clipped content
 
 ### ClipShape (struct)
+
 - **Type**: `pub struct ClipShape: View`
 - **Implements**: View
 - **Purpose**: Clip content to a shape
@@ -510,6 +552,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `content` (mount): View - Clipped content
 
 ### CornerRadius (struct)
+
 - **Type**: `pub struct CornerRadius: View`
 - **Implements**: View
 - **Purpose**: Apply corner radius
@@ -522,6 +565,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Modifier System
 
 ### Modifier (struct)
+
 - **Type**: `pub struct Modifier: View`
 - **Implements**: View
 - **Purpose**: Apply transform/effect operations
@@ -535,6 +579,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Data Structures
 
 ### Size (struct)
+
 - **Type**: `pub struct Size`
 - **Purpose**: Represent 2D dimensions
 - **Properties**:
@@ -542,6 +587,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `height`: Dimension - Height dimension
 
 ### Point (struct)
+
 - **Type**: `pub struct Point`
 - **Purpose**: Represent 2D coordinates
 - **Properties**:
@@ -549,6 +595,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `y`: Number - Y coordinate
 
 ### ControlPoint (struct)
+
 - **Type**: `pub struct ControlPoint`
 - **Purpose**: FFD (Free Form Deformation) control point
 - **Properties**:
@@ -557,6 +604,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `offset`: Point - Offset from grid position
 
 ### LabelStyle (struct)
+
 - **Type**: `pub struct LabelStyle`
 - **Purpose**: Text styling for labels
 - **Properties**:
@@ -566,6 +614,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `weight`: Weight - Font weight
 
 ### Font (struct)
+
 - **Type**: `pub struct Font`
 - **Purpose**: Complete font specification
 - **Properties**:
@@ -579,6 +628,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Enums
 
 ### Dimension (enum)
+
 - **Type**: `pub enum Dimension`
 - **Purpose**: Flexible or fixed dimensions
 - **Variants**:
@@ -586,6 +636,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `px(value: Number)` - Fixed pixel value
 
 ### Padding (enum)
+
 - **Type**: `pub enum Padding`
 - **Purpose**: Padding specification
 - **Variants**:
@@ -595,6 +646,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `sides(top: Dimension, right: Dimension, bottom: Dimension, left: Dimension)` - Individual sides
 
 ### Margin (enum)
+
 - **Type**: `pub enum Margin`
 - **Purpose**: Margin specification
 - **Variants**:
@@ -604,6 +656,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `sides(top: Dimension, right: Dimension, bottom: Dimension, left: Dimension)` - Individual sides
 
 ### Color (enum)
+
 - **Type**: `pub enum Color`
 - **Purpose**: Color representation
 - **Variants**:
@@ -612,6 +665,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `hex(value: String)` - Hex color (e.g., "#FF0000")
 
 ### Fill (enum)
+
 - **Type**: `pub enum Fill`
 - **Purpose**: Fill/gradient types
 - **Variants**:
@@ -626,6 +680,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `pattern(source: Fill, size: Size?, repeat: PatternRepeat)` - Pattern fill
 
 ### alignment::Horizontal (enum)
+
 - **Type**: `pub enum Horizontal` (in alignment module)
 - **Purpose**: Horizontal alignment for VStack
 - **Variants**:
@@ -634,6 +689,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `trailing` - Right alignment
 
 ### alignment::Vertical (enum)
+
 - **Type**: `pub enum Vertical` (in alignment module)
 - **Purpose**: Vertical alignment for HStack
 - **Variants**:
@@ -642,6 +698,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `bottom` - Bottom alignment
 
 ### alignment::Center (enum)
+
 - **Type**: `pub enum Center` (in alignment module)
 - **Purpose**: 9-point alignment for ZStack/Frame
 - **Variants**:
@@ -650,6 +707,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `bottomLeading`, `bottom`, `bottomTrailing`
 
 ### distribution::Vertical (enum)
+
 - **Type**: `pub enum Vertical` (in distribution module)
 - **Purpose**: Vertical distribution
 - **Variants**:
@@ -657,6 +715,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `spaceBetween`, `spaceAround`, `spaceEvenly`
 
 ### distribution::Horizontal (enum)
+
 - **Type**: `pub enum Horizontal` (in distribution module)
 - **Purpose**: Horizontal distribution
 - **Variants**:
@@ -664,6 +723,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `spaceBetween`, `spaceAround`, `spaceEvenly`
 
 ### Axis (enum)
+
 - **Type**: `pub enum Axis`
 - **Purpose**: Axis direction
 - **Variants**:
@@ -671,6 +731,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `vertical` - Vertical axis
 
 ### ContentMode (enum)
+
 - **Type**: `pub enum ContentMode`
 - **Purpose**: Aspect ratio content mode
 - **Variants**:
@@ -678,12 +739,14 @@ Comprehensive list of all standard library entities with their properties and ty
   - `fill` - Fill bounds
 
 ### PatternRepeat (enum)
+
 - **Type**: `pub enum PatternRepeat`
 - **Purpose**: Pattern repeat modes
 - **Variants**:
   - `repeat`, `repeatX`, `repeatY`, `noRepeat`
 
 ### Weight (enum)
+
 - **Type**: `pub enum Weight`
 - **Purpose**: Font weight
 - **Variants**:
@@ -691,12 +754,14 @@ Comprehensive list of all standard library entities with their properties and ty
   - `semibold`, `bold`, `heavy`, `black`
 
 ### FontStyle (enum)
+
 - **Type**: `pub enum FontStyle`
 - **Purpose**: Font style
 - **Variants**:
   - `normal`, `italic`, `oblique`
 
 ### FontStretch (enum)
+
 - **Type**: `pub enum FontStretch`
 - **Purpose**: Font stretch
 - **Variants**:
@@ -705,6 +770,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `semiExpanded`, `expanded`, `extraExpanded`, `ultraExpanded`
 
 ### TruncationMode (enum)
+
 - **Type**: `pub enum TruncationMode`
 - **Purpose**: Text truncation
 - **Variants**:
@@ -713,6 +779,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `tail` - Truncate at end
 
 ### RenderingMode (enum)
+
 - **Type**: `pub enum RenderingMode`
 - **Purpose**: Image rendering mode
 - **Variants**:
@@ -720,6 +787,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `template` - Use as template (apply tint)
 
 ### GridItem (enum)
+
 - **Type**: `pub enum GridItem`
 - **Purpose**: Grid row/column definition
 - **Variants**:
@@ -728,6 +796,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `fixed(size: Dimension)` - Fixed size
 
 ### TransformType (enum)
+
 - **Type**: `pub enum TransformType`
 - **Purpose**: Transform operations
 - **Variants**:
@@ -737,6 +806,7 @@ Comprehensive list of all standard library entities with their properties and ty
   - `translation(x: Dimension, y: Dimension)`
 
 ### WaveAxis (enum)
+
 - **Type**: `pub enum WaveAxis`
 - **Purpose**: Wave modifier axis
 - **Variants**:
@@ -745,24 +815,28 @@ Comprehensive list of all standard library entities with their properties and ty
   - `radial` - From center point
 
 ### PointType (enum)
+
 - **Type**: `pub enum PointType`
 - **Purpose**: Zig-zag point type
 - **Variants**:
   - `smooth`, `corner`, `zigzag`
 
 ### SubdivideMethod (enum)
+
 - **Type**: `pub enum SubdivideMethod`
 - **Purpose**: Path subdivision method
 - **Variants**:
   - `linear`, `smooth`, `adaptive`
 
 ### JoinType (enum)
+
 - **Type**: `pub enum JoinType`
 - **Purpose**: Path join type
 - **Variants**:
   - `miter`, `round`, `bevel`
 
 ### MirrorAxis (enum)
+
 - **Type**: `pub enum MirrorAxis`
 - **Purpose**: Mirror axis
 - **Variants**:
@@ -770,18 +844,21 @@ Comprehensive list of all standard library entities with their properties and ty
   - `custom(angle: Dimension)`
 
 ### StrokeCap (enum)
+
 - **Type**: `pub enum StrokeCap`
 - **Purpose**: Stroke cap style
 - **Variants**:
   - `butt`, `round`, `square`
 
 ### StrokeJoin (enum)
+
 - **Type**: `pub enum StrokeJoin`
 - **Purpose**: Stroke join style
 - **Variants**:
   - `miter`, `round`, `bevel`
 
 ### ModifierOp (enum)
+
 - **Type**: `pub enum ModifierOp`
 - **Purpose**: Modifier operations
 - **Categories**:
@@ -828,6 +905,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ## Utility Components
 
 ### Empty (struct)
+
 - **Type**: `pub struct Empty: View`
 - **Implements**: View
 - **Purpose**: Empty placeholder view
@@ -840,6 +918,7 @@ Comprehensive list of all standard library entities with their properties and ty
 ### Entity Counts by Type
 
 **Structs**: 44 total
+
 - Layout components: 6 (VStack, HStack, ZStack, Grid, Scroll, Spacer)
 - Content components: 3 (Label, Paragraph, Image)
 - Control components: 6 (Button, Input, Checkbox, Toggle, Slider, Dropdown)
@@ -853,11 +932,13 @@ Comprehensive list of all standard library entities with their properties and ty
 - Data structures: 5 (Size, Point, ControlPoint, LabelStyle, Font)
 
 **Traits**: 7 total
+
 - Marker traits: 3 (View, Shape, ContourSegment)
 - Behavior traits: 1 (Layerable)
 - Category traits: 3 (Container, Control, Content)
 
 **Enums**: 26 total
+
 - Core types: 5 (Dimension, Padding, Margin, Color, Fill)
 - Alignment types: 3 (alignment::Horizontal, alignment::Vertical, alignment::Center)
 - Distribution types: 2 (distribution::Vertical, distribution::Horizontal)
@@ -867,32 +948,41 @@ Comprehensive list of all standard library entities with their properties and ty
 ### Trait Implementation Summary
 
 **Components implementing View only**:
+
 - Spacer, Frame, SizeConstraint, FixedSize, AspectRatio, LayoutPriority, Offset, Clipped, ClipShape, CornerRadius, Modifier, Empty
 
 **Components implementing View + Layerable**:
+
 - ZStack, Scroll, Slider
 
 **Components implementing Container** (extends View + Layerable):
+
 - VStack, HStack, Grid
 
 **Components implementing Control** (extends View + Layerable):
+
 - Button, Input, Checkbox, Toggle, Dropdown
 
 **Components implementing Content** (extends View + Layerable):
+
 - Label, Paragraph, Image
 
 **Components implementing Shape**:
+
 - Rect, Circle, Ellipse, Contour, ShapeUnion, ShapeIntersection, ShapeSubtraction
 
 **Components implementing ContourSegment**:
+
 - Move, LineTo, Arc, QuadBezier, CubicBezier
 
 **Data structures** (no trait implementation):
+
 - Size, Point, ControlPoint, LabelStyle, Font
 
 ### ModifierOp Variant Summary
 
 **Total Modifier Operations**: 32
+
 - Path modifiers: 15 (wave, noise, ffd, twist, zigZag, pucker, smooth, subdivide, simplify, inflate, offset, pathDeform, envelope, trimPath, stroke)
 - Transform modifiers: 4 (scale, rotate, translate, skew)
 - Effect modifiers: 3 (blur, shadow, opacity)
@@ -913,5 +1003,6 @@ Comprehensive list of all standard library entities with their properties and ty
 ---
 
 **See Also**:
+
 - [STDLIB_DESIGN.fv](../STDLIB_DESIGN.fv) - Full design specification with syntax
 - [FEATURES.md](./FEATURES.md) - Implemented language features
