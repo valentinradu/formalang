@@ -10,7 +10,7 @@
   },
   "rust-analyzer.files.excludeDirs": [
     "*.fv",
-    "stdlib.fv"
+    "docs/user/stdlib.fv"
   ],
   "search.exclude": {
     "**/node_modules": true,
