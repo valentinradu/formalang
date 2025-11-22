@@ -52,18 +52,18 @@ pub trait Shape {
 
 /// Base trait for path drawing primitives.
 ///
-/// ContourSegments define individual path commands (move, line, curve)
-/// that compose into complex vector paths via the Contour component.
+/// ContourSegments are terminal path commands (move, line, curve).
+/// They don't compose other segments - use Contour to combine them.
 ///
 /// # Example
 ///
 /// ```formalang
 /// pub struct CustomSegment: ContourSegment {
-///   mount body: ContourSegment
+///   mount body: Never
 /// }
 /// ```
 pub trait ContourSegment {
-  mount body: ContourSegment
+  mount body: Never
 }
 
 // =============================================================================
@@ -80,7 +80,7 @@ pub trait ContourSegment {
 ///
 /// ```formalang
 /// Button(label: "Click") {
-///   background: Rect(width: .auto, height: .auto, fill: .solid(color: .hex(value: "#007AFF")))
+///   background: Rect(width: .auto, height: .auto, fill: fill::Solid(color: .hex(value: "#007AFF")))
 ///   label: Label(content: "Click Me")
 ///   foreground: Empty()
 /// }
@@ -267,7 +267,7 @@ pub enum Dimension {
 /// # Example
 ///
 /// ```formalang
-/// VStack(padding: .around(value: .px(value: 16))) { ... }
+/// VStack(padding: .uniform(value: .px(value: 16))) { ... }
 /// VStack(padding: .sides(
 ///   top: .px(value: 8),
 ///   right: .px(value: 16),
@@ -276,7 +276,7 @@ pub enum Dimension {
 /// )) { ... }
 /// ```
 pub enum Padding {
-  around(value: Dimension),
+  uniform(value: Dimension),
   horizontal(value: Dimension),
   vertical(value: Dimension),
   sides(top: Dimension, right: Dimension, bottom: Dimension, left: Dimension)
@@ -291,7 +291,7 @@ pub enum Padding {
 /// - `vertical` - Top and bottom margin
 /// - `sides` - Individual margin per side
 pub enum Margin {
-  around(value: Dimension),
+  uniform(value: Dimension),
   horizontal(value: Dimension),
   vertical(value: Dimension),
   sides(top: Dimension, right: Dimension, bottom: Dimension, left: Dimension)
@@ -342,10 +342,10 @@ pub enum PatternRepeat {
   noRepeat
 }
 
-/// Fill types for shapes and text.
+/// Base trait for fill styles.
 ///
-/// Fills can be solid colors, gradients, or patterns. "Relative" variants
-/// apply colors relative to the inherited tint color.
+/// Fills define how shapes and text are colored. Implemented by solid colors,
+/// gradients, and patterns.
 ///
 /// # Example
 ///
@@ -353,23 +353,88 @@ pub enum PatternRepeat {
 /// Rect(
 ///   width: .px(value: 100),
 ///   height: .px(value: 100),
-///   fill: .linearGradient(
+///   fill: fill::Linear(
 ///     from: .hex(value: "#FF0000"),
 ///     to: .hex(value: "#0000FF"),
-///     angle: .px(value: 45)
+///     angle: .deg(value: 45)
 ///   )
 /// )
 /// ```
-pub enum Fill {
-  solid(color: Color),
-  relativeSolid(color: Color),
-  linearGradient(from: Color, to: Color, angle: Dimension),
-  relativeLinearGradient(from: Color, to: Color, angle: Dimension),
-  radialGradient(from: Color, to: Color, centerX: Number, centerY: Number),
-  relativeRadialGradient(from: Color, to: Color, centerX: Number, centerY: Number),
-  angularGradient(from: Color, to: Color, angle: Dimension),
-  relativeAngularGradient(from: Color, to: Color, angle: Dimension),
-  pattern(source: Fill, size: Size?, repeat: PatternRepeat)
+pub trait Fill {}
+
+/// Fill types module.
+///
+/// Contains solid colors, gradients, and patterns. Use `fill::relative::`
+/// for variants that work in 0-1 coordinate space.
+pub mod fill {
+  /// Solid color fill.
+  pub struct Solid: Fill {
+    color: Color
+  }
+
+  /// Linear gradient fill.
+  pub struct Linear: Fill {
+    from: Color,
+    to: Color,
+    angle: Dimension
+  }
+
+  /// Radial gradient fill.
+  pub struct Radial: Fill {
+    from: Color,
+    to: Color,
+    centerX: Number,
+    centerY: Number
+  }
+
+  /// Angular/conic gradient fill.
+  pub struct Angular: Fill {
+    from: Color,
+    to: Color,
+    angle: Dimension
+  }
+
+  /// Pattern fill using another fill as source.
+  pub struct Pattern: Fill {
+    source: Fill,
+    size: Size,
+    repeat: PatternRepeat
+  }
+
+  default Pattern {
+    size: Size(width: .auto, height: .auto),
+    repeat: .both
+  }
+
+  /// Relative fill variants (0-1 coordinate space).
+  pub mod relative {
+    /// Solid color fill (relative coordinates).
+    pub struct Solid: Fill {
+      color: Color
+    }
+
+    /// Linear gradient fill (relative coordinates).
+    pub struct Linear: Fill {
+      from: Color,
+      to: Color,
+      angle: Dimension
+    }
+
+    /// Radial gradient fill (relative coordinates).
+    pub struct Radial: Fill {
+      from: Color,
+      to: Color,
+      centerX: Number,
+      centerY: Number
+    }
+
+    /// Angular/conic gradient fill (relative coordinates).
+    pub struct Angular: Fill {
+      from: Color,
+      to: Color,
+      angle: Dimension
+    }
+  }
 }
 
 // =============================================================================
@@ -573,10 +638,10 @@ pub struct VStack: Container {
 }
 
 default VStack {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
-  spacing: .px(value: 0),
+  spacing: .auto,
   alignment: .center,
   distribution: .top,
   background: Empty(),
@@ -611,10 +676,10 @@ pub struct HStack: Container {
 }
 
 default HStack {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
-  spacing: .px(value: 0),
+  spacing: .auto,
   alignment: .center,
   distribution: .leading,
   background: Empty(),
@@ -648,10 +713,10 @@ pub struct ZStack: View + Layerable {
 }
 
 default ZStack {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
-  spacing: .px(value: 0),
+  spacing: .auto,
   alignment: .center,
   background: Empty(),
   foreground: Empty()
@@ -686,10 +751,10 @@ pub struct Grid: Container {
 }
 
 default Grid {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
-  spacing: .px(value: 0),
+  spacing: .auto,
   columns: [],
   rows: [],
   alignmentH: .center,
@@ -767,7 +832,7 @@ default Spacer {
 ///   style: LabelStyle(
 ///     font: Font(family: "Inter", weight: .bold, style: .normal, stretch: .normal),
 ///     size: .px(value: 16),
-///     letterSpacing: .px(value: 0),
+///     letterSpacing: .auto,
 ///     weight: .bold
 ///   )
 /// )
@@ -785,8 +850,8 @@ pub struct Label: Content {
 }
 
 default Label {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   style: nil,
   truncationMode: .tail,
@@ -818,8 +883,8 @@ pub struct Paragraph: Content {
 }
 
 default Paragraph {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   lineLimit: nil,
   truncationMode: .tail,
@@ -846,8 +911,8 @@ pub struct Image: Content {
 }
 
 default Image {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   renderingMode: .original,
   background: Empty(),
@@ -864,7 +929,7 @@ default Image {
 ///
 /// ```formalang
 /// Button(disabled: false) {
-///   background: Rect(width: .auto, height: .auto, fill: .solid(color: .hex(value: "#007AFF")))
+///   background: Rect(width: .auto, height: .auto, fill: fill::Solid(color: .hex(value: "#007AFF")))
 ///   label: Label(content: "Click Me")
 /// }
 /// ```
@@ -879,8 +944,8 @@ pub struct Button: Control {
 }
 
 default Button {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   background: Empty(),
@@ -912,8 +977,8 @@ pub struct Input: Control {
 }
 
 default Input {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   background: Empty(),
@@ -946,8 +1011,8 @@ pub struct Checkbox: Control {
 }
 
 default Checkbox {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   checked: false,
@@ -962,7 +1027,7 @@ default Checkbox {
 ///
 /// ```formalang
 /// Toggle(checked: darkMode) {
-///   thumb: Circle(radius: .px(value: 12), fill: .solid(color: .hex(value: "#FFFFFF")))
+///   thumb: Circle(radius: .px(value: 12), fill: fill::Solid(color: .hex(value: "#FFFFFF")))
 ///   label: Label(content: "Dark Mode")
 /// }
 /// ```
@@ -979,8 +1044,8 @@ pub struct Toggle: Control {
 }
 
 default Toggle {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   checked: false,
@@ -1015,8 +1080,8 @@ pub struct Slider: View + Layerable {
 }
 
 default Slider {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   value: 0,
@@ -1060,8 +1125,8 @@ pub struct Dropdown: Control {
 }
 
 default Dropdown {
-  padding: .around(value: .px(value: 0)),
-  margin: .around(value: .px(value: 0)),
+  padding: .uniform(value: .auto),
+  margin: .uniform(value: .auto),
   tint: nil,
   disabled: false,
   background: Empty(),
@@ -1085,7 +1150,7 @@ default Dropdown {
 ///   width: .px(value: 200),
 ///   height: .px(value: 100),
 ///   cornerRadius: .px(value: 8),
-///   fill: .solid(color: .hex(value: "#FF6B6B"))
+///   fill: fill::Solid(color: .hex(value: "#FF6B6B"))
 /// )
 /// ```
 pub struct Rect: Shape {
@@ -1100,7 +1165,7 @@ pub struct Rect: Shape {
 
 default Rect {
   tint: nil,
-  cornerRadius: .px(value: 0),
+  cornerRadius: .auto,
   fill: nil,
   stroke: nil
 }
@@ -1112,7 +1177,7 @@ default Rect {
 /// ```formalang
 /// Circle(
 ///   radius: .px(value: 50),
-///   fill: .radialGradient(
+///   fill: fill::Radial(
 ///     from: .hex(value: "#FFFFFF"),
 ///     to: .hex(value: "#000000"),
 ///     centerX: 0.5,
@@ -1142,7 +1207,7 @@ default Circle {
 /// Ellipse(
 ///   width: .px(value: 200),
 ///   height: .px(value: 100),
-///   fill: .solid(color: .hex(value: "#4ECDC4"))
+///   fill: fill::Solid(color: .hex(value: "#4ECDC4"))
 /// )
 /// ```
 pub struct Ellipse: Shape {
@@ -1359,8 +1424,8 @@ pub struct Offset: View {
 }
 
 default Offset {
-  x: .px(value: 0),
-  y: .px(value: 0)
+  x: .auto,
+  y: .auto
 }
 
 /// Clip content to bounds.
