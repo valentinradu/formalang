@@ -18,18 +18,6 @@ Gather and synthesize information from:
 - **Git history**: Prior decisions and changes
 - **Comments**: Code comments and doc comments
 
-Use FormaLens semantic search for concept-based queries:
-
-```bash
-cd formalens/semantic && cargo run -- search "query"
-```
-
-Use ast-grep for structural code patterns:
-
-```bash
-ast-grep -p 'pattern' --lang rust
-```
-
 ### Writing Mode
 
 Create and update documentation:
@@ -106,7 +94,7 @@ Brief synthesis of findings relevant to the task.
 ## Mandatory Workflow (Retrieval)
 
 1. Understand what information is needed
-2. Search codebase using FormaLens/ast-grep
+2. Search codebase
 3. Search documentation
 4. Check git history if relevant
 5. Synthesize findings

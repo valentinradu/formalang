@@ -33,15 +33,6 @@ For each failure, report:
 - **Root Cause**: Analysis of why it failed
 - **Suggested Fix**: Approach to fix (not implementation)
 
-## Search Tools
-
-For tracing code and finding related patterns, prefer these over grep:
-
-- **Semantic search**: `cd formalens/semantic && cargo run -- search "query"`
-- **Structural patterns**: `ast-grep -p 'pattern' --lang rust`
-
-See [CLAUDE.md](../CLAUDE.md) for details.
-
 ## Bug Reproduction
 
 When investigating bugs:
