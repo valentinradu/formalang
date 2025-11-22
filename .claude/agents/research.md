@@ -53,21 +53,12 @@ One-sentence description of what we're achieving.
 - Question 2?
 ```
 
-## Search Tools
-
-For internal codebase searches, prefer these over grep:
-
-- **Semantic search**: `cd formalens/semantic && cargo run -- search "query"`
-- **Structural patterns**: `ast-grep -p 'pattern' --lang rust`
-
-See [CLAUDE.md](../CLAUDE.md) for details.
-
 ## Phase 2: Technical Research
 
 After requirements are defined:
 
 1. **Receive context** from Knowledge Agent
-2. **Search internally**: Use FormaLens/ast-grep for codebase patterns
+2. **Search internally**: Search codebase for patterns
 3. **Search externally**: Web, papers, documentation
 4. **Analyze similar projects**: How do others solve this?
 5. **Evaluate options**: Pros/cons with evidence

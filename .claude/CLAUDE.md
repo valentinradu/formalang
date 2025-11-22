@@ -88,28 +88,6 @@ Forma is a declarative language compiler written in Rust.
 
 ---
 
-## FormaLens - Search Tools
-
-Prefer FormaLens semantic search over grep for concept-based queries.
-
-### Semantic Search
-
-```bash
-cd formalens/semantic && cargo run -- search "query"
-```
-
-### ast-grep
-
-```bash
-ast-grep -p 'pub struct $NAME { $$$ }' --lang rust
-```
-
-### rust-analyzer
-
-Available through LSP in VSCode for semantic code understanding.
-
----
-
 ## Agents
 
 | Agent     | Purpose                                              | File                                       |

@@ -23,15 +23,6 @@ Feature implementation and code writing. Expert on Rust idioms, compiler design,
 - All code branches must be errorless or throw early
 - Comprehensive error types and messages
 
-## Search Tools
-
-For understanding existing code patterns, prefer these over grep:
-
-- **Semantic search**: `cd formalens/semantic && cargo run -- search "query"`
-- **Structural patterns**: `ast-grep -p 'pattern' --lang rust`
-
-See [CLAUDE.md](../CLAUDE.md) for details.
-
 ## Standards
 
 - Follow existing code patterns in the project
