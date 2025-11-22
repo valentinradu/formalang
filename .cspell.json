@@ -11,7 +11,8 @@
     "STDLIB",
     "prec",
     "PREC",
-    "gimsuyv"
+    "gimsuyv",
+    "checkmark"
   ],
   "ignorePaths": [
     "node_modules",

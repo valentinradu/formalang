@@ -8,8 +8,10 @@ Reference of all supported language features with practical examples.
 
 - [Core Constructs](#core-constructs)
 - [Type System](#type-system)
+  - [Closure Types](#closure-types)
 - [Definitions](#definitions)
 - [Expressions](#expressions)
+  - [Closure Expressions](#closure-expressions)
 - [Control Flow](#control-flow)
 - [Context System](#context-system)
 - [Generics](#generics)
@@ -250,6 +252,44 @@ for item in items {
 - Access fields with dot notation: `tuple.fieldName`
 - Trailing comma allowed: `(x: 1, y: 2,)`
 - Tuples can be nested
+
+### Closure Types
+
+Closure types define function signatures for callbacks and transformations:
+
+```formalang
+pub struct Controls<E> {
+  // No parameters - returns E
+  onPress: () -> E,
+
+  // Single parameter
+  onChange: String -> E,
+
+  // Multiple parameters (comma-separated, no parens needed)
+  onResize: Number, Number -> E,
+
+  // Optional closure (can be nil)
+  onFocus: (String -> E)?,
+
+  // Closure returning optional
+  validate: String -> Boolean?
+}
+```
+
+**Type syntax**:
+
+| Parameters | Syntax       | Example                   |
+| ---------- | ------------ | ------------------------- |
+| None       | `() -> T`    | `() -> Event`             |
+| One        | `T -> U`     | `String -> Event`         |
+| Multiple   | `T, U -> V`  | `Number, Number -> Point` |
+
+**Rules**:
+
+- Arrow `->` separates parameters from return type
+- Multiple parameters are comma-separated (no parentheses required)
+- Empty parameters require parentheses: `() -> T`
+- Parser uses `->` to determine grouping in ambiguous contexts
 
 ### Generic Types
 
@@ -737,6 +777,62 @@ pub let literals = Literals(
 **Escape sequences** (strings): `\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`
 
 **Regex flags**: `g`, `i`, `m`, `s`, `u`, `v`, `y`
+
+### Closure Expressions
+
+Closures are pure, single-expression functions:
+
+```formalang
+pub enum Event {
+  textChanged(value: String),
+  resized(width: Number, height: Number),
+  submit
+}
+
+pub struct Form<E> {
+  onChange: String -> E,
+  onResize: Number, Number -> E,
+  onSubmit: () -> E
+}
+
+// Closure expressions
+default Form {
+  // Single parameter - no parens needed
+  onChange: x -> .textChanged(value: x),
+
+  // Multiple parameters - comma separated
+  onResize: w, h -> .resized(width: w, height: h),
+
+  // No parameters - empty parens required
+  onSubmit: () -> .submit
+}
+```
+
+**With explicit type annotations** (when inference fails):
+
+```formalang
+default Form {
+  onChange: x: String -> .textChanged(value: x),
+  onResize: w: Number, h: Number -> .resized(width: w, height: h)
+}
+```
+
+**Expression syntax**:
+
+| Parameters | Syntax         | Example                        |
+| ---------- | -------------- | ------------------------------ |
+| None       | `() -> expr`   | `() -> .submit`                |
+| One        | `x -> expr`    | `x -> .changed(value: x)`      |
+| Multiple   | `x, y -> expr` | `x, y -> .point(x: x, y: y)`   |
+| With types | `x: T -> expr` | `x: String -> .text(value: x)` |
+
+**Rules**:
+
+- Closures are **pure** - no side effects, single expression body
+- Single parameter does not need parentheses
+- Multiple parameters are comma-separated
+- Empty parameters require parentheses: `() -> expr`
+- Type annotations optional when inferable
 
 ### Instantiation
 
@@ -1577,6 +1673,7 @@ use utils::helpers::formatDate
 - ✅ Dictionary types (`[KeyType: ValueType]` with String/Number/enum keys)
 - ✅ Optional types (`Type?`)
 - ✅ Generic types (`Type<T>`, `Type<T: Constraint>`)
+- ✅ Closure types (`T -> U`, `T, U -> V`, `() -> T`)
 - ✅ Type inference
 
 **Definitions**:
@@ -1595,6 +1692,7 @@ use utils::helpers::formatDate
 - ✅ Field access (including nested)
 - ✅ Destructuring (arrays, structs, enums)
 - ✅ Instantiation (struct with `()` for fields and `{}` for mounts, enum with `.variant`)
+- ✅ Closure expressions (`x -> expr`, `x, y -> expr`, `() -> expr`)
 - ✅ Operator precedence (correct order)
 
 **Control Flow**:
