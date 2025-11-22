@@ -110,19 +110,6 @@ pub enum Message {
           type: (primitive_type))))))
 
 ================================================================================
-Let binding
-================================================================================
-
-pub let MAX_SIZE = 100
-
---------------------------------------------------------------------------------
-
-(source_file
-  (let_binding
-    (identifier)
-    (literal (number))))
-
-================================================================================
 Default block
 ================================================================================
 
@@ -179,6 +166,6 @@ use components::{Button, Text, Label}
     (use_path
       (identifier)
       (use_group
-        (identifier)
-        (identifier)
-        (identifier)))))
+        (type_identifier)
+        (type_identifier)
+        (type_identifier)))))
