@@ -1,0 +1,326 @@
+use logos::Logos;
+
+/// Token types for FormaLang lexer
+#[derive(Logos, Debug, Clone, PartialEq)]
+#[logos(skip r"[ \t\n\r]+")] // Skip whitespace
+#[logos(skip r"//[^\n]*")] // Skip line comments
+#[logos(skip r"/\*([^*]|\*[^/])*\*/")] // Skip block comments
+pub enum Token {
+    // Keywords
+    #[token("trait")]
+    Trait,
+    #[token("struct")]
+    Struct,
+    #[token("impl")]
+    Impl,
+    #[token("model")]
+    Model,
+    #[token("view")]
+    View,
+    #[token("enum")]
+    Enum,
+    #[token("module")]
+    Module,
+    #[token("use")]
+    Use,
+    #[token("pub")]
+    Pub,
+    #[token("let")]
+    Let,
+    #[token("mut")]
+    Mut,
+    #[token("mount")]
+    Mount,
+    #[token("mounting")]
+    Mounting,
+    #[token("match")]
+    Match,
+    #[token("for")]
+    For,
+    #[token("in")]
+    In,
+    #[token("if")]
+    If,
+    #[token("else")]
+    Else,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
+    #[token("nil")]
+    Nil,
+    #[token("context")]
+    Context,
+    #[token("provides")]
+    Provides,
+    #[token("consumes")]
+    Consumes,
+    #[token("as")]
+    As,
+
+    // Primitive type keywords
+    #[token("String")]
+    StringType,
+    #[token("Number")]
+    NumberType,
+    #[token("Boolean")]
+    BooleanType,
+    #[token("Path")]
+    PathType,
+    #[token("Regex")]
+    RegexType,
+
+    // Literals
+    #[regex(r#""([^"\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
+    #[regex(r#""""([^\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#, |lex| parse_multiline_string(lex.slice()))]
+    String(String),
+
+    #[regex(r"-?[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
+    Number(f64),
+
+    #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
+    Regex(String), // Full regex string, parse later
+
+    #[regex(r"/([^/\s\\]|\\.)+(/([^/\s\\]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
+    Path(String),
+
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
+    Ident(String),
+
+    // Operators and punctuation
+    #[token(".")]
+    Dot,
+    #[token(":")]
+    Colon,
+    #[token("::")]
+    DoubleColon,
+    #[token(",")]
+    Comma,
+    #[token("=")]
+    Equals,
+    #[token("+")]
+    Plus,
+    #[token("-")]
+    Minus,
+    #[token("*")]
+    Star,
+    #[token("/")]
+    Slash,
+    #[token("%")]
+    Percent,
+    #[token("==")]
+    EqEq,
+    #[token("!=")]
+    Ne,
+    #[token("<")]
+    Lt,
+    #[token(">")]
+    Gt,
+    #[token("<=")]
+    Le,
+    #[token(">=")]
+    Ge,
+    #[token("&&")]
+    And,
+    #[token("||")]
+    Or,
+    #[token("?")]
+    Question,
+
+    // Delimiters
+    #[token("(")]
+    LParen,
+    #[token(")")]
+    RParen,
+    #[token("{")]
+    LBrace,
+    #[token("}")]
+    RBrace,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
+
+    // Special
+    Eof,
+}
+
+fn parse_string(s: &str) -> String {
+    // Remove quotes and process escape sequences
+    let content = &s[1..s.len() - 1];
+    process_escapes(content)
+}
+
+fn parse_multiline_string(s: &str) -> String {
+    // Remove triple quotes and process escape sequences
+    let content = &s[3..s.len() - 3];
+    process_escapes(content)
+}
+
+fn process_escapes(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('"') => result.push('"'),
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('u') => {
+                    // Parse \uXXXX
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                        if let Some(unicode_char) = char::from_u32(code) {
+                            result.push(unicode_char);
+                        }
+                    }
+                }
+                Some(c) => {
+                    result.push('\\');
+                    result.push(c);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Helper to parse regex string into pattern and flags
+pub fn parse_regex(s: &str) -> Option<(String, String)> {
+    if !s.starts_with("r/") {
+        return None;
+    }
+
+    let content = &s[2..]; // Remove "r/"
+    let last_slash = content.rfind('/')?;
+
+    let pattern = content[..last_slash].to_string();
+    let flags = content[last_slash + 1..].to_string();
+
+    Some((pattern, flags))
+}
+
+impl Token {
+    pub fn is_keyword(&self) -> bool {
+        matches!(
+            self,
+            Token::Trait
+                | Token::Struct
+                | Token::Impl
+                | Token::Model
+                | Token::View
+                | Token::Enum
+                | Token::Module
+                | Token::Use
+                | Token::Pub
+                | Token::Let
+                | Token::Mut
+                | Token::Mount
+                | Token::Mounting
+                | Token::Match
+                | Token::For
+                | Token::In
+                | Token::If
+                | Token::Else
+                | Token::True
+                | Token::False
+                | Token::Nil
+                | Token::Context
+                | Token::Provides
+                | Token::Consumes
+                | Token::As
+        )
+    }
+
+    pub fn is_type_keyword(&self) -> bool {
+        matches!(
+            self,
+            Token::StringType | Token::NumberType | Token::BooleanType | Token::PathType | Token::RegexType
+        )
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Token::Trait => "trait",
+            Token::Struct => "struct",
+            Token::Impl => "impl",
+            Token::Model => "model",
+            Token::View => "view",
+            Token::Enum => "enum",
+            Token::Module => "module",
+            Token::Use => "use",
+            Token::Pub => "pub",
+            Token::Let => "let",
+            Token::Mut => "mut",
+            Token::Mount => "mount",
+            Token::Mounting => "mounting",
+            Token::Match => "match",
+            Token::For => "for",
+            Token::In => "in",
+            Token::If => "if",
+            Token::Else => "else",
+            Token::True => "true",
+            Token::False => "false",
+            Token::Nil => "nil",
+            Token::Context => "context",
+            Token::Provides => "provides",
+            Token::Consumes => "consumes",
+            Token::As => "as",
+            Token::StringType => "String",
+            Token::NumberType => "Number",
+            Token::BooleanType => "Boolean",
+            Token::PathType => "Path",
+            Token::RegexType => "Regex",
+            Token::Dot => ".",
+            Token::Colon => ":",
+            Token::DoubleColon => "::",
+            Token::Comma => ",",
+            Token::Equals => "=",
+            Token::Plus => "+",
+            Token::Minus => "-",
+            Token::Star => "*",
+            Token::Slash => "/",
+            Token::Percent => "%",
+            Token::EqEq => "==",
+            Token::Ne => "!=",
+            Token::Lt => "<",
+            Token::Gt => ">",
+            Token::Le => "<=",
+            Token::Ge => ">=",
+            Token::And => "&&",
+            Token::Or => "||",
+            Token::Question => "?",
+            Token::LParen => "(",
+            Token::RParen => ")",
+            Token::LBrace => "{",
+            Token::RBrace => "}",
+            Token::LBracket => "[",
+            Token::RBracket => "]",
+            Token::Eof => "<eof>",
+            _ => "<complex token>",
+        }
+    }
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // For literal tokens, show descriptive names
+            Token::String(_) => write!(f, "string"),
+            Token::Number(_) => write!(f, "number"),
+            Token::Regex(_) => write!(f, "regex"),
+            Token::Path(_) => write!(f, "path"),
+            Token::Ident(_) => write!(f, "identifier"),
+            // For all other tokens, use the as_str() representation
+            _ => write!(f, "'{}'", self.as_str()),
+        }
+    }
+}
+
