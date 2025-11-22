@@ -20,11 +20,13 @@
     "**/node_modules": true,
     "**/target": true,
     "**/.formalens": true,
-    "**/formalens/grammar/src/parser.c": true
+    "**/formalens/grammar/src/parser.c": true,
+    "**/.fastembed_cache": true
   },
   "files.exclude": {
     "**/.git": true,
     "**/node_modules": true,
-    "**/target": true
+    "**/target": true,
+    "**/.fastembed_cache": true
   }
 }
