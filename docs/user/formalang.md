@@ -63,7 +63,7 @@ let secret_key: String = "xyz"
 Reserved words that cannot be used as identifiers:
 
 ```text
-trait    struct   enum     use      pub      default  mod
+trait    struct   enum     use      pub      impl     mod
 let      mut      match    for      in       if
 else     true     false    nil      as       mount
 provides consumes
@@ -378,9 +378,9 @@ pub struct Container<T: Layout> {
 
 **Important**: Mount fields cannot be marked as `mut`
 
-### Default Blocks
+### Impl Blocks
 
-Default blocks provide preset values for struct fields. Fields with defaults become
+Impl blocks provide preset values for struct fields. Fields with defaults become
 optional at instantiation:
 
 ```formalang
@@ -392,8 +392,8 @@ pub struct Button {
   mount icon: Image
 }
 
-// Default block
-default Button {
+// Impl block
+impl Button {
   disabled: false,
   color: "blue",
   icon: DefaultIcon()
@@ -406,20 +406,20 @@ pub struct UserView {
   mount avatar: Image
 }
 
-default UserView {
+impl UserView {
   user: DefaultUser(),
   role: .guest,
   avatar: PlaceholderImage()
 }
 
-// Generic struct with defaults
+// Generic struct with impl block
 pub struct Card<T> {
   content: T,
   padding: Number,
   mount header: Layout
 }
 
-default Card<T> {
+impl Card<T> {
   padding: 16,
   header: EmptyView()
 }
@@ -427,12 +427,12 @@ default Card<T> {
 
 **Rules**:
 
-- Default blocks are optional (not all structs need them)
+- Impl blocks are optional (not all structs need them)
 - Fields with defaults become optional at instantiation
 - Fields without defaults must always be provided
 - Can override defaults explicitly
 - Mount fields can have defaults
-- Generic structs can have defaults (type parameter in scope)
+- Generic structs can have impl blocks (type parameter in scope)
 
 **Instantiation** with defaults:
 
@@ -497,7 +497,7 @@ pub struct User: Named + Identifiable {
 
 **Trait Rules**:
 
-- Traits do NOT have `default` blocks
+- Traits do NOT have `impl` blocks
 - Structs satisfy traits by matching field names and types (structural typing)
 - Mount fields in traits must be matched by mount fields in structs
 - Trait composition (`+`) combines field requirements
@@ -690,7 +690,7 @@ pub struct State {
 }
 
 // Struct with mutable fields
-default Config {
+impl Config {
   app_state: State(
     data: ["initial"],
     count: 0
@@ -796,7 +796,7 @@ pub struct Form<E> {
 }
 
 // Closure expressions
-default Form {
+impl Form {
   // Single parameter - no parens needed
   onChange: x -> .textChanged(value: x),
 
@@ -811,7 +811,7 @@ default Form {
 **With explicit type annotations** (when inference fails):
 
 ```formalang
-default Form {
+impl Form {
   onChange: x: String -> .textChanged(value: x),
   onResize: w: Number, h: Number -> .resized(width: w, height: h)
 }
@@ -1168,7 +1168,7 @@ pub struct EmailList {
   mount items: Layout
 }
 
-default EmailList {
+impl EmailList {
   items: for email in emails {
     Text(content: email)
   }
@@ -1679,7 +1679,7 @@ use utils::helpers::formatDate
 **Definitions**:
 
 - ✅ Struct definitions (with optionals, traits, mount fields)
-- ✅ Default blocks (preset field values)
+- ✅ Impl blocks (preset field values)
 - ✅ Trait definitions (with composition via `+`, structural typing)
 - ✅ Enum definitions (with associated data, generics)
 - ✅ Let bindings (file-level, with `pub`, `mut`)

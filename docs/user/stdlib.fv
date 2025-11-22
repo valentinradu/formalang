@@ -401,7 +401,7 @@ pub mod fill {
     repeat: PatternRepeat
   }
 
-  default Pattern {
+  impl Pattern {
     size: Size(width: .auto, height: .auto),
     repeat: .both
   }
@@ -637,7 +637,7 @@ pub struct VStack: Container {
   mount foreground: View
 }
 
-default VStack {
+impl VStack {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -675,7 +675,7 @@ pub struct HStack: Container {
   mount foreground: View
 }
 
-default HStack {
+impl HStack {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -712,7 +712,7 @@ pub struct ZStack: View + Layerable {
   mount foreground: View
 }
 
-default ZStack {
+impl ZStack {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -750,7 +750,7 @@ pub struct Grid: Container {
   mount foreground: View
 }
 
-default Grid {
+impl Grid {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -786,7 +786,7 @@ pub struct Scroll: View + Layerable {
   mount foreground: View
 }
 
-default Scroll {
+impl Scroll {
   axis: .vertical,
   showsIndicators: true,
   bounces: true,
@@ -814,7 +814,7 @@ pub struct Spacer: View {
   minLength: Dimension
 }
 
-default Spacer {
+impl Spacer {
   minLength: .auto
 }
 
@@ -849,7 +849,7 @@ pub struct Label: Content {
   mount foreground: View
 }
 
-default Label {
+impl Label {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -882,7 +882,7 @@ pub struct Paragraph: Content {
   mount foreground: View
 }
 
-default Paragraph {
+impl Paragraph {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -910,7 +910,7 @@ pub struct Image: Content {
   mount foreground: View
 }
 
-default Image {
+impl Image {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -949,7 +949,7 @@ pub struct Button<E>: Control {
   mount foreground: View
 }
 
-default Button {
+impl Button {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -991,7 +991,7 @@ pub struct Input<E>: Control {
   mount foreground: View
 }
 
-default Input {
+impl Input {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -1033,7 +1033,7 @@ pub struct Checkbox<E>: Control {
   mount foreground: View
 }
 
-default Checkbox {
+impl Checkbox {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -1073,7 +1073,7 @@ pub struct Toggle<E>: Control {
   mount foreground: View
 }
 
-default Toggle {
+impl Toggle {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -1119,7 +1119,7 @@ pub struct Slider<E>: View + Layerable {
   mount foreground: View
 }
 
-default Slider {
+impl Slider {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -1170,7 +1170,7 @@ pub struct Dropdown<E>: Control {
   mount foreground: View
 }
 
-default Dropdown {
+impl Dropdown {
   padding: .uniform(value: .auto),
   margin: .uniform(value: .auto),
   tint: nil,
@@ -1210,7 +1210,7 @@ pub struct Rect: Shape {
   mount body: Never
 }
 
-default Rect {
+impl Rect {
   tint: nil,
   cornerRadius: .auto,
   fill: nil,
@@ -1240,7 +1240,7 @@ pub struct Circle: Shape {
   mount body: Never
 }
 
-default Circle {
+impl Circle {
   tint: nil,
   fill: nil,
   stroke: nil
@@ -1266,7 +1266,7 @@ pub struct Ellipse: Shape {
   mount body: Never
 }
 
-default Ellipse {
+impl Ellipse {
   tint: nil,
   fill: nil,
   stroke: nil
@@ -1296,7 +1296,7 @@ pub struct Contour: Shape {
   mount body: ContourSegment
 }
 
-default Contour {
+impl Contour {
   tint: nil,
   closed: false,
   fill: nil,
@@ -1355,7 +1355,7 @@ pub struct ShapeUnion: Shape {
   mount shapes: Shape
 }
 
-default ShapeUnion {
+impl ShapeUnion {
   tint: nil
 }
 
@@ -1367,7 +1367,7 @@ pub struct ShapeIntersection: Shape {
   mount shapes: Shape
 }
 
-default ShapeIntersection {
+impl ShapeIntersection {
   tint: nil
 }
 
@@ -1380,7 +1380,7 @@ pub struct ShapeSubtraction: Shape {
   mount subtract: Shape
 }
 
-default ShapeSubtraction {
+impl ShapeSubtraction {
   tint: nil
 }
 
@@ -1404,7 +1404,7 @@ pub struct Frame: View {
   mount content: View
 }
 
-default Frame {
+impl Frame {
   width: .auto,
   height: .auto,
   alignment: .center
@@ -1419,7 +1419,7 @@ pub struct SizeConstraint: View {
   mount content: View
 }
 
-default SizeConstraint {
+impl SizeConstraint {
   minWidth: .auto,
   maxWidth: .auto,
   minHeight: .auto,
@@ -1433,7 +1433,7 @@ pub struct FixedSize: View {
   mount content: View
 }
 
-default FixedSize {
+impl FixedSize {
   horizontal: false,
   vertical: false
 }
@@ -1445,7 +1445,7 @@ pub struct AspectRatio: View {
   mount content: View
 }
 
-default AspectRatio {
+impl AspectRatio {
   contentMode: .fit
 }
 
@@ -1455,7 +1455,7 @@ pub struct LayoutPriority: View {
   mount content: View
 }
 
-default LayoutPriority {
+impl LayoutPriority {
   value: 0
 }
 
@@ -1470,7 +1470,7 @@ pub struct Offset: View {
   mount content: View
 }
 
-default Offset {
+impl Offset {
   x: .auto,
   y: .auto
 }
@@ -1567,7 +1567,7 @@ pub struct Modifier: View {
   mount content: View
 }
 
-default Modifier {
+impl Modifier {
   transforms: []
 }
 
