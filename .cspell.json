@@ -12,7 +12,17 @@
     "prec",
     "PREC",
     "gimsuyv",
-    "checkmark"
+    "checkmark",
+    "eprintln",
+    "usize",
+    "scrutinee",
+    "println",
+    "impls",
+    "codegen",
+    "rustc",
+    "THIR",
+    "newtype",
+    "rustdocs"
   ],
   "ignorePaths": [
     "node_modules",

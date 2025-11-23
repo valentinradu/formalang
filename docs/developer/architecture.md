@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Last Updated**: 2025-11-19
+**Last Updated**: 2025-11-23
 
 ## Execution Model
 
@@ -13,18 +13,31 @@ Runtime: App calls generated functions with data → Returns computed output
 
 ## Compiler Design
 
-FormaLang is a Rust library designed to work in-process. The compiler outputs a validated AST as a Rust data structure.
+FormaLang is a Rust library designed to work in-process. The compiler produces an IR (Intermediate Representation) optimized for code generation.
 
 ### Compiler Phases
 
 ```text
-Lexer → Parser → Semantic Analyzer → Validated AST
+Source → Lexer → Parser → Semantic Analyzer → IR Lowering → Code Generation
+           │        │            │                 │              │
+           ▼        ▼            ▼                 ▼              ▼
+        Tokens     AST     Validated AST       IrModule      TS/Swift/Kotlin
 ```
 
-- **Lexer**: Tokenization
+- **Lexer**: Tokenizes source into tokens
 - **Parser**: Builds AST from tokens
-- **Semantic Analyzer**: Validates AST
-- **Output**: Validated AST (Rust data structure)
+- **Semantic Analyzer**: Validates AST, builds symbol table
+- **IR Lowering**: Converts AST + symbols into IR with resolved types
+- **Code Generation**: Produces target language code from IR
+
+### Compiler Outputs
+
+| Output | Use Case                                         |
+|--------|--------------------------------------------------|
+| AST    | Syntax analysis, tooling, source-level transforms|
+| IR     | Code generation, type-aware analysis             |
+
+See [AST Reference](ast.md) and [IR Reference](ir.md) for details.
 
 ### Modular Design
 
