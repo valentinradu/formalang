@@ -149,11 +149,10 @@ fn test_error_duplicate_binding_across_patterns() {
 }
 
 // =============================================================================
-// Error Cases - Type Mismatch (require semantic validation - currently ignored)
+// Error Cases - Type Mismatch
 // =============================================================================
 
 #[test]
-#[ignore = "requires semantic validation of destructuring patterns"]
 fn test_error_array_destructuring_type_mismatch() {
     // Can't destructure non-array as array
     let source = r#"
@@ -164,7 +163,6 @@ fn test_error_array_destructuring_type_mismatch() {
 }
 
 #[test]
-#[ignore = "requires semantic validation of destructuring patterns"]
 fn test_error_struct_destructuring_type_mismatch() {
     // Can't destructure non-struct as struct
     let source = r#"
@@ -175,7 +173,6 @@ fn test_error_struct_destructuring_type_mismatch() {
 }
 
 #[test]
-#[ignore = "requires semantic validation of destructuring patterns"]
 fn test_error_struct_destructuring_missing_field() {
     // Can't destructure non-existent field
     let source = r#"

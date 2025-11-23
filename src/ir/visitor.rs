@@ -5,8 +5,9 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use formalang::ir::{IrVisitor, IrModule, IrStruct, StructId, walk_module};
+//! ```
+//! use formalang::compile_to_ir;
+//! use formalang::ir::{IrVisitor, IrStruct, IrEnum, StructId, EnumId, walk_module};
 //!
 //! struct TypeCounter {
 //!     struct_count: usize,
@@ -23,10 +24,15 @@
 //!     }
 //! }
 //!
-//! let module = compile_to_ir(source)?;
+//! let source = r#"
+//! pub struct User { name: String }
+//! pub enum Status { active, inactive }
+//! "#;
+//! let module = compile_to_ir(source).unwrap();
 //! let mut counter = TypeCounter { struct_count: 0, enum_count: 0 };
 //! walk_module(&mut counter, &module);
-//! println!("Structs: {}, Enums: {}", counter.struct_count, counter.enum_count);
+//! assert_eq!(counter.struct_count, 1);
+//! assert_eq!(counter.enum_count, 1);
 //! ```
 
 use super::{

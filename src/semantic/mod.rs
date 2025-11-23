@@ -1400,6 +1400,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             match statement {
                 Statement::Let(let_binding) => {
                     self.validate_expr(&let_binding.value, file);
+                    // Validate destructuring pattern type compatibility
+                    self.validate_destructuring_pattern(
+                        &let_binding.pattern,
+                        &let_binding.value,
+                        let_binding.span,
+                        file,
+                    );
                 }
                 Statement::Definition(def) => match def {
                     Definition::Struct(struct_def) => {
@@ -1725,6 +1732,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 ty,
                 value,
                 body,
+                span,
                 ..
             } => {
                 // Validate type annotation if present
@@ -1733,6 +1741,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 // Validate value expression
                 self.validate_expr(value, file);
+
+                // Validate destructuring pattern type compatibility
+                self.validate_destructuring_pattern(pattern, value, *span, file);
 
                 // Add all bindings from the pattern to local scope before validating body
                 for binding in collect_bindings_from_pattern(pattern) {
@@ -1979,6 +1990,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 actual: collection_type,
                 span,
             });
+        }
+    }
+
+    /// Validate destructuring pattern matches the value type
+    fn validate_destructuring_pattern(
+        &mut self,
+        pattern: &BindingPattern,
+        value: &Expr,
+        span: Span,
+        file: &File,
+    ) {
+        let value_type = self.infer_type(value, file);
+
+        match pattern {
+            BindingPattern::Array { .. } => {
+                // Array destructuring requires an array type
+                if !value_type.starts_with('[') {
+                    self.errors.push(CompilerError::ArrayDestructuringNotArray {
+                        actual: value_type,
+                        span,
+                    });
+                }
+            }
+            BindingPattern::Struct { fields, .. } => {
+                // Struct destructuring requires a struct type
+                // Check if the type is a known struct
+                if let Some(struct_info) = self.symbols.get_struct(&value_type) {
+                    // Validate that all destructured fields exist on the struct
+                    let field_names: Vec<&str> =
+                        struct_info.fields.iter().map(|f| f.name.as_str()).collect();
+                    for field in fields {
+                        if !field_names.contains(&field.name.name.as_str()) {
+                            self.errors.push(CompilerError::UnknownField {
+                                field: field.name.name.clone(),
+                                type_name: value_type.clone(),
+                                span: field.name.span,
+                            });
+                        }
+                    }
+                } else {
+                    // Not a known struct - report error (includes primitives)
+                    self.errors
+                        .push(CompilerError::StructDestructuringNotStruct {
+                            actual: value_type,
+                            span,
+                        });
+                }
+            }
+            BindingPattern::Tuple { .. } | BindingPattern::Simple(_) => {
+                // Tuple and simple patterns don't require type validation here
+            }
         }
     }
 

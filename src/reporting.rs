@@ -174,6 +174,34 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                 )
         }
 
+        CompilerError::ArrayDestructuringNotArray { actual, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E011b")
+                .with_message("Array destructuring requires an array")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "found {}, expected an array",
+                            actual.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::StructDestructuringNotStruct { actual, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E011c")
+                .with_message("Struct destructuring requires a struct")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "found {}, expected a struct",
+                            actual.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
         CompilerError::InvalidIfCondition { actual, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E012")
