@@ -1,0 +1,27 @@
+[package]
+name = "formalang"
+version = "0.1.0"
+edition = "2021"
+authors = ["formavera team"]
+description = "FormaLang compiler - lexer, parser, and semantic analyzer"
+
+[dependencies]
+# Lexer
+logos = "0.14"
+
+# Parser
+chumsky = { version = "1.0.0-alpha.7", features = ["pratt"] }
+
+# Error handling
+thiserror = "1.0"
+ariadne = "0.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+# Testing
+rstest = "0.23"
+pretty_assertions = "1.4"
+tempfile = "3.8"
