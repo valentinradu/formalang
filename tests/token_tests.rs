@@ -117,7 +117,7 @@ fn test_token_as_str_keywords() {
     assert_eq!(Token::Struct.as_str(), "struct");
     assert_eq!(Token::Impl.as_str(), "impl");
     assert_eq!(Token::Enum.as_str(), "enum");
-    assert_eq!(Token::Module.as_str(), "module");
+    assert_eq!(Token::Module.as_str(), "mod");
     assert_eq!(Token::Use.as_str(), "use");
     assert_eq!(Token::Pub.as_str(), "pub");
     assert_eq!(Token::Let.as_str(), "let");
@@ -297,4 +297,59 @@ fn test_parse_regex_complex_pattern() {
     let (pattern, flags) = result.unwrap();
     assert!(pattern.contains("[a-z0-9]"));
     assert_eq!(flags, "i");
+}
+
+// =============================================================================
+// Keyword Regression Tests
+// =============================================================================
+// These tests ensure keywords match the documentation specification.
+// See docs/user/formalang.md for the canonical keyword list.
+
+#[test]
+fn test_mod_keyword_not_module() {
+    // The module keyword is `mod` (not `module`) per docs/user/formalang.md
+    // This test prevents regression to the incorrect `module` keyword.
+
+    // `mod` should tokenize as the Module keyword
+    let mod_tokens = Lexer::tokenize_all("mod");
+    assert!(
+        mod_tokens.iter().any(|(t, _)| matches!(t, Token::Module)),
+        "Expected 'mod' to be recognized as Module keyword"
+    );
+
+    // `module` should NOT be a keyword - it should be an identifier
+    let module_tokens = Lexer::tokenize_all("module");
+    assert!(
+        !module_tokens
+            .iter()
+            .any(|(t, _)| matches!(t, Token::Module)),
+        "Expected 'module' to NOT be recognized as Module keyword"
+    );
+    assert!(
+        module_tokens
+            .iter()
+            .any(|(t, _)| matches!(t, Token::Ident(s) if s == "module")),
+        "Expected 'module' to be an identifier"
+    );
+}
+
+#[test]
+fn test_mod_keyword_in_context() {
+    // Verify `mod` works correctly in module definition context
+    let source = "mod utils { struct Helper { } }";
+    let tokens = Lexer::tokenize_all(source);
+
+    // Should have Module keyword followed by identifier
+    let token_types: Vec<_> = tokens.iter().map(|(t, _)| t.clone()).collect();
+
+    assert!(
+        matches!(&token_types[0], Token::Module),
+        "First token should be Module keyword, got {:?}",
+        token_types[0]
+    );
+    assert!(
+        matches!(&token_types[1], Token::Ident(s) if s == "utils"),
+        "Second token should be identifier 'utils', got {:?}",
+        token_types[1]
+    );
 }

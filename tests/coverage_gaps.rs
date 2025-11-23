@@ -439,8 +439,8 @@ fn test_error_wrong_generic_arity() {
 #[test]
 fn test_nested_modules() {
     let source = r#"
-        module outer {
-            module inner {
+        mod outer {
+            mod inner {
                 pub struct Deep { x: String }
             }
             struct Middle { x: String }
@@ -452,7 +452,7 @@ fn test_nested_modules() {
 #[test]
 fn test_module_with_impl() {
     let source = r#"
-        module ui {
+        mod ui {
             struct Button { label: String }
             impl Button { "click" }
         }
@@ -463,7 +463,7 @@ fn test_module_with_impl() {
 #[test]
 fn test_pub_visibility_all_types() {
     let source = r#"
-        module api {
+        mod api {
             pub trait T { x: String }
             pub struct S: T { x: String }
             pub enum E { a, b }
@@ -638,8 +638,8 @@ fn test_mut_field_with_default() {
 #[test]
 fn test_error_duplicate_module() {
     let source = r#"
-        module ui { struct A { x: String } }
-        module ui { struct B { y: Number } }
+        mod ui { struct A { x: String } }
+        mod ui { struct B { y: Number } }
     "#;
     assert!(compile(source).is_err());
 }
@@ -680,7 +680,7 @@ fn test_error_undefined_composed_trait() {
 #[test]
 fn test_module_path_type() {
     let source = r#"
-        module ui {
+        mod ui {
             pub struct Button { label: String }
         }
         struct App { btn: ui::Button }
@@ -691,7 +691,7 @@ fn test_module_path_type() {
 #[test]
 fn test_error_module_path_undefined_type() {
     let source = r#"
-        module ui {
+        mod ui {
             pub struct Button { label: String }
         }
         struct App { btn: ui::NonExistent }
@@ -735,8 +735,8 @@ fn test_type_param_in_scope() {
 #[test]
 fn test_deeply_nested_modules() {
     let source = r#"
-        module outer {
-            pub module middle {
+        mod outer {
+            pub mod middle {
                 pub struct Inner { x: String }
             }
         }
@@ -747,7 +747,7 @@ fn test_deeply_nested_modules() {
 #[test]
 fn test_module_with_trait_and_struct() {
     let source = r#"
-        module shapes {
+        mod shapes {
             pub trait Drawable { draw: () -> String }
             pub struct Circle: Drawable { draw: () -> String, radius: Number }
             impl Circle { "drawing circle" }
@@ -759,7 +759,7 @@ fn test_module_with_trait_and_struct() {
 #[test]
 fn test_module_with_enum() {
     let source = r#"
-        module colors {
+        mod colors {
             pub enum Color { red, green, blue }
         }
         struct Palette { main: colors::Color }
@@ -882,7 +882,7 @@ fn test_trait_composition_chain() {
 #[test]
 fn test_module_impl_with_expressions() {
     let source = r#"
-        module math {
+        mod math {
             pub struct Calculator { x: Number }
             impl Calculator {
                 let result = 1 + 2
@@ -896,7 +896,7 @@ fn test_module_impl_with_expressions() {
 #[test]
 fn test_module_impl_with_if() {
     let source = r#"
-        module logic {
+        mod logic {
             pub struct Check { flag: Boolean }
             impl Check {
                 if flag { "yes" } else { "no" }
@@ -909,7 +909,7 @@ fn test_module_impl_with_if() {
 #[test]
 fn test_module_impl_with_for() {
     let source = r#"
-        module lists {
+        mod lists {
             pub struct Items { data: [String] }
             impl Items {
                 for item in data { item }
@@ -926,7 +926,7 @@ fn test_module_impl_with_for() {
 #[test]
 fn test_module_enum_with_data() {
     let source = r#"
-        module errors {
+        mod errors {
             pub enum Result { ok(value: String), err(message: String) }
         }
         struct Handler { result: errors::Result }
@@ -1521,7 +1521,7 @@ fn test_closure_returning_closure_type() {
 #[test]
 fn test_module_trait_field_validation() {
     let source = r#"
-        module traits {
+        mod traits {
             pub trait Named { name: String }
         }
         struct Person: traits::Named { name: String }
@@ -1533,10 +1533,10 @@ fn test_module_trait_field_validation() {
 #[test]
 fn test_module_nested_type_reference() {
     let source = r#"
-        module ui {
+        mod ui {
             pub struct Widget { id: String }
         }
-        module app {
+        mod app {
             pub struct Screen { widget: ui::Widget }
         }
     "#;

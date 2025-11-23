@@ -32,7 +32,7 @@ fn test_pub_enum() {
 #[test]
 fn test_pub_module() {
     let source = r#"
-        pub module api {
+        pub mod api {
             pub struct Endpoint {
                 path: String
             }

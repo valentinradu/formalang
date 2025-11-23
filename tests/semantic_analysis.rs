@@ -439,7 +439,7 @@ fn test_dictionary_field() {
 #[test]
 fn test_module_with_struct() {
     let source = r#"
-        module utils {
+        mod utils {
             struct Helper {
                 value: String
             }
@@ -452,7 +452,7 @@ fn test_module_with_struct() {
 #[test]
 fn test_module_with_trait() {
     let source = r#"
-        module traits {
+        mod traits {
             trait Named {
                 name: String
             }
@@ -465,7 +465,7 @@ fn test_module_with_trait() {
 #[test]
 fn test_module_with_enum() {
     let source = r#"
-        module enums {
+        mod enums {
             enum Status {
                 active,
                 inactive
@@ -479,8 +479,8 @@ fn test_module_with_enum() {
 #[test]
 fn test_nested_modules() {
     let source = r#"
-        module outer {
-            module inner {
+        mod outer {
+            mod inner {
                 struct Deep {
                     value: String
                 }
@@ -494,7 +494,7 @@ fn test_nested_modules() {
 #[test]
 fn test_pub_struct_in_module() {
     let source = r#"
-        module api {
+        mod api {
             pub struct Public {
                 value: String
             }
@@ -817,7 +817,7 @@ fn test_full_application_model() {
             members: [User]
         }
 
-        module utils {
+        mod utils {
             struct Config {
                 apiUrl: String = "https://api.example.com",
                 timeout: Number = 30
