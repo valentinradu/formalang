@@ -67,7 +67,7 @@ pub enum UseItems {
 pub struct LetBinding {
     pub visibility: Visibility,
     pub mutable: bool,
-    pub name: Ident,
+    pub pattern: BindingPattern,
     pub value: Expr,
     pub span: Span,
 }
@@ -331,11 +331,11 @@ pub enum Expr {
         span: Span,
     },
 
-    // Let expression: let name = value, let name: Type = value, let mut name = value
+    // Let expression: let pattern = value, let pattern: Type = value, let mut pattern = value
     // Local binding inside blocks (for, if, match, mount children)
     LetExpr {
         mutable: bool,
-        name: Ident,
+        pattern: BindingPattern,
         ty: Option<Type>, // Optional type annotation
         value: Box<Expr>,
         body: Box<Expr>, // Continuation expression after the let
@@ -398,6 +398,48 @@ pub enum Pattern {
         name: Ident,
         bindings: Vec<Ident>, // For associated data
     },
+}
+
+/// Binding pattern (for let bindings with destructuring)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum BindingPattern {
+    /// Simple name binding: `let x = ...`
+    Simple(Ident),
+    /// Array destructuring: `let [a, b, ...rest] = ...`
+    Array {
+        elements: Vec<ArrayPatternElement>,
+        span: Span,
+    },
+    /// Struct destructuring: `let {name, age as userAge} = ...`
+    Struct {
+        fields: Vec<StructPatternField>,
+        span: Span,
+    },
+    /// Tuple destructuring (for enum associated data): `let (a, b) = ...`
+    Tuple {
+        elements: Vec<BindingPattern>,
+        span: Span,
+    },
+}
+
+/// Element in an array destructuring pattern
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ArrayPatternElement {
+    /// Named binding: `a` in `[a, b]`
+    Binding(BindingPattern),
+    /// Rest pattern: `...rest` in `[a, ...rest]`
+    Rest(Option<Ident>),
+    /// Wildcard (ignore): `_` in `[_, b]`
+    Wildcard,
+}
+
+/// Field in a struct destructuring pattern
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StructPatternField {
+    /// Field name to destructure
+    pub name: Ident,
+    /// Optional rename: `name as alias`
+    pub alias: Option<Ident>,
 }
 
 /// Identifier with source location
@@ -537,7 +579,10 @@ mod tests {
     fn test_expr_span_struct_instantiation() {
         let test_span = Span::from_range(10, 20);
         let expr = Expr::StructInstantiation {
-            name: Ident { name: "Test".to_string(), span: Span::default() },
+            name: Ident {
+                name: "Test".to_string(),
+                span: Span::default(),
+            },
             type_args: vec![],
             args: vec![],
             mounts: vec![],
@@ -550,8 +595,14 @@ mod tests {
     fn test_expr_span_enum_instantiation() {
         let test_span = Span::from_range(5, 15);
         let expr = Expr::EnumInstantiation {
-            enum_name: Ident { name: "Status".to_string(), span: Span::default() },
-            variant: Ident { name: "active".to_string(), span: Span::default() },
+            enum_name: Ident {
+                name: "Status".to_string(),
+                span: Span::default(),
+            },
+            variant: Ident {
+                name: "active".to_string(),
+                span: Span::default(),
+            },
             data: vec![],
             span: test_span,
         };
@@ -562,7 +613,10 @@ mod tests {
     fn test_expr_span_inferred_enum() {
         let test_span = Span::from_range(0, 5);
         let expr = Expr::InferredEnumInstantiation {
-            variant: Ident { name: "red".to_string(), span: Span::default() },
+            variant: Ident {
+                name: "red".to_string(),
+                span: Span::default(),
+            },
             data: vec![],
             span: test_span,
         };
@@ -572,21 +626,30 @@ mod tests {
     #[test]
     fn test_expr_span_array() {
         let test_span = Span::from_range(100, 200);
-        let expr = Expr::Array { elements: vec![], span: test_span };
+        let expr = Expr::Array {
+            elements: vec![],
+            span: test_span,
+        };
         assert_eq!(expr.span(), test_span);
     }
 
     #[test]
     fn test_expr_span_tuple() {
         let test_span = Span::from_range(50, 60);
-        let expr = Expr::Tuple { fields: vec![], span: test_span };
+        let expr = Expr::Tuple {
+            fields: vec![],
+            span: test_span,
+        };
         assert_eq!(expr.span(), test_span);
     }
 
     #[test]
     fn test_expr_span_reference() {
         let test_span = Span::from_range(30, 40);
-        let expr = Expr::Reference { path: vec![], span: test_span };
+        let expr = Expr::Reference {
+            path: vec![],
+            span: test_span,
+        };
         assert_eq!(expr.span(), test_span);
     }
 
@@ -606,8 +669,14 @@ mod tests {
     fn test_expr_span_for_expr() {
         let test_span = Span::from_range(90, 100);
         let expr = Expr::ForExpr {
-            var: Ident { name: "x".to_string(), span: Span::default() },
-            collection: Box::new(Expr::Array { elements: vec![], span: Span::default() }),
+            var: Ident {
+                name: "x".to_string(),
+                span: Span::default(),
+            },
+            collection: Box::new(Expr::Array {
+                elements: vec![],
+                span: Span::default(),
+            }),
             body: Box::new(Expr::Literal(Literal::Nil)),
             span: test_span,
         };
@@ -662,7 +731,10 @@ mod tests {
     fn test_expr_span_consumes() {
         let test_span = Span::from_range(190, 200);
         let expr = Expr::ConsumesExpr {
-            names: vec![Ident { name: "ctx".to_string(), span: Span::default() }],
+            names: vec![Ident {
+                name: "ctx".to_string(),
+                span: Span::default(),
+            }],
             body: Box::new(Expr::Literal(Literal::Nil)),
             span: test_span,
         };
@@ -672,7 +744,10 @@ mod tests {
     #[test]
     fn test_expr_span_dict_literal() {
         let test_span = Span::from_range(210, 220);
-        let expr = Expr::DictLiteral { entries: vec![], span: test_span };
+        let expr = Expr::DictLiteral {
+            entries: vec![],
+            span: test_span,
+        };
         assert_eq!(expr.span(), test_span);
     }
 
@@ -703,7 +778,10 @@ mod tests {
         let test_span = Span::from_range(270, 280);
         let expr = Expr::LetExpr {
             mutable: false,
-            name: Ident { name: "x".to_string(), span: Span::default() },
+            pattern: BindingPattern::Simple(Ident {
+                name: "x".to_string(),
+                span: Span::default(),
+            }),
             ty: None,
             value: Box::new(Expr::Literal(Literal::Number(42.0))),
             body: Box::new(Expr::Literal(Literal::Nil)),

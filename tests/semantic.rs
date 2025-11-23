@@ -438,7 +438,11 @@ fn test_error_type_mismatch_in_field() {
     let result = compile(source);
     // Impl body is a string, which is valid - impl can have any expression
     // This test verifies the impl compiles without panic
-    assert!(result.is_ok(), "Impl with expression should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with expression should compile: {:?}",
+        result.err()
+    );
 }
 
 #[test]

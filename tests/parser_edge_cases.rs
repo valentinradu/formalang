@@ -51,7 +51,11 @@ fn test_nil_literal() {
         struct A { x: String? }
         impl A { nil }
     "#;
-    assert!(compile(source).is_ok(), "Nil literal: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Nil literal: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -60,7 +64,11 @@ fn test_array_literal_empty() {
         struct A { items: [String] }
         impl A { [] }
     "#;
-    assert!(compile(source).is_ok(), "Empty array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Empty array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -69,7 +77,11 @@ fn test_array_literal_single() {
         struct A { items: [String] }
         impl A { ["one"] }
     "#;
-    assert!(compile(source).is_ok(), "Single item array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Single item array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -78,7 +90,11 @@ fn test_array_literal_many() {
         struct A { items: [Number] }
         impl A { [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     "#;
-    assert!(compile(source).is_ok(), "Many items array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Many items array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -87,7 +103,11 @@ fn test_negative_number() {
         struct A { x: Number }
         impl A { -42 }
     "#;
-    assert!(compile(source).is_ok(), "Negative number: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Negative number: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -96,7 +116,11 @@ fn test_decimal_number() {
         struct A { x: Number }
         impl A { 3.14159 }
     "#;
-    assert!(compile(source).is_ok(), "Decimal number: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Decimal number: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -105,7 +129,11 @@ fn test_negative_decimal() {
         struct A { x: Number }
         impl A { -0.5 }
     "#;
-    assert!(compile(source).is_ok(), "Negative decimal: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Negative decimal: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -114,7 +142,11 @@ fn test_string_with_escapes() {
         struct A { x: String }
         impl A { "hello\nworld\t!" }
     "#;
-    assert!(compile(source).is_ok(), "String with escapes: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "String with escapes: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -123,7 +155,11 @@ fn test_string_with_quotes() {
         struct A { x: String }
         impl A { "say \"hello\"" }
     "#;
-    assert!(compile(source).is_ok(), "String with quotes: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "String with quotes: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -136,7 +172,11 @@ fn test_arithmetic_precedence() {
         struct A { x: Number }
         impl A { 1 + 2 * 3 }
     "#;
-    assert!(compile(source).is_ok(), "Arithmetic precedence: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Arithmetic precedence: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -145,7 +185,11 @@ fn test_comparison_chain() {
         struct A { x: Boolean }
         impl A { 1 < 2 && 2 < 3 }
     "#;
-    assert!(compile(source).is_ok(), "Comparison chain: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Comparison chain: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -154,7 +198,11 @@ fn test_logical_precedence() {
         struct A { x: Boolean }
         impl A { true || false && true }
     "#;
-    assert!(compile(source).is_ok(), "Logical precedence: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Logical precedence: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -163,7 +211,11 @@ fn test_parenthesized_expression() {
         struct A { x: Number }
         impl A { (1 + 2) * 3 }
     "#;
-    assert!(compile(source).is_ok(), "Parenthesized: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Parenthesized: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -172,7 +224,11 @@ fn test_nested_parentheses() {
         struct A { x: Number }
         impl A { ((1 + 2) * (3 + 4)) }
     "#;
-    assert!(compile(source).is_ok(), "Nested parentheses: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Nested parentheses: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -185,7 +241,11 @@ fn test_if_without_else() {
         struct A { x: String? }
         impl A { if true { "yes" } }
     "#;
-    assert!(compile(source).is_ok(), "If without else: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "If without else: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -196,7 +256,11 @@ fn test_simple_else() {
             if false { "a" } else { "b" }
         }
     "#;
-    assert!(compile(source).is_ok(), "Simple else: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Simple else: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -209,7 +273,11 @@ fn test_for_with_if() {
             }
         }
     "#;
-    assert!(compile(source).is_ok(), "For with if: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "For with if: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -223,7 +291,11 @@ fn test_let_chain() {
             a
         }
     "#;
-    assert!(compile(source).is_ok(), "Let chain: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let chain: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -237,7 +309,11 @@ fn test_field_access_simple() {
         struct Outer { inner: Inner }
         impl Outer { inner }
     "#;
-    assert!(compile(source).is_ok(), "Field access simple: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Field access simple: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -247,7 +323,11 @@ fn test_field_access_simple() {
 #[test]
 fn test_enum_single_variant() {
     let source = "enum Unit { unit }";
-    assert!(compile(source).is_ok(), "Enum single variant: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Enum single variant: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -263,7 +343,11 @@ fn test_enum_many_variants() {
             violet
         }
     "#;
-    assert!(compile(source).is_ok(), "Enum many variants: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Enum many variants: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -278,7 +362,11 @@ fn test_match_exhaustive() {
             }
         }
     "#;
-    assert!(compile(source).is_ok(), "Match exhaustive: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Match exhaustive: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -294,7 +382,11 @@ fn test_empty_nested_modules() {
             }
         }
     "#;
-    assert!(compile(source).is_ok(), "Empty nested modules: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Empty nested modules: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -304,7 +396,11 @@ fn test_sibling_modules() {
         module b { struct B { } }
         module c { struct C { } }
     "#;
-    assert!(compile(source).is_ok(), "Sibling modules: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Sibling modules: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -314,7 +410,11 @@ fn test_sibling_modules() {
 #[test]
 fn test_trait_single_field() {
     let source = "trait Single { field: String }";
-    assert!(compile(source).is_ok(), "Trait single field: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Trait single field: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -328,13 +428,21 @@ fn test_trait_many_fields() {
             e: String?
         }
     "#;
-    assert!(compile(source).is_ok(), "Trait many fields: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Trait many fields: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_trait_with_generics() {
     let source = "trait Container<T> { item: T }";
-    assert!(compile(source).is_ok(), "Trait with generics: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Trait with generics: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -344,7 +452,11 @@ fn test_trait_inheritance() {
         trait Derived: Base { derived: Number }
         struct Impl: Derived { base: String, derived: Number }
     "#;
-    assert!(compile(source).is_ok(), "Trait inheritance: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Trait inheritance: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -354,7 +466,11 @@ fn test_trait_inheritance() {
 #[test]
 fn test_struct_single_field() {
     let source = "struct Single { field: String }";
-    assert!(compile(source).is_ok(), "Struct single field: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct single field: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -369,7 +485,11 @@ fn test_struct_many_fields() {
             f: [String: Number]
         }
     "#;
-    assert!(compile(source).is_ok(), "Struct many fields: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct many fields: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -382,13 +502,21 @@ fn test_struct_with_modifiers() {
             default: Number = 0
         }
     "#;
-    assert!(compile(source).is_ok(), "Struct with modifiers: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct with modifiers: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_struct_with_generics() {
     let source = "struct Box<T> { value: T }";
-    assert!(compile(source).is_ok(), "Struct with generics: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct with generics: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -399,7 +527,11 @@ fn test_struct_multiple_generic_params() {
             values: [V]
         }
     "#;
-    assert!(compile(source).is_ok(), "Struct multiple generic params: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct multiple generic params: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -412,7 +544,11 @@ fn test_impl_empty_struct() {
         struct Empty { }
         impl Empty { "empty" }
     "#;
-    assert!(compile(source).is_ok(), "Impl empty struct: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Impl empty struct: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -426,7 +562,11 @@ fn test_impl_with_expression() {
             "default config"
         }
     "#;
-    assert!(compile(source).is_ok(), "Impl with expression: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Impl with expression: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -436,25 +576,41 @@ fn test_impl_with_expression() {
 #[test]
 fn test_deeply_nested_array() {
     let source = "struct A { data: [[[[String]]]] }";
-    assert!(compile(source).is_ok(), "Deeply nested array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Deeply nested array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_complex_dictionary() {
     let source = "struct A { map: [String: [Number]] }";
-    assert!(compile(source).is_ok(), "Complex dictionary: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Complex dictionary: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_optional_dictionary() {
     let source = "struct A { map: [String: Number]? }";
-    assert!(compile(source).is_ok(), "Optional dictionary: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Optional dictionary: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_closure_chain() {
     let source = "struct A { fn: String -> Number -> Boolean }";
-    assert!(compile(source).is_ok(), "Closure chain: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Closure chain: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -464,37 +620,61 @@ fn test_closure_chain() {
 #[test]
 fn test_let_string() {
     let source = "let name = \"value\"";
-    assert!(compile(source).is_ok(), "Let string: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let string: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_let_number() {
     let source = "let count = 42";
-    assert!(compile(source).is_ok(), "Let number: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let number: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_let_boolean() {
     let source = "let flag = true";
-    assert!(compile(source).is_ok(), "Let boolean: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let boolean: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_let_array() {
     let source = "let items = [1, 2, 3]";
-    assert!(compile(source).is_ok(), "Let array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_pub_let() {
     let source = "pub let PUBLIC = \"public\"";
-    assert!(compile(source).is_ok(), "Pub let: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Pub let: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_let_expression() {
     let source = "let counter = 0";
-    assert!(compile(source).is_ok(), "Let expression: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Let expression: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -510,7 +690,11 @@ fn test_provides_simple() {
             provides Theme { "blue" }
         }
     "#;
-    assert!(compile(source).is_ok(), "Provides simple: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Provides simple: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -548,7 +732,11 @@ fn test_full_file() {
             name
         }
     "#;
-    assert!(compile(source).is_ok(), "Full file: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Full file: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -574,5 +762,9 @@ fn test_view_hierarchy() {
         impl Card { title }
         impl Button { label }
     "#;
-    assert!(compile(source).is_ok(), "View hierarchy: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "View hierarchy: {:?}",
+        compile(source).err()
+    );
 }

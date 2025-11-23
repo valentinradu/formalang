@@ -82,7 +82,9 @@ pub enum Token {
     #[regex(r"/([^/\s\\]|\\.)+(/([^/\s\\]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
     Path(String),
 
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
+    // Identifier: starts with letter/underscore, contains alphanumerics/underscores
+    // BUT: standalone underscore "_" is excluded (handled by Underscore token)
+    #[regex(r"[a-zA-Z][a-zA-Z0-9_]*|_[a-zA-Z0-9_]+", |lex| lex.slice().to_string())]
     Ident(String),
 
     // Operators and punctuation
@@ -126,6 +128,10 @@ pub enum Token {
     Question,
     #[token("->")]
     Arrow,
+    #[token("_")]
+    Underscore,
+    #[token("...")]
+    DotDotDot,
 
     // Delimiters
     #[token("(")]
@@ -300,6 +306,8 @@ impl Token {
             Token::Or => "||",
             Token::Question => "?",
             Token::Arrow => "->",
+            Token::Underscore => "_",
+            Token::DotDotDot => "...",
             Token::LParen => "(",
             Token::RParen => ")",
             Token::LBrace => "{",

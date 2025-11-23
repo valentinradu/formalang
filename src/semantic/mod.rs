@@ -14,8 +14,8 @@ pub mod symbol_table;
 pub(crate) mod type_graph;
 
 use crate::ast::{
-    BinaryOperator, Definition, Expr, File, Literal, Pattern, PrimitiveType, Statement, StructDef,
-    TraitDef, Type, UseItems, UseStmt,
+    BinaryOperator, BindingPattern, Definition, Expr, File, Literal, Pattern, PrimitiveType,
+    Statement, StructDef, TraitDef, Type, UseItems, UseStmt,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -279,20 +279,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Statement::Definition(def) = statement {
                 Self::collect_definition_into(&mut module_symbols, &mut module_errors, def);
             } else if let Statement::Let(let_binding) = statement {
-                if let Some((kind, _)) = module_symbols.define_let(
-                    let_binding.name.name.clone(),
-                    let_binding.visibility,
-                    let_binding.span,
-                ) {
-                    module_errors.push(CompilerError::DuplicateDefinition {
-                        name: format!(
-                            "{} (already defined as {})",
-                            let_binding.name.name,
-                            kind.as_str()
-                        ),
-                        span: let_binding.name.span,
-                    });
+                // For simple patterns, define the binding. Complex patterns need more work.
+                if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                    if let Some((kind, _)) = module_symbols.define_let(
+                        ident.name.clone(),
+                        let_binding.visibility,
+                        let_binding.span,
+                    ) {
+                        module_errors.push(CompilerError::DuplicateDefinition {
+                            name: format!("{} (already defined as {})", ident.name, kind.as_str()),
+                            span: ident.span,
+                        });
+                    }
                 }
+                // TODO: Handle destructuring patterns
             }
         }
 
@@ -620,8 +620,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
                 let inferred_type = self.infer_type(&let_binding.value, file);
-                self.symbols
-                    .set_let_type(&let_binding.name.name, inferred_type);
+                // For simple patterns, store the type by name
+                if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                    self.symbols.set_let_type(&ident.name, inferred_type);
+                }
+                // TODO: Handle destructuring patterns
             }
         }
     }
@@ -635,21 +638,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Module resolution handled in Pass 0
                 }
                 Statement::Let(let_binding) => {
-                    // Define let binding
-                    if let Some((kind, _)) = self.symbols.define_let(
-                        let_binding.name.name.clone(),
-                        let_binding.visibility,
-                        let_binding.span,
-                    ) {
-                        self.errors.push(CompilerError::DuplicateDefinition {
-                            name: format!(
-                                "{} (already defined as {})",
-                                let_binding.name.name,
-                                kind.as_str()
-                            ),
-                            span: let_binding.name.span,
-                        });
+                    // Define let binding for simple patterns
+                    if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                        if let Some((kind, _)) = self.symbols.define_let(
+                            ident.name.clone(),
+                            let_binding.visibility,
+                            let_binding.span,
+                        ) {
+                            self.errors.push(CompilerError::DuplicateDefinition {
+                                name: format!(
+                                    "{} (already defined as {})",
+                                    ident.name,
+                                    kind.as_str()
+                                ),
+                                span: ident.span,
+                            });
+                        }
                     }
+                    // TODO: Handle destructuring patterns
                 }
                 Statement::Definition(def) => {
                     self.collect_definition(def);
@@ -904,7 +910,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             self.symbols.traits.insert(name.clone(), trait_info.clone());
                         }
                         for (name, struct_info) in &module_symbols.structs {
-                            self.symbols.structs.insert(name.clone(), struct_info.clone());
+                            self.symbols
+                                .structs
+                                .insert(name.clone(), struct_info.clone());
                         }
                         for (name, enum_info) in &module_symbols.enums {
                             self.symbols.enums.insert(name.clone(), enum_info.clone());
@@ -978,11 +986,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .iter()
                         .map(|f| (f.name.name.clone(), f.ty.clone()))
                         .collect();
-                    let composed_traits: Vec<String> = trait_def
-                        .traits
-                        .iter()
-                        .map(|t| t.name.clone())
-                        .collect();
+                    let composed_traits: Vec<String> =
+                        trait_def.traits.iter().map(|t| t.name.clone()).collect();
                     symbols.define_trait(
                         trait_def.name.name.clone(),
                         trait_def.visibility,
@@ -994,11 +999,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     );
                 }
                 Definition::Struct(struct_def) => {
-                    let traits: Vec<_> = struct_def
-                        .traits
-                        .iter()
-                        .map(|t| t.name.clone())
-                        .collect();
+                    let traits: Vec<_> = struct_def.traits.iter().map(|t| t.name.clone()).collect();
                     let fields: Vec<_> = struct_def
                         .fields
                         .iter()
@@ -1053,7 +1054,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.symbols.traits.insert(name.clone(), trait_info.clone());
         }
         for (name, struct_info) in &module_symbols.structs {
-            self.symbols.structs.insert(name.clone(), struct_info.clone());
+            self.symbols
+                .structs
+                .insert(name.clone(), struct_info.clone());
         }
         for (name, enum_info) in &module_symbols.enums {
             self.symbols.enums.insert(name.clone(), enum_info.clone());
@@ -1416,7 +1419,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
 
                     // Check if it's a known type (struct, enum, trait)
-                    if self.symbols.is_struct(name) || self.symbols.is_enum(name) || self.symbols.is_trait(name) {
+                    if self.symbols.is_struct(name)
+                        || self.symbols.is_enum(name)
+                        || self.symbols.is_trait(name)
+                    {
                         return;
                     }
 
@@ -1653,7 +1659,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(body, file);
             }
             Expr::LetExpr {
-                name, ty, value, body, ..
+                pattern,
+                ty,
+                value,
+                body,
+                ..
             } => {
                 // Validate type annotation if present
                 if let Some(type_ann) = ty {
@@ -1663,7 +1673,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(value, file);
 
                 // Add binding name to local scope before validating body
-                self.local_let_bindings.insert(name.name.clone());
+                if let BindingPattern::Simple(ident) = pattern {
+                    self.local_let_bindings.insert(ident.name.clone());
+                }
+                // TODO: Handle destructuring patterns
 
                 // Validate body expression with the binding in scope
                 self.validate_expr(body, file);
@@ -1867,7 +1880,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 )
             }
             // Other arithmetic operators: Number + Number only
-            BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div | BinaryOperator::Mod => {
+            BinaryOperator::Sub
+            | BinaryOperator::Mul
+            | BinaryOperator::Div
+            | BinaryOperator::Mod => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
             }
             // Comparison operators: Number + Number → Boolean
@@ -2339,7 +2355,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                         // Add dependencies from trait inheritance (trait A: B)
                         for parent_trait in &trait_def.traits {
-                            type_graph.add_dependency(trait_name.clone(), parent_trait.name.clone());
+                            type_graph
+                                .add_dependency(trait_name.clone(), parent_trait.name.clone());
                         }
 
                         // Add dependencies from trait fields
@@ -2415,7 +2432,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Build the let binding dependency graph
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                let let_name = let_binding.name.name.clone();
+                // Only handle simple bindings for now
+                let let_name = match &let_binding.pattern {
+                    BindingPattern::Simple(ident) => ident.name.clone(),
+                    _ => continue, // Skip destructuring patterns
+                };
                 let_spans.insert(let_name.clone(), let_binding.span);
 
                 // Extract all let binding references from the value expression
@@ -2862,8 +2883,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn is_let_mutable(&self, name: &str, file: &File) -> bool {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                if let_binding.name.name == name {
-                    return let_binding.mutable;
+                if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                    if ident.name == name {
+                        return let_binding.mutable;
+                    }
                 }
             }
         }
@@ -2904,8 +2927,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn get_let_type(&self, name: &str, file: &File) -> String {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                if let_binding.name.name == name {
-                    return self.infer_type(&let_binding.value, file);
+                if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                    if ident.name == name {
+                        return self.infer_type(&let_binding.value, file);
+                    }
                 }
             }
         }

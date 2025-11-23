@@ -112,7 +112,7 @@ fn fill_statement_span(stmt: &mut Statement, source: &str) {
             fill_span(&mut use_stmt.span, source);
         }
         Statement::Let(let_stmt) => {
-            fill_span(&mut let_stmt.name.span, source);
+            fill_binding_pattern_span(&mut let_stmt.pattern, source);
             fill_expr_span(&mut let_stmt.value, source);
             fill_span(&mut let_stmt.span, source);
         }
@@ -424,14 +424,14 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_span(span, source);
         }
         Expr::LetExpr {
-            name,
+            pattern,
             ty,
             value,
             body,
             span,
             ..
         } => {
-            fill_span(&mut name.span, source);
+            fill_binding_pattern_span(pattern, source);
             if let Some(type_ann) = ty {
                 fill_type_span(type_ann, source);
             }
@@ -450,6 +450,40 @@ fn fill_pattern_span(pattern: &mut Pattern, source: &str) {
             for binding in bindings {
                 fill_span(&mut binding.span, source);
             }
+        }
+    }
+}
+
+/// Fill spans in a binding pattern (for let destructuring)
+fn fill_binding_pattern_span(pattern: &mut BindingPattern, source: &str) {
+    match pattern {
+        BindingPattern::Simple(ident) => {
+            fill_span(&mut ident.span, source);
+        }
+        BindingPattern::Array { elements, span } => {
+            for elem in elements {
+                match elem {
+                    ArrayPatternElement::Binding(p) => fill_binding_pattern_span(p, source),
+                    ArrayPatternElement::Rest(Some(ident)) => fill_span(&mut ident.span, source),
+                    ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {}
+                }
+            }
+            fill_span(span, source);
+        }
+        BindingPattern::Struct { fields, span } => {
+            for field in fields {
+                fill_span(&mut field.name.span, source);
+                if let Some(alias) = &mut field.alias {
+                    fill_span(&mut alias.span, source);
+                }
+            }
+            fill_span(span, source);
+        }
+        BindingPattern::Tuple { elements, span } => {
+            for elem in elements {
+                fill_binding_pattern_span(elem, source);
+            }
+            fill_span(span, source);
         }
     }
 }
@@ -585,13 +619,13 @@ where
     visibility_parser()
         .then_ignore(just(Token::Let))
         .then(mutability_parser())
-        .then(ident_parser())
+        .then(binding_pattern_parser())
         .then_ignore(just(Token::Equals))
         .then(expr_parser())
-        .map_with(|(((visibility, mutable), name), value), e| LetBinding {
+        .map_with(|(((visibility, mutable), pattern), value), e| LetBinding {
             visibility,
             mutable,
-            name,
+            pattern,
             value,
             span: span_from_simple(e.span()),
         })
@@ -645,6 +679,80 @@ where
         Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span()))
     }
     .labelled("identifier")
+}
+
+/// Parse a binding pattern (for let bindings)
+/// Supports: simple name, array destructuring, struct destructuring, tuple destructuring
+fn binding_pattern_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, BindingPattern, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    recursive(|pattern| {
+        // Wildcard pattern: _
+        let wildcard = just(Token::Underscore)
+            .map_with(|_, e| BindingPattern::Simple(Ident::new("_", span_from_simple(e.span()))));
+
+        // Simple name pattern
+        let simple = ident_parser().map(BindingPattern::Simple);
+
+        // Array pattern: [a, b, ...rest] or [a, _, ...] or [first, ..., last]
+        let rest_pattern = just(Token::DotDotDot)
+            .ignore_then(ident_parser().or_not())
+            .map(ArrayPatternElement::Rest);
+
+        let array_element = choice((
+            rest_pattern,
+            just(Token::Underscore).to(ArrayPatternElement::Wildcard),
+            pattern.clone().map(ArrayPatternElement::Binding),
+        ));
+
+        let array_pattern = array_element
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map_with(|elements, e| BindingPattern::Array {
+                elements,
+                span: span_from_simple(e.span()),
+            });
+
+        // Struct pattern: {name, age as userAge}
+        let struct_field = ident_parser()
+            .then(just(Token::As).ignore_then(ident_parser()).or_not())
+            .map(|(name, alias)| StructPatternField { name, alias });
+
+        let struct_pattern = struct_field
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .map_with(|fields, e| BindingPattern::Struct {
+                fields,
+                span: span_from_simple(e.span()),
+            });
+
+        // Tuple pattern: (a, b)
+        let tuple_pattern = pattern
+            .separated_by(just(Token::Comma))
+            .at_least(1)
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map_with(|elements, e| BindingPattern::Tuple {
+                elements,
+                span: span_from_simple(e.span()),
+            });
+
+        choice((
+            array_pattern,
+            struct_pattern,
+            tuple_pattern,
+            wildcard,
+            simple,
+        ))
+        .labelled("binding pattern")
+    })
 }
 
 /// Parse generic parameters: <T> or <T, U> or <T: Trait, U: Other + Another>
@@ -1461,22 +1569,24 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Let expression: let name = value body OR let name: Type = value body OR let mut name = value body
+        // Let expression: let pattern = value body OR let pattern: Type = value body OR let mut pattern = value body
         let let_expr = just(Token::Let)
             .ignore_then(just(Token::Mut).or_not())
-            .then(ident_parser())
+            .then(binding_pattern_parser())
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
             .then_ignore(just(Token::Equals))
             .then(expr.clone())
             .then(expr.clone())
-            .map_with(|((((mutable, name), ty), value), body), e| Expr::LetExpr {
-                mutable: mutable.is_some(),
-                name,
-                ty,
-                value: Box::new(value),
-                body: Box::new(body),
-                span: span_from_simple(e.span()),
-            });
+            .map_with(
+                |((((mutable, pattern), ty), value), body), e| Expr::LetExpr {
+                    mutable: mutable.is_some(),
+                    pattern,
+                    ty,
+                    value: Box::new(value),
+                    body: Box::new(body),
+                    span: span_from_simple(e.span()),
+                },
+            );
 
         // Atom: literal, instantiation, enum_instantiation, reference, array/dict, tuple, grouped, for, if, match, provides, consumes, closure, let
         // Order matters: try more specific parsers first
@@ -2173,14 +2283,17 @@ mod tests {
         match expr {
             Expr::LetExpr {
                 mutable,
-                name,
+                pattern,
                 ty,
                 value,
                 body,
                 ..
             } => {
                 assert!(!mutable);
-                assert_eq!(name.name, "x");
+                match pattern {
+                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "x"),
+                    _ => panic!("Expected simple pattern"),
+                }
                 assert!(ty.is_none());
                 match *value {
                     Expr::Literal(Literal::Number(n)) => assert_eq!(n, 42.0),
@@ -2205,8 +2318,11 @@ mod tests {
         );
         let expr = result.unwrap();
         match expr {
-            Expr::LetExpr { name, ty, .. } => {
-                assert_eq!(name.name, "count");
+            Expr::LetExpr { pattern, ty, .. } => {
+                match pattern {
+                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "count"),
+                    _ => panic!("Expected simple pattern"),
+                }
                 match ty {
                     Some(Type::Primitive(PrimitiveType::Number)) => {}
                     _ => panic!("Expected Number type annotation"),
@@ -2222,9 +2338,14 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse let mut: {:?}", result);
         let expr = result.unwrap();
         match expr {
-            Expr::LetExpr { mutable, name, .. } => {
+            Expr::LetExpr {
+                mutable, pattern, ..
+            } => {
                 assert!(mutable);
-                assert_eq!(name.name, "counter");
+                match pattern {
+                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "counter"),
+                    _ => panic!("Expected simple pattern"),
+                }
             }
             _ => panic!("Expected LetExpr, got {:?}", expr),
         }
@@ -2255,14 +2376,19 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse nested let: {:?}", result);
         let expr = result.unwrap();
         match expr {
-            Expr::LetExpr { name, body, .. } => {
-                assert_eq!(name.name, "x");
+            Expr::LetExpr { pattern, body, .. } => {
+                match pattern {
+                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "x"),
+                    _ => panic!("Expected simple pattern"),
+                }
                 match *body {
                     Expr::LetExpr {
-                        name: inner_name, ..
-                    } => {
-                        assert_eq!(inner_name.name, "y");
-                    }
+                        pattern: inner_pattern,
+                        ..
+                    } => match inner_pattern {
+                        BindingPattern::Simple(ident) => assert_eq!(ident.name, "y"),
+                        _ => panic!("Expected simple pattern"),
+                    },
                     _ => panic!("Expected nested LetExpr"),
                 }
             }
