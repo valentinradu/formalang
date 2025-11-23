@@ -32,7 +32,7 @@ mod visitor;
 pub use expr::{IrExpr, IrMatchArm};
 pub use lower::lower_to_ir;
 pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrStruct, IrTrait};
-pub use visitor::{walk_expr, walk_module, IrVisitor};
+pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
 use crate::ast::{PrimitiveType, Visibility};
 

@@ -73,10 +73,20 @@ Fixed 6 IR module doc tests that were marked with `ignore`:
 - [x] `cargo clippy` passes
 - [x] All 11 doc tests pass
 
-## Phase 7: PR
+## Phase 7: IR Test Coverage Improvements
 
-- [ ] Commit changes
-- [ ] Create PR
+Expanded IR test coverage from 57% to improved coverage (+2% overall to 80.91%):
+- [x] Added 30+ new IR tests for expression lowering
+- [x] Added `ExprCounter` visitor for testing expression walking
+- [x] Added tests for all expression types (if, for, binary ops, tuple, enum inst)
+- [x] Added tests for visitor traversal of expression children
+- [x] Added tests for generic types and constraints
+- [x] Added tests for ResolvedType display methods
+- [x] Exported `walk_expr_children` from ir module
+
+## Phase 8: PR
+
+- [x] Commit changes (PR #22)
 - [ ] User approval
 - [ ] Merge to main
 - [ ] Clean up worktree
@@ -93,3 +103,5 @@ Fixed 6 IR module doc tests that were marked with `ignore`:
 - Tuple patterns recurse into elements
 - Added destructuring type validation with proper error messages
 - Made all IR doc tests runnable with real compile_to_ir examples
+- Added comprehensive IR expression lowering and visitor tests
+- Total tests: 924 passing, 0 ignored, coverage: 80.91%
