@@ -63,8 +63,7 @@ fn test_expr_span_dict_access() {
             d["a"]
         }
     "#;
-    // Dict access might not be fully implemented, just testing parsing
-    let _ = compile(source);
+    assert!(compile(source).is_ok());
 }
 
 #[test]
@@ -107,8 +106,8 @@ fn test_expr_span_consumes() {
             consumes theme { theme.color }
         }
     "#;
-    // consumes may fail semantic validation without provider, just test parsing
-    let _ = compile(source);
+    // consumes requires a provider in scope
+    assert!(compile(source).is_err());
 }
 
 // =============================================================================
@@ -317,8 +316,8 @@ fn test_consumes_multiple_values() {
             consumes theme { theme.color }
         }
     "#;
-    // Just test single consumes parsing - multiple may not be supported
-    let _ = compile(source);
+    // consumes requires a provider in scope
+    assert!(compile(source).is_err());
 }
 
 // =============================================================================
@@ -414,13 +413,14 @@ fn test_error_struct_as_trait_constraint() {
 }
 
 #[test]
-fn test_error_missing_generic_args() {
+fn test_generic_without_args_in_field() {
+    // Using a generic type without explicit args in a field definition
+    // This is allowed - the type remains uninstantiated
     let source = r#"
         struct Box<T> { value: T }
         struct Container { box: Box }
     "#;
-    // This might or might not be an error depending on inference
-    let _ = compile(source);
+    assert!(compile(source).is_ok());
 }
 
 #[test]
@@ -1420,8 +1420,7 @@ fn test_error_invalid_binary_op_types() {
         struct A { x: Boolean }
         impl A { "hello" + 123 }
     "#;
-    // This may or may not be an error depending on implementation
-    let _ = compile(source);
+    assert!(compile(source).is_err());
 }
 
 #[test]
@@ -1480,12 +1479,11 @@ fn test_error_duplicate_match_arm() {
 
 #[test]
 fn test_inferred_enum_in_let() {
-    // Using inferred enum syntax outside of context
+    // Using inferred enum syntax - parses but may need context
     let source = r#"
         let x = .someVariant
     "#;
-    // May or may not be an error depending on implementation
-    let _ = compile(source);
+    assert!(compile(source).is_ok());
 }
 
 // =============================================================================
@@ -1528,8 +1526,8 @@ fn test_module_trait_field_validation() {
         }
         struct Person: traits::Named { name: String }
     "#;
-    // Module path for trait conformance might not be fully supported
-    let _ = compile(source);
+    // Module path for trait conformance not yet supported
+    assert!(compile(source).is_err());
 }
 
 #[test]
@@ -1542,8 +1540,7 @@ fn test_module_nested_type_reference() {
             pub struct Screen { widget: ui::Widget }
         }
     "#;
-    // Cross-module references might not be fully supported
-    let _ = compile(source);
+    assert!(compile(source).is_ok());
 }
 
 // =============================================================================
@@ -1592,8 +1589,8 @@ fn test_question_mark_operator() {
         struct A { opt: String? }
         impl A { opt? }
     "#;
-    // Question mark might produce specific type behavior
-    let _ = compile(source);
+    // Question mark unwrap requires proper context
+    assert!(compile(source).is_err());
 }
 
 #[test]
