@@ -958,3 +958,510 @@ fn test_resolved_type_display_nested_array() {
     let s = &module.structs[0];
     assert_eq!(s.fields[0].ty.display_name(&module), "[[Number]]");
 }
+
+// =============================================================================
+// Expression Lowering Tests - Control Flow
+// =============================================================================
+
+#[test]
+fn test_lower_if_expression() {
+    let source = r#"
+        struct S { value: Number }
+        impl S { if true { 1 } else { 2 } }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    assert!(!module.impls.is_empty());
+    let expr = &module.impls[0].body[0];
+    assert!(matches!(expr, formalang::ir::IrExpr::If { .. }));
+}
+
+#[test]
+fn test_lower_if_without_else() {
+    let source = r#"
+        struct S { value: Number? }
+        impl S { if true { 1 } }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::If { else_branch, .. } = expr {
+        assert!(else_branch.is_none());
+    } else {
+        panic!("Expected If expression");
+    }
+}
+
+#[test]
+fn test_lower_for_expression() {
+    let source = r#"
+        struct S { items: [Number] }
+        impl S { for x in [1, 2, 3] { x } }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::For { var, .. } = expr {
+        assert_eq!(var, "x");
+    } else {
+        panic!("Expected For expression");
+    }
+}
+
+#[test]
+fn test_lower_let_expression() {
+    let source = r#"
+        struct S { value: Number }
+        impl S {
+            let x = 5
+            x
+        }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    assert!(!module.impls.is_empty());
+    assert!(!module.impls[0].body.is_empty());
+}
+
+// =============================================================================
+// Expression Lowering Tests - Enum Instantiation
+// =============================================================================
+
+#[test]
+fn test_lower_enum_instantiation_simple() {
+    let source = r#"
+        enum Status { active, inactive }
+        struct S { status: Status }
+        impl S { Status.active }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
+        assert_eq!(variant, "active");
+    } else {
+        panic!("Expected EnumInst expression");
+    }
+}
+
+#[test]
+fn test_lower_enum_instantiation_with_data() {
+    let source = r#"
+        enum Option { none, some(value: Number) }
+        struct S { opt: Option }
+        impl S { Option.some(value: 42) }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::EnumInst {
+        variant, fields, ..
+    } = expr
+    {
+        assert_eq!(variant, "some");
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "value");
+    } else {
+        panic!("Expected EnumInst expression");
+    }
+}
+
+#[test]
+fn test_lower_inferred_enum_instantiation() {
+    let source = r#"
+        enum Status { active, inactive }
+        struct S { status: Status }
+        impl S { .active }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
+        assert_eq!(variant, "active");
+    } else {
+        panic!("Expected EnumInst expression for inferred enum");
+    }
+}
+
+// =============================================================================
+// Expression Lowering Tests - Tuple
+// =============================================================================
+
+#[test]
+fn test_lower_tuple_expression() {
+    let source = r#"
+        struct S { point: (x: Number, y: Number) }
+        impl S { (x: 1, y: 2) }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    if let formalang::ir::IrExpr::Tuple { fields, ty } = expr {
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].0, "x");
+        assert_eq!(fields[1].0, "y");
+        assert!(matches!(ty, formalang::ir::ResolvedType::Tuple(_)));
+    } else {
+        panic!("Expected Tuple expression");
+    }
+}
+
+// =============================================================================
+// Expression Lowering Tests - Binary Operations
+// =============================================================================
+
+#[test]
+fn test_lower_binary_subtraction() {
+    let source = r#"
+        struct S { diff: Number }
+        impl S { 10 - 3 }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
+}
+
+#[test]
+fn test_lower_binary_multiplication() {
+    let source = r#"
+        struct S { product: Number }
+        impl S { 5 * 4 }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
+}
+
+#[test]
+fn test_lower_binary_logical_and() {
+    let source = r#"
+        struct S { result: Boolean }
+        impl S { true && false }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
+    assert_eq!(type_name(expr.ty()), "Boolean");
+}
+
+#[test]
+fn test_lower_binary_logical_or() {
+    let source = r#"
+        struct S { result: Boolean }
+        impl S { true || false }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
+    assert_eq!(type_name(expr.ty()), "Boolean");
+}
+
+#[test]
+fn test_lower_binary_less_than() {
+    let source = r#"
+        struct S { result: Boolean }
+        impl S { 1 < 2 }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert_eq!(type_name(expr.ty()), "Boolean");
+}
+
+#[test]
+fn test_lower_binary_greater_than() {
+    let source = r#"
+        struct S { result: Boolean }
+        impl S { 2 > 1 }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let expr = &module.impls[0].body[0];
+    assert_eq!(type_name(expr.ty()), "Boolean");
+}
+
+// =============================================================================
+// Visitor Expression Walking Tests
+// =============================================================================
+
+use formalang::ir::{walk_expr, IrExpr};
+
+struct ExprCounter {
+    literal_count: usize,
+    binary_op_count: usize,
+    if_count: usize,
+    for_count: usize,
+    match_count: usize,
+    array_count: usize,
+    tuple_count: usize,
+    struct_inst_count: usize,
+    enum_inst_count: usize,
+    reference_count: usize,
+}
+
+impl ExprCounter {
+    fn new() -> Self {
+        Self {
+            literal_count: 0,
+            binary_op_count: 0,
+            if_count: 0,
+            for_count: 0,
+            match_count: 0,
+            array_count: 0,
+            tuple_count: 0,
+            struct_inst_count: 0,
+            enum_inst_count: 0,
+            reference_count: 0,
+        }
+    }
+}
+
+impl IrVisitor for ExprCounter {
+    fn visit_expr(&mut self, e: &IrExpr) {
+        match e {
+            IrExpr::Literal { .. } => self.literal_count += 1,
+            IrExpr::BinaryOp { .. } => self.binary_op_count += 1,
+            IrExpr::If { .. } => self.if_count += 1,
+            IrExpr::For { .. } => self.for_count += 1,
+            IrExpr::Match { .. } => self.match_count += 1,
+            IrExpr::Array { .. } => self.array_count += 1,
+            IrExpr::Tuple { .. } => self.tuple_count += 1,
+            IrExpr::StructInst { .. } => self.struct_inst_count += 1,
+            IrExpr::EnumInst { .. } => self.enum_inst_count += 1,
+            IrExpr::Reference { .. } => self.reference_count += 1,
+        }
+        // Walk children
+        formalang::ir::walk_expr_children(self, e);
+    }
+}
+
+#[test]
+fn test_visitor_walks_if_children() {
+    let source = r#"
+        struct S { value: Number }
+        impl S { if true { 1 } else { 2 } }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.if_count, 1);
+    // Condition (true) + then branch (1) + else branch (2) = 3 literals
+    assert_eq!(counter.literal_count, 3);
+}
+
+#[test]
+fn test_visitor_walks_for_children() {
+    let source = r#"
+        struct S { items: [Number] }
+        impl S { for x in [1, 2] { x } }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.for_count, 1);
+    assert_eq!(counter.array_count, 1);
+    assert_eq!(counter.reference_count, 1); // x reference in body
+}
+
+#[test]
+fn test_visitor_walks_nested_if() {
+    let source = r#"
+        struct S { value: Number }
+        impl S {
+            if true {
+                if false { 1 } else { 2 }
+            } else {
+                3
+            }
+        }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    // 2 if expressions (outer and nested)
+    assert_eq!(counter.if_count, 2);
+    // literals: true, false, 1, 2, 3
+    assert_eq!(counter.literal_count, 5);
+}
+
+#[test]
+fn test_visitor_walks_binary_op_children() {
+    let source = r#"
+        struct S { result: Number }
+        impl S { 1 + 2 + 3 }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    // (1 + 2) + 3 = 2 binary ops
+    assert_eq!(counter.binary_op_count, 2);
+    assert_eq!(counter.literal_count, 3);
+}
+
+#[test]
+fn test_visitor_walks_struct_inst_children() {
+    let source = r#"
+        struct Point { x: Number, y: Number }
+        struct Container { p: Point }
+        impl Container { Point(x: 1 + 2, y: 3) }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.struct_inst_count, 1);
+    assert_eq!(counter.binary_op_count, 1); // 1 + 2
+    assert_eq!(counter.literal_count, 3); // 1, 2, 3
+}
+
+#[test]
+fn test_visitor_walks_enum_inst_children() {
+    let source = r#"
+        enum Option { none, some(value: Number) }
+        struct S { opt: Option }
+        impl S { Option.some(value: 1 + 2) }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.enum_inst_count, 1);
+    assert_eq!(counter.binary_op_count, 1);
+    assert_eq!(counter.literal_count, 2);
+}
+
+#[test]
+fn test_visitor_walks_array_children() {
+    let source = r#"
+        struct S { items: [Number] }
+        impl S { [1, 2 + 3, 4] }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.array_count, 1);
+    assert_eq!(counter.binary_op_count, 1);
+    assert_eq!(counter.literal_count, 4); // 1, 2, 3, 4
+}
+
+#[test]
+fn test_visitor_walks_tuple_children() {
+    let source = r#"
+        struct S { point: (x: Number, y: Number) }
+        impl S { (x: 1 + 2, y: 3) }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let mut counter = ExprCounter::new();
+    walk_module(&mut counter, &module);
+
+    assert_eq!(counter.tuple_count, 1);
+    assert_eq!(counter.binary_op_count, 1);
+    assert_eq!(counter.literal_count, 3);
+}
+
+// =============================================================================
+// Generic Type Tests
+// =============================================================================
+
+#[test]
+fn test_lower_generic_wrapper_struct() {
+    let source = "struct Wrapper<T> { value: T }";
+    let module = compile_to_ir(source).unwrap();
+
+    let wrapper = &module.structs[0];
+    assert_eq!(wrapper.name, "Wrapper");
+    assert_eq!(wrapper.generic_params.len(), 1);
+    assert_eq!(wrapper.generic_params[0].name, "T");
+}
+
+#[test]
+fn test_lower_generic_struct_multiple_params() {
+    let source = "struct Pair<A, B> { first: A, second: B }";
+    let module = compile_to_ir(source).unwrap();
+
+    let pair = &module.structs[0];
+    assert_eq!(pair.generic_params.len(), 2);
+    assert_eq!(pair.generic_params[0].name, "A");
+    assert_eq!(pair.generic_params[1].name, "B");
+}
+
+#[test]
+fn test_lower_generic_with_constraint() {
+    let source = r#"
+        trait Named { name: String }
+        struct Container<T: Named> { item: T }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    assert_eq!(container.generic_params.len(), 1);
+    assert!(!container.generic_params[0].constraints.is_empty());
+}
+
+// =============================================================================
+// ResolvedType Additional Coverage
+// =============================================================================
+
+#[test]
+fn test_resolved_type_display_trait_ref() {
+    let source = r#"
+        trait Named { name: String }
+        struct Container { item: Named }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    assert_eq!(container.fields[0].ty.display_name(&module), "Named");
+}
+
+#[test]
+fn test_resolved_type_display_type_param() {
+    let source = r#"
+        struct Box<T> { value: T }
+    "#;
+    let module = compile_to_ir(source).unwrap();
+
+    let box_struct = &module.structs[0];
+    // Type parameter T should display as "T"
+    assert_eq!(box_struct.fields[0].ty.display_name(&module), "T");
+}
+
+#[test]
+fn test_resolved_type_display_generic() {
+    let source = "struct Box<T> { value: T } struct Container { item: Box<String> }";
+    let module = compile_to_ir(source).unwrap();
+
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    let display = container.fields[0].ty.display_name(&module);
+    // Generic instantiation should show type args
+    assert!(display.contains("Box") || display.contains("String"));
+}
