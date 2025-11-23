@@ -559,7 +559,7 @@ impl SymbolKind {
             SymbolKind::Impl => "impl",
             SymbolKind::Enum => "enum",
             SymbolKind::Let => "let binding",
-            SymbolKind::Module => "module",
+            SymbolKind::Module => "mod",
         }
     }
 }

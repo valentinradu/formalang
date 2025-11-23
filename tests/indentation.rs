@@ -68,7 +68,7 @@ fn test_impl_keyword() {
 
 #[test]
 fn test_module_keyword() {
-    let source = "module";
+    let source = "mod";
     let tokens = Lexer::tokenize_all(source);
     let has_module = tokens.iter().any(|(t, _)| matches!(t, Token::Module));
     assert!(has_module, "Expected Module token");
@@ -472,7 +472,7 @@ fn test_impl_block() {
 
 #[test]
 fn test_module_definition() {
-    let source = "module utils { struct Helper { } }";
+    let source = "mod utils { struct Helper { } }";
     let tokens = Lexer::tokenize_all(source);
     assert!(tokens.len() >= 6, "Expected multiple tokens");
 }

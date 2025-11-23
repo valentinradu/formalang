@@ -439,7 +439,7 @@ fn test_consumes_expression_without_provider() {
 #[test]
 fn test_use_single_item() {
     let source = r#"
-        module utils {
+        mod utils {
             struct Helper { value: String }
         }
     "#;
@@ -665,9 +665,9 @@ fn test_let_simple_value() {
 #[test]
 fn test_deeply_nested_modules() {
     let source = r#"
-        module a {
-            module b {
-                module c {
+        mod a {
+            mod b {
+                mod c {
                     struct Deep { value: String }
                 }
             }
@@ -680,7 +680,7 @@ fn test_deeply_nested_modules() {
 #[test]
 fn test_module_with_trait_and_impl() {
     let source = r#"
-        module core {
+        mod core {
             trait Named {
                 name: String
             }

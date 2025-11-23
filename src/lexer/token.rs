@@ -19,7 +19,7 @@ pub enum Token {
     View,
     #[token("enum")]
     Enum,
-    #[token("module")]
+    #[token("mod")]
     Module,
     #[token("use")]
     Use,
@@ -263,7 +263,7 @@ impl Token {
             Token::Model => "model",
             Token::View => "view",
             Token::Enum => "enum",
-            Token::Module => "module",
+            Token::Module => "mod",
             Token::Use => "use",
             Token::Pub => "pub",
             Token::Let => "let",

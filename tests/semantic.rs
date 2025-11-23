@@ -360,7 +360,7 @@ fn test_for_with_let() {
 #[test]
 fn test_module_simple() {
     let source = r#"
-        module core {
+        mod core {
             struct Config {
                 value: String
             }
@@ -373,7 +373,7 @@ fn test_module_simple() {
 #[test]
 fn test_module_with_trait() {
     let source = r#"
-        module data {
+        mod data {
             trait Serializable {
                 data: String
             }
@@ -389,13 +389,13 @@ fn test_module_with_trait() {
 #[test]
 fn test_module_nested() {
     let source = r#"
-        module ui {
-            module components {
+        mod ui {
+            mod components {
                 struct Button {
                     label: String
                 }
             }
-            module styles {
+            mod styles {
                 struct Theme {
                     color: String
                 }

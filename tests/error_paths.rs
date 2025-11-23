@@ -285,7 +285,7 @@ fn test_empty_trait() {
 
 #[test]
 fn test_empty_module() {
-    let source = "module empty { }";
+    let source = "mod empty { }";
     assert!(
         compile(source).is_ok(),
         "Empty module: {:?}",
@@ -475,7 +475,7 @@ fn test_multiple_enums() {
 #[test]
 fn test_module_with_all_types() {
     let source = r#"
-        module full {
+        mod full {
             trait T { x: String }
             struct S: T { x: String }
             enum E { a, b }
@@ -491,7 +491,7 @@ fn test_module_with_all_types() {
 #[test]
 fn test_pub_in_module() {
     let source = r#"
-        module api {
+        mod api {
             pub trait PublicTrait { x: String }
             pub struct PublicStruct { y: Number }
             pub enum PublicEnum { a }
@@ -600,7 +600,7 @@ fn test_ui_component_model() {
 #[test]
 fn test_config_model() {
     let source = r#"
-        module config {
+        mod config {
             pub struct DatabaseConfig {
                 host: String = "localhost",
                 port: Number = 5432,

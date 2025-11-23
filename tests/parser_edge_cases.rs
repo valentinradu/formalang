@@ -376,9 +376,9 @@ fn test_match_exhaustive() {
 #[test]
 fn test_empty_nested_modules() {
     let source = r#"
-        module a {
-            module b {
-                module c { }
+        mod a {
+            mod b {
+                mod c { }
             }
         }
     "#;
@@ -392,9 +392,9 @@ fn test_empty_nested_modules() {
 #[test]
 fn test_sibling_modules() {
     let source = r#"
-        module a { struct A { } }
-        module b { struct B { } }
-        module c { struct C { } }
+        mod a { struct A { } }
+        mod b { struct B { } }
+        mod c { struct C { } }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -718,7 +718,7 @@ fn test_full_file() {
         }
 
         // Modules
-        module helpers {
+        mod helpers {
             struct Config {
                 debug: Boolean = false
             }

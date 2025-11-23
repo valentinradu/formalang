@@ -533,7 +533,7 @@ fn test_error_duplicate_enum_variants() {
 #[test]
 fn test_error_in_module() {
     let source = r#"
-        module broken {
+        mod broken {
             struct Test {
                 field: NonexistentType
             }

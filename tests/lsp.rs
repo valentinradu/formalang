@@ -403,7 +403,7 @@ fn test_query_provider_completions_generic() {
 #[test]
 fn test_query_provider_module_definitions() {
     let source = r#"
-        module core {
+        mod core {
             struct Config {
                 value: String
             }
@@ -621,7 +621,7 @@ fn test_find_node_at_offset_impl_block() {
 #[test]
 fn test_find_node_at_offset_module() {
     let source = r#"
-        module core {
+        mod core {
             struct Config {
                 value: String
             }

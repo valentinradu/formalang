@@ -137,7 +137,7 @@ fn test_enum_with_associated_data() {
 #[test]
 fn test_module_definition() {
     let source = r#"
-        module ui {
+        mod ui {
             struct Button {
                 label: String
             }
@@ -896,8 +896,8 @@ fn test_generic_data_structures() {
 #[test]
 fn test_nested_modules() {
     let source = r#"
-        module ui {
-            module components {
+        mod ui {
+            mod components {
                 struct Button {
                     label: String
                 }
