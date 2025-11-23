@@ -1188,7 +1188,7 @@ fn test_lower_binary_greater_than() {
 // Visitor Expression Walking Tests
 // =============================================================================
 
-use formalang::ir::{walk_expr, IrExpr};
+use formalang::ir::IrExpr;
 
 struct ExprCounter {
     literal_count: usize,
