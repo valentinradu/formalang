@@ -14,8 +14,8 @@ pub mod symbol_table;
 pub(crate) mod type_graph;
 
 use crate::ast::{
-    BinaryOperator, BindingPattern, Definition, Expr, File, Literal, Pattern, PrimitiveType,
-    Statement, StructDef, TraitDef, Type, UseItems, UseStmt,
+    ArrayPatternElement, BinaryOperator, BindingPattern, Definition, Expr, File, Literal, Pattern,
+    PrimitiveType, Statement, StructDef, TraitDef, Type, UseItems, UseStmt,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -39,6 +39,64 @@ struct ContextBinding {
 struct GenericScope {
     /// Generic parameter names and their constraints
     params: HashMap<String, Vec<String>>, // name -> list of trait constraints
+}
+
+/// Represents a binding extracted from a pattern
+#[derive(Debug, Clone)]
+struct PatternBinding {
+    name: String,
+    span: Span,
+}
+
+/// Collect all binding names from a pattern recursively
+fn collect_bindings_from_pattern(pattern: &BindingPattern) -> Vec<PatternBinding> {
+    let mut bindings = Vec::new();
+    collect_bindings_recursive(pattern, &mut bindings);
+    bindings
+}
+
+fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<PatternBinding>) {
+    match pattern {
+        BindingPattern::Simple(ident) => {
+            bindings.push(PatternBinding {
+                name: ident.name.clone(),
+                span: ident.span,
+            });
+        }
+        BindingPattern::Array { elements, .. } => {
+            for element in elements {
+                match element {
+                    ArrayPatternElement::Binding(inner) => {
+                        collect_bindings_recursive(inner, bindings);
+                    }
+                    ArrayPatternElement::Rest(Some(ident)) => {
+                        bindings.push(PatternBinding {
+                            name: ident.name.clone(),
+                            span: ident.span,
+                        });
+                    }
+                    ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {
+                        // No binding for anonymous rest or wildcard
+                    }
+                }
+            }
+        }
+        BindingPattern::Struct { fields, .. } => {
+            for field in fields {
+                // Use alias if present, otherwise use field name
+                let binding_ident = field.alias.as_ref().unwrap_or(&field.name);
+                bindings.push(PatternBinding {
+                    name: binding_ident.name.clone(),
+                    span: binding_ident.span,
+                });
+            }
+        }
+        BindingPattern::Tuple { elements, .. } => {
+            for element in elements {
+                collect_bindings_recursive(element, bindings);
+            }
+        }
+    }
 }
 
 /// Semantic analyzer validates the AST without evaluation or expansion
@@ -279,20 +337,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Statement::Definition(def) = statement {
                 Self::collect_definition_into(&mut module_symbols, &mut module_errors, def);
             } else if let Statement::Let(let_binding) = statement {
-                // For simple patterns, define the binding. Complex patterns need more work.
-                if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                // Register all bindings from the pattern (simple, array, struct, tuple)
+                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
                     if let Some((kind, _)) = module_symbols.define_let(
-                        ident.name.clone(),
+                        binding.name.clone(),
                         let_binding.visibility,
                         let_binding.span,
                     ) {
                         module_errors.push(CompilerError::DuplicateDefinition {
-                            name: format!("{} (already defined as {})", ident.name, kind.as_str()),
-                            span: ident.span,
+                            name: format!(
+                                "{} (already defined as {})",
+                                binding.name,
+                                kind.as_str()
+                            ),
+                            span: binding.span,
                         });
                     }
                 }
-                // TODO: Handle destructuring patterns
             }
         }
 
@@ -620,11 +681,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
                 let inferred_type = self.infer_type(&let_binding.value, file);
-                // For simple patterns, store the type by name
-                if let BindingPattern::Simple(ident) = &let_binding.pattern {
-                    self.symbols.set_let_type(&ident.name, inferred_type);
+                // Store type for all bindings in the pattern
+                // For destructuring, each binding gets the inferred type of its position
+                // (simplified: using source type for now, proper element types would need more work)
+                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                    self.symbols
+                        .set_let_type(&binding.name, inferred_type.clone());
                 }
-                // TODO: Handle destructuring patterns
             }
         }
     }
@@ -638,24 +701,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Module resolution handled in Pass 0
                 }
                 Statement::Let(let_binding) => {
-                    // Define let binding for simple patterns
-                    if let BindingPattern::Simple(ident) = &let_binding.pattern {
+                    // Register all bindings from the pattern (simple, array, struct, tuple)
+                    for binding in collect_bindings_from_pattern(&let_binding.pattern) {
                         if let Some((kind, _)) = self.symbols.define_let(
-                            ident.name.clone(),
+                            binding.name.clone(),
                             let_binding.visibility,
                             let_binding.span,
                         ) {
                             self.errors.push(CompilerError::DuplicateDefinition {
                                 name: format!(
                                     "{} (already defined as {})",
-                                    ident.name,
+                                    binding.name,
                                     kind.as_str()
                                 ),
-                                span: ident.span,
+                                span: binding.span,
                             });
                         }
                     }
-                    // TODO: Handle destructuring patterns
                 }
                 Statement::Definition(def) => {
                     self.collect_definition(def);
@@ -1672,13 +1734,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Validate value expression
                 self.validate_expr(value, file);
 
-                // Add binding name to local scope before validating body
-                if let BindingPattern::Simple(ident) = pattern {
-                    self.local_let_bindings.insert(ident.name.clone());
+                // Add all bindings from the pattern to local scope before validating body
+                for binding in collect_bindings_from_pattern(pattern) {
+                    self.local_let_bindings.insert(binding.name);
                 }
-                // TODO: Handle destructuring patterns
 
-                // Validate body expression with the binding in scope
+                // Validate body expression with the bindings in scope
                 self.validate_expr(body, file);
             }
         }
@@ -2432,19 +2493,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Build the let binding dependency graph
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                // Only handle simple bindings for now
-                let let_name = match &let_binding.pattern {
-                    BindingPattern::Simple(ident) => ident.name.clone(),
-                    _ => continue, // Skip destructuring patterns
-                };
-                let_spans.insert(let_name.clone(), let_binding.span);
+                // Get all bindings from the pattern
+                let bindings = collect_bindings_from_pattern(&let_binding.pattern);
+                if bindings.is_empty() {
+                    continue;
+                }
+
+                // Register each binding and store its span
+                for binding in &bindings {
+                    let_spans.insert(binding.name.clone(), binding.span);
+                }
 
                 // Extract all let binding references from the value expression
                 let references = self.extract_let_references(&let_binding.value);
 
-                // Add dependencies for each referenced let binding
-                for referenced_let in references {
-                    let_graph.add_dependency(&let_name, referenced_let);
+                // Add dependencies for each binding from the pattern
+                // All bindings from a single let share the same dependencies
+                for binding in &bindings {
+                    for referenced_let in &references {
+                        let_graph.add_dependency(&binding.name, referenced_let.clone());
+                    }
                 }
             }
         }
@@ -2883,8 +2951,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn is_let_mutable(&self, name: &str, file: &File) -> bool {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                if let BindingPattern::Simple(ident) = &let_binding.pattern {
-                    if ident.name == name {
+                // Check if the name is in any binding from this pattern
+                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                    if binding.name == name {
                         return let_binding.mutable;
                     }
                 }
@@ -2927,8 +2996,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn get_let_type(&self, name: &str, file: &File) -> String {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                if let BindingPattern::Simple(ident) = &let_binding.pattern {
-                    if ident.name == name {
+                // Check if the name is in any binding from this pattern
+                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                    if binding.name == name {
                         return self.infer_type(&let_binding.value, file);
                     }
                 }
