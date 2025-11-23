@@ -216,6 +216,12 @@ pub enum CompilerError {
     #[error("For loop requires an array, found {actual}")]
     ForLoopNotArray { actual: String, span: Span },
 
+    #[error("Array destructuring requires an array, found {actual}")]
+    ArrayDestructuringNotArray { actual: String, span: Span },
+
+    #[error("Struct destructuring requires a struct, found {actual}")]
+    StructDestructuringNotStruct { actual: String, span: Span },
+
     #[error("If condition must be boolean or optional, found {actual}")]
     InvalidIfCondition { actual: String, span: Span },
 
@@ -358,6 +364,8 @@ impl CompilerError {
             | Self::CircularDependency { span, .. }
             | Self::InvalidBinaryOp { span, .. }
             | Self::ForLoopNotArray { span, .. }
+            | Self::ArrayDestructuringNotArray { span, .. }
+            | Self::StructDestructuringNotStruct { span, .. }
             | Self::InvalidIfCondition { span, .. }
             | Self::MatchNotEnum { span, .. }
             | Self::NonExhaustiveMatch { span, .. }

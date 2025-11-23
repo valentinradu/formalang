@@ -39,8 +39,14 @@ use crate::ast::{PrimitiveType, Visibility};
 /// ID for referencing struct definitions.
 ///
 /// Use this to look up structs in [`IrModule::structs`]:
-/// ```ignore
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = "pub struct User { name: String }";
+/// let module = compile_to_ir(source).unwrap();
+/// let id = formalang::StructId(0);
 /// let struct_def = &module.structs[id.0 as usize];
+/// assert_eq!(struct_def.name, "User");
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct StructId(pub u32);
@@ -48,8 +54,14 @@ pub struct StructId(pub u32);
 /// ID for referencing trait definitions.
 ///
 /// Use this to look up traits in [`IrModule::traits`]:
-/// ```ignore
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = "pub trait Named { name: String }";
+/// let module = compile_to_ir(source).unwrap();
+/// let id = formalang::TraitId(0);
 /// let trait_def = &module.traits[id.0 as usize];
+/// assert_eq!(trait_def.name, "Named");
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TraitId(pub u32);
@@ -57,8 +69,14 @@ pub struct TraitId(pub u32);
 /// ID for referencing enum definitions.
 ///
 /// Use this to look up enums in [`IrModule::enums`]:
-/// ```ignore
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = "pub enum Status { active, inactive }";
+/// let module = compile_to_ir(source).unwrap();
+/// let id = formalang::EnumId(0);
 /// let enum_def = &module.enums[id.0 as usize];
+/// assert_eq!(enum_def.name, "Status");
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
@@ -114,12 +132,20 @@ pub enum ResolvedType {
 ///
 /// # Example
 ///
-/// ```ignore
-/// // Look up a struct by ID
+/// ```
+/// use formalang::{compile_to_ir, StructId};
+///
+/// let source = "pub struct User { name: String }";
+/// let module = compile_to_ir(source).unwrap();
+/// let struct_id = StructId(0);
+///
+/// // Look up a struct by ID (direct indexing)
 /// let struct_def = &module.structs[struct_id.0 as usize];
+/// assert_eq!(struct_def.name, "User");
 ///
 /// // Or use the helper method
 /// let struct_def = module.get_struct(struct_id);
+/// assert_eq!(struct_def.name, "User");
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct IrModule {
