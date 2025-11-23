@@ -207,7 +207,7 @@ fn test_struct_instantiation_with_type_args() {
             box: Box<String>
         }
         impl Container {
-            Box<String>(value: "hello")
+            box: Box<String>(value: "hello")
         }
     "#;
     let result = compile(source);
@@ -226,7 +226,7 @@ fn test_struct_instantiation_shorthand() {
             end: Point
         }
         impl Line {
-            Point(x: 0, y: 0)
+            start: Point(x: 0, y: 0)
         }
     "#;
     let result = compile(source);
@@ -247,7 +247,7 @@ fn test_impl_with_array() {
             items: [Item]
         }
         impl List {
-            [Item(name: "a"), Item(name: "b")]
+            items: [Item(name: "a"), Item(name: "b")]
         }
     "#;
     let result = compile(source);
@@ -261,7 +261,7 @@ fn test_impl_with_if() {
             value: String
         }
         impl Result {
-            if true { "yes" } else { "no" }
+            value: if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -278,7 +278,7 @@ fn test_impl_with_for() {
             items: [Item]
         }
         impl Collection {
-            for i in [1, 2, 3] { Item(id: i) }
+            items: for i in [1, 2, 3] { Item(id: i) }
         }
     "#;
     let result = compile(source);
@@ -328,7 +328,7 @@ fn test_dictionary_field_type() {
             data: [String: Number]
         }
         impl Cache {
-            ["a": 1, "b": 2]
+            data: ["a": 1, "b": 2]
         }
     "#;
     let result = compile(source);

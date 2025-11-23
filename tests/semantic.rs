@@ -15,7 +15,7 @@ fn test_type_validation_primitive_string() {
             value: String
         }
         impl Test {
-            "hello"
+            value: "hello"
         }
     "#;
     let result = compile(source);
@@ -29,7 +29,7 @@ fn test_type_validation_primitive_number() {
             value: Number
         }
         impl Test {
-            42.5
+            value: 42.5
         }
     "#;
     let result = compile(source);
@@ -43,7 +43,7 @@ fn test_type_validation_primitive_boolean() {
             value: Boolean
         }
         impl Test {
-            true
+            value: true
         }
     "#;
     let result = compile(source);
@@ -57,7 +57,7 @@ fn test_type_validation_array() {
             items: [String]
         }
         impl Test {
-            ["a", "b", "c"]
+            items: ["a", "b", "c"]
         }
     "#;
     let result = compile(source);
@@ -74,7 +74,7 @@ fn test_type_validation_nested_struct() {
             inner: Inner
         }
         impl Outer {
-            Inner(id: 1)
+            inner: Inner(id: 1)
         }
     "#;
     let result = compile(source);
@@ -273,7 +273,7 @@ fn test_if_simple() {
             value: String
         }
         impl Result {
-            if true { "yes" } else { "no" }
+            value: if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -287,7 +287,7 @@ fn test_if_with_comparison() {
             value: String
         }
         impl Result {
-            if 1 < 2 { "less" } else { "not less" }
+            value: if 1 < 2 { "less" } else { "not less" }
         }
     "#;
     let result = compile(source);
@@ -301,7 +301,7 @@ fn test_if_nested() {
             value: String
         }
         impl Result {
-            if true {
+            value: if true {
                 if false { "a" } else { "b" }
             } else {
                 "c"
@@ -326,7 +326,7 @@ fn test_for_array_literal() {
             items: [Item]
         }
         impl List {
-            for name in ["a", "b"] { Item(name: name) }
+            items: for name in ["a", "b"] { Item(name: name) }
         }
     "#;
     let result = compile(source);
@@ -343,7 +343,7 @@ fn test_for_with_let() {
             items: [Item]
         }
         impl List {
-            for x in ["a", "b"] {
+            items: for x in ["a", "b"] {
                 let y = "item"
                 Item(text: y)
             }
@@ -417,7 +417,7 @@ fn test_error_undefined_field_reference() {
             name: String
         }
         impl User {
-            unknown_field
+            name: unknown_field
         }
     "#;
     let result = compile(source);
@@ -432,7 +432,7 @@ fn test_error_type_mismatch_in_field() {
             count: Number
         }
         impl Wrapper {
-            "not a number"
+            count: "not a number"
         }
     "#;
     let result = compile(source);
@@ -491,7 +491,7 @@ fn test_complex_form() {
         }
 
         impl Form {
-            for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
+            fields: for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
         }
     "#;
     let result = compile(source);
@@ -619,10 +619,10 @@ fn test_let_chain() {
             result: Number
         }
         impl Calc {
-            let a = 1
+            result: (let a = 1
             let b = 2
             let c = 3
-            c
+            c)
         }
     "#;
     let result = compile(source);
@@ -640,8 +640,8 @@ fn test_let_with_struct() {
             point: Point
         }
         impl Container {
-            let p = Point(x: 1, y: 2)
-            p
+            point: (let p = Point(x: 1, y: 2)
+            p)
         }
     "#;
     let result = compile(source);
@@ -662,7 +662,7 @@ fn test_provides_simple() {
             content: String
         }
         impl App {
-            provides Theme(color: "blue") {
+            content: provides Theme(color: "blue") {
                 "content"
             }
         }
@@ -684,7 +684,7 @@ fn test_provides_multiple() {
             content: String
         }
         impl App {
-            provides Theme(color: "red"), Config(debug: true) {
+            content: provides Theme(color: "red"), Config(debug: true) {
                 "content"
             }
         }

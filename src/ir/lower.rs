@@ -238,9 +238,16 @@ impl<'a> IrLowerer<'a> {
             None => return, // Error would have been caught in semantic analysis
         };
 
-        let body: Vec<IrExpr> = i.body.iter().map(|e| self.lower_expr(e)).collect();
+        let defaults: Vec<(String, IrExpr)> = i
+            .defaults
+            .iter()
+            .map(|(name, expr)| (name.name.clone(), self.lower_expr(expr)))
+            .collect();
 
-        self.module.add_impl(IrImpl { struct_id, body });
+        self.module.add_impl(IrImpl {
+            struct_id,
+            defaults,
+        });
     }
 
     fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {

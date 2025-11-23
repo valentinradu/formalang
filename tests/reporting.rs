@@ -300,17 +300,21 @@ fn test_span_creation() {
 
 #[test]
 fn test_error_report_type_mismatch() {
+    // Type mismatch in trait field implementation
     let source = r#"
-        struct Test {
+        trait Countable {
             count: Number
         }
-        impl Test {
-            count: "not a number"
+        struct Test: Countable {
+            count: String
         }
     "#;
     let result = compile_and_report(source, "test.fv");
-    // Type mismatch should be detected - impl assigns String to Number field
-    assert!(result.is_err(), "Type mismatch in impl should error");
+    // Type mismatch should be detected - struct field has wrong type for trait
+    assert!(
+        result.is_err(),
+        "Type mismatch in trait implementation should error"
+    );
 }
 
 #[test]
@@ -557,7 +561,7 @@ fn test_valid_complex_source() {
         }
 
         impl User {
-            "default user"
+            name: "default user"
         }
 
         enum Status {

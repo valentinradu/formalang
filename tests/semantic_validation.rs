@@ -162,7 +162,7 @@ fn test_if_expression_with_literal() {
             status: Boolean
         }
         impl Data {
-            if true { "yes" } else { "no" }
+            status: if true { true } else { false }
         }
     "#;
     let result = compile(source);
@@ -176,7 +176,7 @@ fn test_for_expression_with_literal() {
             items: [String]
         }
         impl List {
-            for item in ["a", "b"] { item }
+            items: for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
@@ -190,8 +190,8 @@ fn test_let_expression_simple() {
             a: Number
         }
         impl Calculator {
-            let x = 10
-            x
+            a: (let x = 10
+            x)
         }
     "#;
     let result = compile(source);
@@ -205,9 +205,9 @@ fn test_nested_let_expressions() {
             a: Boolean
         }
         impl Logic {
-            let x = 1
-            let y = 2
-            x
+            a: (let x = true
+            let y = false
+            x)
         }
     "#;
     let result = compile(source);
@@ -221,7 +221,7 @@ fn test_binary_operators_with_literals() {
             a: Number
         }
         impl Math {
-            1 + 2
+            a: 1 + 2
         }
     "#;
     let result = compile(source);
@@ -235,7 +235,7 @@ fn test_comparison_operators_with_literals() {
             a: Number
         }
         impl Compare {
-            1 < 2
+            a: if 1 < 2 { 1 } else { 0 }
         }
     "#;
     let result = compile(source);
@@ -249,7 +249,7 @@ fn test_logical_operators_with_literals() {
             a: Boolean
         }
         impl Logic {
-            true && false
+            a: true && false
         }
     "#;
     let result = compile(source);
@@ -267,7 +267,7 @@ fn test_invalid_if_condition_type() {
             value: Number
         }
         impl Test {
-            if value { "yes" } else { "no" }
+            value: if value { 1 } else { 0 }
         }
     "#;
     let result = compile(source);
@@ -282,7 +282,7 @@ fn test_invalid_for_not_array() {
             value: String
         }
         impl Test {
-            for item in value { item }
+            value: for item in value { item }
         }
     "#;
     let result = compile(source);
@@ -297,7 +297,7 @@ fn test_undefined_variable_reference() {
             value: Number
         }
         impl Test {
-            undefinedVariable + 1
+            value: undefinedVariable + 1
         }
     "#;
     let result = compile(source);
@@ -312,7 +312,7 @@ fn test_field_access_on_primitive() {
             value: Number
         }
         impl Test {
-            value.field
+            value: value.field
         }
     "#;
     let result = compile(source);
@@ -327,7 +327,7 @@ fn test_invalid_arithmetic_on_boolean() {
             flag: Boolean
         }
         impl Test {
-            flag + 1
+            flag: flag + 1
         }
     "#;
     let result = compile(source);
@@ -343,7 +343,7 @@ fn test_invalid_comparison_types() {
             num: Number
         }
         impl Test {
-            text < num
+            text: text < num
         }
     "#;
     let result = compile(source);
@@ -407,7 +407,7 @@ fn test_provides_expression() {
             value: String
         }
         impl Provider {
-            provides Theme(color: "blue") { "content" }
+            value: provides Theme(color: "blue") { "content" }
         }
     "#;
     let result = compile(source);
@@ -424,7 +424,7 @@ fn test_consumes_expression_without_provider() {
             value: String
         }
         impl Consumer {
-            consumes theme { "value" }
+            value: consumes theme { "value" }
         }
     "#;
     let result = compile(source);
@@ -562,7 +562,7 @@ fn test_dictionary_literal_in_impl() {
             data: [String: Number]
         }
         impl Config {
-            ["a": 1, "b": 2, "c": 3]
+            data: ["a": 1, "b": 2, "c": 3]
         }
     "#;
     let result = compile(source);
@@ -602,7 +602,7 @@ fn test_closure_expression_in_impl() {
             data: [String]
         }
         impl Mapper {
-            for item in ["a", "b"] { item }
+            data: for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
@@ -620,8 +620,8 @@ fn test_let_with_type_annotation() {
             value: Number
         }
         impl Test {
-            let x: Number = 10
-            x
+            value: (let x: Number = 10
+            x)
         }
     "#;
     let result = compile(source);
@@ -635,8 +635,8 @@ fn test_let_mutable() {
             initial: Number
         }
         impl Counter {
-            let mut count = 0
-            count
+            initial: (let mut count = 0
+            count)
         }
     "#;
     let result = compile(source);
@@ -650,8 +650,8 @@ fn test_let_simple_value() {
             value: Number
         }
         impl Test {
-            let x = 2
-            x
+            value: (let x = 2
+            x)
         }
     "#;
     let result = compile(source);
@@ -688,7 +688,7 @@ fn test_module_with_trait_and_impl() {
                 name: String
             }
             impl User {
-                "default"
+                name: "default"
             }
         }
     "#;

@@ -110,9 +110,9 @@ pub struct StructField {
 /// Impl block definition (implementation body for structs)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImplDef {
-    pub name: Ident,                 // Struct name being implemented
-    pub generics: Vec<GenericParam>, // Type parameters
-    pub body: Vec<Expr>,             // Body expressions
+    pub name: Ident,                  // Struct name being implemented
+    pub generics: Vec<GenericParam>,  // Type parameters
+    pub defaults: Vec<(Ident, Expr)>, // Field defaults: (field_name, default_value)
     pub span: Span,
 }
 

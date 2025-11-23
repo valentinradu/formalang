@@ -12,7 +12,8 @@ use formalang::compile;
 fn test_expr_span_struct_instantiation() {
     let source = r#"
         struct Point { x: Number, y: Number }
-        impl Point { Point(x: 1, y: 2) }
+        struct Container { p: Point }
+        impl Container { p: Point(x: 1, y: 2) }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -22,7 +23,7 @@ fn test_expr_span_enum_instantiation() {
     let source = r#"
         enum Status { active, error(msg: String) }
         struct A { s: Status }
-        impl A { Status.error(msg: "fail") }
+        impl A { s: Status.error(msg: "fail") }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -32,7 +33,7 @@ fn test_expr_span_inferred_enum() {
     let source = r#"
         enum Color { red, green, blue }
         struct A { c: Color }
-        impl A { .red }
+        impl A { c: .red }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -41,7 +42,7 @@ fn test_expr_span_inferred_enum() {
 fn test_expr_span_tuple() {
     let source = r#"
         struct A { t: (first: String, second: Number) }
-        impl A { (first: "a", second: 1) }
+        impl A { t: (first: "a", second: 1) }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -59,8 +60,8 @@ fn test_expr_span_dict_access() {
     let source = r#"
         struct A { x: String }
         impl A {
-            let d = ["a": "b"]
-            d["a"]
+            x: (let d = ["a": "b"]
+            d["a"])
         }
     "#;
     assert!(compile(source).is_ok());
@@ -78,7 +79,7 @@ fn test_expr_span_closure() {
 fn test_expr_span_group() {
     let source = r#"
         struct A { x: Number }
-        impl A { (1 + 2) * 3 }
+        impl A { x: (1 + 2) * 3 }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -89,7 +90,7 @@ fn test_expr_span_provides() {
         struct Theme { color: String }
         struct App { x: String }
         impl App {
-            provides Theme(color: "blue") {
+            x: provides Theme(color: "blue") {
                 "content"
             }
         }
@@ -118,7 +119,7 @@ fn test_expr_span_consumes() {
 fn test_binary_op_precedence_mul_add() {
     let source = r#"
         struct A { x: Number }
-        impl A { 1 + 2 * 3 }
+        impl A { x: 1 + 2 * 3 }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -127,7 +128,7 @@ fn test_binary_op_precedence_mul_add() {
 fn test_binary_op_precedence_comparison() {
     let source = r#"
         struct A { x: Boolean }
-        impl A { 1 < 2 && 3 > 2 }
+        impl A { x: 1 < 2 && 3 > 2 }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -136,7 +137,7 @@ fn test_binary_op_precedence_comparison() {
 fn test_binary_op_precedence_or_and() {
     let source = r#"
         struct A { x: Boolean }
-        impl A { true || false && true }
+        impl A { x: true || false && true }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -146,7 +147,7 @@ fn test_binary_op_all_comparison() {
     let source = r#"
         struct A { x: Boolean }
         impl A {
-            1 == 1 && 1 != 2 && 1 < 2 && 2 > 1 && 1 <= 1 && 2 >= 2
+            x: 1 == 1 && 1 != 2 && 1 < 2 && 2 > 1 && 1 <= 1 && 2 >= 2
         }
     "#;
     assert!(compile(source).is_ok());
@@ -156,7 +157,7 @@ fn test_binary_op_all_comparison() {
 fn test_binary_op_modulo() {
     let source = r#"
         struct A { x: Number }
-        impl A { 10 % 3 }
+        impl A { x: 10 % 3 }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -298,7 +299,7 @@ fn test_provides_multiple_values() {
         struct Config { debug: Boolean }
         struct App { x: String }
         impl App {
-            provides Theme(color: "red"), Config(debug: true) {
+            x: provides Theme(color: "red"), Config(debug: true) {
                 "content"
             }
         }
@@ -329,7 +330,7 @@ fn test_deeply_nested_if() {
     let source = r#"
         struct A { x: String }
         impl A {
-            if true {
+            x: if true {
                 if false {
                     if true { "a" } else { "b" }
                 } else {
@@ -348,7 +349,7 @@ fn test_nested_for_with_let() {
     let source = r#"
         struct A { items: [String] }
         impl A {
-            for item in ["a", "b", "c"] {
+            items: for item in ["a", "b", "c"] {
                 let prefix = "item: "
                 item
             }
@@ -361,9 +362,9 @@ fn test_nested_for_with_let() {
 fn test_match_with_bindings() {
     let source = r#"
         enum Result { ok, err }
-        struct Handler { status: Result }
+        struct Handler { x: String, status: Result }
         impl Handler {
-            match status {
+            x: match status {
                 ok: "success",
                 err: "failure"
             }
@@ -377,7 +378,7 @@ fn test_complex_binary_expression() {
     let source = r#"
         struct A { x: Number }
         impl A {
-            (1 + 2) * (3 - 4) / (5 % 2)
+            x: (1 + 2) * (3 - 4) / (5 % 2)
         }
     "#;
     assert!(compile(source).is_ok());
@@ -454,7 +455,7 @@ fn test_module_with_impl() {
     let source = r#"
         mod ui {
             struct Button { label: String }
-            impl Button { "click" }
+            impl Button { label: "click" }
         }
     "#;
     assert!(compile(source).is_ok());
@@ -532,7 +533,7 @@ fn test_nil_in_optional_field() {
 fn test_nil_in_impl() {
     let source = r#"
         struct A { x: String? }
-        impl A { nil }
+        impl A { x: nil }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -748,9 +749,9 @@ fn test_deeply_nested_modules() {
 fn test_module_with_trait_and_struct() {
     let source = r#"
         mod shapes {
-            pub trait Drawable { draw: () -> String }
-            pub struct Circle: Drawable { draw: () -> String, radius: Number }
-            impl Circle { "drawing circle" }
+            pub trait Drawable { x: String }
+            pub struct Circle: Drawable { x: String, radius: Number }
+            impl Circle { x: "drawing circle" }
         }
     "#;
     assert!(compile(source).is_ok());
@@ -774,7 +775,7 @@ fn test_module_with_enum() {
 #[test]
 fn test_error_impl_for_undefined_struct() {
     let source = r#"
-        impl NonExistent { "body" }
+        impl NonExistent { x: "body" }
     "#;
     assert!(compile(source).is_err());
 }
@@ -783,8 +784,8 @@ fn test_error_impl_for_undefined_struct() {
 fn test_error_duplicate_impl() {
     let source = r#"
         struct A { x: String }
-        impl A { "first" }
-        impl A { "second" }
+        impl A { x: "first" }
+        impl A { x: "second" }
     "#;
     assert!(compile(source).is_err());
 }
@@ -885,8 +886,8 @@ fn test_module_impl_with_expressions() {
         mod math {
             pub struct Calculator { x: Number }
             impl Calculator {
-                let result = 1 + 2
-                result
+                x: (let result = 1 + 2
+                result)
             }
         }
     "#;
@@ -897,9 +898,9 @@ fn test_module_impl_with_expressions() {
 fn test_module_impl_with_if() {
     let source = r#"
         mod logic {
-            pub struct Check { flag: Boolean }
+            pub struct Check { flag: Boolean, result: String }
             impl Check {
-                if flag { "yes" } else { "no" }
+                result: if flag { "yes" } else { "no" }
             }
         }
     "#;
@@ -910,9 +911,9 @@ fn test_module_impl_with_if() {
 fn test_module_impl_with_for() {
     let source = r#"
         mod lists {
-            pub struct Items { data: [String] }
+            pub struct Items { data: [String], output: [String] }
             impl Items {
-                for item in data { item }
+                output: for item in data { item }
             }
         }
     "#;
@@ -943,7 +944,7 @@ fn test_error_struct_missing_generic_args() {
     let source = r#"
         struct Box<T> { value: T }
         struct Container { box: Box<String> }
-        impl Container { Box(value: "test") }
+        impl Container { box: Box(value: "test") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -953,7 +954,7 @@ fn test_error_struct_extra_generic_args() {
     let source = r#"
         struct Simple { x: String }
         struct Container { s: Simple }
-        impl Container { Simple<String>(x: "test") }
+        impl Container { s: Simple<String>(x: "test") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -963,7 +964,7 @@ fn test_error_struct_wrong_generic_arity() {
     let source = r#"
         struct Pair<A, B> { a: A, b: B }
         struct Container { pair: Pair<String, Number> }
-        impl Container { Pair<String>(a: "x", b: 1) }
+        impl Container { pair: Pair<String>(a: "x", b: 1) }
     "#;
     assert!(compile(source).is_err());
 }
@@ -973,7 +974,7 @@ fn test_error_struct_unknown_field() {
     let source = r#"
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point }
-        impl Canvas { Point(x: 1, y: 2, z: 3) }
+        impl Canvas { point: Point(x: 1, y: 2, z: 3) }
     "#;
     assert!(compile(source).is_err());
 }
@@ -983,7 +984,7 @@ fn test_error_struct_missing_field() {
     let source = r#"
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point }
-        impl Canvas { Point(x: 1) }
+        impl Canvas { point: Point(x: 1) }
     "#;
     assert!(compile(source).is_err());
 }
@@ -993,7 +994,7 @@ fn test_error_struct_unknown_mount() {
     let source = r#"
         struct Box { label: String }
         struct App { box: Box }
-        impl App { Box(label: "test") { nonexistent: "value" } }
+        impl App { box: Box(label: "test") { nonexistent: "value" } }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1003,7 +1004,7 @@ fn test_error_struct_missing_mount() {
     let source = r#"
         struct Box { label: String, @mount content: String }
         struct App { box: Box }
-        impl App { Box(label: "test") }
+        impl App { box: Box(label: "test") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1017,7 +1018,7 @@ fn test_enum_instantiation_simple() {
     let source = r#"
         enum Status { ok, error }
         struct Response { status: Status }
-        impl Response { Status.ok }
+        impl Response { status: Status.ok }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1027,7 +1028,7 @@ fn test_enum_instantiation_with_data() {
     let source = r#"
         enum Message { text(content: String), error(code: Number) }
         struct Logger { msg: Message }
-        impl Logger { Message.text(content: "hello") }
+        impl Logger { msg: Message.text(content: "hello") }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1039,8 +1040,8 @@ fn test_enum_instantiation_with_data() {
 #[test]
 fn test_impl_field_reference() {
     let source = r#"
-        struct Person { name: String, age: Number }
-        impl Person { name }
+        struct Person { name: String, age: Number, display: String }
+        impl Person { display: name }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1048,8 +1049,8 @@ fn test_impl_field_reference() {
 #[test]
 fn test_impl_mount_field_reference() {
     let source = r#"
-        struct Card { @mount content: String }
-        impl Card { content }
+        struct Card { @mount content: String, display: String }
+        impl Card { display: content }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1057,8 +1058,8 @@ fn test_impl_mount_field_reference() {
 #[test]
 fn test_error_impl_undefined_reference() {
     let source = r#"
-        struct Person { name: String }
-        impl Person { undefined_field }
+        struct Person { name: String, display: String }
+        impl Person { display: undefined_field }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1081,7 +1082,7 @@ fn test_generic_in_impl_expression() {
     let source = r#"
         struct Box<T> { value: T }
         struct Wrapper { box: Box<String> }
-        impl Wrapper { Box<String>(value: "test") }
+        impl Wrapper { box: Box<String>(value: "test") }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1093,9 +1094,9 @@ fn test_generic_in_impl_expression() {
 #[test]
 fn test_for_loop_variable_in_scope() {
     let source = r#"
-        struct List { items: [String] }
+        struct List { items: [String], output: [String] }
         impl List {
-            for item in items { item }
+            output: for item in items { item }
         }
     "#;
     assert!(compile(source).is_ok());
@@ -1104,9 +1105,9 @@ fn test_for_loop_variable_in_scope() {
 #[test]
 fn test_nested_for_loops_separate_vars() {
     let source = r#"
-        struct Grid { rows: [String] }
+        struct Grid { rows: [String], output: [[String]] }
         impl Grid {
-            for row in rows {
+            output: for row in rows {
                 for col in rows {
                     row
                 }
@@ -1123,10 +1124,10 @@ fn test_nested_for_loops_separate_vars() {
 #[test]
 fn test_let_in_impl_scope() {
     let source = r#"
-        struct Calc { input: Number }
+        struct Calc { input: Number, result: Number }
         impl Calc {
-            let doubled = 2
-            doubled
+            result: (let doubled = 2
+            doubled)
         }
     "#;
     assert!(compile(source).is_ok());
@@ -1135,10 +1136,10 @@ fn test_let_in_impl_scope() {
 #[test]
 fn test_let_reference_in_impl() {
     let source = r#"
-        struct Config { base: Number }
+        struct Config { base: Number, result: Number }
         impl Config {
-            let x = base
-            x
+            result: (let x = base
+            x)
         }
     "#;
     assert!(compile(source).is_ok());
@@ -1152,8 +1153,8 @@ fn test_let_reference_in_impl() {
 fn test_field_access_chain() {
     // Field access chain is validated during semantic analysis
     let source = r#"
-        struct Outer { inner: String }
-        impl Outer { inner }
+        struct Outer { inner: String, display: String }
+        impl Outer { display: inner }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1163,7 +1164,7 @@ fn test_nested_struct_instantiation() {
     let source = r#"
         struct Inner { x: Number }
         struct Outer { inner: Inner }
-        impl Outer { Inner(x: 42) }
+        impl Outer { inner: Inner(x: 42) }
     "#;
     assert!(compile(source).is_ok());
 }
@@ -1178,7 +1179,7 @@ fn test_error_enum_variant_without_data() {
     let source = r#"
         enum Status { ok, error }
         struct Response { status: Status }
-        impl Response { Status.ok(msg: "test") }
+        impl Response { status: Status.ok(msg: "test") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1189,7 +1190,7 @@ fn test_error_enum_variant_requires_data() {
     let source = r#"
         enum Message { text(content: String) }
         struct Logger { msg: Message }
-        impl Logger { Message.text }
+        impl Logger { msg: Message.text }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1200,7 +1201,7 @@ fn test_error_enum_missing_field() {
     let source = r#"
         enum User { profile(name: String, age: Number) }
         struct App { user: User }
-        impl App { User.profile(name: "Bob") }
+        impl App { user: User.profile(name: "Bob") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1211,7 +1212,7 @@ fn test_error_enum_unknown_field() {
     let source = r#"
         enum User { profile(name: String) }
         struct App { user: User }
-        impl App { User.profile(name: "Bob", unknown: "x") }
+        impl App { user: User.profile(name: "Bob", unknown: "x") }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1222,7 +1223,7 @@ fn test_error_enum_unknown_variant() {
     let source = r#"
         enum Status { ok, error }
         struct Response { status: Status }
-        impl Response { Status.unknown }
+        impl Response { status: Status.unknown }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1231,8 +1232,8 @@ fn test_error_enum_unknown_variant() {
 fn test_error_undefined_enum() {
     // Using an enum that doesn't exist
     let source = r#"
-        struct Response { status: Status }
-        impl Response { NonExistent.ok }
+        struct Response { status: String }
+        impl Response { status: NonExistent.ok }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1418,7 +1419,7 @@ fn test_error_invalid_binary_op_types() {
     // Can't add string and number directly
     let source = r#"
         struct A { x: Boolean }
-        impl A { "hello" + 123 }
+        impl A { x: "hello" + 123 }
     "#;
     assert!(compile(source).is_err());
 }
@@ -1426,9 +1427,9 @@ fn test_error_invalid_binary_op_types() {
 #[test]
 fn test_error_for_loop_not_array() {
     let source = r#"
-        struct A { x: String }
+        struct A { x: String, items: [String] }
         impl A {
-            for item in "not an array" { item }
+            items: for item in "not an array" { item }
         }
     "#;
     assert!(compile(source).is_err());
@@ -1437,9 +1438,9 @@ fn test_error_for_loop_not_array() {
 #[test]
 fn test_error_match_not_enum() {
     let source = r#"
-        struct A { x: String }
+        struct A { x: String, result: String }
         impl A {
-            match "string" {
+            result: match "string" {
                 ok: "yes"
             }
         }
@@ -1451,9 +1452,9 @@ fn test_error_match_not_enum() {
 fn test_error_non_exhaustive_match() {
     let source = r#"
         enum Status { ok, error, pending }
-        struct Handler { status: Status }
+        struct Handler { status: Status, result: String }
         impl Handler {
-            match status {
+            result: match status {
                 ok: "ok"
             }
         }
@@ -1465,9 +1466,9 @@ fn test_error_non_exhaustive_match() {
 fn test_error_duplicate_match_arm() {
     let source = r#"
         enum Status { ok, error }
-        struct Handler { status: Status }
+        struct Handler { status: Status, result: String }
         impl Handler {
-            match status {
+            result: match status {
                 ok: "ok",
                 ok: "also ok",
                 error: "error"
@@ -1586,8 +1587,8 @@ fn test_let_type_inference_array() {
 #[test]
 fn test_question_mark_operator() {
     let source = r#"
-        struct A { opt: String? }
-        impl A { opt? }
+        struct A { opt: String?, result: String }
+        impl A { result: opt? }
     "#;
     // Question mark unwrap requires proper context
     assert!(compile(source).is_err());
@@ -1598,7 +1599,7 @@ fn test_deeply_nested_binary_ops() {
     let source = r#"
         struct A { x: Number }
         impl A {
-            ((1 + 2) * 3 - 4) / 5 % 6
+            x: ((1 + 2) * 3 - 4) / 5 % 6
         }
     "#;
     assert!(compile(source).is_ok());
@@ -1609,7 +1610,7 @@ fn test_comparison_chain() {
     let source = r#"
         struct A { x: Boolean }
         impl A {
-            1 < 2 && 2 < 3 && 3 <= 4
+            x: 1 < 2 && 2 < 3 && 3 <= 4
         }
     "#;
     assert!(compile(source).is_ok());
@@ -1620,7 +1621,7 @@ fn test_logical_operators() {
     let source = r#"
         struct A { x: Boolean }
         impl A {
-            true && false || true
+            x: true && false || true
         }
     "#;
     assert!(compile(source).is_ok());

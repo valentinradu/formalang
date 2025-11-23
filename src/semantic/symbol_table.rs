@@ -1,4 +1,4 @@
-use crate::ast::{Expr, GenericParam, Type, Visibility};
+use crate::ast::{Expr, GenericParam, Ident, Type, Visibility};
 use crate::location::Span;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -91,7 +91,7 @@ pub struct ImplInfo {
     #[allow(dead_code)]
     pub generics: Vec<GenericParam>,
     #[allow(dead_code)]
-    pub body: Vec<Expr>,
+    pub defaults: Vec<(Ident, Expr)>, // Field defaults: (field_name, default_value)
     pub span: Span,
 }
 
