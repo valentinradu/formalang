@@ -12,7 +12,10 @@
     "prec",
     "PREC",
     "gimsuyv",
-    "checkmark"
+    "checkmark",
+    "eprintln",
+    "usize",
+    "scrutinee"
   ],
   "ignorePaths": [
     "node_modules",
