@@ -427,7 +427,7 @@ fn test_impl_complex_expression() {
     let source = r#"
         struct A { x: Number }
         impl A {
-            if true {
+            x: if true {
                 for i in [1, 2, 3] {
                     i
                 }
@@ -448,8 +448,8 @@ fn test_multiple_impls() {
     let source = r#"
         struct A { x: String }
         struct B { y: Number }
-        impl A { "a value" }
-        impl B { 42 }
+        impl A { x: "a value" }
+        impl B { y: 42 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -571,24 +571,27 @@ fn test_ui_component_model() {
         struct Text {
             value: String,
             color: String = "black",
-            size: Number = 14
+            size: Number = 14,
+            display: String
         }
 
         struct Button {
             label: String,
             disabled: Boolean = false,
-            @mount onClick: String
+            @mount onClick: String,
+            display: String
         }
 
         struct Card: Renderable {
             title: String,
             @mount content: String,
-            @mount footer: String?
+            @mount footer: String?,
+            display: String
         }
 
-        impl Text { value }
-        impl Button { label }
-        impl Card { title }
+        impl Text { display: value }
+        impl Button { display: label }
+        impl Card { display: title }
     "#;
     assert!(
         compile(source).is_ok(),

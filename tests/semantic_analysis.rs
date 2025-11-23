@@ -82,7 +82,7 @@ fn test_impl_with_string_literal() {
             name: String
         }
         impl Greeting {
-            "Hello!"
+            name: "Hello!"
         }
     "#;
     let result = compile(source);
@@ -100,7 +100,7 @@ fn test_impl_with_number_literal() {
             count: Number
         }
         impl Counter {
-            42
+            count: 42
         }
     "#;
     let result = compile(source);
@@ -118,7 +118,7 @@ fn test_impl_with_boolean_literal() {
             enabled: Boolean
         }
         impl Flag {
-            true
+            enabled: true
         }
     "#;
     let result = compile(source);
@@ -136,7 +136,7 @@ fn test_impl_with_array_literal() {
             items: [String]
         }
         impl List {
-            ["a", "b", "c"]
+            items: ["a", "b", "c"]
         }
     "#;
     let result = compile(source);
@@ -158,7 +158,7 @@ fn test_impl_with_struct_reference() {
             person: Person
         }
         impl Container {
-            "Person data"
+            person: Person(name: "John", age: 30)
         }
     "#;
     let result = compile(source);
@@ -180,10 +180,10 @@ fn test_nested_if_expression() {
             a: Boolean
         }
         impl Logic {
-            if true {
-                if false { "inner" } else { "outer" }
+            a: if true {
+                if false { true } else { false }
             } else {
-                "else"
+                true
             }
         }
     "#;
@@ -198,8 +198,8 @@ fn test_nested_for_expression() {
             data: [[String]]
         }
         impl Matrix {
-            for item in ["a", "b", "c"] {
-                item
+            data: for item in ["a", "b", "c"] {
+                [item]
             }
         }
     "#;
@@ -214,8 +214,8 @@ fn test_let_with_if() {
             flag: Boolean
         }
         impl Conditional {
-            let x = if true { 1 } else { 2 }
-            x
+            flag: (let x = if true { true } else { false }
+            x)
         }
     "#;
     let result = compile(source);
@@ -229,8 +229,8 @@ fn test_let_with_for() {
             items: [String]
         }
         impl Iterator {
-            let items = for x in ["a", "b"] { x }
-            items
+            items: (let result = for x in ["a", "b"] { x }
+            result)
         }
     "#;
     let result = compile(source);
@@ -248,7 +248,7 @@ fn test_string_in_impl() {
             value: String
         }
         impl Text {
-            "hello world"
+            value: "hello world"
         }
     "#;
     let result = compile(source);
@@ -262,7 +262,7 @@ fn test_number_arithmetic() {
             value: Number
         }
         impl Math {
-            1 + 2 * 3 - 4 / 2
+            value: 1 + 2 * 3 - 4 / 2
         }
     "#;
     let result = compile(source);
@@ -276,7 +276,7 @@ fn test_boolean_logic() {
             value: Boolean
         }
         impl Logic {
-            true && false || true
+            value: true && false || true
         }
     "#;
     let result = compile(source);
@@ -290,7 +290,7 @@ fn test_comparison_operators() {
             result: Boolean
         }
         impl Compare {
-            1 < 2 && 3 > 2 && 4 >= 4 && 5 <= 5 && 1 == 1 && 1 != 2
+            result: 1 < 2 && 3 > 2 && 4 >= 4 && 5 <= 5 && 1 == 1 && 1 != 2
         }
     "#;
     let result = compile(source);
@@ -564,9 +564,9 @@ fn test_match_basic() {
             option: Option
         }
         impl Handler {
-            match Option.some {
-                .some: "has value",
-                .none: "no value"
+            option: match Option.some {
+                .some: .some,
+                .none: .none
             }
         }
     "#;
@@ -624,7 +624,7 @@ fn test_invalid_type_in_binary_op() {
             value: Boolean
         }
         impl Test {
-            true + false
+            value: true + false
         }
     "#;
     let result = compile(source);
@@ -825,7 +825,7 @@ fn test_full_application_model() {
         }
 
         impl User {
-            "User Profile"
+            name: "User Profile"
         }
     "#;
     let result = compile(source);
@@ -848,11 +848,11 @@ fn test_view_component_model() {
         }
 
         impl Button {
-            label
+            onClick: label
         }
 
         impl Card {
-            title
+            content: title
         }
     "#;
     let result = compile(source);

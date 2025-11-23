@@ -199,8 +199,8 @@ fn fill_definition_span(def: &mut Definition, source: &str) {
                 }
                 fill_span(&mut param.span, source);
             }
-            for body_expr in &mut i.body {
-                fill_expr_span(body_expr, source);
+            for (_field_name, default_expr) in &mut i.defaults {
+                fill_expr_span(default_expr, source);
             }
             fill_span(&mut i.span, source);
         }
@@ -963,6 +963,7 @@ where
 }
 
 /// Parse an impl block definition
+/// Impl blocks contain field defaults: `impl Struct { field: value, field: value }`
 fn impl_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, ImplDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -972,15 +973,19 @@ where
         .ignore_then(ident_parser())
         .then(generic_params_parser())
         .then(
-            expr_parser()
-                .repeated()
-                .collect()
+            // Parse named field defaults: field: value, field: value, ...
+            ident_parser()
+                .then_ignore(just(Token::Colon).labelled("':'"))
+                .then(expr_parser().labelled("default value"))
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
-        .map_with(|((name, generics), body), e| ImplDef {
+        .map_with(|((name, generics), defaults), e| ImplDef {
             name,
             generics,
-            body,
+            defaults,
             span: span_from_simple(e.span()),
         })
 }
@@ -2354,8 +2359,9 @@ mod tests {
     #[test]
     fn test_let_expr_in_for() {
         let input = r#"
+            struct App { content: [String] }
             impl App {
-                for item in items {
+                content: for item in items {
                     let formatted = item
                     Label(text: formatted)
                 }

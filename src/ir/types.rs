@@ -83,14 +83,14 @@ pub struct IrEnumVariant {
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide the body expressions for a struct.
+/// Impl blocks provide field defaults for a struct.
 #[derive(Clone, Debug)]
 pub struct IrImpl {
     /// The struct this impl is for
     pub struct_id: StructId,
 
-    /// Body expressions
-    pub body: Vec<IrExpr>,
+    /// Field defaults: (field_name, default_value)
+    pub defaults: Vec<(String, IrExpr)>,
 }
 
 /// A field definition.

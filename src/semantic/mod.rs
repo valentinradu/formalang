@@ -462,7 +462,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let info = ImplInfo {
                     struct_name: impl_def.name.name.clone(),
                     generics: impl_def.generics.clone(),
-                    body: impl_def.body.clone(),
+                    defaults: impl_def.defaults.clone(),
                     span: impl_def.span,
                 };
 
@@ -826,7 +826,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let info = ImplInfo {
                     struct_name: impl_def.name.name.clone(),
                     generics: impl_def.generics.clone(),
-                    body: impl_def.body.clone(),
+                    defaults: impl_def.defaults.clone(),
                     span: impl_def.span,
                 };
 
@@ -936,8 +936,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
 
-                        // Validate expressions in impl body
-                        for expr in &impl_def.body {
+                        // Validate expressions in impl defaults
+                        for (_field_name, expr) in &impl_def.defaults {
                             self.validate_expr(expr, file);
                         }
 
@@ -993,7 +993,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.push_generic_scope(&impl_def.generics);
                                     self.current_impl_struct = Some(impl_def.name.name.clone());
                                     self.local_let_bindings.clear();
-                                    for expr in &impl_def.body {
+                                    for (_field_name, expr) in &impl_def.defaults {
                                         self.validate_expr(expr, file);
                                     }
                                     self.current_impl_struct = None;
@@ -1136,7 +1136,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.push_generic_scope(&impl_def.generics);
                     self.current_impl_struct = Some(impl_def.name.name.clone());
                     self.local_let_bindings.clear();
-                    for expr in &impl_def.body {
+                    for (_field_name, expr) in &impl_def.defaults {
                         self.validate_expr(expr, file);
                     }
                     self.current_impl_struct = None;
@@ -1417,8 +1417,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.current_impl_struct = Some(impl_def.name.name.clone());
                         // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
-                        // Validate impl body expressions
-                        for expr in &impl_def.body {
+                        // Validate impl defaults expressions
+                        for (_field_name, expr) in &impl_def.defaults {
                             self.validate_expr(expr, file);
                         }
                         // Clear impl struct context and local bindings

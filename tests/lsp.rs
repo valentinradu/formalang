@@ -600,7 +600,7 @@ fn test_find_node_at_offset_impl_block() {
             data: String
         }
         impl Value {
-            "test"
+            data: "test"
         }
     "#;
     let result = compile_with_analyzer(source);
@@ -1113,7 +1113,7 @@ fn test_find_node_enclosing_definition() {
 fn test_find_node_is_in_expression() {
     let source = r#"
         struct Result { value: Number }
-        impl Result { 42 }
+        impl Result { value: 42 }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1218,7 +1218,7 @@ fn test_find_node_in_impl_with_struct_instantiation() {
     let source = r#"
         struct Point { x: Number, y: Number }
         struct Container { point: Point }
-        impl Container { Point(x: 1, y: 2) }
+        impl Container { point: Point(x: 1, y: 2) }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1239,7 +1239,7 @@ fn test_find_node_in_impl_with_struct_instantiation() {
 fn test_find_node_in_for_expression() {
     let source = r#"
         struct List { items: [String] }
-        impl List { for x in ["a", "b"] { x } }
+        impl List { items: for x in ["a", "b"] { x } }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1260,7 +1260,7 @@ fn test_find_node_in_for_expression() {
 fn test_find_node_in_if_expression() {
     let source = r#"
         struct Result { value: String }
-        impl Result { if true { "yes" } else { "no" } }
+        impl Result { value: if true { "yes" } else { "no" } }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1281,7 +1281,7 @@ fn test_find_node_in_if_expression() {
 fn test_find_node_in_binary_expression() {
     let source = r#"
         struct Math { result: Number }
-        impl Math { 1 + 2 }
+        impl Math { result: 1 + 2 }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());

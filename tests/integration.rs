@@ -349,7 +349,7 @@ fn test_impl_block_with_literal() {
         }
 
         impl Greeting {
-            "Hello, World!"
+            message: "Hello, World!"
         }
     "#;
     let result = compile(source);
@@ -368,7 +368,7 @@ fn test_impl_block_with_struct_instantiation() {
         }
 
         impl Outer {
-            Inner(value: 42)
+            inner: Inner(value: 42)
         }
     "#;
     let result = compile(source);
@@ -519,7 +519,7 @@ fn test_if_expression() {
         }
 
         impl Widget {
-            if true { "yes" } else { "no" }
+            content: if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -538,7 +538,7 @@ fn test_for_expression() {
         }
 
         impl List {
-            for item in ["a", "b", "c"] { Item(value: item) }
+            items: for item in ["a", "b", "c"] { Item(value: item) }
         }
     "#;
     let result = compile(source);
@@ -559,7 +559,7 @@ fn test_match_expression() {
         }
 
         impl Display {
-            match status {
+            text: match status {
                 active: "Active",
                 inactive: "Inactive"
             }
@@ -621,8 +621,8 @@ fn test_let_expression_in_impl() {
         }
 
         impl Result {
-            let x = 10
-            x
+            value: (let x = 10
+            x)
         }
     "#;
     let result = compile(source);
@@ -637,8 +637,8 @@ fn test_let_with_type_annotation() {
         }
 
         impl Result {
-            let x: Number = 10
-            x
+            value: (let x: Number = 10
+            x)
         }
     "#;
     let result = compile(source);
@@ -653,8 +653,8 @@ fn test_let_mut() {
         }
 
         impl Counter {
-            let mut count = 0
-            count
+            value: (let mut count = 0
+            count)
         }
     "#;
     let result = compile(source);
@@ -669,10 +669,10 @@ fn test_nested_let_expressions() {
         }
 
         impl Computation {
-            let a = 1
+            result: (let a = 1
             let b = 2
             let c = 3
-            a
+            a)
         }
     "#;
     let result = compile(source);
@@ -695,7 +695,7 @@ fn test_provides_expression() {
         }
 
         impl App {
-            provides Theme(color: "blue") {
+            content: provides Theme(color: "blue") {
                 "themed content"
             }
         }
@@ -718,17 +718,17 @@ fn test_consumes_expression() {
         }
 
         struct Button {
-            label: String
+            label: String, display: String
         }
 
         impl App {
-            provides Theme(color: "blue") {
+            content: provides Theme(color: "blue") {
                 Button(label: "Click me")
             }
         }
 
         impl Button {
-            consumes theme {
+            display: consumes theme {
                 "button with " + theme.color
             }
         }
@@ -828,7 +828,7 @@ fn test_error_missing_trait_field() {
 fn test_error_impl_for_undefined_struct() {
     let source = r#"
         impl UndefinedStruct {
-            "value"
+            x: "value"
         }
     "#;
     let result = compile(source);
@@ -864,7 +864,7 @@ fn test_complex_ui_component() {
         }
 
         impl Card {
-            "Card component"
+            content: "Card component"
         }
     "#;
     let result = compile(source);
@@ -996,7 +996,7 @@ fn test_field_reference() {
         }
 
         impl User {
-            name
+            displayName: name
         }
     "#;
     let result = compile(source);
@@ -1017,7 +1017,33 @@ fn test_enum_variant_reference() {
         }
 
         impl Widget {
-            .red
+            color: .red
+        }
+    "#;
+    let result = compile(source);
+    assert!(result.is_ok(), "Failed: {:?}", result.err());
+}
+
+#[test]
+fn test_inferred_enum_in_struct_instantiation_args() {
+    // Regression test: inferred enum variants inside struct instantiation arguments
+    let source = r#"
+        enum SizeMode { auto, fixed(value: Number) }
+        enum RepeatMode { none, horizontal, vertical, both }
+
+        struct Size {
+            width: SizeMode,
+            height: SizeMode
+        }
+
+        struct Pattern {
+            size: Size,
+            repeat: RepeatMode
+        }
+
+        impl Pattern {
+            size: Size(width: .auto, height: .auto),
+            repeat: .both
         }
     "#;
     let result = compile(source);

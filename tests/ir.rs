@@ -316,8 +316,8 @@ fn test_get_enum_by_id() {
 #[test]
 fn test_lower_impl_block() {
     let source = r#"
-        struct Counter { count: Number }
-        impl Counter { count }
+        struct Counter { count: Number, display: Number }
+        impl Counter { display: count }
     "#;
     let result = compile_to_ir(source);
     assert!(result.is_ok());
@@ -331,14 +331,14 @@ fn test_lower_impl_block() {
 fn test_lower_impl_with_literal() {
     let source = r#"
         struct Config { name: String }
-        impl Config { "default" }
+        impl Config { name: "default" }
     "#;
     let result = compile_to_ir(source);
     assert!(result.is_ok());
     let module = result.unwrap();
 
     assert_eq!(module.impls.len(), 1);
-    assert!(!module.impls[0].body.is_empty());
+    assert!(!module.impls[0].defaults.is_empty());
 }
 
 // =============================================================================
@@ -718,10 +718,10 @@ fn test_visitor_counts_variants() {
 #[test]
 fn test_visitor_counts_impls() {
     let source = r#"
-        struct A { x: Number }
-        struct B { y: Number }
-        impl A { x }
-        impl B { y }
+        struct A { x: Number, display: Number }
+        struct B { y: Number, display: Number }
+        impl A { display: x }
+        impl B { display: y }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -735,9 +735,9 @@ fn test_visitor_counts_impls() {
 fn test_visitor_mixed_definitions() {
     let source = r#"
         trait Named { name: String }
-        struct User: Named { name: String, age: Number }
+        struct User: Named { name: String, age: Number, display: String }
         enum Status { active, inactive }
-        impl User { name }
+        impl User { display: name }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -748,8 +748,8 @@ fn test_visitor_mixed_definitions() {
     assert_eq!(counter.trait_count, 1);
     assert_eq!(counter.enum_count, 1);
     assert_eq!(counter.impl_count, 1);
-    // 1 trait field + 2 struct fields = 3 fields
-    assert_eq!(counter.field_count, 3);
+    // 1 trait field + 3 struct fields = 4 fields
+    assert_eq!(counter.field_count, 4);
     // 2 enum variants
     assert_eq!(counter.variant_count, 2);
 }
@@ -800,12 +800,12 @@ fn type_name(ty: &ResolvedType) -> String {
 fn test_expr_type_literal_string() {
     let source = r#"
         struct S { name: String }
-        impl S { "hello" }
+        impl S { name: "hello" }
     "#;
     let module = compile_to_ir(source).unwrap();
 
     assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "String");
 }
 
@@ -813,11 +813,11 @@ fn test_expr_type_literal_string() {
 fn test_expr_type_literal_number() {
     let source = r#"
         struct S { value: Number }
-        impl S { 42 }
+        impl S { value: 42 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Number");
 }
 
@@ -825,11 +825,11 @@ fn test_expr_type_literal_number() {
 fn test_expr_type_literal_boolean() {
     let source = r#"
         struct S { flag: Boolean }
-        impl S { true }
+        impl S { flag: true }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
@@ -837,11 +837,11 @@ fn test_expr_type_literal_boolean() {
 fn test_expr_type_array() {
     let source = r#"
         struct S { items: [Number] }
-        impl S { [1, 2, 3] }
+        impl S { items: [1, 2, 3] }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Array");
 }
 
@@ -850,38 +850,38 @@ fn test_expr_type_struct_instantiation() {
     let source = r#"
         struct Point { x: Number, y: Number }
         struct Container { p: Point }
-        impl Container { Point(x: 1, y: 2) }
+        impl Container { p: Point(x: 1, y: 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Struct");
 }
 
 #[test]
 fn test_expr_type_reference() {
     let source = r#"
-        struct S { x: Number }
-        impl S { x }
+        struct S { x: Number, y: Number }
+        impl S { y: x }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    // Impl body should have the reference expression
+    // Impl defaults should have the reference expression
     assert!(!module.impls.is_empty());
-    assert!(!module.impls[0].body.is_empty());
+    assert!(!module.impls[0].defaults.is_empty());
     // The expression has a type (implementation detail: might be TypeParam for field refs)
-    let _ty = module.impls[0].body[0].ty();
+    let _ty = module.impls[0].defaults[0].1.ty();
 }
 
 #[test]
 fn test_expr_type_binary_arithmetic() {
     let source = r#"
         struct S { sum: Number }
-        impl S { 1 + 2 }
+        impl S { sum: 1 + 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     // Arithmetic results in Number
     assert_eq!(type_name(expr.ty()), "Number");
 }
@@ -890,11 +890,11 @@ fn test_expr_type_binary_arithmetic() {
 fn test_expr_type_binary_comparison() {
     let source = r#"
         struct S { result: Boolean }
-        impl S { 1 == 2 }
+        impl S { result: 1 == 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     // Comparison results in Boolean
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -967,12 +967,12 @@ fn test_resolved_type_display_nested_array() {
 fn test_lower_if_expression() {
     let source = r#"
         struct S { value: Number }
-        impl S { if true { 1 } else { 2 } }
+        impl S { value: if true { 1 } else { 2 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
     assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert!(matches!(expr, formalang::ir::IrExpr::If { .. }));
 }
 
@@ -980,11 +980,11 @@ fn test_lower_if_expression() {
 fn test_lower_if_without_else() {
     let source = r#"
         struct S { value: Number? }
-        impl S { if true { 1 } }
+        impl S { value: if true { 1 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::If { else_branch, .. } = expr {
         assert!(else_branch.is_none());
     } else {
@@ -996,11 +996,11 @@ fn test_lower_if_without_else() {
 fn test_lower_for_expression() {
     let source = r#"
         struct S { items: [Number] }
-        impl S { for x in [1, 2, 3] { x } }
+        impl S { items: for x in [1, 2, 3] { x } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::For { var, .. } = expr {
         assert_eq!(var, "x");
     } else {
@@ -1013,14 +1013,14 @@ fn test_lower_let_expression() {
     let source = r#"
         struct S { value: Number }
         impl S {
-            let x = 5
-            x
+            value: (let x = 5
+            x)
         }
     "#;
     let module = compile_to_ir(source).unwrap();
 
     assert!(!module.impls.is_empty());
-    assert!(!module.impls[0].body.is_empty());
+    assert!(!module.impls[0].defaults.is_empty());
 }
 
 // =============================================================================
@@ -1032,11 +1032,11 @@ fn test_lower_enum_instantiation_simple() {
     let source = r#"
         enum Status { active, inactive }
         struct S { status: Status }
-        impl S { Status.active }
+        impl S { status: Status.active }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
         assert_eq!(variant, "active");
     } else {
@@ -1049,11 +1049,11 @@ fn test_lower_enum_instantiation_with_data() {
     let source = r#"
         enum Option { none, some(value: Number) }
         struct S { opt: Option }
-        impl S { Option.some(value: 42) }
+        impl S { opt: Option.some(value: 42) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::EnumInst {
         variant, fields, ..
     } = expr
@@ -1071,11 +1071,11 @@ fn test_lower_inferred_enum_instantiation() {
     let source = r#"
         enum Status { active, inactive }
         struct S { status: Status }
-        impl S { .active }
+        impl S { status: .active }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
         assert_eq!(variant, "active");
     } else {
@@ -1091,11 +1091,11 @@ fn test_lower_inferred_enum_instantiation() {
 fn test_lower_tuple_expression() {
     let source = r#"
         struct S { point: (x: Number, y: Number) }
-        impl S { (x: 1, y: 2) }
+        impl S { point: (x: 1, y: 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     if let formalang::ir::IrExpr::Tuple { fields, ty } = expr {
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].0, "x");
@@ -1114,11 +1114,11 @@ fn test_lower_tuple_expression() {
 fn test_lower_binary_subtraction() {
     let source = r#"
         struct S { diff: Number }
-        impl S { 10 - 3 }
+        impl S { diff: 10 - 3 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
 }
 
@@ -1126,11 +1126,11 @@ fn test_lower_binary_subtraction() {
 fn test_lower_binary_multiplication() {
     let source = r#"
         struct S { product: Number }
-        impl S { 5 * 4 }
+        impl S { product: 5 * 4 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
 }
 
@@ -1138,11 +1138,11 @@ fn test_lower_binary_multiplication() {
 fn test_lower_binary_logical_and() {
     let source = r#"
         struct S { result: Boolean }
-        impl S { true && false }
+        impl S { result: true && false }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -1151,11 +1151,11 @@ fn test_lower_binary_logical_and() {
 fn test_lower_binary_logical_or() {
     let source = r#"
         struct S { result: Boolean }
-        impl S { true || false }
+        impl S { result: true || false }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -1164,11 +1164,11 @@ fn test_lower_binary_logical_or() {
 fn test_lower_binary_less_than() {
     let source = r#"
         struct S { result: Boolean }
-        impl S { 1 < 2 }
+        impl S { result: 1 < 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
@@ -1176,11 +1176,11 @@ fn test_lower_binary_less_than() {
 fn test_lower_binary_greater_than() {
     let source = r#"
         struct S { result: Boolean }
-        impl S { 2 > 1 }
+        impl S { result: 2 > 1 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].body[0];
+    let expr = &module.impls[0].defaults[0].1;
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
@@ -1243,7 +1243,7 @@ impl IrVisitor for ExprCounter {
 fn test_visitor_walks_if_children() {
     let source = r#"
         struct S { value: Number }
-        impl S { if true { 1 } else { 2 } }
+        impl S { value: if true { 1 } else { 2 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1259,7 +1259,7 @@ fn test_visitor_walks_if_children() {
 fn test_visitor_walks_for_children() {
     let source = r#"
         struct S { items: [Number] }
-        impl S { for x in [1, 2] { x } }
+        impl S { items: for x in [1, 2] { x } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1276,7 +1276,7 @@ fn test_visitor_walks_nested_if() {
     let source = r#"
         struct S { value: Number }
         impl S {
-            if true {
+            value: if true {
                 if false { 1 } else { 2 }
             } else {
                 3
@@ -1298,7 +1298,7 @@ fn test_visitor_walks_nested_if() {
 fn test_visitor_walks_binary_op_children() {
     let source = r#"
         struct S { result: Number }
-        impl S { 1 + 2 + 3 }
+        impl S { result: 1 + 2 + 3 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1315,7 +1315,7 @@ fn test_visitor_walks_struct_inst_children() {
     let source = r#"
         struct Point { x: Number, y: Number }
         struct Container { p: Point }
-        impl Container { Point(x: 1 + 2, y: 3) }
+        impl Container { p: Point(x: 1 + 2, y: 3) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1332,7 +1332,7 @@ fn test_visitor_walks_enum_inst_children() {
     let source = r#"
         enum Option { none, some(value: Number) }
         struct S { opt: Option }
-        impl S { Option.some(value: 1 + 2) }
+        impl S { opt: Option.some(value: 1 + 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1348,7 +1348,7 @@ fn test_visitor_walks_enum_inst_children() {
 fn test_visitor_walks_array_children() {
     let source = r#"
         struct S { items: [Number] }
-        impl S { [1, 2 + 3, 4] }
+        impl S { items: [1, 2 + 3, 4] }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1364,7 +1364,7 @@ fn test_visitor_walks_array_children() {
 fn test_visitor_walks_tuple_children() {
     let source = r#"
         struct S { point: (x: Number, y: Number) }
-        impl S { (x: 1 + 2, y: 3) }
+        impl S { point: (x: 1 + 2, y: 3) }
     "#;
     let module = compile_to_ir(source).unwrap();
 

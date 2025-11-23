@@ -49,7 +49,7 @@ fn test_compile_comments() {
 fn test_nil_literal() {
     let source = r#"
         struct A { x: String? }
-        impl A { nil }
+        impl A { x: nil }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -62,7 +62,7 @@ fn test_nil_literal() {
 fn test_array_literal_empty() {
     let source = r#"
         struct A { items: [String] }
-        impl A { [] }
+        impl A { items: [] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -75,7 +75,7 @@ fn test_array_literal_empty() {
 fn test_array_literal_single() {
     let source = r#"
         struct A { items: [String] }
-        impl A { ["one"] }
+        impl A { items: ["one"] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -88,7 +88,7 @@ fn test_array_literal_single() {
 fn test_array_literal_many() {
     let source = r#"
         struct A { items: [Number] }
-        impl A { [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+        impl A { items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -101,7 +101,7 @@ fn test_array_literal_many() {
 fn test_negative_number() {
     let source = r#"
         struct A { x: Number }
-        impl A { -42 }
+        impl A { x: -42 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -114,7 +114,7 @@ fn test_negative_number() {
 fn test_decimal_number() {
     let source = r#"
         struct A { x: Number }
-        impl A { 3.14159 }
+        impl A { x: 3.14159 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -127,7 +127,7 @@ fn test_decimal_number() {
 fn test_negative_decimal() {
     let source = r#"
         struct A { x: Number }
-        impl A { -0.5 }
+        impl A { x: -0.5 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -140,7 +140,7 @@ fn test_negative_decimal() {
 fn test_string_with_escapes() {
     let source = r#"
         struct A { x: String }
-        impl A { "hello\nworld\t!" }
+        impl A { x: "hello\nworld\t!" }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -153,7 +153,7 @@ fn test_string_with_escapes() {
 fn test_string_with_quotes() {
     let source = r#"
         struct A { x: String }
-        impl A { "say \"hello\"" }
+        impl A { x: "say \"hello\"" }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -170,7 +170,7 @@ fn test_string_with_quotes() {
 fn test_arithmetic_precedence() {
     let source = r#"
         struct A { x: Number }
-        impl A { 1 + 2 * 3 }
+        impl A { x: 1 + 2 * 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -183,7 +183,7 @@ fn test_arithmetic_precedence() {
 fn test_comparison_chain() {
     let source = r#"
         struct A { x: Boolean }
-        impl A { 1 < 2 && 2 < 3 }
+        impl A { x: 1 < 2 && 2 < 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -196,7 +196,7 @@ fn test_comparison_chain() {
 fn test_logical_precedence() {
     let source = r#"
         struct A { x: Boolean }
-        impl A { true || false && true }
+        impl A { x: true || false && true }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -209,7 +209,7 @@ fn test_logical_precedence() {
 fn test_parenthesized_expression() {
     let source = r#"
         struct A { x: Number }
-        impl A { (1 + 2) * 3 }
+        impl A { x: (1 + 2) * 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -222,7 +222,7 @@ fn test_parenthesized_expression() {
 fn test_nested_parentheses() {
     let source = r#"
         struct A { x: Number }
-        impl A { ((1 + 2) * (3 + 4)) }
+        impl A { x: ((1 + 2) * (3 + 4)) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -239,7 +239,7 @@ fn test_nested_parentheses() {
 fn test_if_without_else() {
     let source = r#"
         struct A { x: String? }
-        impl A { if true { "yes" } }
+        impl A { x: if true { "yes" } }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -253,7 +253,7 @@ fn test_simple_else() {
     let source = r#"
         struct A { x: String }
         impl A {
-            if false { "a" } else { "b" }
+            x: if false { "a" } else { "b" }
         }
     "#;
     assert!(
@@ -268,8 +268,8 @@ fn test_for_with_if() {
     let source = r#"
         struct A { x: [String] }
         impl A {
-            for x in ["a", "b", "c"] {
-                if true { x } else { "default" }
+            x: for item in ["a", "b", "c"] {
+                if true { item } else { "default" }
             }
         }
     "#;
@@ -285,10 +285,10 @@ fn test_let_chain() {
     let source = r#"
         struct A { x: Number }
         impl A {
-            let a = 1
+            x: (let a = 1
             let b = 2
             let c = 3
-            a
+            a)
         }
     "#;
     assert!(
@@ -306,8 +306,8 @@ fn test_let_chain() {
 fn test_field_access_simple() {
     let source = r#"
         struct Inner { value: String }
-        struct Outer { inner: Inner }
-        impl Outer { inner }
+        struct Outer { inner: Inner, display: Inner }
+        impl Outer { display: inner }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -354,9 +354,9 @@ fn test_enum_many_variants() {
 fn test_match_exhaustive() {
     let source = r#"
         enum AB { a, b }
-        struct Handler { x: AB }
+        struct Handler { x: AB, result: String }
         impl Handler {
-            match AB.a {
+            result: match AB.a {
                 .a: "first",
                 .b: "second"
             }
@@ -541,8 +541,8 @@ fn test_struct_multiple_generic_params() {
 #[test]
 fn test_impl_empty_struct() {
     let source = r#"
-        struct Empty { }
-        impl Empty { "empty" }
+        struct Empty { x: String }
+        impl Empty { x: "empty" }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -559,7 +559,7 @@ fn test_impl_with_expression() {
             value: Number
         }
         impl Config {
-            "default config"
+            name: "default config"
         }
     "#;
     assert!(
@@ -685,9 +685,9 @@ fn test_let_expression() {
 fn test_provides_simple() {
     let source = r#"
         struct Theme { color: String }
-        struct Provider { theme: Theme }
+        struct Provider { theme: Theme, result: String }
         impl Provider {
-            provides Theme { "blue" }
+            result: provides Theme(color: "red") { "blue" }
         }
     "#;
     assert!(
@@ -728,8 +728,9 @@ fn test_full_file() {
         let VERSION = "1.0.0"
 
         // Impls
-        impl User {
-            name
+        struct Display { user: User }
+        impl Display {
+            user: User(id: 1, name: "test", status: Status.active)
         }
     "#;
     assert!(
@@ -758,9 +759,9 @@ fn test_view_hierarchy() {
             @mount onClick: String
         }
 
-        impl Container { "Container" }
-        impl Card { title }
-        impl Button { label }
+        impl Container { header: "Container" }
+        impl Card { body: title }
+        impl Button { onClick: label }
     "#;
     assert!(
         compile(source).is_ok(),

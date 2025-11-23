@@ -127,7 +127,7 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
     // Visit impls
     for i in &module.impls {
         visitor.visit_impl(i);
-        for expr in &i.body {
+        for (_field_name, expr) in &i.defaults {
             walk_expr(visitor, expr);
         }
     }
