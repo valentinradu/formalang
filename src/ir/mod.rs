@@ -1,0 +1,268 @@
+//! Intermediate Representation (IR) for FormaLang
+//!
+//! The IR is a type-resolved representation of FormaLang programs optimized for
+//! code generation. Unlike the AST which preserves source syntax, the IR provides:
+//!
+//! - Resolved types on every expression
+//! - ID-based references to definitions (no string lookups)
+//! - Flattened structure for easy traversal
+//!
+//! # Example
+//!
+//! ```
+//! use formalang::compile_to_ir;
+//!
+//! let source = r#"
+//! pub struct User {
+//!     name: String,
+//!     age: Number
+//! }
+//! "#;
+//!
+//! let module = compile_to_ir(source).unwrap();
+//! assert_eq!(module.structs.len(), 1);
+//! assert_eq!(module.structs[0].name, "User");
+//! ```
+
+mod expr;
+mod lower;
+mod types;
+mod visitor;
+
+pub use expr::{IrExpr, IrMatchArm};
+pub use lower::lower_to_ir;
+pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrStruct, IrTrait};
+pub use visitor::{walk_expr, walk_module, IrVisitor};
+
+use crate::ast::{PrimitiveType, Visibility};
+
+/// ID for referencing struct definitions.
+///
+/// Use this to look up structs in [`IrModule::structs`]:
+/// ```ignore
+/// let struct_def = &module.structs[id.0 as usize];
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct StructId(pub u32);
+
+/// ID for referencing trait definitions.
+///
+/// Use this to look up traits in [`IrModule::traits`]:
+/// ```ignore
+/// let trait_def = &module.traits[id.0 as usize];
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct TraitId(pub u32);
+
+/// ID for referencing enum definitions.
+///
+/// Use this to look up enums in [`IrModule::enums`]:
+/// ```ignore
+/// let enum_def = &module.enums[id.0 as usize];
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnumId(pub u32);
+
+/// A fully resolved type.
+///
+/// Unlike AST types which use string names, resolved types use IDs that
+/// directly reference definitions. This eliminates the need for symbol
+/// table lookups during code generation.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResolvedType {
+    /// Primitive type (String, Number, Boolean, Path, Regex)
+    Primitive(PrimitiveType),
+
+    /// Reference to a struct definition
+    Struct(StructId),
+
+    /// Reference to a trait definition
+    Trait(TraitId),
+
+    /// Reference to an enum definition
+    Enum(EnumId),
+
+    /// Array type: `[T]`
+    Array(Box<ResolvedType>),
+
+    /// Optional type: `T?`
+    Optional(Box<ResolvedType>),
+
+    /// Named tuple type: `(name1: T1, name2: T2)`
+    Tuple(Vec<(String, ResolvedType)>),
+
+    /// Generic type instantiation: `Box<String>`
+    Generic {
+        /// The generic struct being instantiated
+        base: StructId,
+        /// Type arguments
+        args: Vec<ResolvedType>,
+    },
+
+    /// Unresolved type parameter (e.g., `T` in a generic definition)
+    ///
+    /// This variant is used within generic definitions where the actual
+    /// type is not yet known. Code generators should handle this by
+    /// emitting the type parameter name.
+    TypeParam(String),
+}
+
+/// The root IR node containing all definitions.
+///
+/// Definitions are stored in vectors, indexed by their respective ID types.
+/// For example, `StructId(0)` refers to `structs[0]`.
+///
+/// # Example
+///
+/// ```ignore
+/// // Look up a struct by ID
+/// let struct_def = &module.structs[struct_id.0 as usize];
+///
+/// // Or use the helper method
+/// let struct_def = module.get_struct(struct_id);
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct IrModule {
+    /// All struct definitions, indexed by StructId
+    pub structs: Vec<IrStruct>,
+
+    /// All trait definitions, indexed by TraitId
+    pub traits: Vec<IrTrait>,
+
+    /// All enum definitions, indexed by EnumId
+    pub enums: Vec<IrEnum>,
+
+    /// All impl blocks
+    pub impls: Vec<IrImpl>,
+
+    /// Mapping from struct names to IDs for lookup during lowering
+    struct_names: std::collections::HashMap<String, StructId>,
+
+    /// Mapping from trait names to IDs for lookup during lowering
+    trait_names: std::collections::HashMap<String, TraitId>,
+
+    /// Mapping from enum names to IDs for lookup during lowering
+    enum_names: std::collections::HashMap<String, EnumId>,
+}
+
+impl IrModule {
+    /// Create a new empty IR module.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Look up a struct by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ID is out of bounds.
+    pub fn get_struct(&self, id: StructId) -> &IrStruct {
+        &self.structs[id.0 as usize]
+    }
+
+    /// Look up a trait by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ID is out of bounds.
+    pub fn get_trait(&self, id: TraitId) -> &IrTrait {
+        &self.traits[id.0 as usize]
+    }
+
+    /// Look up an enum by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ID is out of bounds.
+    pub fn get_enum(&self, id: EnumId) -> &IrEnum {
+        &self.enums[id.0 as usize]
+    }
+
+    /// Look up a struct ID by name.
+    pub fn struct_id(&self, name: &str) -> Option<StructId> {
+        self.struct_names.get(name).copied()
+    }
+
+    /// Look up a trait ID by name.
+    pub fn trait_id(&self, name: &str) -> Option<TraitId> {
+        self.trait_names.get(name).copied()
+    }
+
+    /// Look up an enum ID by name.
+    pub fn enum_id(&self, name: &str) -> Option<EnumId> {
+        self.enum_names.get(name).copied()
+    }
+
+    /// Add a struct and return its ID.
+    pub(crate) fn add_struct(&mut self, name: String, s: IrStruct) -> StructId {
+        let id = StructId(self.structs.len() as u32);
+        self.struct_names.insert(name, id);
+        self.structs.push(s);
+        id
+    }
+
+    /// Add a trait and return its ID.
+    pub(crate) fn add_trait(&mut self, name: String, t: IrTrait) -> TraitId {
+        let id = TraitId(self.traits.len() as u32);
+        self.trait_names.insert(name, id);
+        self.traits.push(t);
+        id
+    }
+
+    /// Add an enum and return its ID.
+    pub(crate) fn add_enum(&mut self, name: String, e: IrEnum) -> EnumId {
+        let id = EnumId(self.enums.len() as u32);
+        self.enum_names.insert(name, id);
+        self.enums.push(e);
+        id
+    }
+
+    /// Add an impl block.
+    pub(crate) fn add_impl(&mut self, i: IrImpl) {
+        self.impls.push(i);
+    }
+}
+
+impl ResolvedType {
+    /// Get a display name for this type.
+    ///
+    /// Useful for error messages and debugging. For code generation,
+    /// prefer pattern matching on the variants directly.
+    pub fn display_name(&self, module: &IrModule) -> String {
+        match self {
+            ResolvedType::Primitive(p) => match p {
+                PrimitiveType::String => "String".to_string(),
+                PrimitiveType::Number => "Number".to_string(),
+                PrimitiveType::Boolean => "Boolean".to_string(),
+                PrimitiveType::Path => "Path".to_string(),
+                PrimitiveType::Regex => "Regex".to_string(),
+                PrimitiveType::Never => "Never".to_string(),
+            },
+            ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
+            ResolvedType::Trait(id) => module.get_trait(*id).name.clone(),
+            ResolvedType::Enum(id) => module.get_enum(*id).name.clone(),
+            ResolvedType::Array(inner) => format!("[{}]", inner.display_name(module)),
+            ResolvedType::Optional(inner) => format!("{}?", inner.display_name(module)),
+            ResolvedType::Tuple(fields) => {
+                let fields_str: Vec<_> = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, ty.display_name(module)))
+                    .collect();
+                format!("({})", fields_str.join(", "))
+            }
+            ResolvedType::Generic { base, args } => {
+                let base_name = module.get_struct(*base).name.clone();
+                let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
+                format!("{}<{}>", base_name, args_str.join(", "))
+            }
+            ResolvedType::TypeParam(name) => name.clone(),
+        }
+    }
+}
+
+impl Visibility {
+    /// Check if this visibility is public.
+    pub fn is_public(&self) -> bool {
+        matches!(self, Visibility::Public)
+    }
+}

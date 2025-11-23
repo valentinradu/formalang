@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod error;
+pub mod ir;
 pub mod lexer;
 pub mod location;
 pub mod parser;
@@ -9,6 +10,7 @@ pub mod semantic;
 // Re-export commonly used types
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
+pub use ir::{EnumId, IrModule, ResolvedType, StructId, TraitId};
 pub use lexer::{Lexer, Token};
 pub use location::{Location, Span};
 pub use parser::{parse_file, parse_file_with_source};
@@ -240,4 +242,55 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
     })?;
 
     Ok(file)
+}
+
+/// Compile FormaLang source code into an IR module
+///
+/// This is the recommended entry point for code generators. The IR provides
+/// resolved types, linked references, and is optimized for generating
+/// TypeScript, Swift, and Kotlin code.
+///
+/// # Pipeline
+///
+/// 1. **Lexer**: Tokenizes the source code
+/// 2. **Parser**: Builds an Abstract Syntax Tree (AST)
+/// 3. **Semantic Analyzer**: Validates the AST
+/// 4. **IR Lowering**: Converts AST to IR with resolved types
+///
+/// # Arguments
+///
+/// * `source` - The FormaLang source code to compile
+///
+/// # Returns
+///
+/// * `Ok(IrModule)` - The IR module if compilation succeeds
+/// * `Err(Vec<CompilerError>)` - A list of compilation errors if compilation fails
+///
+/// # Example
+///
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = r#"
+/// pub struct User {
+///     name: String,
+///     age: Number
+/// }
+/// "#;
+///
+/// match compile_to_ir(source) {
+///     Ok(module) => {
+///         assert_eq!(module.structs.len(), 1);
+///         assert_eq!(module.structs[0].name, "User");
+///     }
+///     Err(errors) => {
+///         for error in errors {
+///             eprintln!("Error: {}", error);
+///         }
+///     }
+/// }
+/// ```
+pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
+    let (ast, analyzer) = compile_with_analyzer(source)?;
+    ir::lower_to_ir(&ast, analyzer.symbols())
 }
