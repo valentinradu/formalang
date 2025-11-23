@@ -15,7 +15,14 @@
     "checkmark",
     "eprintln",
     "usize",
-    "scrutinee"
+    "scrutinee",
+    "println",
+    "impls",
+    "codegen",
+    "rustc",
+    "THIR",
+    "newtype",
+    "rustdocs"
   ],
   "ignorePaths": [
     "node_modules",

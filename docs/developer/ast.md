@@ -2,7 +2,9 @@
 
 **Last Updated**: 2025-11-23
 
-This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST is the primary output of the compiler and serves as the foundation for building code generators, analyzers, and other tooling.
+This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
+
+> **Note**: For code generation, use the [IR (Intermediate Representation)](ir.md) instead. The IR provides resolved types, linked references, and is optimized for generating TypeScript, Swift, and Kotlin code.
 
 ## Overview
 
