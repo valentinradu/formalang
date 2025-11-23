@@ -779,7 +779,9 @@ fn test_error_undefined_type() {
     let result = compile(source);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, CompilerError::UndefinedType { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { .. })));
 }
 
 #[test]

@@ -79,7 +79,11 @@ fn test_token_is_type_keyword_true() {
     ];
 
     for tk in type_keywords {
-        assert!(tk.is_type_keyword(), "Expected {:?} to be a type keyword", tk);
+        assert!(
+            tk.is_type_keyword(),
+            "Expected {:?} to be a type keyword",
+            tk
+        );
     }
 }
 
@@ -95,7 +99,11 @@ fn test_token_is_type_keyword_false() {
     ];
 
     for tok in non_type_keywords {
-        assert!(!tok.is_type_keyword(), "Expected {:?} to not be a type keyword", tok);
+        assert!(
+            !tok.is_type_keyword(),
+            "Expected {:?} to not be a type keyword",
+            tok
+        );
     }
 }
 
@@ -176,11 +184,20 @@ fn test_token_as_str_delimiters() {
 #[test]
 fn test_token_as_str_complex() {
     // Complex tokens return "<complex token>"
-    assert_eq!(Token::String("test".to_string()).as_str(), "<complex token>");
+    assert_eq!(
+        Token::String("test".to_string()).as_str(),
+        "<complex token>"
+    );
     assert_eq!(Token::Number(42.0).as_str(), "<complex token>");
     assert_eq!(Token::Ident("name".to_string()).as_str(), "<complex token>");
-    assert_eq!(Token::Regex("r/test/".to_string()).as_str(), "<complex token>");
-    assert_eq!(Token::Path("usr/bin".to_string()).as_str(), "<complex token>");
+    assert_eq!(
+        Token::Regex("r/test/".to_string()).as_str(),
+        "<complex token>"
+    );
+    assert_eq!(
+        Token::Path("usr/bin".to_string()).as_str(),
+        "<complex token>"
+    );
 }
 
 // =============================================================================
@@ -193,7 +210,10 @@ fn test_token_display_literals() {
     assert_eq!(format!("{}", Token::Number(42.0)), "number");
     assert_eq!(format!("{}", Token::Regex("r/test/".to_string())), "regex");
     assert_eq!(format!("{}", Token::Path("usr/bin".to_string())), "path");
-    assert_eq!(format!("{}", Token::Ident("name".to_string())), "identifier");
+    assert_eq!(
+        format!("{}", Token::Ident("name".to_string())),
+        "identifier"
+    );
 }
 
 #[test]
@@ -220,14 +240,18 @@ fn test_tokenize_string_with_valid_escapes() {
     // Test strings with valid escape sequences
     let tokens = Lexer::tokenize_all("\"line1\\nline2\\ttab\"");
     // Should have the string token with processed escapes
-    assert!(tokens.iter().any(|(t, _)| matches!(t, Token::String(s) if s.contains('\n') && s.contains('\t'))));
+    assert!(tokens
+        .iter()
+        .any(|(t, _)| matches!(t, Token::String(s) if s.contains('\n') && s.contains('\t'))));
 }
 
 #[test]
 fn test_tokenize_string_trailing_backslash() {
     // Trailing backslash at end of string
     let tokens = Lexer::tokenize_all("\"test\\\\\"");
-    assert!(tokens.iter().any(|(t, _)| matches!(t, Token::String(s) if s == "test\\")));
+    assert!(tokens
+        .iter()
+        .any(|(t, _)| matches!(t, Token::String(s) if s == "test\\")));
 }
 
 // =============================================================================

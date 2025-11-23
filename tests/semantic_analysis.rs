@@ -17,7 +17,11 @@ fn test_view_with_mount_field() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "View with mount should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "View with mount should compile: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -29,7 +33,11 @@ fn test_model_without_mount_field() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Model without mount should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Model without mount should compile: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -41,7 +49,11 @@ fn test_view_trait_with_mount() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "View trait with mount should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "View trait with mount should compile: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -52,7 +64,11 @@ fn test_model_trait_without_mount() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Model trait without mount should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Model trait without mount should compile: {:?}",
+        result.err()
+    );
 }
 
 // =============================================================================
@@ -70,7 +86,11 @@ fn test_impl_with_string_literal() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Impl with string literal: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with string literal: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -84,7 +104,11 @@ fn test_impl_with_number_literal() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Impl with number literal: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with number literal: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -98,7 +122,11 @@ fn test_impl_with_boolean_literal() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Impl with boolean literal: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with boolean literal: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -112,7 +140,11 @@ fn test_impl_with_array_literal() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Impl with array literal: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with array literal: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -130,7 +162,11 @@ fn test_impl_with_struct_reference() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Impl with struct reference: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Impl with struct reference: {:?}",
+        result.err()
+    );
 }
 
 // =============================================================================
@@ -276,7 +312,11 @@ fn test_generic_struct_single_param() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Generic struct single param: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Generic struct single param: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -291,7 +331,11 @@ fn test_generic_struct_multiple_params() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Generic struct multiple params: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Generic struct multiple params: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -629,7 +673,11 @@ fn test_closure_type_single_param() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Closure type single param: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Closure type single param: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -689,7 +737,11 @@ fn test_struct_conforming_to_trait() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Struct conforming to trait: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Struct conforming to trait: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -703,7 +755,11 @@ fn test_trait_with_optional_field() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Trait with optional field: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Trait with optional field: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -721,7 +777,11 @@ fn test_multiple_trait_conformance() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Multiple trait conformance: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Multiple trait conformance: {:?}",
+        result.err()
+    );
 }
 
 // =============================================================================

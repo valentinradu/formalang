@@ -188,11 +188,14 @@ impl<'ast> NodeFinder<'ast> {
 
     /// Visit a let binding
     fn visit_let_binding(&mut self, let_binding: &'ast LetBinding) {
-        // Check name
-        if span_contains_offset(&let_binding.name.span, self.offset) {
-            self.found_node = Some(NodeAtPosition::Identifier(&let_binding.name));
-            return;
+        // Check pattern (for simple patterns, check the identifier)
+        if let BindingPattern::Simple(ident) = &let_binding.pattern {
+            if span_contains_offset(&ident.span, self.offset) {
+                self.found_node = Some(NodeAtPosition::Identifier(ident));
+                return;
+            }
         }
+        // TODO: Handle other binding patterns (Array, Struct, Tuple)
 
         // Check value expression
         self.visit_expr(&let_binding.value);

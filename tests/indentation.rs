@@ -578,7 +578,10 @@ fn test_multiline_with_newlines() {
     let source = "struct A { }\n\nstruct B { }";
     let tokens = Lexer::tokenize_all(source);
     // Count how many struct tokens
-    let struct_count = tokens.iter().filter(|(t, _)| matches!(t, Token::Struct)).count();
+    let struct_count = tokens
+        .iter()
+        .filter(|(t, _)| matches!(t, Token::Struct))
+        .count();
     assert_eq!(struct_count, 2, "Expected 2 struct tokens");
 }
 

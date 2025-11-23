@@ -266,19 +266,31 @@ fn test_undefined_variable_in_expression() {
 #[test]
 fn test_empty_struct() {
     let source = "struct Empty { }";
-    assert!(compile(source).is_ok(), "Empty struct: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Empty struct: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_empty_trait() {
     let source = "trait Empty { }";
-    assert!(compile(source).is_ok(), "Empty trait: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Empty trait: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_empty_module() {
     let source = "module empty { }";
-    assert!(compile(source).is_ok(), "Empty module: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Empty module: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -287,7 +299,11 @@ fn test_struct_conforming_empty_trait() {
         trait Empty { }
         struct A: Empty { }
     "#;
-    assert!(compile(source).is_ok(), "Struct conforming empty trait: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Struct conforming empty trait: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -295,25 +311,41 @@ fn test_deeply_nested_types() {
     let source = r#"
         struct A { items: [[[[String]]]] }
     "#;
-    assert!(compile(source).is_ok(), "Deeply nested types: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Deeply nested types: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_optional_array() {
     let source = "struct A { items: [String]? }";
-    assert!(compile(source).is_ok(), "Optional array: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Optional array: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_array_of_optionals() {
     let source = "struct A { items: [String?] }";
-    assert!(compile(source).is_ok(), "Array of optionals: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Array of optionals: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_dictionary_of_arrays() {
     let source = "struct A { map: [String: [Number]] }";
-    assert!(compile(source).is_ok(), "Dictionary of arrays: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Dictionary of arrays: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -328,7 +360,11 @@ fn test_many_fields() {
             f: [String: Number]
         }
     "#;
-    assert!(compile(source).is_ok(), "Many fields: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Many fields: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -343,19 +379,31 @@ fn test_multiple_traits() {
             c: Boolean
         }
     "#;
-    assert!(compile(source).is_ok(), "Multiple traits: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Multiple traits: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_closure_single_param() {
     let source = "struct A { fn: String -> Boolean }";
-    assert!(compile(source).is_ok(), "Closure single param: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Closure single param: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
 fn test_closure_returning_closure() {
     let source = "struct A { fn: String -> (Number -> Boolean) }";
-    assert!(compile(source).is_ok(), "Closure returning closure: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Closure returning closure: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -367,7 +415,11 @@ fn test_generic_with_multiple_params() {
             third: C
         }
     "#;
-    assert!(compile(source).is_ok(), "Generic with multiple params: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Generic with multiple params: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -384,7 +436,11 @@ fn test_impl_complex_expression() {
             }
         }
     "#;
-    assert!(compile(source).is_ok(), "Impl complex expression: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Impl complex expression: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -395,7 +451,11 @@ fn test_multiple_impls() {
         impl A { "a value" }
         impl B { 42 }
     "#;
-    assert!(compile(source).is_ok(), "Multiple impls: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Multiple impls: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -405,7 +465,11 @@ fn test_multiple_enums() {
         enum Two { b, c }
         enum Three { d, e, f }
     "#;
-    assert!(compile(source).is_ok(), "Multiple enums: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Multiple enums: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -417,7 +481,11 @@ fn test_module_with_all_types() {
             enum E { a, b }
         }
     "#;
-    assert!(compile(source).is_ok(), "Module with all types: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Module with all types: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -429,7 +497,11 @@ fn test_pub_in_module() {
             pub enum PublicEnum { a }
         }
     "#;
-    assert!(compile(source).is_ok(), "Pub in module: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Pub in module: {:?}",
+        compile(source).err()
+    );
 }
 
 // =============================================================================
@@ -482,7 +554,11 @@ fn test_realistic_data_model() {
             orders: [Order]
         }
     "#;
-    assert!(compile(source).is_ok(), "Realistic data model: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Realistic data model: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -514,7 +590,11 @@ fn test_ui_component_model() {
         impl Button { label }
         impl Card { title }
     "#;
-    assert!(compile(source).is_ok(), "UI component model: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "UI component model: {:?}",
+        compile(source).err()
+    );
 }
 
 #[test]
@@ -544,5 +624,9 @@ fn test_config_model() {
 
         let defaultPort = 3000
     "#;
-    assert!(compile(source).is_ok(), "Config model: {:?}", compile(source).err());
+    assert!(
+        compile(source).is_ok(),
+        "Config model: {:?}",
+        compile(source).err()
+    );
 }

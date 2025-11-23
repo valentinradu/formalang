@@ -2,10 +2,12 @@
 //!
 //! Tests for position utilities, node finder, and semantic queries
 
-use formalang::{compile_with_analyzer, Location, Span};
-use formalang::semantic::position::{get_line_at_position, get_word_at_offset, span_contains_offset, LspPosition};
-use formalang::semantic::queries::QueryProvider;
 use formalang::semantic::node_finder::{find_node_at_offset, NodeAtPosition};
+use formalang::semantic::position::{
+    get_line_at_position, get_word_at_offset, span_contains_offset, LspPosition,
+};
+use formalang::semantic::queries::QueryProvider;
+use formalang::{compile_with_analyzer, Location, Span};
 
 // =============================================================================
 // Position Utility Tests
@@ -66,7 +68,11 @@ fn test_lsp_position_to_location() {
 
 #[test]
 fn test_lsp_position_from_location() {
-    let loc = Location { offset: 10, line: 2, column: 5 };
+    let loc = Location {
+        offset: 10,
+        line: 2,
+        column: 5,
+    };
     let pos: LspPosition = loc.into();
     // LSP position is 0-indexed
     assert_eq!(pos.line, 1);
@@ -76,8 +82,16 @@ fn test_lsp_position_from_location() {
 #[test]
 fn test_span_contains_offset_inside() {
     let span = Span {
-        start: Location { offset: 10, line: 1, column: 1 },
-        end: Location { offset: 20, line: 1, column: 11 },
+        start: Location {
+            offset: 10,
+            line: 1,
+            column: 1,
+        },
+        end: Location {
+            offset: 20,
+            line: 1,
+            column: 11,
+        },
     };
     assert!(span_contains_offset(&span, 15));
 }
@@ -85,8 +99,16 @@ fn test_span_contains_offset_inside() {
 #[test]
 fn test_span_contains_offset_start_boundary() {
     let span = Span {
-        start: Location { offset: 10, line: 1, column: 1 },
-        end: Location { offset: 20, line: 1, column: 11 },
+        start: Location {
+            offset: 10,
+            line: 1,
+            column: 1,
+        },
+        end: Location {
+            offset: 20,
+            line: 1,
+            column: 11,
+        },
     };
     assert!(span_contains_offset(&span, 10));
 }
@@ -94,8 +116,16 @@ fn test_span_contains_offset_start_boundary() {
 #[test]
 fn test_span_contains_offset_end_boundary() {
     let span = Span {
-        start: Location { offset: 10, line: 1, column: 1 },
-        end: Location { offset: 20, line: 1, column: 11 },
+        start: Location {
+            offset: 10,
+            line: 1,
+            column: 1,
+        },
+        end: Location {
+            offset: 20,
+            line: 1,
+            column: 11,
+        },
     };
     // End is exclusive
     assert!(!span_contains_offset(&span, 20));
@@ -104,8 +134,16 @@ fn test_span_contains_offset_end_boundary() {
 #[test]
 fn test_span_contains_offset_before() {
     let span = Span {
-        start: Location { offset: 10, line: 1, column: 1 },
-        end: Location { offset: 20, line: 1, column: 11 },
+        start: Location {
+            offset: 10,
+            line: 1,
+            column: 1,
+        },
+        end: Location {
+            offset: 20,
+            line: 1,
+            column: 11,
+        },
     };
     assert!(!span_contains_offset(&span, 5));
 }
@@ -113,8 +151,16 @@ fn test_span_contains_offset_before() {
 #[test]
 fn test_span_contains_offset_after() {
     let span = Span {
-        start: Location { offset: 10, line: 1, column: 1 },
-        end: Location { offset: 20, line: 1, column: 11 },
+        start: Location {
+            offset: 10,
+            line: 1,
+            column: 1,
+        },
+        end: Location {
+            offset: 20,
+            line: 1,
+            column: 11,
+        },
     };
     assert!(!span_contains_offset(&span, 25));
 }
@@ -143,8 +189,8 @@ fn test_get_word_at_offset_start_of_word() {
 fn test_get_word_at_offset_end_of_word() {
     let source = "let foo = 42";
     let result = get_word_at_offset(source, 7); // Right after "foo"
-    // At position 7 (the space after "foo"), we're at the boundary
-    // The implementation finds the word that contains the offset
+                                                // At position 7 (the space after "foo"), we're at the boundary
+                                                // The implementation finds the word that contains the offset
     assert!(result.is_none() || result.as_ref().map(|(w, _, _)| w.as_str()) == Some("foo"));
 }
 
@@ -152,8 +198,8 @@ fn test_get_word_at_offset_end_of_word() {
 fn test_get_word_at_offset_on_space() {
     let source = "let foo = 42";
     let result = get_word_at_offset(source, 3); // At position 3, still touching "let"
-    // At boundary, the implementation may return the adjacent word
-    // This is acceptable behavior for LSP word lookup
+                                                // At boundary, the implementation may return the adjacent word
+                                                // This is acceptable behavior for LSP word lookup
     if let Some((word, _, _)) = result {
         assert!(word == "let" || word.is_empty());
     }
@@ -307,7 +353,11 @@ fn test_query_provider_completions_multiple() {
     let completions = provider.get_all_completions();
 
     // Should include all definitions
-    assert!(completions.len() >= 4, "Should have at least 4 completions, got {}", completions.len());
+    assert!(
+        completions.len() >= 4,
+        "Should have at least 4 completions, got {}",
+        completions.len()
+    );
 }
 
 #[test]
@@ -367,7 +417,10 @@ fn test_query_provider_module_definitions() {
 
     // Verify completions were generated - the count should be > 0
     // Config may be in completions with full path or short name
-    assert!(!completions.is_empty(), "Should have some completions from module");
+    assert!(
+        !completions.is_empty(),
+        "Should have some completions from module"
+    );
 }
 
 #[test]
@@ -430,7 +483,10 @@ fn test_find_node_at_offset_struct_name() {
     let user_offset = source.find("User").unwrap();
     let context = find_node_at_offset(&file, user_offset);
 
-    assert!(found_specific_node(&context), "Should find node at struct name position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at struct name position"
+    );
 }
 
 #[test]
@@ -448,7 +504,10 @@ fn test_find_node_at_offset_field_name() {
     let name_offset = source.find("name").unwrap();
     let context = find_node_at_offset(&file, name_offset);
 
-    assert!(found_specific_node(&context), "Should find node at field name position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at field name position"
+    );
 }
 
 #[test]
@@ -466,7 +525,10 @@ fn test_find_node_at_offset_type_reference() {
     let string_offset = source.find("String").unwrap();
     let context = find_node_at_offset(&file, string_offset);
 
-    assert!(found_specific_node(&context), "Should find node at type reference position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at type reference position"
+    );
 }
 
 #[test]
@@ -483,7 +545,10 @@ fn test_find_node_at_offset_trait_name() {
     let named_offset = source.find("Named").unwrap();
     let context = find_node_at_offset(&file, named_offset);
 
-    assert!(found_specific_node(&context), "Should find node at trait name position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at trait name position"
+    );
 }
 
 #[test]
@@ -501,7 +566,10 @@ fn test_find_node_at_offset_enum_name() {
     let status_offset = source.find("Status").unwrap();
     let context = find_node_at_offset(&file, status_offset);
 
-    assert!(found_specific_node(&context), "Should find node at enum name position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at enum name position"
+    );
 }
 
 #[test]
@@ -519,7 +587,10 @@ fn test_find_node_at_offset_enum_variant() {
     let active_offset = source.find("active").unwrap();
     let context = find_node_at_offset(&file, active_offset);
 
-    assert!(found_specific_node(&context), "Should find node at enum variant position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at enum variant position"
+    );
 }
 
 #[test]
@@ -541,7 +612,10 @@ fn test_find_node_at_offset_impl_block() {
     let context = find_node_at_offset(&file, impl_offset);
 
     // Verify node finder returns context (may be File if impl not tracked)
-    assert!(context.offset == impl_offset, "Context should have correct offset");
+    assert!(
+        context.offset == impl_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -561,7 +635,10 @@ fn test_find_node_at_offset_module() {
     let context = find_node_at_offset(&file, module_offset);
 
     // Verify context has the right offset
-    assert!(context.offset == module_offset, "Context should have correct offset");
+    assert!(
+        context.offset == module_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -577,7 +654,10 @@ fn test_find_node_at_offset_expression_literal() {
     let context = find_node_at_offset(&file, num_offset);
 
     // Verify context has the right offset
-    assert!(context.offset == num_offset, "Context should have correct offset");
+    assert!(
+        context.offset == num_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -593,7 +673,10 @@ fn test_find_node_at_offset_string_literal() {
     let context = find_node_at_offset(&file, str_offset);
 
     // Verify context has the right offset
-    assert!(context.offset == str_offset, "Context should have correct offset");
+    assert!(
+        context.offset == str_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -648,7 +731,10 @@ fn test_find_node_at_offset_nested_struct() {
     let field_type_offset = inner_usages[1].0;
     let context = find_node_at_offset(&file, field_type_offset);
 
-    assert!(found_specific_node(&context), "Should find node at nested type reference");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at nested type reference"
+    );
 }
 
 #[test]
@@ -665,7 +751,10 @@ fn test_find_node_at_offset_generic_type() {
     let t_offset = source.find("<T>").unwrap() + 1; // Inside <T>
     let context = find_node_at_offset(&file, t_offset);
 
-    assert!(found_specific_node(&context), "Should find node at generic param position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at generic param position"
+    );
 }
 
 #[test]
@@ -689,7 +778,10 @@ fn test_find_node_at_offset_trait_conformance() {
     let conformance_offset = named_usages[1].0;
     let context = find_node_at_offset(&file, conformance_offset);
 
-    assert!(found_specific_node(&context), "Should find node at trait conformance position");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at trait conformance position"
+    );
 }
 
 #[test]
@@ -1032,7 +1124,10 @@ fn test_find_node_is_in_expression() {
     let context = find_node_at_offset(&file, expr_offset);
 
     // Context should have the correct offset
-    assert_eq!(context.offset, expr_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, expr_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1051,7 +1146,10 @@ fn test_find_node_is_in_type_position() {
     let context = find_node_at_offset(&file, type_offset);
 
     // Context should have the correct offset
-    assert_eq!(context.offset, type_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, type_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1067,7 +1165,10 @@ fn test_find_node_at_let_binding() {
     let value_offset = source.find("value").unwrap();
     let context = find_node_at_offset(&file, value_offset);
 
-    assert!(found_specific_node(&context), "Should find node at let binding name");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at let binding name"
+    );
 }
 
 #[test]
@@ -1084,7 +1185,10 @@ fn test_find_node_at_let_expression() {
     let context = find_node_at_offset(&file, str_offset);
 
     // Context should track the offset
-    assert_eq!(context.offset, str_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, str_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1103,7 +1207,10 @@ fn test_find_node_at_enum_variant() {
     let variant_offset = source.find("pending").unwrap();
     let context = find_node_at_offset(&file, variant_offset);
 
-    assert!(found_specific_node(&context), "Should find node at enum variant");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at enum variant"
+    );
 }
 
 #[test]
@@ -1122,7 +1229,10 @@ fn test_find_node_in_impl_with_struct_instantiation() {
     let context = find_node_at_offset(&file, impl_offset);
 
     // Context should track the offset
-    assert_eq!(context.offset, impl_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, impl_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1140,7 +1250,10 @@ fn test_find_node_in_for_expression() {
     let context = find_node_at_offset(&file, for_offset);
 
     // Context should track the offset
-    assert_eq!(context.offset, for_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, for_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1158,7 +1271,10 @@ fn test_find_node_in_if_expression() {
     let context = find_node_at_offset(&file, cond_offset);
 
     // Context should track the offset
-    assert_eq!(context.offset, cond_offset, "Context should have correct offset");
+    assert_eq!(
+        context.offset, cond_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1176,7 +1292,10 @@ fn test_find_node_in_binary_expression() {
     let context = find_node_at_offset(&file, op_offset);
 
     // Should find something at the operator position
-    assert!(context.offset == op_offset, "Context should have correct offset");
+    assert!(
+        context.offset == op_offset,
+        "Context should have correct offset"
+    );
 }
 
 #[test]
@@ -1195,5 +1314,8 @@ fn test_find_node_trait_field() {
     let field_offset = source.find("age:").unwrap();
     let context = find_node_at_offset(&file, field_offset);
 
-    assert!(found_specific_node(&context), "Should find node at trait field");
+    assert!(
+        found_specific_node(&context),
+        "Should find node at trait field"
+    );
 }

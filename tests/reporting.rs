@@ -94,8 +94,16 @@ fn test_compiler_error_display_parse() {
     let error = CompilerError::ParseError {
         message: "unexpected token".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -107,8 +115,16 @@ fn test_compiler_error_display_undefined_type() {
     let error = CompilerError::UndefinedType {
         name: "FooBar".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 6, line: 1, column: 7 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 6,
+                line: 1,
+                column: 7,
+            },
         },
     };
     let display = format!("{}", error);
@@ -120,8 +136,16 @@ fn test_compiler_error_display_duplicate() {
     let error = CompilerError::DuplicateDefinition {
         name: "Widget".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -134,8 +158,16 @@ fn test_compiler_error_display_missing_trait_field() {
         field: "name".to_string(),
         trait_name: "Named".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -148,8 +180,16 @@ fn test_compiler_error_display_undefined_reference() {
     let error = CompilerError::UndefinedReference {
         name: "unknownVar".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -161,8 +201,16 @@ fn test_compiler_error_display_undefined_trait() {
     let error = CompilerError::UndefinedTrait {
         name: "NonexistentTrait".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 16, line: 1, column: 17 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 16,
+                line: 1,
+                column: 17,
+            },
         },
     };
     let display = format!("{}", error);
@@ -176,8 +224,16 @@ fn test_compiler_error_display_invalid_binary_op() {
         left_type: "String".to_string(),
         right_type: "Number".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -223,8 +279,16 @@ fn test_span_default() {
 #[test]
 fn test_span_creation() {
     let span = Span {
-        start: Location { offset: 10, line: 2, column: 5 },
-        end: Location { offset: 20, line: 2, column: 15 },
+        start: Location {
+            offset: 10,
+            line: 2,
+            column: 5,
+        },
+        end: Location {
+            offset: 20,
+            line: 2,
+            column: 15,
+        },
     };
     assert_eq!(span.start.offset, 10);
     assert_eq!(span.end.offset, 20);
@@ -266,8 +330,16 @@ fn test_error_display_type_mismatch() {
         expected: "Number".to_string(),
         found: "String".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 10, line: 1, column: 11 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 10,
+                line: 1,
+                column: 11,
+            },
         },
     };
     let display = format!("{}", error);
@@ -279,8 +351,16 @@ fn test_error_display_module_not_found() {
     let error = CompilerError::ModuleNotFound {
         name: "missing_module".to_string(),
         span: Span {
-            start: Location { offset: 0, line: 1, column: 1 },
-            end: Location { offset: 14, line: 1, column: 15 },
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 14,
+                line: 1,
+                column: 15,
+            },
         },
     };
     let display = format!("{}", error);
@@ -378,8 +458,16 @@ fn test_error_span_method() {
     let error = CompilerError::ParseError {
         message: "test".to_string(),
         span: Span {
-            start: Location { offset: 5, line: 2, column: 3 },
-            end: Location { offset: 10, line: 2, column: 8 },
+            start: Location {
+                offset: 5,
+                line: 2,
+                column: 3,
+            },
+            end: Location {
+                offset: 10,
+                line: 2,
+                column: 8,
+            },
         },
     };
     let span = error.span();

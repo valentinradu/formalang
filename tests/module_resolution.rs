@@ -67,10 +67,7 @@ impl ModuleResolver for MockModuleResolver {
 #[test]
 fn test_mock_resolver_returns_module() {
     let mut resolver = MockModuleResolver::new();
-    resolver.add_module(
-        vec!["utils".to_string()],
-        "pub struct Helper { x: String }",
-    );
+    resolver.add_module(vec!["utils".to_string()], "pub struct Helper { x: String }");
 
     let result = resolver.resolve(&["utils".to_string()], None);
     assert!(result.is_ok());
@@ -123,10 +120,7 @@ fn test_mock_resolver_multi_segment_path() {
         "pub struct List { items: [String] }",
     );
 
-    let result = resolver.resolve(
-        &["std".to_string(), "collections".to_string()],
-        None,
-    );
+    let result = resolver.resolve(&["std".to_string(), "collections".to_string()], None);
     assert!(result.is_ok());
 }
 
@@ -279,13 +273,16 @@ use formalang::lexer::Lexer;
 use formalang::parser;
 use formalang::semantic::SemanticAnalyzer;
 
-fn analyze_with_mock(source: &str, resolver: MockModuleResolver) -> Result<(), Vec<formalang::error::CompilerError>> {
+fn analyze_with_mock(
+    source: &str,
+    resolver: MockModuleResolver,
+) -> Result<(), Vec<formalang::error::CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
     let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
-        errors.into_iter().map(|(msg, span)| formalang::error::CompilerError::ParseError {
-            message: msg,
-            span,
-        }).collect::<Vec<_>>()
+        errors
+            .into_iter()
+            .map(|(msg, span)| formalang::error::CompilerError::ParseError { message: msg, span })
+            .collect::<Vec<_>>()
     })?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
     analyzer.analyze(&file)
@@ -301,7 +298,9 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::ModuleNotFound { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::ModuleNotFound { .. })));
 }
 
 #[test]
@@ -322,7 +321,9 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::ModuleReadError { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::ModuleReadError { .. })));
 }
 
 #[test]
@@ -331,7 +332,11 @@ fn test_semantic_use_circular_import() {
     resolver.add_error(
         vec!["circular".to_string()],
         ModuleError::CircularImport {
-            cycle: vec!["main".to_string(), "circular".to_string(), "main".to_string()],
+            cycle: vec![
+                "main".to_string(),
+                "circular".to_string(),
+                "main".to_string(),
+            ],
             span: formalang::location::Span::default(),
         },
     );
@@ -342,7 +347,9 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::CircularImport { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::CircularImport { .. })));
 }
 
 #[test]
@@ -363,7 +370,9 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::PrivateImport { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::PrivateImport { .. })));
 }
 
 #[test]
@@ -385,7 +394,10 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::ImportItemNotFound { .. })));
+    assert!(errors.iter().any(|e| matches!(
+        e,
+        formalang::error::CompilerError::ImportItemNotFound { .. }
+    )));
 }
 
 #[test]
@@ -435,7 +447,7 @@ fn test_semantic_use_module_parse_error() {
     // Add module with invalid syntax
     resolver.add_module(
         vec!["broken".to_string()],
-        "pub struct Helper { name String }",  // missing colon
+        "pub struct Helper { name String }", // missing colon
     );
     let source = r#"
 use broken::Helper
@@ -444,7 +456,9 @@ struct Main {}
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(e, formalang::error::CompilerError::ParseError { .. })));
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::ParseError { .. })));
 }
 
 #[test]
