@@ -112,7 +112,44 @@ fn test_enum_destructuring_nested() {
 }
 
 // =============================================================================
-// Error Cases (require semantic validation - currently ignored)
+// Error Cases - Duplicate Bindings
+// =============================================================================
+
+#[test]
+fn test_error_duplicate_binding_in_array() {
+    // Can't have duplicate bindings in array destructuring
+    let source = r#"
+        pub let items = ["a", "b"]
+        pub let [a, a] = items
+    "#;
+    assert!(compile(source).is_err());
+}
+
+#[test]
+fn test_error_duplicate_binding_in_struct() {
+    // Can't have duplicate bindings in struct destructuring
+    let source = r#"
+        struct Point { x: Number, y: Number }
+        pub let p = Point(x: 1, y: 2)
+        pub let {x, x} = p
+    "#;
+    // Parser should reject duplicate field names
+    assert!(compile(source).is_err());
+}
+
+#[test]
+fn test_error_duplicate_binding_across_patterns() {
+    // Can't redefine an existing binding
+    let source = r#"
+        pub let items = ["a", "b"]
+        pub let [first, second] = items
+        pub let first = "other"
+    "#;
+    assert!(compile(source).is_err());
+}
+
+// =============================================================================
+// Error Cases - Type Mismatch (require semantic validation - currently ignored)
 // =============================================================================
 
 #[test]
