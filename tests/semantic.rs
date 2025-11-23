@@ -219,7 +219,6 @@ fn test_binary_op_number_arithmetic() {
 }
 
 #[test]
-#[ignore = "TODO: semantic analyzer doesn't support string concatenation"]
 fn test_binary_op_string_concat() {
     let source = r#"
         let s = "hello" + " world"
@@ -422,9 +421,8 @@ fn test_error_undefined_field_reference() {
         }
     "#;
     let result = compile(source);
-    // The semantic analyzer may not catch this as an error (it might be lenient)
-    // Just verify it doesn't panic
-    let _ = result;
+    // Referencing unknown_field should produce an undefined reference error
+    assert!(result.is_err(), "Unknown field reference should error");
 }
 
 #[test]
@@ -438,9 +436,9 @@ fn test_error_type_mismatch_in_field() {
         }
     "#;
     let result = compile(source);
-    // The impl body doesn't match field type - this might still compile
-    // depending on semantic analyzer implementation
-    let _ = result; // Just verify it doesn't panic
+    // Impl body is a string, which is valid - impl can have any expression
+    // This test verifies the impl compiles without panic
+    assert!(result.is_ok(), "Impl with expression should compile: {:?}", result.err());
 }
 
 #[test]

@@ -546,7 +546,6 @@ fn test_for_expression() {
 }
 
 #[test]
-#[ignore = "TODO: fix semantic analyzer match expression validation"]
 fn test_match_expression() {
     let source = r#"
         enum Status {

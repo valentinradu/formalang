@@ -463,3 +463,252 @@ impl BinaryOperator {
         true // All operators are left-associative in FormaLang
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::location::Span;
+
+    // =========================================================================
+    // BinaryOperator Tests
+    // =========================================================================
+
+    #[test]
+    fn test_binary_operator_precedence_all() {
+        assert_eq!(BinaryOperator::Or.precedence(), 1);
+        assert_eq!(BinaryOperator::And.precedence(), 2);
+        assert_eq!(BinaryOperator::Eq.precedence(), 3);
+        assert_eq!(BinaryOperator::Ne.precedence(), 3);
+        assert_eq!(BinaryOperator::Lt.precedence(), 4);
+        assert_eq!(BinaryOperator::Gt.precedence(), 4);
+        assert_eq!(BinaryOperator::Le.precedence(), 4);
+        assert_eq!(BinaryOperator::Ge.precedence(), 4);
+        assert_eq!(BinaryOperator::Add.precedence(), 5);
+        assert_eq!(BinaryOperator::Sub.precedence(), 5);
+        assert_eq!(BinaryOperator::Mul.precedence(), 6);
+        assert_eq!(BinaryOperator::Div.precedence(), 6);
+        assert_eq!(BinaryOperator::Mod.precedence(), 6);
+    }
+
+    #[test]
+    fn test_binary_operator_precedence_order() {
+        // Verify multiplicative > additive > comparison > equality > and > or
+        assert!(BinaryOperator::Mul.precedence() > BinaryOperator::Add.precedence());
+        assert!(BinaryOperator::Add.precedence() > BinaryOperator::Lt.precedence());
+        assert!(BinaryOperator::Lt.precedence() > BinaryOperator::Eq.precedence());
+        assert!(BinaryOperator::Eq.precedence() > BinaryOperator::And.precedence());
+        assert!(BinaryOperator::And.precedence() > BinaryOperator::Or.precedence());
+    }
+
+    #[test]
+    fn test_binary_operator_is_left_associative() {
+        assert!(BinaryOperator::Add.is_left_associative());
+        assert!(BinaryOperator::Sub.is_left_associative());
+        assert!(BinaryOperator::Mul.is_left_associative());
+        assert!(BinaryOperator::Div.is_left_associative());
+        assert!(BinaryOperator::Mod.is_left_associative());
+        assert!(BinaryOperator::And.is_left_associative());
+        assert!(BinaryOperator::Or.is_left_associative());
+        assert!(BinaryOperator::Eq.is_left_associative());
+        assert!(BinaryOperator::Ne.is_left_associative());
+        assert!(BinaryOperator::Lt.is_left_associative());
+        assert!(BinaryOperator::Gt.is_left_associative());
+        assert!(BinaryOperator::Le.is_left_associative());
+        assert!(BinaryOperator::Ge.is_left_associative());
+    }
+
+    // =========================================================================
+    // Expr::span() Tests
+    // =========================================================================
+
+    #[test]
+    fn test_expr_span_literal_nil() {
+        let expr = Expr::Literal(Literal::Nil);
+        let _ = expr.span(); // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_expr_span_literal_other() {
+        let expr = Expr::Literal(Literal::String("test".to_string()));
+        let _ = expr.span();
+    }
+
+    #[test]
+    fn test_expr_span_struct_instantiation() {
+        let test_span = Span::from_range(10, 20);
+        let expr = Expr::StructInstantiation {
+            name: Ident { name: "Test".to_string(), span: Span::default() },
+            type_args: vec![],
+            args: vec![],
+            mounts: vec![],
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_enum_instantiation() {
+        let test_span = Span::from_range(5, 15);
+        let expr = Expr::EnumInstantiation {
+            enum_name: Ident { name: "Status".to_string(), span: Span::default() },
+            variant: Ident { name: "active".to_string(), span: Span::default() },
+            data: vec![],
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_inferred_enum() {
+        let test_span = Span::from_range(0, 5);
+        let expr = Expr::InferredEnumInstantiation {
+            variant: Ident { name: "red".to_string(), span: Span::default() },
+            data: vec![],
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_array() {
+        let test_span = Span::from_range(100, 200);
+        let expr = Expr::Array { elements: vec![], span: test_span };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_tuple() {
+        let test_span = Span::from_range(50, 60);
+        let expr = Expr::Tuple { fields: vec![], span: test_span };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_reference() {
+        let test_span = Span::from_range(30, 40);
+        let expr = Expr::Reference { path: vec![], span: test_span };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_binary_op() {
+        let test_span = Span::from_range(70, 80);
+        let expr = Expr::BinaryOp {
+            left: Box::new(Expr::Literal(Literal::Number(1.0))),
+            op: BinaryOperator::Add,
+            right: Box::new(Expr::Literal(Literal::Number(2.0))),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_for_expr() {
+        let test_span = Span::from_range(90, 100);
+        let expr = Expr::ForExpr {
+            var: Ident { name: "x".to_string(), span: Span::default() },
+            collection: Box::new(Expr::Array { elements: vec![], span: Span::default() }),
+            body: Box::new(Expr::Literal(Literal::Nil)),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_if_expr() {
+        let test_span = Span::from_range(110, 120);
+        let expr = Expr::IfExpr {
+            condition: Box::new(Expr::Literal(Literal::Boolean(true))),
+            then_branch: Box::new(Expr::Literal(Literal::Nil)),
+            else_branch: None,
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_match_expr() {
+        let test_span = Span::from_range(130, 140);
+        let expr = Expr::MatchExpr {
+            scrutinee: Box::new(Expr::Literal(Literal::Nil)),
+            arms: vec![],
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_group() {
+        let test_span = Span::from_range(150, 160);
+        let expr = Expr::Group {
+            expr: Box::new(Expr::Literal(Literal::Number(42.0))),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_provides() {
+        let test_span = Span::from_range(170, 180);
+        let expr = Expr::ProvidesExpr {
+            items: vec![],
+            body: Box::new(Expr::Literal(Literal::Nil)),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_consumes() {
+        let test_span = Span::from_range(190, 200);
+        let expr = Expr::ConsumesExpr {
+            names: vec![Ident { name: "ctx".to_string(), span: Span::default() }],
+            body: Box::new(Expr::Literal(Literal::Nil)),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_dict_literal() {
+        let test_span = Span::from_range(210, 220);
+        let expr = Expr::DictLiteral { entries: vec![], span: test_span };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_dict_access() {
+        let test_span = Span::from_range(230, 240);
+        let expr = Expr::DictAccess {
+            dict: Box::new(Expr::Literal(Literal::Nil)),
+            key: Box::new(Expr::Literal(Literal::String("key".to_string()))),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_closure() {
+        let test_span = Span::from_range(250, 260);
+        let expr = Expr::ClosureExpr {
+            params: vec![],
+            body: Box::new(Expr::Literal(Literal::Number(0.0))),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_let_expr() {
+        let test_span = Span::from_range(270, 280);
+        let expr = Expr::LetExpr {
+            mutable: false,
+            name: Ident { name: "x".to_string(), span: Span::default() },
+            ty: None,
+            value: Box::new(Expr::Literal(Literal::Number(42.0))),
+            body: Box::new(Expr::Literal(Literal::Nil)),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+}

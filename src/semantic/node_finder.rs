@@ -653,3 +653,269 @@ impl<'ast> NodeFinder<'ast> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse_only;
+
+    fn parse(source: &str) -> Result<File, Vec<crate::error::CompilerError>> {
+        parse_only(source)
+    }
+
+    fn find_offset_of(source: &str, pattern: &str) -> usize {
+        source.find(pattern).expect("Pattern not found in source")
+    }
+
+    #[test]
+    fn test_find_struct_definition() {
+        let source = "struct User { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "User" - may return Identifier or StructDef
+        let offset = find_offset_of(source, "User");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Either the node is a StructDef or there's a StructDef in parents
+        let is_struct = matches!(ctx.node, NodeAtPosition::StructDef(_))
+            || ctx
+                .parents
+                .iter()
+                .any(|p| matches!(p, NodeAtPosition::StructDef(_)));
+        assert!(is_struct || matches!(ctx.node, NodeAtPosition::Identifier(_)));
+    }
+
+    #[test]
+    fn test_find_trait_definition() {
+        let source = "trait Named { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "Named" - may return Identifier or TraitDef
+        let offset = find_offset_of(source, "Named");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Either the node is a TraitDef or there's a TraitDef in parents
+        let is_trait = matches!(ctx.node, NodeAtPosition::TraitDef(_))
+            || ctx
+                .parents
+                .iter()
+                .any(|p| matches!(p, NodeAtPosition::TraitDef(_)));
+        assert!(is_trait || matches!(ctx.node, NodeAtPosition::Identifier(_)));
+    }
+
+    #[test]
+    fn test_find_enum_definition() {
+        let source = "enum Status { active, inactive }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "Status" - may return Identifier or EnumDef
+        let offset = find_offset_of(source, "Status");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Either the node is an EnumDef or there's an EnumDef in parents
+        let is_enum = matches!(ctx.node, NodeAtPosition::EnumDef(_))
+            || ctx
+                .parents
+                .iter()
+                .any(|p| matches!(p, NodeAtPosition::EnumDef(_)));
+        assert!(is_enum || matches!(ctx.node, NodeAtPosition::Identifier(_)));
+    }
+
+    #[test]
+    fn test_find_field_in_struct() {
+        let source = "struct User { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "name" field
+        let offset = find_offset_of(source, "name");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should find the struct field
+        assert!(matches!(
+            ctx.node,
+            NodeAtPosition::StructField(_) | NodeAtPosition::Identifier(_)
+        ));
+    }
+
+    #[test]
+    fn test_find_type_in_field() {
+        let source = "struct User { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "String" type
+        let offset = find_offset_of(source, "String");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Could be Type, Identifier, StructField, or even StructDef
+        // The finder returns the innermost node
+        let is_valid = matches!(
+            ctx.node,
+            NodeAtPosition::Type(_)
+                | NodeAtPosition::Identifier(_)
+                | NodeAtPosition::StructField(_)
+                | NodeAtPosition::StructDef(_)
+        );
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_find_let_binding() {
+        let source = "let x = 42";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "x"
+        let offset = find_offset_of(source, "x");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should find identifier within let binding
+        assert!(matches!(ctx.node, NodeAtPosition::Identifier(_)));
+        // Let binding should be a parent
+        assert!(ctx
+            .parents
+            .iter()
+            .any(|n| matches!(n, NodeAtPosition::LetBinding(_))));
+    }
+
+    #[test]
+    fn test_enclosing_definition_in_struct_field() {
+        let source = "struct User { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position inside the struct on "name"
+        let offset = find_offset_of(source, "name");
+        let ctx = find_node_at_offset(&file, offset);
+
+        let enclosing = ctx.enclosing_definition();
+        assert!(enclosing.is_some());
+        assert!(matches!(enclosing.unwrap(), NodeAtPosition::StructDef(_)));
+    }
+
+    #[test]
+    fn test_enclosing_definition_outside_struct() {
+        let source = "let x = 42";
+        let file = parse(source).expect("parse failed");
+
+        // Position in let binding
+        let offset = find_offset_of(source, "42");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // No enclosing definition for top-level let
+        let enclosing = ctx.enclosing_definition();
+        assert!(enclosing.is_none());
+    }
+
+    #[test]
+    fn test_is_in_expression() {
+        let source = "let x = 1 + 2";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "1" in expression
+        let offset = find_offset_of(source, "1 +");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should be in expression context (either the node is expression or has expression parent)
+        let has_expression = ctx.is_in_expression()
+            || matches!(ctx.node, NodeAtPosition::Expression(_))
+            || ctx
+                .parents
+                .iter()
+                .any(|p| matches!(p, NodeAtPosition::Expression(_)));
+        // Or might just be a LetBinding
+        assert!(has_expression || matches!(ctx.node, NodeAtPosition::LetBinding(_)));
+    }
+
+    #[test]
+    fn test_is_in_type_position() {
+        let source = "struct User { name: String }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "String" type
+        let offset = find_offset_of(source, "String");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // May or may not be in type position depending on exact offset
+        // Just verify the method doesn't panic
+        let _ = ctx.is_in_type_position();
+    }
+
+    #[test]
+    fn test_find_enum_variant() {
+        let source = "enum Status { active, inactive }";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "active" variant
+        let offset = find_offset_of(source, "active");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should find variant or identifier
+        assert!(matches!(
+            ctx.node,
+            NodeAtPosition::EnumVariant(_) | NodeAtPosition::Identifier(_)
+        ));
+    }
+
+    #[test]
+    fn test_find_node_at_file_start() {
+        let source = "struct A { }";
+        let file = parse(source).expect("parse failed");
+
+        // Position at very beginning
+        let ctx = find_node_at_offset(&file, 0);
+
+        // Should find something (struct definition starts at offset 0)
+        assert!(!matches!(ctx.node, NodeAtPosition::None));
+    }
+
+    #[test]
+    fn test_find_node_past_end() {
+        let source = "struct A { }";
+        let file = parse(source).expect("parse failed");
+
+        // Position way past the end
+        let ctx = find_node_at_offset(&file, 10000);
+
+        // Should return File or None
+        assert!(matches!(
+            ctx.node,
+            NodeAtPosition::File | NodeAtPosition::None
+        ));
+    }
+
+    #[test]
+    fn test_parents_chain() {
+        let source = r#"
+            struct User {
+                name: String,
+                age: Number
+            }
+        "#;
+        let file = parse(source).expect("parse failed");
+
+        // Position on "age" field
+        let offset = find_offset_of(source, "age");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should have struct as parent somewhere
+        let has_struct_parent = ctx
+            .parents
+            .iter()
+            .any(|p| matches!(p, NodeAtPosition::StructDef(_)));
+        assert!(has_struct_parent);
+    }
+
+    #[test]
+    fn test_find_use_statement() {
+        let source = "use foo::bar";
+        let file = parse(source).expect("parse failed");
+
+        // Position on "foo"
+        let offset = find_offset_of(source, "foo");
+        let ctx = find_node_at_offset(&file, offset);
+
+        // Should find identifier or use statement
+        assert!(matches!(
+            ctx.node,
+            NodeAtPosition::Identifier(_) | NodeAtPosition::UseStatement(_)
+        ));
+    }
+}

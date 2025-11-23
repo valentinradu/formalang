@@ -55,6 +55,12 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     context_scopes: Vec<HashMap<String, ContextBinding>>,
     /// Stack of generic scopes (for tracking type parameters)
     generic_scopes: Vec<GenericScope>,
+    /// Current struct name when inside an impl block (for field type resolution)
+    current_impl_struct: Option<String>,
+    /// Stack of loop variable scopes (for tracking for loop bindings)
+    loop_var_scopes: Vec<HashSet<String>>,
+    /// Local let bindings in current expression context
+    local_let_bindings: HashSet<String>,
 }
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -68,6 +74,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             current_file: None,
             context_scopes: Vec::new(),
             generic_scopes: Vec::new(),
+            current_impl_struct: None,
+            loop_var_scopes: Vec::new(),
+            local_let_bindings: HashSet::new(),
         }
     }
 
@@ -82,6 +91,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             current_file: Some(file_path),
             context_scopes: Vec::new(),
             generic_scopes: Vec::new(),
+            current_impl_struct: None,
+            loop_var_scopes: Vec::new(),
+            local_let_bindings: HashSet::new(),
         }
     }
 
@@ -763,6 +775,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Definition::Enum(enum_def) => {
+                // Check for duplicate variants
+                let mut seen_variants = std::collections::HashSet::new();
+                for variant in &enum_def.variants {
+                    if !seen_variants.insert(&variant.name.name) {
+                        self.errors.push(CompilerError::DuplicateDefinition {
+                            name: format!(
+                                "enum variant '{}' in enum '{}'",
+                                variant.name.name, enum_def.name.name
+                            ),
+                            span: variant.name.span,
+                        });
+                    }
+                }
+
                 // Collect variant information
                 let variants = enum_def
                     .variants
@@ -836,10 +862,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Push generic scope for this definition
                         self.push_generic_scope(&impl_def.generics);
 
+                        // Set current impl struct for field type resolution
+                        self.current_impl_struct = Some(impl_def.name.name.clone());
+
+                        // Clear local let bindings for this impl block
+                        self.local_let_bindings.clear();
+
                         // Validate expressions in impl body
                         for expr in &impl_def.body {
                             self.validate_expr(expr, file);
                         }
+
+                        // Clear impl struct context and local bindings
+                        self.current_impl_struct = None;
+                        self.local_let_bindings.clear();
 
                         // Pop generic scope
                         self.pop_generic_scope();
@@ -858,12 +894,215 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Pop generic scope
                         self.pop_generic_scope();
                     }
-                    Definition::Module(_) => {
-                        // Module type resolution is handled when the module is collected
-                        // TODO: Recursively validate types in nested definitions
+                    Definition::Module(module_def) => {
+                        // Temporarily import module symbols into parent for type resolution
+                        // This allows module-internal references to resolve correctly
+                        let module_symbols = self.collect_module_symbols(module_def);
+
+                        // Import module symbols temporarily
+                        for (name, trait_info) in &module_symbols.traits {
+                            self.symbols.traits.insert(name.clone(), trait_info.clone());
+                        }
+                        for (name, struct_info) in &module_symbols.structs {
+                            self.symbols.structs.insert(name.clone(), struct_info.clone());
+                        }
+                        for (name, enum_info) in &module_symbols.enums {
+                            self.symbols.enums.insert(name.clone(), enum_info.clone());
+                        }
+
+                        // Recursively validate types in nested definitions
+                        for nested_def in &module_def.definitions {
+                            match nested_def {
+                                Definition::Trait(trait_def) => {
+                                    self.resolve_trait_types(trait_def);
+                                }
+                                Definition::Struct(struct_def) => {
+                                    self.resolve_struct_types(struct_def);
+                                }
+                                Definition::Impl(impl_def) => {
+                                    self.push_generic_scope(&impl_def.generics);
+                                    self.current_impl_struct = Some(impl_def.name.name.clone());
+                                    self.local_let_bindings.clear();
+                                    for expr in &impl_def.body {
+                                        self.validate_expr(expr, file);
+                                    }
+                                    self.current_impl_struct = None;
+                                    self.local_let_bindings.clear();
+                                    self.pop_generic_scope();
+                                }
+                                Definition::Enum(enum_def) => {
+                                    self.push_generic_scope(&enum_def.generics);
+                                    for variant in &enum_def.variants {
+                                        for field in &variant.fields {
+                                            self.validate_type(&field.ty);
+                                        }
+                                    }
+                                    self.pop_generic_scope();
+                                }
+                                Definition::Module(nested_module) => {
+                                    // Recursively process nested modules
+                                    self.resolve_module_types(nested_module, file);
+                                }
+                            }
+                        }
+
+                        // Remove temporarily imported symbols (restore parent scope)
+                        for name in module_symbols.traits.keys() {
+                            self.symbols.traits.remove(name);
+                        }
+                        for name in module_symbols.structs.keys() {
+                            self.symbols.structs.remove(name);
+                        }
+                        for name in module_symbols.enums.keys() {
+                            self.symbols.enums.remove(name);
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Collect symbols from a module definition for temporary import
+    fn collect_module_symbols(&self, module_def: &crate::ast::ModuleDef) -> SymbolTable {
+        let mut symbols = SymbolTable::new();
+        for def in &module_def.definitions {
+            match def {
+                Definition::Trait(trait_def) => {
+                    let fields: HashMap<String, Type> = trait_def
+                        .fields
+                        .iter()
+                        .map(|f| (f.name.name.clone(), f.ty.clone()))
+                        .collect();
+                    let mount_fields: HashMap<String, Type> = trait_def
+                        .mount_fields
+                        .iter()
+                        .map(|f| (f.name.name.clone(), f.ty.clone()))
+                        .collect();
+                    let composed_traits: Vec<String> = trait_def
+                        .traits
+                        .iter()
+                        .map(|t| t.name.clone())
+                        .collect();
+                    symbols.define_trait(
+                        trait_def.name.name.clone(),
+                        trait_def.visibility,
+                        trait_def.span,
+                        trait_def.generics.clone(),
+                        fields,
+                        mount_fields,
+                        composed_traits,
+                    );
+                }
+                Definition::Struct(struct_def) => {
+                    let traits: Vec<_> = struct_def
+                        .traits
+                        .iter()
+                        .map(|t| t.name.clone())
+                        .collect();
+                    let fields: Vec<_> = struct_def
+                        .fields
+                        .iter()
+                        .map(|f| symbol_table::FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect();
+                    let mount_fields: Vec<_> = struct_def
+                        .mount_fields
+                        .iter()
+                        .map(|f| symbol_table::FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect();
+                    symbols.define_struct(
+                        struct_def.name.name.clone(),
+                        struct_def.visibility,
+                        struct_def.span,
+                        struct_def.generics.clone(),
+                        traits,
+                        fields,
+                        mount_fields,
+                    );
+                }
+                Definition::Enum(enum_def) => {
+                    let variants: HashMap<String, (usize, Span)> = enum_def
+                        .variants
+                        .iter()
+                        .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
+                        .collect();
+                    symbols.define_enum(
+                        enum_def.name.name.clone(),
+                        enum_def.visibility,
+                        enum_def.span,
+                        enum_def.generics.clone(),
+                        variants,
+                    );
+                }
+                _ => {}
+            }
+        }
+        symbols
+    }
+
+    /// Resolve types in a module definition (recursive)
+    fn resolve_module_types(&mut self, module_def: &crate::ast::ModuleDef, file: &File) {
+        // Temporarily import module symbols
+        let module_symbols = self.collect_module_symbols(module_def);
+        for (name, trait_info) in &module_symbols.traits {
+            self.symbols.traits.insert(name.clone(), trait_info.clone());
+        }
+        for (name, struct_info) in &module_symbols.structs {
+            self.symbols.structs.insert(name.clone(), struct_info.clone());
+        }
+        for (name, enum_info) in &module_symbols.enums {
+            self.symbols.enums.insert(name.clone(), enum_info.clone());
+        }
+
+        for nested_def in &module_def.definitions {
+            match nested_def {
+                Definition::Trait(trait_def) => {
+                    self.resolve_trait_types(trait_def);
+                }
+                Definition::Struct(struct_def) => {
+                    self.resolve_struct_types(struct_def);
+                }
+                Definition::Impl(impl_def) => {
+                    self.push_generic_scope(&impl_def.generics);
+                    self.current_impl_struct = Some(impl_def.name.name.clone());
+                    self.local_let_bindings.clear();
+                    for expr in &impl_def.body {
+                        self.validate_expr(expr, file);
+                    }
+                    self.current_impl_struct = None;
+                    self.local_let_bindings.clear();
+                    self.pop_generic_scope();
+                }
+                Definition::Enum(enum_def) => {
+                    self.push_generic_scope(&enum_def.generics);
+                    for variant in &enum_def.variants {
+                        for field in &variant.fields {
+                            self.validate_type(&field.ty);
+                        }
+                    }
+                    self.pop_generic_scope();
+                }
+                Definition::Module(nested_module) => {
+                    // Recursively process nested modules
+                    self.resolve_module_types(nested_module, file);
+                }
+            }
+        }
+
+        // Remove temporarily imported symbols
+        for name in module_symbols.traits.keys() {
+            self.symbols.traits.remove(name);
+        }
+        for name in module_symbols.structs.keys() {
+            self.symbols.structs.remove(name);
+        }
+        for name in module_symbols.enums.keys() {
+            self.symbols.enums.remove(name);
         }
     }
 
@@ -1102,10 +1341,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.validate_struct_expressions(struct_def, file);
                     }
                     Definition::Impl(impl_def) => {
+                        // Set current impl struct for field type resolution
+                        self.current_impl_struct = Some(impl_def.name.name.clone());
+                        // Clear local let bindings for this impl block
+                        self.local_let_bindings.clear();
                         // Validate impl body expressions
                         for expr in &impl_def.body {
                             self.validate_expr(expr, file);
                         }
+                        // Clear impl struct context and local bindings
+                        self.current_impl_struct = None;
+                        self.local_let_bindings.clear();
                     }
                     _ => {}
                 },
@@ -1147,8 +1393,58 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(field_expr, file);
                 }
             }
-            Expr::Reference { .. } => {
-                // References validated separately (future)
+            Expr::Reference { path, span } => {
+                // Validate references in impl blocks
+                if path.len() == 1 {
+                    let name = &path[0].name;
+
+                    // Check if it's a top-level let binding
+                    if self.symbols.is_let(name) {
+                        return;
+                    }
+
+                    // Check if it's a local let binding (from let expressions)
+                    if self.local_let_bindings.contains(name) {
+                        return;
+                    }
+
+                    // Check if it's a loop variable
+                    for scope in &self.loop_var_scopes {
+                        if scope.contains(name) {
+                            return;
+                        }
+                    }
+
+                    // Check if it's a known type (struct, enum, trait)
+                    if self.symbols.is_struct(name) || self.symbols.is_enum(name) || self.symbols.is_trait(name) {
+                        return;
+                    }
+
+                    // Check if we're inside an impl block and this is a field reference
+                    if let Some(ref struct_name) = self.current_impl_struct {
+                        if let Some(struct_info) = self.symbols.get_struct(struct_name) {
+                            // Check regular fields
+                            for field in &struct_info.fields {
+                                if field.name == *name {
+                                    return;
+                                }
+                            }
+                            // Check mount fields
+                            for field in &struct_info.mount_fields {
+                                if field.name == *name {
+                                    return;
+                                }
+                            }
+                        }
+                        // Inside impl block but reference is not a field - error
+                        self.errors.push(CompilerError::UndefinedReference {
+                            name: name.clone(),
+                            span: *span,
+                        });
+                    }
+                    // Outside impl block, simple references might be valid (generic params, etc.)
+                }
+                // Multi-segment paths (like Foo.bar or Foo::bar) are validated elsewhere
             }
             Expr::StructInstantiation {
                 name,
@@ -1250,14 +1546,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_binary_op(left, *op, right, *span, file);
             }
             Expr::ForExpr {
+                var,
                 collection,
                 body,
                 span,
-                ..
             } => {
-                // Recursively validate collection and body
+                // Recursively validate collection
                 self.validate_expr(collection, file);
+
+                // Push loop variable scope before validating body
+                let mut scope = HashSet::new();
+                scope.insert(var.name.clone());
+                self.loop_var_scopes.push(scope);
+
+                // Validate body with loop variable in scope
                 self.validate_expr(body, file);
+
+                // Pop loop variable scope
+                self.loop_var_scopes.pop();
 
                 // Validate for loop over array type
                 self.validate_for_loop(collection, *span, file);
@@ -1347,14 +1653,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(body, file);
             }
             Expr::LetExpr {
-                ty, value, body, ..
+                name, ty, value, body, ..
             } => {
                 // Validate type annotation if present
                 if let Some(type_ann) = ty {
                     self.validate_type(type_ann);
                 }
-                // Validate value and body expressions
+                // Validate value expression
                 self.validate_expr(value, file);
+
+                // Add binding name to local scope before validating body
+                self.local_let_bindings.insert(name.name.clone());
+
+                // Validate body expression with the binding in scope
                 self.validate_expr(body, file);
             }
         }
@@ -1548,12 +1859,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Check type compatibility based on operator
         let valid = match op {
-            // Arithmetic operators: Number + Number
-            BinaryOperator::Add
-            | BinaryOperator::Sub
-            | BinaryOperator::Mul
-            | BinaryOperator::Div
-            | BinaryOperator::Mod => {
+            // Add: Number + Number or String + String (concatenation)
+            BinaryOperator::Add => {
+                matches!(
+                    (&left_type[..], &right_type[..]),
+                    ("Number", "Number") | ("String", "String")
+                )
+            }
+            // Other arithmetic operators: Number + Number only
+            BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div | BinaryOperator::Mod => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
             }
             // Comparison operators: Number + Number → Boolean
@@ -2023,6 +2337,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         let trait_name = trait_def.name.name.clone();
                         type_spans.insert(trait_name.clone(), trait_def.span);
 
+                        // Add dependencies from trait inheritance (trait A: B)
+                        for parent_trait in &trait_def.traits {
+                            type_graph.add_dependency(trait_name.clone(), parent_trait.name.clone());
+                        }
+
                         // Add dependencies from trait fields
                         for field in &trait_def.fields {
                             Self::add_type_dependencies(&mut type_graph, &trait_name, &field.ty);
@@ -2379,6 +2698,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     let name = &path[0].name;
                     if let Some(let_type) = self.symbols.get_let_type(name) {
                         return let_type.to_string();
+                    }
+                    // Check if we're inside an impl block and this is a field reference
+                    if let Some(ref struct_name) = self.current_impl_struct {
+                        if let Some(struct_info) = self.symbols.get_struct(struct_name) {
+                            // Check regular fields
+                            for field in &struct_info.fields {
+                                if field.name == *name {
+                                    return self.type_to_string(&field.ty);
+                                }
+                            }
+                            // Check mount fields
+                            for field in &struct_info.mount_fields {
+                                if field.name == *name {
+                                    return self.type_to_string(&field.ty);
+                                }
+                            }
+                        }
                     }
                 }
                 // For other references (field access, enum variants, etc.),
