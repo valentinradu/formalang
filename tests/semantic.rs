@@ -2,7 +2,7 @@
 //!
 //! Tests for type validation, trait checking, and semantic errors
 
-use formalang::{compile, compile_and_report, CompilerError};
+use formalang::{compile, compile_and_report};
 
 // =============================================================================
 // Type Validation Tests
