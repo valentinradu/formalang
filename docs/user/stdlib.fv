@@ -96,7 +96,7 @@ pub trait Layerable {
 
 /// Trait for container components that hold multiple child views.
 ///
-/// Containers extend View and Layerable, adding an `items` mount point
+/// Containers extend View and Layerable, adding a `body` mount point
 /// for multiple children. Used by stack layouts, grids, and similar.
 ///
 /// # Implementors
@@ -105,7 +105,7 @@ pub trait Layerable {
 /// - HStack - Horizontal stack
 /// - Grid - Grid layout
 pub trait Container: View + Layerable {
-  mount items: View
+  mount body: View
 }
 
 /// Trait for interactive control components.
@@ -618,7 +618,7 @@ pub struct LabelStyle {
 ///
 /// ```formalang
 /// VStack(spacing: .px(value: 10), alignment: .center) {
-///   items: {
+///   body: {
 ///     Label(content: "First")
 ///     Label(content: "Second")
 ///     Label(content: "Third")
@@ -633,7 +633,7 @@ pub struct VStack: Container {
   alignment: alignment::Horizontal,
   distribution: distribution::Vertical,
   mount background: View,
-  mount items: View,
+  mount body: View,
   mount foreground: View
 }
 
@@ -657,7 +657,7 @@ impl VStack {
 ///
 /// ```formalang
 /// HStack(spacing: .px(value: 8), alignment: .center) {
-///   items: {
+///   body: {
 ///     Image(source: /icon.svg)
 ///     Label(content: "Title")
 ///   }
@@ -671,7 +671,7 @@ pub struct HStack: Container {
   alignment: alignment::Vertical,
   distribution: distribution::Horizontal,
   mount background: View,
-  mount items: View,
+  mount body: View,
   mount foreground: View
 }
 
@@ -695,7 +695,7 @@ impl HStack {
 ///
 /// ```formalang
 /// ZStack(alignment: .bottomTrailing) {
-///   layers: {
+///   body: {
 ///     Image(source: /photo.jpg)
 ///     Badge(count: 5)
 ///   }
@@ -708,7 +708,7 @@ pub struct ZStack: View + Layerable {
   spacing: Dimension,
   alignment: alignment::Center,
   mount background: View,
-  mount layers: View,
+  mount body: View,
   mount foreground: View
 }
 
@@ -731,7 +731,7 @@ impl ZStack {
 ///   columns: [.flexible(min: .px(value: 100), max: .auto)],
 ///   spacing: .px(value: 10)
 /// ) {
-///   items: for item in data {
+///   body: for item in data {
 ///     GridCell(content: item)
 ///   }
 /// }
@@ -746,7 +746,7 @@ pub struct Grid: Container {
   alignmentH: alignment::Horizontal,
   alignmentV: alignment::Vertical,
   mount background: View,
-  mount items: View,
+  mount body: View,
   mount foreground: View
 }
 
@@ -771,8 +771,8 @@ impl Grid {
 ///
 /// ```formalang
 /// Scroll(axis: .vertical, showsIndicators: true) {
-///   content: VStack(spacing: .px(value: 10)) {
-///     items: for item in longList { ... }
+///   body: VStack(spacing: .px(value: 10)) {
+///     body: for item in longList { ... }
 ///   }
 /// }
 /// ```
@@ -782,7 +782,7 @@ pub struct Scroll: View + Layerable {
   bounces: Boolean,
   isPagingEnabled: Boolean,
   mount background: View,
-  mount content: View,
+  mount body: View,
   mount foreground: View
 }
 
@@ -803,7 +803,7 @@ impl Scroll {
 ///
 /// ```formalang
 /// HStack() {
-///   items: {
+///   body: {
 ///     Label(content: "Left")
 ///     Spacer()
 ///     Label(content: "Right")
@@ -811,7 +811,8 @@ impl Scroll {
 /// }
 /// ```
 pub struct Spacer: View {
-  minLength: Dimension
+  minLength: Dimension,
+  mount body: Never
 }
 
 impl Spacer {
@@ -846,6 +847,7 @@ pub struct Label: Content {
   truncationMode: TruncationMode,
   fill: Fill?,
   mount background: View,
+  mount body: Never,
   mount foreground: View
 }
 
@@ -879,6 +881,7 @@ pub struct Paragraph: Content {
   truncationMode: TruncationMode,
   fill: Fill?,
   mount background: View,
+  mount body: Never,
   mount foreground: View
 }
 
@@ -907,6 +910,7 @@ pub struct Image: Content {
   source: Path,
   renderingMode: RenderingMode,
   mount background: View,
+  mount body: Never,
   mount foreground: View
 }
 
@@ -945,6 +949,7 @@ pub struct Button<E>: Control {
   disabled: Boolean,
   action: (() -> E)?,
   mount background: View,
+  mount body: Never,
   mount label: View,
   mount foreground: View
 }
@@ -984,6 +989,7 @@ pub struct Input<E>: Control {
   onChange: (String -> E)?,
   onSubmit: (() -> E)?,
   mount background: View,
+  mount body: Never,
   mount caret: View,
   mount placeholder: View,
   mount value: View,
@@ -1028,6 +1034,7 @@ pub struct Checkbox<E>: Control {
   checked: Boolean,
   onChange: (Boolean -> E)?,
   mount background: View,
+  mount body: Never,
   mount checkmark: View,
   mount label: View,
   mount foreground: View
@@ -1068,6 +1075,7 @@ pub struct Toggle<E>: Control {
   checked: Boolean,
   onChange: (Boolean -> E)?,
   mount background: View,
+  mount body: Never,
   mount thumb: View,
   mount label: View,
   mount foreground: View
@@ -1114,6 +1122,7 @@ pub struct Slider<E>: View + Layerable {
   step: Number,
   onChange: (Number -> E)?,
   mount background: View,
+  mount body: Never,
   mount track: View,
   mount thumb: View,
   mount foreground: View
@@ -1161,6 +1170,7 @@ pub struct Dropdown<E>: Control {
   disabled: Boolean,
   onChange: (Number -> E)?,
   mount background: View,
+  mount body: Never,
   mount input: View,
   mount placeholder: View,
   mount indicator: View,
@@ -1280,7 +1290,7 @@ impl Ellipse {
 ///
 /// ```formalang
 /// Contour(start: Point(x: 0, y: 0), closed: true) {
-///   body: {
+///   segments: {
 ///     LineTo(to: Point(x: 100, y: 0))
 ///     LineTo(to: Point(x: 100, y: 100))
 ///     LineTo(to: Point(x: 0, y: 100))
@@ -1293,7 +1303,8 @@ pub struct Contour: Shape {
   closed: Boolean,
   fill: Fill?,
   stroke: Fill?,
-  mount body: ContourSegment
+  mount body: Never,
+  mount segments: ContourSegment
 }
 
 impl Contour {
@@ -1352,7 +1363,7 @@ pub struct CubicBezier: ContourSegment {
 /// Combines shapes using boolean union (OR).
 pub struct ShapeUnion: Shape {
   tint: Color?,
-  mount shapes: Shape
+  mount body: Shape
 }
 
 impl ShapeUnion {
@@ -1364,7 +1375,7 @@ impl ShapeUnion {
 /// Combines shapes using boolean intersection (AND).
 pub struct ShapeIntersection: Shape {
   tint: Color?,
-  mount shapes: Shape
+  mount body: Shape
 }
 
 impl ShapeIntersection {
@@ -1376,6 +1387,7 @@ impl ShapeIntersection {
 /// Boolean subtraction (base - subtract).
 pub struct ShapeSubtraction: Shape {
   tint: Color?,
+  mount body: Never,
   mount base: Shape,
   mount subtract: Shape
 }
@@ -1394,14 +1406,14 @@ impl ShapeSubtraction {
 ///
 /// ```formalang
 /// Frame(width: .px(value: 300), height: .px(value: 200), alignment: .center) {
-///   content: Label(content: "Centered")
+///   body: Label(content: "Centered")
 /// }
 /// ```
 pub struct Frame: View {
   width: Dimension,
   height: Dimension,
   alignment: alignment::Center,
-  mount content: View
+  mount body: View
 }
 
 impl Frame {
@@ -1416,7 +1428,7 @@ pub struct SizeConstraint: View {
   maxWidth: Dimension,
   minHeight: Dimension,
   maxHeight: Dimension,
-  mount content: View
+  mount body: View
 }
 
 impl SizeConstraint {
@@ -1430,7 +1442,7 @@ impl SizeConstraint {
 pub struct FixedSize: View {
   horizontal: Boolean,
   vertical: Boolean,
-  mount content: View
+  mount body: View
 }
 
 impl FixedSize {
@@ -1442,7 +1454,7 @@ impl FixedSize {
 pub struct AspectRatio: View {
   ratio: Number,
   contentMode: ContentMode,
-  mount content: View
+  mount body: View
 }
 
 impl AspectRatio {
@@ -1452,7 +1464,7 @@ impl AspectRatio {
 /// Set layout priority for space distribution.
 pub struct LayoutPriority: View {
   value: Number,
-  mount content: View
+  mount body: View
 }
 
 impl LayoutPriority {
@@ -1467,7 +1479,7 @@ impl LayoutPriority {
 pub struct Offset: View {
   x: Dimension,
   y: Dimension,
-  mount content: View
+  mount body: View
 }
 
 impl Offset {
@@ -1477,19 +1489,19 @@ impl Offset {
 
 /// Clip content to bounds.
 pub struct Clipped: View {
-  mount content: View
+  mount body: View
 }
 
 /// Clip content to a shape.
 pub struct ClipShape: View {
   mount shape: Shape,
-  mount content: View
+  mount body: View
 }
 
 /// Apply corner radius.
 pub struct CornerRadius: View {
   radius: Dimension,
-  mount content: View
+  mount body: View
 }
 
 // =============================================================================
@@ -1558,13 +1570,13 @@ pub enum ModifierOp {
 ///   .blur(radius: .px(value: 4)),
 ///   .opacity(value: 0.8)
 /// ]) {
-///   content: Image(source: /photo.jpg)
+///   body: Image(source: /photo.jpg)
 /// }
 /// ```
 pub struct Modifier: View {
   transforms: [ModifierOp],
   mount mask: Shape,
-  mount content: View
+  mount body: View
 }
 
 impl Modifier {
