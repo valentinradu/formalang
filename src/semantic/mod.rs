@@ -1788,7 +1788,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let required_mounts: Vec<String> = def
                     .mount_fields
                     .iter()
-                    .filter(|f| f.default.is_none())
+                    .filter(|f| {
+                        // Mount fields with defaults are optional
+                        if f.default.is_some() {
+                            return false;
+                        }
+                        // Mount fields of type `Never` are always optional since
+                        // they can never have a value (used by terminal types like Empty)
+                        if matches!(&f.ty, Type::Primitive(PrimitiveType::Never)) {
+                            return false;
+                        }
+                        true
+                    })
                     .map(|f| f.name.name.clone())
                     .collect();
 
@@ -2338,7 +2349,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 {
                     Some(mount_field) => {
                         // Mounting point exists, check type matches
-                        if !self.types_match(&mount_field.ty, &required_type) {
+                        // Special case: `Never` type satisfies any mount point requirement.
+                        // `Never` is a terminal type indicating "no child content", used by
+                        // terminal components like Empty, EmptyShape, etc.
+                        let is_never =
+                            matches!(&mount_field.ty, Type::Primitive(PrimitiveType::Never));
+                        if !is_never && !self.types_match(&mount_field.ty, &required_type) {
                             self.errors
                                 .push(CompilerError::TraitMountingPointTypeMismatch {
                                     mount: mount_name.clone(),
@@ -2487,10 +2503,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             Self::add_type_dependencies(&mut type_graph, &trait_name, &field.ty);
                         }
 
-                        // Add dependencies from trait mounting points
-                        for field in &trait_def.mount_fields {
-                            Self::add_type_dependencies(&mut type_graph, &trait_name, &field.ty);
-                        }
+                        // Note: Mount points are NOT added to the dependency graph.
+                        // Mount points are "slots" filled at runtime with child content,
+                        // so self-referential mount points (e.g., `mount body: View` in View trait)
+                        // are valid and don't create impossible-to-construct types.
+                        // The recursion is always broken by terminal types like Empty.
                     }
                     Definition::Struct(struct_def) => {
                         let struct_name = struct_def.name.name.clone();
@@ -2501,10 +2518,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             Self::add_type_dependencies(&mut type_graph, &struct_name, &field.ty);
                         }
 
-                        // Add dependencies from struct mounting points
-                        for field in &struct_def.mount_fields {
-                            Self::add_type_dependencies(&mut type_graph, &struct_name, &field.ty);
-                        }
+                        // Note: Mount points are NOT added to the dependency graph.
+                        // See comment above in trait handling for rationale.
                     }
                     Definition::Enum(_) => {
                         // Enums don't create type dependencies (they have associated data, not fields)
