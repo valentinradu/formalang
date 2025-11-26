@@ -183,6 +183,7 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
+            UseItems::Glob => {} // No identifiers to check for glob imports
         }
     }
 

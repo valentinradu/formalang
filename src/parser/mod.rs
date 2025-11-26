@@ -108,6 +108,7 @@ fn fill_statement_span(stmt: &mut Statement, source: &str) {
                         fill_span(&mut ident.span, source);
                     }
                 }
+                UseItems::Glob => {} // No spans to fill for glob
             }
             fill_span(&mut use_stmt.span, source);
         }
@@ -591,13 +592,15 @@ where
         })
 }
 
-/// Parse use items (single or multiple)
+/// Parse use items (single, multiple, or glob)
 fn use_items_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, UseItems, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     choice((
+        // Glob import: *
+        just(Token::Star).to(UseItems::Glob),
         // Multiple items: { A, B, C }
         ident_parser()
             .separated_by(just(Token::Comma))
@@ -620,15 +623,19 @@ where
         .then_ignore(just(Token::Let))
         .then(mutability_parser())
         .then(binding_pattern_parser())
+        .then(just(Token::Colon).ignore_then(type_parser()).or_not()) // Optional type annotation
         .then_ignore(just(Token::Equals))
         .then(expr_parser())
-        .map_with(|(((visibility, mutable), pattern), value), e| LetBinding {
-            visibility,
-            mutable,
-            pattern,
-            value,
-            span: span_from_simple(e.span()),
-        })
+        .map_with(
+            |((((visibility, mutable), pattern), type_annotation), value), e| LetBinding {
+                visibility,
+                mutable,
+                pattern,
+                type_annotation,
+                value,
+                span: span_from_simple(e.span()),
+            },
+        )
 }
 
 /// Parse a definition (trait, struct, impl, enum, or module)
