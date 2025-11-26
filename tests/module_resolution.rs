@@ -560,3 +560,237 @@ struct Main {
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_ok(), "Expected success, got: {:?}", result);
 }
+
+// =============================================================================
+// Glob Import Tests
+// =============================================================================
+
+#[test]
+fn test_semantic_use_glob_import_all_public() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        r#"
+pub struct Helper {
+    name: String
+}
+pub struct Utils {
+    value: Number
+}
+pub enum Status {
+    Active,
+    Inactive
+}
+pub trait Named {
+    name: String
+}
+"#,
+    );
+    let source = r#"
+use utils::*
+struct Main {
+    helper: Helper,
+    utils: Utils,
+    status: Status
+}
+trait LocalNamed: Named {}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_import_nested_path() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["std".to_string(), "collections".to_string()],
+        r#"
+pub struct List {
+    items: [String]
+}
+pub struct Map {
+    keys: [String]
+}
+"#,
+    );
+    let source = r#"
+use std::collections::*
+struct Main {
+    list: List,
+    map: Map
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_import_only_public() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        r#"
+pub struct PublicHelper {
+    name: String
+}
+struct PrivateHelper {
+    secret: String
+}
+"#,
+    );
+    // Glob import should only import PublicHelper, not PrivateHelper
+    let source = r#"
+use utils::*
+struct Main {
+    helper: PublicHelper
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_import_private_not_accessible() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        r#"
+pub struct PublicHelper {
+    name: String
+}
+struct PrivateHelper {
+    secret: String
+}
+"#,
+    );
+    // Trying to use PrivateHelper after glob import should fail
+    let source = r#"
+use utils::*
+struct Main {
+    helper: PrivateHelper
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_err(), "Expected error for private type usage");
+}
+
+#[test]
+fn test_semantic_use_glob_with_other_imports() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        r#"
+pub struct Helper {
+    name: String
+}
+"#,
+    );
+    resolver.add_module(
+        vec!["types".to_string()],
+        r#"
+pub struct Value {
+    amount: Number
+}
+pub struct Item {
+    id: String
+}
+"#,
+    );
+    // Mix glob import with specific imports
+    let source = r#"
+use utils::Helper
+use types::*
+struct Main {
+    helper: Helper,
+    value: Value,
+    item: Item
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_module_not_found() {
+    let resolver = MockModuleResolver::new();
+    let source = r#"
+use nonexistent::*
+struct Main {}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert!(errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::ModuleNotFound { .. })));
+}
+
+#[test]
+fn test_semantic_use_glob_empty_module() {
+    let mut resolver = MockModuleResolver::new();
+    // Module with no public symbols
+    resolver.add_module(
+        vec!["empty".to_string()],
+        r#"
+struct PrivateOnly {
+    secret: String
+}
+"#,
+    );
+    // Glob import from module with no public symbols should succeed (imports nothing)
+    let source = r#"
+use empty::*
+struct Main {
+    name: String
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_with_let_bindings() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["constants".to_string()],
+        r#"
+pub let MAX_SIZE: Number = 100
+pub let DEFAULT_NAME: String = "unnamed"
+"#,
+    );
+    let source = r#"
+use constants::*
+struct Config {
+    size: Number
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+#[test]
+fn test_semantic_use_glob_with_nested_module() {
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["parent".to_string()],
+        r#"
+pub struct ParentStruct {
+    name: String
+}
+pub mod child {
+    pub struct ChildStruct {
+        value: Number
+    }
+}
+"#,
+    );
+    // Glob import should import ParentStruct and child module, but not child's contents directly
+    let source = r#"
+use parent::*
+struct Main {
+    parent: ParentStruct
+}
+"#;
+    let result = analyze_with_mock(source, resolver);
+    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}

@@ -149,6 +149,7 @@ pub struct UseStmt {
 pub enum UseItems {
     Single(Ident),          // use module::Item
     Multiple(Vec<Ident>),   // use module::{A, B, C}
+    Glob,                   // use module::* (imports all public symbols)
 }
 ```
 
@@ -160,7 +161,8 @@ File-level constants.
 pub struct LetBinding {
     pub visibility: Visibility,
     pub mutable: bool,
-    pub name: Ident,
+    pub pattern: BindingPattern,
+    pub type_annotation: Option<Type>,  // Optional: let x: String = "hello"
     pub value: Expr,
     pub span: Span,
 }

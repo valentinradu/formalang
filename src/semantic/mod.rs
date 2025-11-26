@@ -295,6 +295,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     );
                 }
             }
+            UseItems::Glob => {
+                // Import all public symbols from the module
+                for name in module_symbols.all_public_symbols() {
+                    self.import_symbol(&name, &module_symbols, module_path.clone(), use_stmt.span);
+                }
+            }
         }
     }
 

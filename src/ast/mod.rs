@@ -55,11 +55,13 @@ pub struct UseStmt {
     pub span: Span,
 }
 
-/// Items to import (single or multiple)
+/// Items to import (single, multiple, or glob)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UseItems {
     Single(Ident),
     Multiple(Vec<Ident>),
+    /// Glob import (`use module::*`) - imports all public symbols
+    Glob,
 }
 
 /// Let binding (file-level constant)
@@ -68,6 +70,8 @@ pub struct LetBinding {
     pub visibility: Visibility,
     pub mutable: bool,
     pub pattern: BindingPattern,
+    /// Optional explicit type annotation (e.g., `let x: String = "hello"`)
+    pub type_annotation: Option<Type>,
     pub value: Expr,
     pub span: Span,
 }
