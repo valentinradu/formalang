@@ -8,8 +8,8 @@ use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
-    EnumId, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrImport,
-    IrImportItem, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, StructId, TraitId,
+    ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrImport,
+    IrImportItem, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
 use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
@@ -433,21 +433,30 @@ impl<'a> IrLowerer<'a> {
                 mounts,
                 ..
             } => {
-                let struct_id = self
-                    .module
-                    .struct_id(&name.name)
-                    .unwrap_or(StructId(u32::MAX));
-
                 let type_args_resolved: Vec<ResolvedType> =
                     type_args.iter().map(|t| self.lower_type(t)).collect();
 
-                let ty = if type_args_resolved.is_empty() {
-                    ResolvedType::Struct(struct_id)
+                // Check if this is an external struct
+                let (struct_id, ty) = if let Some(external_ty) =
+                    self.try_external_type(&name.name, type_args_resolved.clone())
+                {
+                    // External struct - no valid ID
+                    (None, external_ty)
+                } else if let Some(id) = self.module.struct_id(&name.name) {
+                    // Local struct
+                    let ty = if type_args_resolved.is_empty() {
+                        ResolvedType::Struct(id)
+                    } else {
+                        ResolvedType::Generic {
+                            base: id,
+                            args: type_args_resolved.clone(),
+                        }
+                    };
+                    (Some(id), ty)
                 } else {
-                    ResolvedType::Generic {
-                        base: struct_id,
-                        args: type_args_resolved.clone(),
-                    }
+                    // Unknown struct - this shouldn't happen after semantic analysis
+                    // but handle gracefully
+                    (None, ResolvedType::TypeParam(name.name.clone()))
                 };
 
                 IrExpr::StructInst {
@@ -471,10 +480,18 @@ impl<'a> IrLowerer<'a> {
                 data,
                 ..
             } => {
-                let enum_id = self
-                    .module
-                    .enum_id(&enum_name.name)
-                    .unwrap_or(EnumId(u32::MAX));
+                // Check if this is an external enum
+                let (enum_id, ty) =
+                    if let Some(external_ty) = self.try_external_type(&enum_name.name, vec![]) {
+                        // External enum - no valid ID
+                        (None, external_ty)
+                    } else if let Some(id) = self.module.enum_id(&enum_name.name) {
+                        // Local enum
+                        (Some(id), ResolvedType::Enum(id))
+                    } else {
+                        // Unknown enum - this shouldn't happen after semantic analysis
+                        (None, ResolvedType::TypeParam(enum_name.name.clone()))
+                    };
 
                 IrExpr::EnumInst {
                     enum_id,
@@ -483,7 +500,7 @@ impl<'a> IrLowerer<'a> {
                         .iter()
                         .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
                         .collect(),
-                    ty: ResolvedType::Enum(enum_id),
+                    ty,
                 }
             }
 
@@ -491,7 +508,7 @@ impl<'a> IrLowerer<'a> {
                 // For inferred enums, we'd need context to resolve the enum type
                 // For now, use a placeholder
                 IrExpr::EnumInst {
-                    enum_id: EnumId(u32::MAX),
+                    enum_id: None,
                     variant: variant.name.clone(),
                     fields: data
                         .iter()

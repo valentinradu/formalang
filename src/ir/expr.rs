@@ -28,27 +28,29 @@ pub enum IrExpr {
 
     /// Struct instantiation: `User(name: "Alice", age: 30)`
     StructInst {
-        /// The struct being instantiated
-        struct_id: StructId,
+        /// The struct being instantiated.
+        /// `None` for external structs - use `ty` field instead.
+        struct_id: Option<StructId>,
         /// Generic type arguments (e.g., `[String]` for `Box<String>`)
         type_args: Vec<ResolvedType>,
         /// Regular field arguments
         fields: Vec<(String, IrExpr)>,
         /// Mount field arguments
         mounts: Vec<(String, IrExpr)>,
-        /// Resolved type (the struct type)
+        /// Resolved type (the struct type or External)
         ty: ResolvedType,
     },
 
     /// Enum variant instantiation: `Status::Active` or `.Active`
     EnumInst {
-        /// The enum being instantiated
-        enum_id: EnumId,
+        /// The enum being instantiated.
+        /// `None` for external enums - use `ty` field instead.
+        enum_id: Option<EnumId>,
         /// Variant name
         variant: String,
         /// Associated data fields
         fields: Vec<(String, IrExpr)>,
-        /// Resolved type (the enum type)
+        /// Resolved type (the enum type or External)
         ty: ResolvedType,
     },
 

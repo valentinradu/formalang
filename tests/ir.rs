@@ -1577,7 +1577,7 @@ struct User: Named {
     let module = compile_to_ir_with_resolver(source, resolver).unwrap();
 
     // User struct should implement the external trait
-    let user = module.structs.iter().find(|s| s.name == "User").unwrap();
+    let _user = module.structs.iter().find(|s| s.name == "User").unwrap();
 
     // The trait reference should be external
     // Note: traits field contains TraitIds for local traits, but external traits
@@ -1912,5 +1912,299 @@ struct Container {
             _ => panic!("Expected External type inside optional"),
         },
         _ => panic!("Expected Optional type"),
+    }
+}
+
+// =============================================================================
+// External Reference Safety Tests
+// =============================================================================
+
+/// Tests that external types cannot be looked up via struct_id - this is the
+/// expected behavior that code generators must handle.
+#[test]
+fn test_external_struct_not_in_struct_id_lookup() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Main {
+    helper: Helper
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // External types should NOT be found via struct_id lookup
+    // This is expected - code generators must handle External variant
+    assert!(
+        module.struct_id("Helper").is_none(),
+        "External types should not be in struct_id lookup"
+    );
+
+    // Only local structs should be in the lookup
+    assert!(module.struct_id("Main").is_some());
+}
+
+/// Tests that code generators can safely iterate over all struct fields
+/// without panicking when encountering external types.
+#[test]
+fn test_safe_iteration_over_external_types() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Local { value: Number }
+struct Main {
+    helper: Helper,
+    local: Local,
+    primitive: String
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let main = module.structs.iter().find(|s| s.name == "Main").unwrap();
+
+    // This is how code generators should safely handle all type variants
+    for field in &main.fields {
+        match &field.ty {
+            ResolvedType::Struct(id) => {
+                // Safe: only local structs have StructIds
+                let struct_def = module.get_struct(*id);
+                assert!(!struct_def.name.is_empty());
+            }
+            ResolvedType::External {
+                module_path, name, ..
+            } => {
+                // External types should be handled by emitting imports
+                assert!(!module_path.is_empty());
+                assert!(!name.is_empty());
+            }
+            ResolvedType::Primitive(_) => {
+                // Primitives don't need lookup
+            }
+            _ => {
+                // Other types (Array, Optional, etc.) may contain nested types
+            }
+        }
+    }
+}
+
+/// Tests that all StructIds in a module are valid and won't cause panics.
+/// This catches the bug where imported types incorrectly get u32::MAX IDs.
+#[test]
+fn test_all_struct_ids_are_valid() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Local { value: Number }
+struct Main {
+    helper: Helper,
+    local: Local
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // Collect all StructIds from the IR and verify they are valid
+    fn collect_struct_ids(ty: &ResolvedType, ids: &mut Vec<StructId>) {
+        match ty {
+            ResolvedType::Struct(id) => ids.push(*id),
+            ResolvedType::Generic { base, args } => {
+                ids.push(*base);
+                for arg in args {
+                    collect_struct_ids(arg, ids);
+                }
+            }
+            ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+                collect_struct_ids(inner, ids);
+            }
+            ResolvedType::Tuple(fields) => {
+                for (_, ty) in fields {
+                    collect_struct_ids(ty, ids);
+                }
+            }
+            ResolvedType::External { type_args, .. } => {
+                // External types don't have StructIds, but their type_args might
+                for arg in type_args {
+                    collect_struct_ids(arg, ids);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut all_ids = Vec::new();
+    for s in &module.structs {
+        for field in &s.fields {
+            collect_struct_ids(&field.ty, &mut all_ids);
+        }
+    }
+
+    // All collected StructIds must be valid (in bounds)
+    for id in all_ids {
+        assert!(
+            (id.0 as usize) < module.structs.len(),
+            "StructId({}) is out of bounds (module has {} structs)",
+            id.0,
+            module.structs.len()
+        );
+        // This should not panic
+        let _ = module.get_struct(id);
+    }
+}
+
+/// Tests that get_struct panics with invalid IDs - this documents the
+/// expected behavior and ensures code generators handle External types.
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn test_get_struct_panics_on_invalid_id() {
+    let source = "struct Only { value: Number }";
+    let module = compile_to_ir(source).unwrap();
+
+    // Only 1 struct exists (index 0)
+    assert_eq!(module.structs.len(), 1);
+
+    // This should panic - simulates what happens if external types
+    // incorrectly get u32::MAX as their ID
+    let invalid_id = StructId(u32::MAX);
+    let _ = module.get_struct(invalid_id);
+}
+
+/// Tests that instantiating an external struct produces struct_id=None
+/// and ty=External, not struct_id=u32::MAX which would panic.
+#[test]
+fn test_external_struct_instantiation_has_none_id() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Container { h: Helper }
+impl Container { h: Helper(name: "test") }
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // Find the impl's default expression
+    assert!(!module.impls.is_empty());
+    let expr = &module.impls[0].defaults[0].1;
+
+    // It should be a StructInst with struct_id=None
+    if let IrExpr::StructInst { struct_id, ty, .. } = expr {
+        assert!(
+            struct_id.is_none(),
+            "External struct instantiation should have struct_id=None, got {:?}",
+            struct_id
+        );
+
+        // The type should be External
+        match ty {
+            ResolvedType::External {
+                module_path, name, ..
+            } => {
+                assert_eq!(module_path, &vec!["utils".to_string()]);
+                assert_eq!(name, "Helper");
+            }
+            _ => panic!("Expected External type, got {:?}", ty),
+        }
+    } else {
+        panic!("Expected StructInst expression, got {:?}", expr);
+    }
+}
+
+/// Tests that instantiating an external enum produces enum_id=None.
+#[test]
+fn test_external_enum_instantiation_has_none_id() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["types".to_string()],
+        "pub enum Status { active, inactive }",
+    );
+
+    let source = r#"
+use types::Status
+struct Item { status: Status }
+impl Item { status: Status.active }
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    assert!(!module.impls.is_empty());
+    let expr = &module.impls[0].defaults[0].1;
+
+    if let IrExpr::EnumInst {
+        enum_id,
+        variant,
+        ty,
+        ..
+    } = expr
+    {
+        assert!(
+            enum_id.is_none(),
+            "External enum instantiation should have enum_id=None, got {:?}",
+            enum_id
+        );
+        assert_eq!(variant, "active");
+
+        match ty {
+            ResolvedType::External {
+                module_path, name, ..
+            } => {
+                assert_eq!(module_path, &vec!["types".to_string()]);
+                assert_eq!(name, "Status");
+            }
+            _ => panic!("Expected External type, got {:?}", ty),
+        }
+    } else {
+        panic!("Expected EnumInst expression, got {:?}", expr);
+    }
+}
+
+/// Tests that local struct instantiation still has Some(struct_id).
+#[test]
+fn test_local_struct_instantiation_has_some_id() {
+    let source = r#"
+struct Point { x: Number, y: Number }
+struct Container { p: Point }
+impl Container { p: Point(x: 1, y: 2) }
+"#;
+
+    let module = compile_to_ir(source).unwrap();
+
+    assert!(!module.impls.is_empty());
+    let expr = &module.impls[0].defaults[0].1;
+
+    if let IrExpr::StructInst { struct_id, ty, .. } = expr {
+        assert!(
+            struct_id.is_some(),
+            "Local struct instantiation should have Some(struct_id)"
+        );
+
+        // Verify the ID is valid
+        let id = struct_id.unwrap();
+        let struct_def = module.get_struct(id);
+        assert_eq!(struct_def.name, "Point");
+
+        // The type should be Struct, not External
+        assert!(matches!(ty, ResolvedType::Struct(_)));
+    } else {
+        panic!("Expected StructInst expression");
     }
 }
