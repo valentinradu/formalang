@@ -10,7 +10,9 @@ pub mod semantic;
 // Re-export commonly used types
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
-pub use ir::{EnumId, IrModule, ResolvedType, StructId, TraitId};
+pub use ir::{
+    EnumId, ExternalKind, IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
+};
 pub use lexer::{Lexer, Token};
 pub use location::{Location, Span};
 pub use parser::{parse_file, parse_file_with_source};

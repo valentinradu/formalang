@@ -1,6 +1,6 @@
 # IR Reference
 
-**Last Updated**: 2025-11-24
+**Last Updated**: 2025-11-27
 
 This document provides a complete reference for the FormaLang Intermediate
 Representation (IR). The IR is the recommended output for building code
@@ -151,6 +151,7 @@ pub struct IrModule {
     pub traits: Vec<IrTrait>,
     pub enums: Vec<IrEnum>,
     pub impls: Vec<IrImpl>,
+    pub imports: Vec<IrImport>,  // External module imports
 }
 ```
 
@@ -175,6 +176,94 @@ impl IrModule {
 
     /// Look up an enum ID by name
     pub fn enum_id(&self, name: &str) -> Option<EnumId>;
+}
+```
+
+### External Imports
+
+When a module uses types from other modules via `use` statements, those types
+are represented as `External` variants in `ResolvedType`. The `imports` field
+tracks which external types are used.
+
+#### IrImport
+
+```rust
+pub struct IrImport {
+    /// Logical module path (e.g., ["utils", "helpers"])
+    pub module_path: Vec<String>,
+    /// Items imported from this module
+    pub items: Vec<IrImportItem>,
+}
+```
+
+#### IrImportItem
+
+```rust
+pub struct IrImportItem {
+    /// Name of the imported type
+    pub name: String,
+    /// Kind of type (struct, trait, or enum)
+    pub kind: ExternalKind,
+}
+```
+
+#### ExternalKind
+
+```rust
+pub enum ExternalKind {
+    Struct,
+    Trait,
+    Enum,
+}
+```
+
+#### Using Imports in Code Generators
+
+Code generators can use the imports to emit proper import statements:
+
+```rust
+fn generate_typescript(module: &IrModule) -> String {
+    let mut output = String::new();
+
+    // Generate import statements from the imports list
+    for import in &module.imports {
+        let path = import.module_path.join("/");
+        let items: Vec<_> = import.items.iter().map(|i| &i.name).collect();
+        output.push_str(&format!(
+            "import {{ {} }} from '{}';\n",
+            items.join(", "),
+            path
+        ));
+    }
+
+    // Generate local definitions
+    for struct_def in &module.structs {
+        // ... generate struct
+    }
+
+    output
+}
+```
+
+When generating type references, handle `External` separately:
+
+```rust
+fn type_to_typescript(ty: &ResolvedType, module: &IrModule) -> String {
+    match ty {
+        ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
+        ResolvedType::External { name, type_args, .. } => {
+            if type_args.is_empty() {
+                name.clone()
+            } else {
+                let args: Vec<_> = type_args
+                    .iter()
+                    .map(|t| type_to_typescript(t, module))
+                    .collect();
+                format!("{}<{}>", name, args.join(", "))
+            }
+        }
+        // ... other cases
+    }
 }
 ```
 
@@ -260,6 +349,14 @@ pub enum ResolvedType {
 
     /// Unresolved type parameter (T) in generic definitions
     TypeParam(String),
+
+    /// Reference to a type in another module (imported via `use`)
+    External {
+        module_path: Vec<String>,  // e.g., ["utils", "helpers"]
+        name: String,              // Type name
+        kind: ExternalKind,        // Struct, Trait, or Enum
+        type_args: Vec<ResolvedType>,  // For generics
+    },
 }
 ```
 
@@ -270,15 +367,17 @@ pub enum ResolvedType {
 | `String` | `Primitive(PrimitiveType::String)` |
 | `Number` | `Primitive(PrimitiveType::Number)` |
 | `Boolean` | `Primitive(PrimitiveType::Boolean)` |
-| `User` (struct) | `Struct(StructId(n))` |
-| `Named` (trait) | `Trait(TraitId(n))` |
-| `Status` (enum) | `Enum(EnumId(n))` |
+| `User` (local struct) | `Struct(StructId(n))` |
+| `Named` (local trait) | `Trait(TraitId(n))` |
+| `Status` (local enum) | `Enum(EnumId(n))` |
 | `[String]` | `Array(Box::new(Primitive(String)))` |
 | `String?` | `Optional(Box::new(Primitive(String)))` |
 | `[[Number]]` | `Array(Box::new(Array(Box::new(Primitive(Number)))))` |
 | `Box<String>` | `Generic { base: StructId(n), args: [Primitive(String)] }` |
 | `(x: Number, y: Number)` | `Tuple(vec![("x", Primitive(Number)), ("y", Primitive(Number))])` |
 | `T` (in generic) | `TypeParam("T")` |
+| `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
+| `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
 
 ### Display Names
 
