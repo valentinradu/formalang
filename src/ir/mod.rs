@@ -34,6 +34,8 @@ pub use lower::lower_to_ir;
 pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrStruct, IrTrait};
 pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
+use std::collections::HashMap;
+
 use crate::ast::{PrimitiveType, Visibility};
 
 /// ID for referencing struct definitions.
@@ -81,6 +83,41 @@ pub struct TraitId(pub u32);
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
 
+/// Kind of external type reference.
+///
+/// Used to distinguish between different definition types when referencing
+/// types from other modules.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExternalKind {
+    /// External struct type
+    Struct,
+    /// External trait type
+    Trait,
+    /// External enum type
+    Enum,
+}
+
+/// An import from another module.
+///
+/// Tracks which types were imported from external modules, enabling code
+/// generators to emit proper import statements in target languages.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IrImport {
+    /// Logical module path (e.g., `["utils", "helpers"]`)
+    pub module_path: Vec<String>,
+    /// Items imported from this module
+    pub items: Vec<IrImportItem>,
+}
+
+/// A single imported item from a module.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IrImportItem {
+    /// Name of the imported type
+    pub name: String,
+    /// Kind of type (struct, trait, or enum)
+    pub kind: ExternalKind,
+}
+
 /// A fully resolved type.
 ///
 /// Unlike AST types which use string names, resolved types use IDs that
@@ -123,6 +160,34 @@ pub enum ResolvedType {
     /// type is not yet known. Code generators should handle this by
     /// emitting the type parameter name.
     TypeParam(String),
+
+    /// Reference to a type defined in another module.
+    ///
+    /// This variant is used for types imported via `use` statements.
+    /// Code generators should use this information to emit proper import
+    /// statements in target languages.
+    ///
+    /// # Example
+    ///
+    /// For `use utils::Helper`, a field of type `Helper` becomes:
+    /// ```text
+    /// External {
+    ///     module_path: ["utils"],
+    ///     name: "Helper",
+    ///     kind: ExternalKind::Struct,
+    ///     type_args: [],
+    /// }
+    /// ```
+    External {
+        /// Logical module path (e.g., `["utils", "helpers"]`)
+        module_path: Vec<String>,
+        /// Type name in that module
+        name: String,
+        /// Kind of type (struct, trait, or enum)
+        kind: ExternalKind,
+        /// Type arguments for generic types (empty for non-generic)
+        type_args: Vec<ResolvedType>,
+    },
 }
 
 /// The root IR node containing all definitions.
@@ -161,8 +226,14 @@ pub struct IrModule {
     /// All impl blocks
     pub impls: Vec<IrImpl>,
 
+    /// Imports from other modules
+    ///
+    /// Contains information about all types imported from external modules,
+    /// enabling code generators to emit proper import statements.
+    pub imports: Vec<IrImport>,
+
     /// Mapping from struct names to IDs for lookup during lowering
-    struct_names: std::collections::HashMap<String, StructId>,
+    struct_names: HashMap<String, StructId>,
 
     /// Mapping from trait names to IDs for lookup during lowering
     trait_names: std::collections::HashMap<String, TraitId>,
@@ -282,6 +353,17 @@ impl ResolvedType {
                 format!("{}<{}>", base_name, args_str.join(", "))
             }
             ResolvedType::TypeParam(name) => name.clone(),
+            ResolvedType::External {
+                name, type_args, ..
+            } => {
+                if type_args.is_empty() {
+                    name.clone()
+                } else {
+                    let args_str: Vec<_> =
+                        type_args.iter().map(|a| a.display_name(module)).collect();
+                    format!("{}<{}>", name, args_str.join(", "))
+                }
+            }
         }
     }
 }

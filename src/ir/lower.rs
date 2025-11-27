@@ -8,9 +8,11 @@ use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
-    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrMatchArm, IrModule,
-    IrStruct, IrTrait, ResolvedType, StructId, TraitId,
+    EnumId, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrImport,
+    IrImportItem, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, StructId, TraitId,
 };
+use crate::semantic::symbol_table::SymbolKind;
+use std::collections::HashMap;
 
 /// Lower an AST and symbol table into an IR module.
 ///
@@ -48,6 +50,8 @@ struct IrLowerer<'a> {
     module: IrModule,
     symbols: &'a SymbolTable,
     errors: Vec<CompilerError>,
+    /// Track imports by module path for aggregation
+    imports_by_module: HashMap<Vec<String>, Vec<IrImportItem>>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -56,6 +60,7 @@ impl<'a> IrLowerer<'a> {
             module: IrModule::new(),
             symbols,
             errors: Vec::new(),
+            imports_by_module: HashMap::new(),
         }
     }
 
@@ -73,6 +78,13 @@ impl<'a> IrLowerer<'a> {
                 self.lower_definition(def);
             }
         }
+
+        // Finalize imports: convert the map to a vec of IrImport
+        self.module.imports = self
+            .imports_by_module
+            .drain()
+            .map(|(module_path, items)| IrImport { module_path, items })
+            .collect();
 
         if self.errors.is_empty() {
             Ok(())
@@ -184,7 +196,11 @@ impl<'a> IrLowerer<'a> {
         let traits: Vec<TraitId> = s
             .traits
             .iter()
-            .filter_map(|ident| self.module.trait_id(&ident.name))
+            .filter_map(|ident| {
+                // Check if this is an external trait and track the import
+                self.try_track_external_import(&ident.name, ExternalKind::Trait);
+                self.module.trait_id(&ident.name)
+            })
             .collect();
 
         let generic_params = self.lower_generic_params(&s.generics);
@@ -250,7 +266,7 @@ impl<'a> IrLowerer<'a> {
         });
     }
 
-    fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+    fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
         params
             .iter()
             .map(|p| IrGenericParam {
@@ -266,7 +282,7 @@ impl<'a> IrLowerer<'a> {
             .collect()
     }
 
-    fn lower_field_def(&self, f: &ast::FieldDef) -> IrField {
+    fn lower_field_def(&mut self, f: &ast::FieldDef) -> IrField {
         IrField {
             name: f.name.name.clone(),
             ty: self.lower_type(&f.ty),
@@ -276,7 +292,7 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_struct_field(&self, f: &StructField) -> IrField {
+    fn lower_struct_field(&mut self, f: &StructField) -> IrField {
         IrField {
             name: f.name.name.clone(),
             ty: self.lower_type(&f.ty),
@@ -286,12 +302,17 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_type(&self, ty: &Type) -> ResolvedType {
+    fn lower_type(&mut self, ty: &Type) -> ResolvedType {
         match ty {
             Type::Primitive(p) => ResolvedType::Primitive(*p),
 
             Type::Ident(ident) => {
                 let name = &ident.name;
+                // Check if this is an external type
+                if let Some(external) = self.try_external_type(name, vec![]) {
+                    return external;
+                }
+                // Otherwise try local types
                 if let Some(id) = self.module.struct_id(name) {
                     ResolvedType::Struct(id)
                 } else if let Some(id) = self.module.trait_id(name) {
@@ -305,10 +326,18 @@ impl<'a> IrLowerer<'a> {
             }
 
             Type::Generic { name, args, .. } => {
+                let type_args: Vec<ResolvedType> =
+                    args.iter().map(|t| self.lower_type(t)).collect();
+
+                // Check if this is an external generic type
+                if let Some(external) = self.try_external_type(&name.name, type_args.clone()) {
+                    return external;
+                }
+                // Otherwise try local types
                 if let Some(base) = self.module.struct_id(&name.name) {
                     ResolvedType::Generic {
                         base,
-                        args: args.iter().map(|t| self.lower_type(t)).collect(),
+                        args: type_args,
                     }
                 } else {
                     // Fallback to type param if not found
@@ -336,7 +365,61 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_expr(&self, expr: &Expr) -> IrExpr {
+    /// Track an external import if the given name is imported from another module.
+    /// This is used for cases where we can't create a full External type (e.g., trait implementations).
+    fn try_track_external_import(&mut self, name: &str, expected_kind: ExternalKind) {
+        if let Some(module_path) = self.symbols.get_module_logical_path(name) {
+            let import_item = IrImportItem {
+                name: name.to_string(),
+                kind: expected_kind,
+            };
+
+            self.imports_by_module
+                .entry(module_path.clone())
+                .or_default()
+                .push(import_item);
+        }
+    }
+
+    /// Try to create an external type reference.
+    /// Returns Some(External) if the type is imported, None if it's local.
+    fn try_external_type(
+        &mut self,
+        name: &str,
+        type_args: Vec<ResolvedType>,
+    ) -> Option<ResolvedType> {
+        // Check if this symbol was imported from another module
+        let module_path = self.symbols.get_module_logical_path(name)?;
+        let kind = self.symbols.get_symbol_kind(name)?;
+
+        let external_kind = match kind {
+            SymbolKind::Struct => ExternalKind::Struct,
+            SymbolKind::Trait => ExternalKind::Trait,
+            SymbolKind::Enum => ExternalKind::Enum,
+            // Other kinds can't be used as types
+            _ => return None,
+        };
+
+        // Track this import
+        let import_item = IrImportItem {
+            name: name.to_string(),
+            kind: external_kind.clone(),
+        };
+
+        self.imports_by_module
+            .entry(module_path.clone())
+            .or_default()
+            .push(import_item);
+
+        Some(ResolvedType::External {
+            module_path: module_path.clone(),
+            name: name.to_string(),
+            kind: external_kind,
+            type_args,
+        })
+    }
+
+    fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
         match expr {
             Expr::Literal(lit) => IrExpr::Literal {
                 value: lit.clone(),

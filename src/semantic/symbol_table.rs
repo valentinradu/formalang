@@ -20,6 +20,8 @@ pub struct SymbolTable {
     pub modules: HashMap<String, ModuleInfo>,
     /// Track which module each symbol came from (None = current module)
     module_origins: HashMap<String, Option<PathBuf>>,
+    /// Track the logical module path for imported symbols (e.g., ["utils", "helpers"])
+    module_logical_paths: HashMap<String, Vec<String>>,
 }
 
 /// Information about a symbol
@@ -136,6 +138,7 @@ impl SymbolTable {
             lets: HashMap::new(),
             modules: HashMap::new(),
             module_origins: HashMap::new(),
+            module_logical_paths: HashMap::new(),
         }
     }
 
@@ -411,11 +414,19 @@ impl SymbolTable {
 
     /// Import a symbol from another module
     /// Returns an error if the symbol is private or doesn't exist
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the symbol to import
+    /// * `module_table` - The symbol table of the module to import from
+    /// * `module_path` - The filesystem path of the module
+    /// * `logical_path` - The logical module path (e.g., `["utils", "helpers"]`)
     pub fn import_symbol(
         &mut self,
         name: &str,
         module_table: &SymbolTable,
         module_path: PathBuf,
+        logical_path: Vec<String>,
     ) -> Result<(), ImportError> {
         // Check if symbol exists in the module
         let (kind, visibility) = if let Some(info) = module_table.traits.get(name) {
@@ -480,6 +491,8 @@ impl SymbolTable {
         // Track the module origin
         self.module_origins
             .insert(name.to_string(), Some(module_path));
+        self.module_logical_paths
+            .insert(name.to_string(), logical_path);
 
         Ok(())
     }
@@ -536,6 +549,59 @@ impl SymbolTable {
 
         symbols.sort();
         symbols
+    }
+
+    /// Get the module origin for a symbol.
+    ///
+    /// Returns `Some(path)` if the symbol was imported from another module,
+    /// or `None` if the symbol is defined locally.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the symbol to look up
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&PathBuf)` - The filesystem path of the module the symbol was imported from
+    /// * `None` - The symbol is local or not found
+    pub fn get_module_origin(&self, name: &str) -> Option<&PathBuf> {
+        self.module_origins.get(name).and_then(|opt| opt.as_ref())
+    }
+
+    /// Get the logical module path for an imported symbol.
+    ///
+    /// Returns `Some(path)` if the symbol was imported from another module,
+    /// or `None` if the symbol is local.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the symbol to look up
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&Vec<String>)` - The logical module path (e.g., `["utils", "helpers"]`)
+    /// * `None` - The symbol is local or not found
+    pub fn get_module_logical_path(&self, name: &str) -> Option<&Vec<String>> {
+        self.module_logical_paths.get(name)
+    }
+
+    /// Get the kind of a symbol (struct, trait, enum, etc.)
+    pub fn get_symbol_kind(&self, name: &str) -> Option<SymbolKind> {
+        if self.structs.contains_key(name) {
+            Some(SymbolKind::Struct)
+        } else if self.traits.contains_key(name) {
+            Some(SymbolKind::Trait)
+        } else if self.enums.contains_key(name) {
+            Some(SymbolKind::Enum)
+        } else if self.lets.contains_key(name) {
+            Some(SymbolKind::Let)
+        } else if self.modules.contains_key(name) {
+            Some(SymbolKind::Module)
+        } else if self.impls.contains_key(name) {
+            Some(SymbolKind::Impl)
+        } else {
+            None
+        }
     }
 }
 

@@ -282,6 +282,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     &ident.name,
                     &module_symbols,
                     module_path.clone(),
+                    path_segments.clone(),
                     use_stmt.span,
                 );
             }
@@ -291,6 +292,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         &ident.name,
                         &module_symbols,
                         module_path.clone(),
+                        path_segments.clone(),
                         use_stmt.span,
                     );
                 }
@@ -298,7 +300,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             UseItems::Glob => {
                 // Import all public symbols from the module
                 for name in module_symbols.all_public_symbols() {
-                    self.import_symbol(&name, &module_symbols, module_path.clone(), use_stmt.span);
+                    self.import_symbol(
+                        &name,
+                        &module_symbols,
+                        module_path.clone(),
+                        path_segments.clone(),
+                        use_stmt.span,
+                    );
                 }
             }
         }
@@ -542,13 +550,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         name: &str,
         module_symbols: &SymbolTable,
         module_path: PathBuf,
+        logical_path: Vec<String>,
         span: Span,
     ) {
         use symbol_table::ImportError;
 
         match self
             .symbols
-            .import_symbol(name, module_symbols, module_path.clone())
+            .import_symbol(name, module_symbols, module_path.clone(), logical_path)
         {
             Ok(()) => {
                 // Success

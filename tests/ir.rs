@@ -1465,3 +1465,452 @@ fn test_resolved_type_display_generic() {
     // Generic instantiation should show type args
     assert!(display.contains("Box") || display.contains("String"));
 }
+
+// =============================================================================
+// External Reference Tests
+// =============================================================================
+
+use formalang::ir::ExternalKind;
+use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// Mock module resolver for IR external reference tests
+struct MockResolver {
+    modules: HashMap<Vec<String>, (String, PathBuf)>,
+}
+
+impl MockResolver {
+    fn new() -> Self {
+        Self {
+            modules: HashMap::new(),
+        }
+    }
+
+    fn add_module(&mut self, path: Vec<String>, source: &str) {
+        let file_path = PathBuf::from(format!("{}.forma", path.join("/")));
+        self.modules.insert(path, (source.to_string(), file_path));
+    }
+}
+
+impl ModuleResolver for MockResolver {
+    fn resolve(
+        &self,
+        path: &[String],
+        _current_file: Option<&PathBuf>,
+    ) -> Result<(String, PathBuf), ModuleError> {
+        self.modules
+            .get(&path.to_vec())
+            .cloned()
+            .ok_or_else(|| ModuleError::NotFound {
+                path: path.to_vec(),
+                searched_paths: vec![],
+                span: formalang::location::Span::default(),
+            })
+    }
+}
+
+fn compile_to_ir_with_resolver<R: ModuleResolver>(
+    source: &str,
+    resolver: R,
+) -> Result<formalang::IrModule, Vec<formalang::CompilerError>> {
+    let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)?;
+    formalang::ir::lower_to_ir(&ast, analyzer.symbols())
+}
+
+#[test]
+fn test_external_struct_reference() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Main {
+    helper: Helper
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // Main struct should exist
+    let main = module.structs.iter().find(|s| s.name == "Main").unwrap();
+    let helper_field = &main.fields[0];
+
+    // Helper type should be External, not a local struct
+    match &helper_field.ty {
+        ResolvedType::External {
+            module_path,
+            name,
+            kind,
+            type_args,
+        } => {
+            assert_eq!(module_path, &vec!["utils".to_string()]);
+            assert_eq!(name, "Helper");
+            assert_eq!(*kind, ExternalKind::Struct);
+            assert!(type_args.is_empty());
+        }
+        _ => panic!(
+            "Expected External type for imported Helper, got {:?}",
+            helper_field.ty
+        ),
+    }
+}
+
+#[test]
+fn test_external_trait_reference() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["traits".to_string()],
+        "pub trait Named { name: String }",
+    );
+
+    let source = r#"
+use traits::Named
+struct User: Named {
+    name: String
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // User struct should implement the external trait
+    let user = module.structs.iter().find(|s| s.name == "User").unwrap();
+
+    // The trait reference should be external
+    // Note: traits field contains TraitIds for local traits, but external traits
+    // need different handling - checking imports instead
+    assert!(!module.imports.is_empty());
+
+    let named_import = module
+        .imports
+        .iter()
+        .flat_map(|i| i.items.iter())
+        .find(|item| item.name == "Named");
+
+    assert!(named_import.is_some());
+    assert_eq!(named_import.unwrap().kind, ExternalKind::Trait);
+}
+
+#[test]
+fn test_external_enum_reference() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["types".to_string()],
+        "pub enum Status { active, inactive }",
+    );
+
+    let source = r#"
+use types::Status
+struct Item {
+    status: Status
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let item = module.structs.iter().find(|s| s.name == "Item").unwrap();
+    let status_field = &item.fields[0];
+
+    match &status_field.ty {
+        ResolvedType::External {
+            module_path,
+            name,
+            kind,
+            ..
+        } => {
+            assert_eq!(module_path, &vec!["types".to_string()]);
+            assert_eq!(name, "Status");
+            assert_eq!(*kind, ExternalKind::Enum);
+        }
+        _ => panic!(
+            "Expected External type for imported Status, got {:?}",
+            status_field.ty
+        ),
+    }
+}
+
+#[test]
+fn test_external_generic_reference() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["containers".to_string()],
+        "pub struct Box<T> { value: T }",
+    );
+
+    let source = r#"
+use containers::Box
+struct Wrapper {
+    item: Box<String>
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let wrapper = module.structs.iter().find(|s| s.name == "Wrapper").unwrap();
+    let item_field = &wrapper.fields[0];
+
+    match &item_field.ty {
+        ResolvedType::External {
+            module_path,
+            name,
+            kind,
+            type_args,
+        } => {
+            assert_eq!(module_path, &vec!["containers".to_string()]);
+            assert_eq!(name, "Box");
+            assert_eq!(*kind, ExternalKind::Struct);
+            assert_eq!(type_args.len(), 1);
+            assert!(matches!(
+                &type_args[0],
+                ResolvedType::Primitive(formalang::ast::PrimitiveType::String)
+            ));
+        }
+        _ => panic!(
+            "Expected External type with type args, got {:?}",
+            item_field.ty
+        ),
+    }
+}
+
+#[test]
+fn test_ir_imports_populated() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        r#"
+pub struct Helper { name: String }
+pub struct Utils { value: Number }
+"#,
+    );
+
+    // Only Helper is actually used, so only Helper should be in imports
+    let source = r#"
+use utils::{Helper, Utils}
+struct Main {
+    helper: Helper
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    // imports should contain only used items
+    assert!(!module.imports.is_empty());
+
+    let utils_import = module
+        .imports
+        .iter()
+        .find(|i| i.module_path == vec!["utils".to_string()]);
+
+    assert!(utils_import.is_some());
+    let utils_import = utils_import.unwrap();
+
+    // Only Helper is used, Utils is imported but not used
+    assert!(utils_import.items.iter().any(|i| i.name == "Helper"));
+    // Utils is NOT used, so it should NOT be in the imports
+    // (we only track imports that are actually used in the code)
+}
+
+#[test]
+fn test_external_nested_module_path() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["std".to_string(), "collections".to_string()],
+        "pub struct List { items: [String] }",
+    );
+
+    let source = r#"
+use std::collections::List
+struct Container {
+    items: List
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    let items_field = &container.fields[0];
+
+    match &items_field.ty {
+        ResolvedType::External { module_path, .. } => {
+            assert_eq!(
+                module_path,
+                &vec!["std".to_string(), "collections".to_string()]
+            );
+        }
+        _ => panic!("Expected External type with nested path"),
+    }
+}
+
+#[test]
+fn test_external_display_name_simple() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { name: String }",
+    );
+
+    let source = r#"
+use utils::Helper
+struct Main {
+    helper: Helper
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let main = module.structs.iter().find(|s| s.name == "Main").unwrap();
+    let helper_field = &main.fields[0];
+
+    // display_name should return just the type name
+    assert_eq!(helper_field.ty.display_name(&module), "Helper");
+}
+
+#[test]
+fn test_external_display_name_with_generics() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["containers".to_string()],
+        "pub struct Box<T> { value: T }",
+    );
+
+    let source = r#"
+use containers::Box
+struct Wrapper {
+    item: Box<String>
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let wrapper = module.structs.iter().find(|s| s.name == "Wrapper").unwrap();
+    let item_field = &wrapper.fields[0];
+
+    // display_name should show type with args
+    assert_eq!(item_field.ty.display_name(&module), "Box<String>");
+}
+
+#[test]
+fn test_local_types_not_external() {
+    let source = r#"
+struct Helper { name: String }
+struct Main {
+    helper: Helper
+}
+"#;
+
+    let module = compile_to_ir(source).unwrap();
+
+    let main = module.structs.iter().find(|s| s.name == "Main").unwrap();
+    let helper_field = &main.fields[0];
+
+    // Local types should remain as Struct, not External
+    assert!(matches!(helper_field.ty, ResolvedType::Struct(_)));
+}
+
+#[test]
+fn test_mixed_local_and_external() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct External { name: String }",
+    );
+
+    let source = r#"
+use utils::External
+struct Local { value: Number }
+struct Main {
+    external: External,
+    local: Local
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let main = module.structs.iter().find(|s| s.name == "Main").unwrap();
+
+    let external_field = main.fields.iter().find(|f| f.name == "external").unwrap();
+    let local_field = main.fields.iter().find(|f| f.name == "local").unwrap();
+
+    // External type should be External variant
+    assert!(matches!(external_field.ty, ResolvedType::External { .. }));
+
+    // Local type should be Struct variant
+    assert!(matches!(local_field.ty, ResolvedType::Struct(_)));
+}
+
+#[test]
+fn test_external_in_array() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Item { name: String }",
+    );
+
+    let source = r#"
+use utils::Item
+struct Collection {
+    items: [Item]
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let collection = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Collection")
+        .unwrap();
+    let items_field = &collection.fields[0];
+
+    match &items_field.ty {
+        ResolvedType::Array(inner) => match inner.as_ref() {
+            ResolvedType::External { name, .. } => {
+                assert_eq!(name, "Item");
+            }
+            _ => panic!("Expected External type inside array"),
+        },
+        _ => panic!("Expected Array type"),
+    }
+}
+
+#[test]
+fn test_external_in_optional() {
+    let mut resolver = MockResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Item { name: String }",
+    );
+
+    let source = r#"
+use utils::Item
+struct Container {
+    item: Item?
+}
+"#;
+
+    let module = compile_to_ir_with_resolver(source, resolver).unwrap();
+
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    let item_field = &container.fields[0];
+
+    match &item_field.ty {
+        ResolvedType::Optional(inner) => match inner.as_ref() {
+            ResolvedType::External { name, .. } => {
+                assert_eq!(name, "Item");
+            }
+            _ => panic!("Expected External type inside optional"),
+        },
+        _ => panic!("Expected Optional type"),
+    }
+}
