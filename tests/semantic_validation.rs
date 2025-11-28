@@ -695,3 +695,127 @@ fn test_module_with_trait_and_impl() {
     let result = compile(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
 }
+
+// =============================================================================
+// Impl Block Defaults Tests
+// =============================================================================
+
+#[test]
+fn test_impl_block_defaults_applied_on_instantiation() {
+    // Impl block defaults should make fields optional during instantiation
+    let source = r##"
+        struct MyBox {
+            color: String,
+            size: Number
+        }
+        impl MyBox {
+            color: "#FF0000",
+            size: 10
+        }
+        struct Container {
+            box: MyBox
+        }
+        impl Container {
+            box: MyBox()
+        }
+    "##;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Impl block defaults should make fields optional: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_impl_block_defaults_with_mount_fields() {
+    // Mount fields with impl block defaults should be optional
+    let source = r##"
+        trait Shape {}
+        struct Rect: Shape {}
+        impl Rect {}
+
+        struct MyBox: Shape {
+            color: String,
+            mount body: Shape
+        }
+        impl MyBox {
+            color: "#FF0000",
+            body: Rect()
+        }
+        struct Container: Shape {
+            mount content: Shape
+        }
+        impl Container {
+            content: MyBox()
+        }
+    "##;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Mount fields with impl defaults should be optional: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_impl_block_defaults_partial_override() {
+    // Can provide some fields while using impl defaults for others
+    let source = r#"
+        struct Config {
+            name: String,
+            value: Number,
+            enabled: Boolean
+        }
+        impl Config {
+            name: "default",
+            value: 0,
+            enabled: true
+        }
+        struct App {
+            config: Config
+        }
+        impl App {
+            config: Config(name: "custom")
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Should allow partial override of impl defaults: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_impl_block_defaults_nested_instantiation() {
+    // Nested struct instantiation should respect impl defaults
+    let source = r#"
+        struct Inner {
+            value: String
+        }
+        impl Inner {
+            value: "inner default"
+        }
+        struct Outer {
+            inner: Inner,
+            name: String
+        }
+        impl Outer {
+            inner: Inner(),
+            name: "outer default"
+        }
+        struct Container {
+            outer: Outer
+        }
+        impl Container {
+            outer: Outer()
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Nested instantiation should use impl defaults: {:?}",
+        result.err()
+    );
+}
