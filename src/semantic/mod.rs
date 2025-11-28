@@ -1793,10 +1793,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .map(|f| f.name.name.clone())
                     .collect();
 
+                // Get fields that have defaults in impl blocks
+                let impl_default_fields: Vec<String> = self
+                    .symbols
+                    .get_impl(struct_name)
+                    .map(|impl_info| {
+                        impl_info
+                            .defaults
+                            .iter()
+                            .map(|(ident, _)| ident.name.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
                 let required_fields: Vec<String> = def
                     .fields
                     .iter()
-                    .filter(|f| f.default.is_none() && !f.optional)
+                    .filter(|f| {
+                        // Field is required if it has no inline default, is not optional,
+                        // AND has no default in an impl block
+                        f.default.is_none()
+                            && !f.optional
+                            && !impl_default_fields.contains(&f.name.name)
+                    })
                     .map(|f| f.name.name.clone())
                     .collect();
 
@@ -1804,8 +1823,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .mount_fields
                     .iter()
                     .filter(|f| {
-                        // Mount fields with defaults are optional
+                        // Mount fields with inline defaults are optional
                         if f.default.is_some() {
+                            return false;
+                        }
+                        // Mount fields with impl block defaults are optional
+                        if impl_default_fields.contains(&f.name.name) {
                             return false;
                         }
                         // Mount fields of type `Never` are always optional since
