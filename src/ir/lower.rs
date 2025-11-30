@@ -100,39 +100,125 @@ impl<'a> IrLowerer<'a> {
     /// This ensures that imported types have struct/enum IDs in the IR module,
     /// so when we instantiate them, struct_id is populated correctly.
     fn register_imported_types(&mut self) {
-        // Register imported structs
+        // Register imported structs (top-level)
         for (name, struct_info) in &self.symbols.structs {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
-                self.module.add_struct(
-                    name.clone(),
-                    IrStruct {
-                        name: name.clone(),
-                        visibility: struct_info.visibility,
-                        traits: Vec::new(),
-                        fields: Vec::new(),
-                        mount_fields: Vec::new(),
-                        generic_params: Vec::new(),
-                    },
-                );
+                self.register_struct(name, struct_info);
             }
         }
 
-        // Register imported enums
+        // Register imported enums (top-level)
         for (name, enum_info) in &self.symbols.enums {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
-                self.module.add_enum(
-                    name.clone(),
-                    IrEnum {
-                        name: name.clone(),
-                        visibility: enum_info.visibility,
-                        variants: Vec::new(),
-                        generic_params: Vec::new(),
-                    },
-                );
+                self.register_enum(name, enum_info);
             }
         }
+
+        // Register types from imported nested modules (e.g., fill::Solid)
+        for (module_name, module_info) in &self.symbols.modules {
+            self.register_module_types(module_name, &module_info.symbols);
+        }
+    }
+
+    /// Register types from a nested module recursively
+    fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
+        // Register structs from this module
+        for (name, struct_info) in &module_symbols.structs {
+            let qualified_name = format!("{}::{}", module_prefix, name);
+            self.register_struct(&qualified_name, struct_info);
+        }
+
+        // Register enums from this module
+        for (name, enum_info) in &module_symbols.enums {
+            let qualified_name = format!("{}::{}", module_prefix, name);
+            self.register_enum(&qualified_name, enum_info);
+        }
+
+        // Recursively register nested modules
+        for (nested_name, nested_module_info) in &module_symbols.modules {
+            let nested_prefix = format!("{}::{}", module_prefix, nested_name);
+            self.register_module_types(&nested_prefix, &nested_module_info.symbols);
+        }
+    }
+
+    /// Helper method to register an enum
+    /// Note: EnumInfo doesn't preserve variant field details, so we create placeholder variants
+    fn register_enum(&mut self, name: &str, enum_info: &crate::semantic::symbol_table::EnumInfo) {
+        let generic_params = self.lower_generic_params(&enum_info.generics);
+
+        // EnumInfo only stores variant names and arity, not field details
+        // We create placeholder variants with empty fields
+        let variants: Vec<IrEnumVariant> = enum_info
+            .variants
+            .keys()
+            .map(|variant_name| IrEnumVariant {
+                name: variant_name.clone(),
+                fields: Vec::new(), // Field details not available in EnumInfo
+            })
+            .collect();
+
+        self.module.add_enum(
+            name.to_string(),
+            IrEnum {
+                name: name.to_string(),
+                visibility: enum_info.visibility,
+                variants,
+                generic_params,
+            },
+        );
+    }
+
+    /// Helper method to register a struct with full field information
+    fn register_struct(&mut self, name: &str, struct_info: &crate::semantic::symbol_table::StructInfo) {
+        // Convert fields from StructInfo to IrField
+        let fields: Vec<IrField> = struct_info
+            .fields
+            .iter()
+            .map(|f| IrField {
+                name: f.name.clone(),
+                ty: self.lower_type(&f.ty),
+                mutable: false,
+                optional: false,
+                default: None,
+            })
+            .collect();
+
+        // Convert mount_fields from StructInfo to IrField
+        let mount_fields: Vec<IrField> = struct_info
+            .mount_fields
+            .iter()
+            .map(|f| IrField {
+                name: f.name.clone(),
+                ty: self.lower_type(&f.ty),
+                mutable: false,
+                optional: false,
+                default: None,
+            })
+            .collect();
+
+        // Convert trait names to trait IDs
+        let traits: Vec<TraitId> = struct_info
+            .traits
+            .iter()
+            .filter_map(|trait_name| self.module.trait_id(trait_name))
+            .collect();
+
+        // Convert generic params
+        let generic_params = self.lower_generic_params(&struct_info.generics);
+
+        self.module.add_struct(
+            name.to_string(),
+            IrStruct {
+                name: name.to_string(),
+                visibility: struct_info.visibility,
+                traits,
+                fields,
+                mount_fields,
+                generic_params,
+            },
+        );
     }
 
     /// First pass: register definitions to allocate IDs
