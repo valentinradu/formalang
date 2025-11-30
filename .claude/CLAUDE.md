@@ -75,6 +75,15 @@ Forma is a declarative language compiler written in Rust.
 - **Output**: Validated AST as Rust data structure
 - **Modular design**: Separate crates for distinct phases
 
+### Stdlib Usage
+
+- **Always import via `use`**: Never append or concatenate stdlib source
+- **Use FileSystemResolver**: Tests should import stdlib from `stdlib.fv` file
+- **Location**: `stdlib.fv` must exist in project root
+- **Import pattern**: `use stdlib::*` for all stdlib symbols
+- **No include_str**: Never use `include_str!("stdlib.fv")` or similar
+- **Impl block defaults**: Importing a struct/enum also imports its impl block
+
 ### Code Formatting
 
 - Use ```formalang``` for FormaLang code blocks
