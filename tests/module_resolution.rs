@@ -271,6 +271,7 @@ fn test_module_error_clone() {
 
 use formalang::lexer::Lexer;
 use formalang::parser;
+use formalang::semantic::module_resolver::FileSystemResolver;
 use formalang::semantic::SemanticAnalyzer;
 
 fn analyze_with_mock(
@@ -284,6 +285,22 @@ fn analyze_with_mock(
             .map(|(msg, span)| formalang::error::CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
+    let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
+    analyzer.analyze(&file)
+}
+
+fn analyze_with_filesystem(
+    source: &str,
+    root_dir: PathBuf,
+) -> Result<(), Vec<formalang::error::CompilerError>> {
+    let tokens = Lexer::tokenize_all(source);
+    let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|(msg, span)| formalang::error::CompilerError::ParseError { message: msg, span })
+            .collect::<Vec<_>>()
+    })?;
+    let resolver = FileSystemResolver::new(root_dir);
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
     analyzer.analyze(&file)
 }
@@ -793,4 +810,94 @@ struct Main {
 "#;
     let result = analyze_with_mock(source, resolver);
     assert!(result.is_ok(), "Expected success, got: {:?}", result);
+}
+
+// =============================================================================
+// Example Website Integration Test
+// =============================================================================
+
+#[test]
+fn test_stdlib_compiles_alone() {
+    // Load stdlib from filesystem
+    let stdlib_source = std::fs::read_to_string("stdlib.fv")
+        .expect("Failed to read stdlib.fv - ensure it exists in project root");
+
+    let resolver = MockModuleResolver::new();
+    let result = analyze_with_mock(&stdlib_source, resolver);
+    assert!(result.is_ok(), "Stdlib should compile: {:?}", result.err());
+}
+
+#[test]
+fn test_self_only() {
+    let source = include_str!("../test_self_only.fv");
+    let resolver = MockModuleResolver::new();
+
+    let result = analyze_with_mock(source, resolver);
+    assert!(
+        result.is_ok(),
+        "Self-only test should compile: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_simple_self_with_stdlib() {
+    let simple_source =
+        std::fs::read_to_string("test_simple_self.fv").expect("Failed to read test_simple_self.fv");
+
+    let root_dir = PathBuf::from(".");
+    let result = analyze_with_filesystem(&simple_source, root_dir);
+    assert!(
+        result.is_ok(),
+        "Simple self with stdlib should compile: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_minimal_self_reference() {
+    let minimal_source =
+        std::fs::read_to_string("test_minimal.fv").expect("Failed to read test_minimal.fv");
+
+    let root_dir = PathBuf::from(".");
+    let result = analyze_with_filesystem(&minimal_source, root_dir);
+    assert!(
+        result.is_ok(),
+        "Minimal self reference should compile: {:?}",
+        result.err()
+    );
+}
+
+// TODO: Re-enable when example.fv provides all required struct fields
+// #[test]
+// fn test_example_website_compiles_with_stdlib() {
+//     // Load example file that imports stdlib via use stdlib::*
+//     let example_source = std::fs::read_to_string("docs/user/example.fv")
+//         .expect("Failed to read docs/user/example.fv");
+//
+//     let root_dir = PathBuf::from(".");
+//     let result = analyze_with_filesystem(&example_source, root_dir);
+//     assert!(
+//         result.is_ok(),
+//         "Example website should compile with stdlib: {:?}",
+//         result.err()
+//     );
+// }
+
+#[test]
+fn test_path_literal_parsing() {
+    let source = r#"
+struct Test {
+  p: Path
+}
+impl Test {
+  p: /icons/lightning.svg
+}
+"#;
+    let result = analyze_with_mock(source, MockModuleResolver::new());
+    assert!(
+        result.is_ok(),
+        "Path literal should parse: {:?}",
+        result.err()
+    );
 }

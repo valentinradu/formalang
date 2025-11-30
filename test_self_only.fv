@@ -1,0 +1,9 @@
+pub struct Modal {
+  isOpen: Boolean,
+  title: String
+}
+
+impl Modal {
+  isOpen: false,
+  title: if self.isOpen { "open" } else { "closed" }
+}

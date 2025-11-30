@@ -1,0 +1,15 @@
+use stdlib::*
+
+pub struct Modal: View {
+  isOpen: Boolean,
+  mount body: View
+}
+
+impl Modal {
+  isOpen: false,
+  body: if self.isOpen {
+    Empty()
+  } else {
+    Empty()
+  }
+}

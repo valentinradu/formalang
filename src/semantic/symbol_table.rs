@@ -466,14 +466,22 @@ impl SymbolTable {
             SymbolKind::Struct => {
                 if let Some(struct_info) = module_table.structs.get(name) {
                     self.structs.insert(name.to_string(), struct_info.clone());
+                    // Also import the impl block if it exists
+                    if let Some(impl_info) = module_table.impls.get(name) {
+                        self.impls.insert(name.to_string(), impl_info.clone());
+                    }
                 }
             }
             SymbolKind::Impl => {
-                // Impls are not importable, skip
+                // Impls are not importable directly, but are imported with their structs
             }
             SymbolKind::Enum => {
                 if let Some(enum_info) = module_table.enums.get(name) {
                     self.enums.insert(name.to_string(), enum_info.clone());
+                    // Also import the impl block if it exists
+                    if let Some(impl_info) = module_table.impls.get(name) {
+                        self.impls.insert(name.to_string(), impl_info.clone());
+                    }
                 }
             }
             SymbolKind::Let => {

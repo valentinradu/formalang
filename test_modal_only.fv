@@ -1,0 +1,77 @@
+use stdlib::*
+
+pub enum Event {
+  openModal,
+  closeModal
+}
+
+let primaryColor: Color = .hex(value: "#2563EB")
+let textColor: Color = .hex(value: "#1F2937")
+let bgWhite: Color = .hex(value: "#FFFFFF")
+let borderColor: Color = .hex(value: "#E5E7EB")
+
+let headingFont: Font = Font(
+  family: "Inter",
+  weight: .bold,
+  style: .normal,
+  stretch: .normal
+)
+
+let subheadingStyle: LabelStyle = LabelStyle(
+  font: headingFont,
+  size: .px(value: 24),
+  letterSpacing: .auto,
+  weight: .semibold
+)
+
+pub struct Modal: View {
+  isOpen: Boolean,
+  title: String,
+  onClose: (() -> Event)?,
+  mount content: View,
+  mount body: View
+}
+
+impl Modal {
+  isOpen: false,
+  title: "Modal",
+  onClose: nil,
+  body: if self.isOpen {
+    ZStack(alignment: .center) {
+      body: {
+        Modifier(transforms: [
+          .blur(radius: .px(value: 8)),
+          .opacity(value: 0.5)
+        ]) {
+          body: Rect(
+            width: .auto,
+            height: .auto,
+            fill: fill::Solid(color: .hex(value: "#000000"))
+          )
+        }
+        VStack(
+          spacing: .px(value: 24),
+          padding: .uniform(value: .px(value: 32)),
+          alignment: .leading
+        ) {
+          background: Rect(
+            width: .px(value: 480),
+            height: .auto,
+            cornerRadius: .px(value: 16),
+            fill: fill::Solid(color: bgWhite)
+          ),
+          body: {
+            Label(
+              content: self.title,
+              style: subheadingStyle,
+              fill: fill::Solid(color: textColor)
+            )
+            self.content
+          }
+        }
+      }
+    }
+  } else {
+    Empty()
+  }
+}
