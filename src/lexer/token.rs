@@ -53,6 +53,8 @@ pub enum Token {
     Consumes,
     #[token("as")]
     As,
+    #[token("self")]
+    SelfKeyword,
 
     // Primitive type keywords
     #[token("String")]
@@ -79,7 +81,7 @@ pub enum Token {
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
     Regex(String), // Full regex string, parse later
 
-    #[regex(r"/([^/\s\\]|\\.)+(/([^/\s\\]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
+    #[regex(r"/([^/\s\\,(){}\[\]]|\\.)+(/([^/\s\\,(){}\[\]]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
     Path(String),
 
     // Identifier: starts with letter/underscore, contains alphanumerics/underscores

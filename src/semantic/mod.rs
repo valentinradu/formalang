@@ -119,6 +119,8 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     loop_var_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context
     local_let_bindings: HashSet<String>,
+    /// Recursion depth counter for validate_expr (to prevent stack overflow)
+    validate_expr_depth: usize,
 }
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -135,6 +137,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
             local_let_bindings: HashSet::new(),
+            validate_expr_depth: 0,
         }
     }
 
@@ -152,6 +155,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
             local_let_bindings: HashSet::new(),
+            validate_expr_depth: 0,
         }
     }
 
@@ -1465,6 +1469,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate a single expression (recursively)
     fn validate_expr(&mut self, expr: &Expr, file: &File) {
+        // Check recursion depth to prevent stack overflow
+        const MAX_EXPR_DEPTH: usize = 500;
+        self.validate_expr_depth += 1;
+        if self.validate_expr_depth > MAX_EXPR_DEPTH {
+            eprintln!("WARNING: Maximum expression depth ({}) exceeded, skipping validation to prevent stack overflow", MAX_EXPR_DEPTH);
+            self.validate_expr_depth -= 1;
+            return;
+        }
+
         match expr {
             Expr::Literal(_) => {
                 // Literals are always valid
@@ -1481,6 +1494,53 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Expr::Reference { path, span } => {
+                // Handle self keyword
+                if !path.is_empty() && path[0].name == "self" {
+                    // Validate that we're inside an impl block
+                    if self.current_impl_struct.is_none() {
+                        self.errors.push(CompilerError::UndefinedReference {
+                            name: "self".to_string(),
+                            span: *span,
+                        });
+                        return;
+                    }
+
+                    // If it's just "self", it's valid
+                    if path.len() == 1 {
+                        return;
+                    }
+
+                    // If it's "self.field", validate the field exists
+                    if path.len() == 2 {
+                        let field_name = &path[1].name;
+                        if let Some(ref struct_name) = self.current_impl_struct {
+                            if let Some(struct_info) = self.symbols.get_struct(struct_name) {
+                                // Check regular fields
+                                for field in &struct_info.fields {
+                                    if field.name == *field_name {
+                                        return;
+                                    }
+                                }
+                                // Check mount fields
+                                for field in &struct_info.mount_fields {
+                                    if field.name == *field_name {
+                                        return;
+                                    }
+                                }
+                                // Field not found
+                                self.errors.push(CompilerError::UndefinedReference {
+                                    name: format!("self.{}", field_name),
+                                    span: *span,
+                                });
+                                return;
+                            }
+                        }
+                    }
+
+                    // self.field.subfield or longer paths not supported yet
+                    return;
+                }
+
                 // Validate references in impl blocks
                 if path.len() == 1 {
                     let name = &path[0].name;
@@ -1769,6 +1829,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(body, file);
             }
         }
+
+        // Decrement depth counter
+        self.validate_expr_depth -= 1;
     }
 
     /// Validate that struct instantiation respects mutability requirements
@@ -2896,6 +2959,32 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 "InferredEnum".to_string()
             }
             Expr::Reference { path, .. } => {
+                // Handle self.field references
+                if !path.is_empty() && path[0].name == "self" {
+                    if path.len() == 2 {
+                        // self.field - look up field type in current impl struct
+                        let field_name = &path[1].name;
+                        if let Some(ref struct_name) = self.current_impl_struct {
+                            if let Some(struct_info) = self.symbols.get_struct(struct_name) {
+                                // Check regular fields
+                                for field in &struct_info.fields {
+                                    if field.name == *field_name {
+                                        return self.type_to_string(&field.ty);
+                                    }
+                                }
+                                // Check mount fields
+                                for field in &struct_info.mount_fields {
+                                    if field.name == *field_name {
+                                        return self.type_to_string(&field.ty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // For self without field, or self.field.subfield, return Unknown for now
+                    return "Unknown".to_string();
+                }
+
                 // For references, resolve the type
                 if path.len() == 1 {
                     // Simple reference - check if it's a let binding

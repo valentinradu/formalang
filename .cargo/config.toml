@@ -1,0 +1,11 @@
+# Cargo configuration for formalang
+
+[env]
+# Set minimum stack size to 16MB for debug builds
+# This is ONLY needed for unoptimized debug builds (cargo test, cargo build).
+# Release builds (cargo build --release) work fine with default stack size
+# because optimizations (inlining, tail calls) significantly reduce stack usage.
+#
+# Users compiling FormaLang code in production will use release-built compiler
+# binaries, so this configuration does not affect end users.
+RUST_MIN_STACK = "16777216"
