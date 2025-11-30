@@ -868,21 +868,20 @@ fn test_minimal_self_reference() {
     );
 }
 
-// TODO: Re-enable when example.fv provides all required struct fields
-// #[test]
-// fn test_example_website_compiles_with_stdlib() {
-//     // Load example file that imports stdlib via use stdlib::*
-//     let example_source = std::fs::read_to_string("docs/user/example.fv")
-//         .expect("Failed to read docs/user/example.fv");
-//
-//     let root_dir = PathBuf::from(".");
-//     let result = analyze_with_filesystem(&example_source, root_dir);
-//     assert!(
-//         result.is_ok(),
-//         "Example website should compile with stdlib: {:?}",
-//         result.err()
-//     );
-// }
+#[test]
+fn test_example_website_compiles_with_stdlib() {
+    // Load example file that imports stdlib via use stdlib::*
+    let example_source = std::fs::read_to_string("docs/user/example.fv")
+        .expect("Failed to read docs/user/example.fv");
+
+    let root_dir = PathBuf::from(".");
+    let result = analyze_with_filesystem(&example_source, root_dir);
+    assert!(
+        result.is_ok(),
+        "Example website should compile with stdlib: {:?}",
+        result.err()
+    );
+}
 
 #[test]
 fn test_path_literal_parsing() {
