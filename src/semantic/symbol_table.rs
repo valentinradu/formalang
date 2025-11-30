@@ -350,6 +350,40 @@ impl SymbolTable {
         self.structs.get(name)
     }
 
+    /// Get struct info, supporting module-qualified names like "fill::Solid"
+    pub fn get_struct_qualified(&self, name: &str) -> Option<&StructInfo> {
+        // Try direct lookup first
+        if let Some(info) = self.structs.get(name) {
+            return Some(info);
+        }
+
+        // Try module-qualified lookup (e.g., "fill::Solid")
+        if let Some((module_name, struct_name)) = name.split_once("::") {
+            if let Some(module_info) = self.modules.get(module_name) {
+                return module_info.symbols.get_struct_qualified(struct_name);
+            }
+        }
+
+        None
+    }
+
+    /// Get enum info, supporting module-qualified names like "fill::PatternRepeat"
+    pub fn get_enum_qualified(&self, name: &str) -> Option<&EnumInfo> {
+        // Try direct lookup first
+        if let Some(info) = self.enums.get(name) {
+            return Some(info);
+        }
+
+        // Try module-qualified lookup (e.g., "fill::PatternRepeat")
+        if let Some((module_name, enum_name)) = name.split_once("::") {
+            if let Some(module_info) = self.modules.get(module_name) {
+                return module_info.symbols.get_enum_qualified(enum_name);
+            }
+        }
+
+        None
+    }
+
     /// Get impl info
     #[allow(dead_code)]
     pub fn get_impl(&self, struct_name: &str) -> Option<&ImplInfo> {
