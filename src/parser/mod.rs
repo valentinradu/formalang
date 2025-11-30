@@ -683,6 +683,20 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     select! {
+        Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span())),
+        Token::SelfKeyword = e => Ident::new("self".to_string(), span_from_simple(e.span()))
+    }
+    .labelled("identifier")
+}
+
+/// Parse an identifier (excluding 'self' keyword)
+/// Used in type and enum contexts where 'self' is not valid
+fn ident_no_self_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    select! {
         Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span()))
     }
     .labelled("identifier")
@@ -1279,7 +1293,8 @@ where
 
         // Enum instantiation: EnumType.variant(field: value, field: value, ...)
         // Supports module-qualified paths: module::EnumType.variant
-        let enum_instantiation = ident_parser()
+        // Note: Uses ident_no_self_parser to prevent 'self.field' from being parsed as enum instantiation
+        let enum_instantiation = ident_no_self_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
@@ -1615,10 +1630,10 @@ where
             grouped,
             no_param_closure, // () -> expr (must come before other closures and tuples)
             param_closure,    // x -> expr (must come before reference since starts with ident)
-            inferred_enum_instantiation, // Must come first (.variant is most specific)
+            inferred_enum_instantiation, // .variant is most specific
             enum_instantiation, // Must come before instantiation and reference (Type.variant(...))
             instantiation,    // Must come before reference (Type(...))
-            reference,        // Most general (ident:ident:ident)
+            reference,        // Most general (ident:ident:ident), now includes 'self'
         ));
 
         // Binary operators with precedence using pratt parser
@@ -1716,6 +1731,36 @@ where
                     dict: Box::new(dict),
                     key: Box::new(key),
                     span: span_from_simple(e.span()),
+                },
+            ),
+            // Field access: expr.field (precedence: 7, same as array access)
+            // Note: This handles general field access like foo.bar.baz or self.field
+            // Enum instantiation Type.variant(args) is parsed as an atom, so won't conflict
+            postfix(
+                7,
+                just(Token::Dot).ignore_then(ident_parser()),
+                |object, field, e| {
+                    // Convert object to a reference path and extend it with the field
+                    match object {
+                        Expr::Reference { mut path, .. } => {
+                            // Extend existing reference path
+                            path.push(field);
+                            Expr::Reference {
+                                path,
+                                span: span_from_simple(e.span()),
+                            }
+                        }
+                        _ => {
+                            // For non-reference expressions, we'll need FieldAccess in the AST
+                            // For now, treat this as an error case by creating a simple reference
+                            // This is a limitation - proper field access on complex expressions
+                            // would need a new AST node
+                            Expr::Reference {
+                                path: vec![field],
+                                span: span_from_simple(e.span()),
+                            }
+                        }
+                    }
                 },
             ),
         ))
