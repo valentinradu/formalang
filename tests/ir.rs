@@ -1938,14 +1938,14 @@ struct Main {
 
     let module = compile_to_ir_with_resolver(source, resolver).unwrap();
 
-    // External types should NOT be found via struct_id lookup
-    // This is expected - code generators must handle External variant
+    // Imported types ARE now found via struct_id lookup (new behavior)
+    // They are registered during IR lowering so they have valid IDs
     assert!(
-        module.struct_id("Helper").is_none(),
-        "External types should not be in struct_id lookup"
+        module.struct_id("Helper").is_some(),
+        "Imported types should be in struct_id lookup"
     );
 
-    // Only local structs should be in the lookup
+    // Local structs should also be in the lookup
     assert!(module.struct_id("Main").is_some());
 }
 
@@ -2106,23 +2106,19 @@ impl Container { h: Helper(name: "test") }
     assert!(!module.impls.is_empty());
     let expr = &module.impls[0].defaults[0].1;
 
-    // It should be a StructInst with struct_id=None
+    // It should be a StructInst with a valid struct_id (imported types now get IDs)
     if let IrExpr::StructInst { struct_id, ty, .. } = expr {
         assert!(
-            struct_id.is_none(),
-            "External struct instantiation should have struct_id=None, got {:?}",
-            struct_id
+            struct_id.is_some(),
+            "Imported struct instantiation should have struct_id, got None"
         );
 
-        // The type should be External
+        // The type should be Struct (not External, since we registered it)
         match ty {
-            ResolvedType::External {
-                module_path, name, ..
-            } => {
-                assert_eq!(module_path, &vec!["utils".to_string()]);
-                assert_eq!(name, "Helper");
+            ResolvedType::Struct(id) => {
+                assert_eq!(struct_id, &Some(*id));
             }
-            _ => panic!("Expected External type, got {:?}", ty),
+            _ => panic!("Expected Struct type, got {:?}", ty),
         }
     } else {
         panic!("Expected StructInst expression, got {:?}", expr);
@@ -2157,20 +2153,16 @@ impl Item { status: Status.active }
     } = expr
     {
         assert!(
-            enum_id.is_none(),
-            "External enum instantiation should have enum_id=None, got {:?}",
-            enum_id
+            enum_id.is_some(),
+            "Imported enum instantiation should have enum_id, got None"
         );
         assert_eq!(variant, "active");
 
         match ty {
-            ResolvedType::External {
-                module_path, name, ..
-            } => {
-                assert_eq!(module_path, &vec!["types".to_string()]);
-                assert_eq!(name, "Status");
+            ResolvedType::Enum(id) => {
+                assert_eq!(enum_id, &Some(*id));
             }
-            _ => panic!("Expected External type, got {:?}", ty),
+            _ => panic!("Expected Enum type, got {:?}", ty),
         }
     } else {
         panic!("Expected EnumInst expression, got {:?}", expr);

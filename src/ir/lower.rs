@@ -65,6 +65,9 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_file(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
+        // Pre-pass: register imported structs and enums so they have IDs
+        self.register_imported_types();
+
         // First pass: register all definitions to get IDs
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
@@ -90,6 +93,45 @@ impl<'a> IrLowerer<'a> {
             Ok(())
         } else {
             Err(std::mem::take(&mut self.errors))
+        }
+    }
+
+    /// Register imported structs and enums from the symbol table.
+    /// This ensures that imported types have struct/enum IDs in the IR module,
+    /// so when we instantiate them, struct_id is populated correctly.
+    fn register_imported_types(&mut self) {
+        // Register imported structs
+        for (name, struct_info) in &self.symbols.structs {
+            // Check if this is an imported symbol
+            if self.symbols.get_module_origin(name).is_some() {
+                self.module.add_struct(
+                    name.clone(),
+                    IrStruct {
+                        name: name.clone(),
+                        visibility: struct_info.visibility,
+                        traits: Vec::new(),
+                        fields: Vec::new(),
+                        mount_fields: Vec::new(),
+                        generic_params: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        // Register imported enums
+        for (name, enum_info) in &self.symbols.enums {
+            // Check if this is an imported symbol
+            if self.symbols.get_module_origin(name).is_some() {
+                self.module.add_enum(
+                    name.clone(),
+                    IrEnum {
+                        name: name.clone(),
+                        visibility: enum_info.visibility,
+                        variants: Vec::new(),
+                        generic_params: Vec::new(),
+                    },
+                );
+            }
         }
     }
 
@@ -436,14 +478,9 @@ impl<'a> IrLowerer<'a> {
                 let type_args_resolved: Vec<ResolvedType> =
                     type_args.iter().map(|t| self.lower_type(t)).collect();
 
-                // Check if this is an external struct
-                let (struct_id, ty) = if let Some(external_ty) =
-                    self.try_external_type(&name.name, type_args_resolved.clone())
-                {
-                    // External struct - no valid ID
-                    (None, external_ty)
-                } else if let Some(id) = self.module.struct_id(&name.name) {
-                    // Local struct
+                // Check if we have a struct ID (local or imported)
+                let (struct_id, ty) = if let Some(id) = self.module.struct_id(&name.name) {
+                    // Local or imported struct with ID
                     let ty = if type_args_resolved.is_empty() {
                         ResolvedType::Struct(id)
                     } else {
@@ -453,6 +490,11 @@ impl<'a> IrLowerer<'a> {
                         }
                     };
                     (Some(id), ty)
+                } else if let Some(external_ty) =
+                    self.try_external_type(&name.name, type_args_resolved.clone())
+                {
+                    // External struct from unregistered module - no valid ID
+                    (None, external_ty)
                 } else {
                     // Unknown struct - this shouldn't happen after semantic analysis
                     // but handle gracefully
@@ -480,18 +522,17 @@ impl<'a> IrLowerer<'a> {
                 data,
                 ..
             } => {
-                // Check if this is an external enum
-                let (enum_id, ty) =
-                    if let Some(external_ty) = self.try_external_type(&enum_name.name, vec![]) {
-                        // External enum - no valid ID
-                        (None, external_ty)
-                    } else if let Some(id) = self.module.enum_id(&enum_name.name) {
-                        // Local enum
-                        (Some(id), ResolvedType::Enum(id))
-                    } else {
-                        // Unknown enum - this shouldn't happen after semantic analysis
-                        (None, ResolvedType::TypeParam(enum_name.name.clone()))
-                    };
+                // Check if we have an enum ID (local or imported)
+                let (enum_id, ty) = if let Some(id) = self.module.enum_id(&enum_name.name) {
+                    // Local or imported enum with ID
+                    (Some(id), ResolvedType::Enum(id))
+                } else if let Some(external_ty) = self.try_external_type(&enum_name.name, vec![]) {
+                    // External enum from unregistered module - no valid ID
+                    (None, external_ty)
+                } else {
+                    // Unknown enum - this shouldn't happen after semantic analysis
+                    (None, ResolvedType::TypeParam(enum_name.name.clone()))
+                };
 
                 IrExpr::EnumInst {
                     enum_id,

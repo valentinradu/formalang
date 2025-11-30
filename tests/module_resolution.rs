@@ -819,8 +819,8 @@ struct Main {
 #[test]
 fn test_stdlib_compiles_alone() {
     // Load stdlib from filesystem
-    let stdlib_source = std::fs::read_to_string("docs/user/stdlib.fv")
-        .expect("Failed to read docs/user/stdlib.fv");
+    let stdlib_source =
+        std::fs::read_to_string("docs/user/stdlib.fv").expect("Failed to read docs/user/stdlib.fv");
 
     let resolver = MockModuleResolver::new();
     let result = analyze_with_mock(&stdlib_source, resolver);
