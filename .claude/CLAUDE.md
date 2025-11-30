@@ -78,11 +78,12 @@ Forma is a declarative language compiler written in Rust.
 ### Stdlib Usage
 
 - **Always import via `use`**: Never append or concatenate stdlib source
-- **Use FileSystemResolver**: Tests should import stdlib from `stdlib.fv` file
-- **Location**: `stdlib.fv` must exist in project root
+- **Use FileSystemResolver**: Tests should import stdlib from filesystem
+- **Location**: `docs/user/stdlib.fv` is the canonical location
 - **Import pattern**: `use stdlib::*` for all stdlib symbols
 - **No include_str**: Never use `include_str!("stdlib.fv")` or similar
 - **Impl block defaults**: Importing a struct/enum also imports its impl block
+- **Test setup**: Use `PathBuf::from("docs/user")` as resolver root
 
 ### Code Formatting
 
