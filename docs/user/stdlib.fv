@@ -1575,12 +1575,13 @@ pub enum ModifierOp {
 /// ```
 pub struct Modifier: View {
   transforms: [ModifierOp],
-  mount mask: Shape,
+  mount mask: Shape?,
   mount body: View
 }
 
 impl Modifier {
-  transforms: []
+  transforms: [],
+  mask: nil
 }
 
 // =============================================================================

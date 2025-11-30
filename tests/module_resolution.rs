@@ -819,8 +819,8 @@ struct Main {
 #[test]
 fn test_stdlib_compiles_alone() {
     // Load stdlib from filesystem
-    let stdlib_source = std::fs::read_to_string("stdlib.fv")
-        .expect("Failed to read stdlib.fv - ensure it exists in project root");
+    let stdlib_source = std::fs::read_to_string("docs/user/stdlib.fv")
+        .expect("Failed to read docs/user/stdlib.fv");
 
     let resolver = MockModuleResolver::new();
     let result = analyze_with_mock(&stdlib_source, resolver);
@@ -829,7 +829,17 @@ fn test_stdlib_compiles_alone() {
 
 #[test]
 fn test_self_only() {
-    let source = include_str!("../test_self_only.fv");
+    let source = r#"
+pub struct Modal {
+  isOpen: Boolean,
+  title: String
+}
+
+impl Modal {
+  isOpen: false,
+  title: if self.isOpen { "open" } else { "closed" }
+}
+"#;
     let resolver = MockModuleResolver::new();
 
     let result = analyze_with_mock(source, resolver);
@@ -842,11 +852,28 @@ fn test_self_only() {
 
 #[test]
 fn test_simple_self_with_stdlib() {
-    let simple_source =
-        std::fs::read_to_string("test_simple_self.fv").expect("Failed to read test_simple_self.fv");
+    let simple_source = r##"
+use stdlib::*
 
-    let root_dir = PathBuf::from(".");
-    let result = analyze_with_filesystem(&simple_source, root_dir);
+pub struct Modal: View {
+  isOpen: Boolean,
+  title: String,
+  mount body: View
+}
+
+impl Modal {
+  isOpen: false,
+  title: "test",
+  body: if self.isOpen {
+    Label(content: self.title, fill: fill::Solid(color: .hex(value: "#000000")))
+  } else {
+    Empty()
+  }
+}
+"##;
+
+    let root_dir = PathBuf::from("docs/user");
+    let result = analyze_with_filesystem(simple_source, root_dir);
     assert!(
         result.is_ok(),
         "Simple self with stdlib should compile: {:?}",
@@ -856,11 +883,26 @@ fn test_simple_self_with_stdlib() {
 
 #[test]
 fn test_minimal_self_reference() {
-    let minimal_source =
-        std::fs::read_to_string("test_minimal.fv").expect("Failed to read test_minimal.fv");
+    let minimal_source = r#"
+use stdlib::*
 
-    let root_dir = PathBuf::from(".");
-    let result = analyze_with_filesystem(&minimal_source, root_dir);
+pub struct Modal: View {
+  isOpen: Boolean,
+  mount body: View
+}
+
+impl Modal {
+  isOpen: false,
+  body: if self.isOpen {
+    Empty()
+  } else {
+    Empty()
+  }
+}
+"#;
+
+    let root_dir = PathBuf::from("docs/user");
+    let result = analyze_with_filesystem(minimal_source, root_dir);
     assert!(
         result.is_ok(),
         "Minimal self reference should compile: {:?}",
@@ -874,7 +916,7 @@ fn test_example_website_compiles_with_stdlib() {
     let example_source = std::fs::read_to_string("docs/user/example.fv")
         .expect("Failed to read docs/user/example.fv");
 
-    let root_dir = PathBuf::from(".");
+    let root_dir = PathBuf::from("docs/user");
     let result = analyze_with_filesystem(&example_source, root_dir);
     assert!(
         result.is_ok(),
