@@ -1232,7 +1232,9 @@ impl IrVisitor for ExprCounter {
             IrExpr::Tuple { .. } => self.tuple_count += 1,
             IrExpr::StructInst { .. } => self.struct_inst_count += 1,
             IrExpr::EnumInst { .. } => self.enum_inst_count += 1,
-            IrExpr::Reference { .. } => self.reference_count += 1,
+            IrExpr::Reference { .. } | IrExpr::SelfFieldRef { .. } | IrExpr::LetRef { .. } => {
+                self.reference_count += 1
+            }
         }
         // Walk children
         formalang::ir::walk_expr_children(self, e);

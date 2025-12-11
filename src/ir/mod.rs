@@ -31,7 +31,7 @@ mod visitor;
 
 pub use expr::{IrExpr, IrMatchArm};
 pub use lower::lower_to_ir;
-pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrStruct, IrTrait};
+pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait};
 pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
 use std::collections::HashMap;
@@ -226,6 +226,12 @@ pub struct IrModule {
     /// All impl blocks
     pub impls: Vec<IrImpl>,
 
+    /// Module-level let bindings
+    ///
+    /// Contains all `let` declarations at the module level, such as
+    /// theme colors, fonts, and shared configuration values.
+    pub lets: Vec<IrLet>,
+
     /// Imports from other modules
     ///
     /// Contains information about all types imported from external modules,
@@ -240,6 +246,9 @@ pub struct IrModule {
 
     /// Mapping from enum names to IDs for lookup during lowering
     enum_names: std::collections::HashMap<String, EnumId>,
+
+    /// Mapping from let binding names to their index in the lets vector
+    let_names: HashMap<String, usize>,
 }
 
 impl IrModule {
@@ -317,6 +326,23 @@ impl IrModule {
     /// Add an impl block.
     pub(crate) fn add_impl(&mut self, i: IrImpl) {
         self.impls.push(i);
+    }
+
+    /// Look up a let binding by name.
+    pub fn get_let(&self, name: &str) -> Option<&IrLet> {
+        self.let_names.get(name).map(|&idx| &self.lets[idx])
+    }
+
+    /// Check if a let binding exists.
+    pub fn has_let(&self, name: &str) -> bool {
+        self.let_names.contains_key(name)
+    }
+
+    /// Add a let binding.
+    pub(crate) fn add_let(&mut self, l: IrLet) {
+        let idx = self.lets.len();
+        self.let_names.insert(l.name.clone(), idx);
+        self.lets.push(l);
     }
 }
 

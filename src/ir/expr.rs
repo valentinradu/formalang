@@ -71,10 +71,44 @@ pub enum IrExpr {
     },
 
     /// Variable or field reference: `user` or `user.name`
+    ///
+    /// Note: For `self.field` references within impl blocks, use [`SelfFieldRef`] instead.
     Reference {
         /// The reference path (single name or dotted path)
         path: Vec<String>,
         /// Resolved type of the referenced value
+        ty: ResolvedType,
+    },
+
+    /// Reference to a field on `self` within an impl block: `self.color`
+    ///
+    /// This is a specialized form of reference for accessing fields of the
+    /// struct being implemented. Code generators should use this to emit
+    /// appropriate self-referencing code in the target language.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// impl Button {
+    ///     background: fill::Solid(color: self.color)
+    /// }
+    /// ```
+    SelfFieldRef {
+        /// The field name being accessed (without the `self.` prefix)
+        field: String,
+        /// Resolved type of the field
+        ty: ResolvedType,
+    },
+
+    /// Reference to a module-level let binding: `primaryColor`, `headingFont`
+    ///
+    /// This is a specialized form of reference for accessing module-level
+    /// constants and computed values. Code generators should use this to
+    /// emit appropriate constant references in the target language.
+    LetRef {
+        /// The name of the let binding
+        name: String,
+        /// Resolved type of the binding
         ty: ResolvedType,
     },
 
@@ -150,6 +184,8 @@ impl IrExpr {
             IrExpr::Array { ty, .. } => ty,
             IrExpr::Tuple { ty, .. } => ty,
             IrExpr::Reference { ty, .. } => ty,
+            IrExpr::SelfFieldRef { ty, .. } => ty,
+            IrExpr::LetRef { ty, .. } => ty,
             IrExpr::BinaryOp { ty, .. } => ty,
             IrExpr::If { ty, .. } => ty,
             IrExpr::For { ty, .. } => ty,
