@@ -1,15 +1,15 @@
 //! IR lowering pass: AST + SymbolTable → IrModule
 
 use crate::ast::{
-    self, BinaryOperator, Definition, EnumDef, Expr, File, GenericConstraint, ImplDef, Literal,
-    PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
+    self, BinaryOperator, BindingPattern, Definition, EnumDef, Expr, File, GenericConstraint,
+    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
     ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrImport,
-    IrImportItem, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
+    IrImportItem, IrLet, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
 use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
@@ -52,6 +52,8 @@ struct IrLowerer<'a> {
     errors: Vec<CompilerError>,
     /// Track imports by module path for aggregation
     imports_by_module: HashMap<Vec<String>, Vec<IrImportItem>>,
+    /// Current struct being processed in an impl block (for self references)
+    current_impl_struct: Option<String>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -61,6 +63,7 @@ impl<'a> IrLowerer<'a> {
             symbols,
             errors: Vec::new(),
             imports_by_module: HashMap::new(),
+            current_impl_struct: None,
         }
     }
 
@@ -82,6 +85,13 @@ impl<'a> IrLowerer<'a> {
             }
         }
 
+        // Third pass: lower module-level let bindings
+        for statement in &file.statements {
+            if let Statement::Let(let_binding) = statement {
+                self.lower_let_binding(let_binding);
+            }
+        }
+
         // Finalize imports: convert the map to a vec of IrImport
         self.module.imports = self
             .imports_by_module
@@ -94,6 +104,166 @@ impl<'a> IrLowerer<'a> {
         } else {
             Err(std::mem::take(&mut self.errors))
         }
+    }
+
+    /// Lower a module-level let binding
+    fn lower_let_binding(&mut self, let_binding: &LetBinding) {
+        match &let_binding.pattern {
+            BindingPattern::Simple(ident) => {
+                let ty = if let Some(type_ann) = &let_binding.type_annotation {
+                    self.lower_type(type_ann)
+                } else if let Some(let_type) = self.symbols.get_let_type(&ident.name) {
+                    self.string_to_resolved_type(let_type)
+                } else {
+                    // Infer from expression
+                    let expr = self.lower_expr(&let_binding.value);
+                    expr.ty().clone()
+                };
+
+                let value = self.lower_expr(&let_binding.value);
+
+                self.module.add_let(IrLet {
+                    name: ident.name.clone(),
+                    visibility: let_binding.visibility,
+                    mutable: let_binding.mutable,
+                    ty,
+                    value,
+                });
+            }
+            BindingPattern::Array { elements, .. } => {
+                // For array destructuring, create a let for each element
+                let value_expr = self.lower_expr(&let_binding.value);
+                let elem_ty = match value_expr.ty() {
+                    ResolvedType::Array(inner) => (**inner).clone(),
+                    _ => ResolvedType::TypeParam("Unknown".to_string()),
+                };
+
+                for (i, element) in elements.iter().enumerate() {
+                    if let Some(name) = self.extract_binding_name(element) {
+                        // Create an indexed reference expression
+                        let index_expr = IrExpr::Literal {
+                            value: Literal::Number(i as f64),
+                            ty: ResolvedType::Primitive(PrimitiveType::Number),
+                        };
+                        // For now, just store the element type - the value is complex
+                        self.module.add_let(IrLet {
+                            name,
+                            visibility: let_binding.visibility,
+                            mutable: let_binding.mutable,
+                            ty: elem_ty.clone(),
+                            value: index_expr,
+                        });
+                    }
+                }
+            }
+            BindingPattern::Struct { fields, .. } => {
+                // For struct destructuring, create a let for each field
+                let value_expr = self.lower_expr(&let_binding.value);
+
+                for field in fields {
+                    let field_name = field.name.name.clone();
+                    let binding_name = field
+                        .alias
+                        .as_ref()
+                        .map(|a| a.name.clone())
+                        .unwrap_or_else(|| field_name.clone());
+
+                    // Try to get the field type from the struct
+                    let field_ty = self.get_field_type_from_resolved(value_expr.ty(), &field_name);
+
+                    self.module.add_let(IrLet {
+                        name: binding_name,
+                        visibility: let_binding.visibility,
+                        mutable: let_binding.mutable,
+                        ty: field_ty,
+                        value: IrExpr::Reference {
+                            path: vec![field_name],
+                            ty: ResolvedType::TypeParam("StructField".to_string()),
+                        },
+                    });
+                }
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                // For tuple destructuring, create a let for each element
+                let value_expr = self.lower_expr(&let_binding.value);
+                let tuple_types = match value_expr.ty() {
+                    ResolvedType::Tuple(fields) => fields.clone(),
+                    _ => Vec::new(),
+                };
+
+                for (i, element) in elements.iter().enumerate() {
+                    if let Some(name) = self.extract_simple_binding_name(element) {
+                        let ty = tuple_types
+                            .get(i)
+                            .map(|(_, t)| t.clone())
+                            .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()));
+
+                        self.module.add_let(IrLet {
+                            name,
+                            visibility: let_binding.visibility,
+                            mutable: let_binding.mutable,
+                            ty,
+                            value: IrExpr::Literal {
+                                value: Literal::Number(i as f64),
+                                ty: ResolvedType::Primitive(PrimitiveType::Number),
+                            },
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract binding name from an array pattern element
+    fn extract_binding_name(&self, element: &ast::ArrayPatternElement) -> Option<String> {
+        match element {
+            ast::ArrayPatternElement::Binding(pattern) => self.extract_simple_binding_name(pattern),
+            ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
+            ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => None,
+        }
+    }
+
+    /// Extract binding name from a simple binding pattern
+    fn extract_simple_binding_name(&self, pattern: &BindingPattern) -> Option<String> {
+        match pattern {
+            BindingPattern::Simple(ident) => Some(ident.name.clone()),
+            _ => None,
+        }
+    }
+
+    /// Get field type from a resolved type
+    fn get_field_type_from_resolved(&self, ty: &ResolvedType, field_name: &str) -> ResolvedType {
+        if let ResolvedType::Struct(id) = ty {
+            let struct_def = self.module.get_struct(*id);
+            if let Some(field) = struct_def.fields.iter().find(|f| f.name == field_name) {
+                return field.ty.clone();
+            }
+        }
+        ResolvedType::TypeParam("Unknown".to_string())
+    }
+
+    /// Resolve the type of a self.field reference using current impl context
+    fn resolve_self_field_type(&mut self, field_name: &str) -> ResolvedType {
+        if let Some(struct_name) = self.current_impl_struct.clone() {
+            // Look up the struct in the symbol table
+            if let Some(struct_info) = self.symbols.structs.get(&struct_name) {
+                // Check regular fields
+                if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
+                    let ty = field.ty.clone();
+                    return self.lower_type(&ty);
+                }
+                // Check mount fields
+                if let Some(field) = struct_info
+                    .mount_fields
+                    .iter()
+                    .find(|f| f.name == field_name)
+                {
+                    let ty = field.ty.clone();
+                    return self.lower_type(&ty);
+                }
+            }
+        }
+        ResolvedType::TypeParam(format!("self.{}", field_name))
     }
 
     /// Register imported structs and enums from the symbol table.
@@ -171,7 +341,11 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Helper method to register a struct with full field information
-    fn register_struct(&mut self, name: &str, struct_info: &crate::semantic::symbol_table::StructInfo) {
+    fn register_struct(
+        &mut self,
+        name: &str,
+        struct_info: &crate::semantic::symbol_table::StructInfo,
+    ) {
         // Convert fields from StructInfo to IrField
         let fields: Vec<IrField> = struct_info
             .fields
@@ -382,11 +556,17 @@ impl<'a> IrLowerer<'a> {
             None => return, // Error would have been caught in semantic analysis
         };
 
+        // Set current impl struct for self reference resolution
+        self.current_impl_struct = Some(i.name.name.clone());
+
         let defaults: Vec<(String, IrExpr)> = i
             .defaults
             .iter()
             .map(|(name, expr)| (name.name.clone(), self.lower_expr(expr)))
             .collect();
+
+        // Clear the context
+        self.current_impl_struct = None;
 
         self.module.add_impl(IrImpl {
             struct_id,
@@ -678,14 +858,31 @@ impl<'a> IrLowerer<'a> {
             Expr::Reference { path, .. } => {
                 let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
 
-                // Try to resolve the type from the symbol table
-                let ty = if path_strs.len() == 1 {
+                // Check for self.field pattern
+                if path_strs.len() == 2 && path_strs[0] == "self" {
+                    let field_name = &path_strs[1];
+                    let ty = self.resolve_self_field_type(field_name);
+                    return IrExpr::SelfFieldRef {
+                        field: field_name.clone(),
+                        ty,
+                    };
+                }
+
+                // Check for module-level let binding reference
+                if path_strs.len() == 1 {
                     let name = &path_strs[0];
                     if let Some(let_type) = self.symbols.get_let_type(name) {
-                        self.string_to_resolved_type(let_type)
-                    } else {
-                        ResolvedType::TypeParam(name.clone())
+                        let ty = self.string_to_resolved_type(let_type);
+                        return IrExpr::LetRef {
+                            name: name.clone(),
+                            ty,
+                        };
                     }
+                }
+
+                // Fall back to generic reference for other cases
+                let ty = if path_strs.len() == 1 {
+                    ResolvedType::TypeParam(path_strs[0].clone())
                 } else {
                     ResolvedType::TypeParam(path_strs.join("."))
                 };

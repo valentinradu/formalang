@@ -4,6 +4,35 @@ use crate::ast::Visibility;
 
 use super::{IrExpr, ResolvedType, StructId, TraitId};
 
+/// A module-level let binding in the IR.
+///
+/// Represents a named constant or computed value defined at the module level.
+/// These are used for theming, configuration values, and shared expressions.
+///
+/// # Example
+///
+/// ```formalang
+/// let primaryColor: Color = .hex(value: "#2563EB")
+/// let headingFont: Font = Font(family: "Inter", size: 24)
+/// ```
+#[derive(Clone, Debug)]
+pub struct IrLet {
+    /// The binding name
+    pub name: String,
+
+    /// Visibility (public or private)
+    pub visibility: Visibility,
+
+    /// Whether this binding is mutable
+    pub mutable: bool,
+
+    /// The resolved type of the binding
+    pub ty: ResolvedType,
+
+    /// The bound expression
+    pub value: IrExpr,
+}
+
 /// A struct definition in the IR.
 ///
 /// Structs are the primary data type in FormaLang, representing both

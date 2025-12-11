@@ -36,8 +36,8 @@
 //! ```
 
 use super::{
-    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrImpl, IrModule, IrStruct, IrTrait, StructId,
-    TraitId,
+    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrImpl, IrLet, IrModule, IrStruct, IrTrait,
+    StructId, TraitId,
 };
 
 /// Visitor trait for traversing IR nodes.
@@ -67,6 +67,9 @@ pub trait IrVisitor {
 
     /// Visit an impl block.
     fn visit_impl(&mut self, _i: &IrImpl) {}
+
+    /// Visit a let binding.
+    fn visit_let(&mut self, _l: &IrLet) {}
 
     /// Visit a field definition.
     fn visit_field(&mut self, _f: &IrField) {}
@@ -131,6 +134,12 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
             walk_expr(visitor, expr);
         }
     }
+
+    // Visit let bindings
+    for l in &module.lets {
+        visitor.visit_let(l);
+        walk_expr(visitor, &l.value);
+    }
 }
 
 /// Walk an expression tree, visiting all sub-expressions.
@@ -173,6 +182,10 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
         }
 
         IrExpr::Reference { .. } => {}
+
+        IrExpr::SelfFieldRef { .. } => {}
+
+        IrExpr::LetRef { .. } => {}
 
         IrExpr::BinaryOp { left, right, .. } => {
             walk_expr(visitor, left);
