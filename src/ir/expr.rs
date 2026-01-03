@@ -1,6 +1,6 @@
 //! IR expression types.
 
-use crate::ast::{BinaryOperator, Literal, UnaryOperator};
+use crate::ast::{BinaryOperator, Literal};
 
 use super::{EnumId, ResolvedType, StructId};
 
@@ -138,16 +138,6 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Unary operation: `-x`, `!flag`
-    UnaryOp {
-        /// Operator
-        op: UnaryOperator,
-        /// Operand
-        operand: Box<IrExpr>,
-        /// Resolved type (operand type for negation, Boolean for logical not)
-        ty: ResolvedType,
-    },
-
     /// Conditional expression: `if cond { a } else { b }`
     If {
         /// Condition (must be Boolean)
@@ -184,25 +174,24 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Function call: `sin(angle: x)` or `builtin::math::sin(angle: x)`
+    /// Function call: `sin(x)` or `builtin::math::sin(x)`
     FunctionCall {
         /// Function path (e.g., ["builtin", "math", "sin"])
         path: Vec<String>,
-        /// Arguments: (optional_parameter_name, value)
-        /// Some(name) for named args, None for positional args
-        args: Vec<(Option<String>, IrExpr)>,
+        /// Arguments
+        args: Vec<IrExpr>,
         /// Resolved return type
         ty: ResolvedType,
     },
 
-    /// Method call: `self.fill.sample(coords)`
+    /// Method call: `self.fill.sample(uv)`
     MethodCall {
         /// Receiver expression
         receiver: Box<IrExpr>,
         /// Method name
         method: String,
-        /// Named arguments: (parameter_name, value) - None for positional args
-        args: Vec<(Option<String>, IrExpr)>,
+        /// Arguments
+        args: Vec<IrExpr>,
         /// Resolved return type
         ty: ResolvedType,
     },
@@ -247,74 +236,6 @@ pub enum IrExpr {
         /// Resolved type: the value type of the dictionary
         ty: ResolvedType,
     },
-
-    /// Block expression: `{ let x = 1; let y = 2; x + y }`
-    ///
-    /// A sequence of statements followed by a result expression.
-    /// The result expression's value becomes the block's value.
-    Block {
-        /// Statements in the block (let bindings, assignments, expressions)
-        statements: Vec<IrBlockStatement>,
-        /// The final expression whose value is the block's value
-        result: Box<IrExpr>,
-        /// Resolved type (same as result expression)
-        ty: ResolvedType,
-    },
-}
-
-/// A statement within a block expression.
-#[derive(Clone, Debug)]
-pub enum IrBlockStatement {
-    /// Let binding: `let x = expr` or `let mut x = expr`
-    Let {
-        /// Binding name
-        name: String,
-        /// Whether the binding is mutable
-        mutable: bool,
-        /// Optional type annotation
-        ty: Option<ResolvedType>,
-        /// Value expression
-        value: IrExpr,
-    },
-    /// Assignment: `x = expr`
-    Assign {
-        /// Target expression (variable or field path)
-        target: IrExpr,
-        /// Value expression
-        value: IrExpr,
-    },
-    /// Expression statement (evaluated for side effects)
-    Expr(IrExpr),
-}
-
-impl IrBlockStatement {
-    /// Transform all expressions in this statement using the provided function.
-    ///
-    /// This is useful for implementing transformations like constant folding
-    /// or dead code elimination that need to recursively process expressions.
-    pub fn map_exprs<F>(self, mut f: F) -> Self
-    where
-        F: FnMut(IrExpr) -> IrExpr,
-    {
-        match self {
-            IrBlockStatement::Let {
-                name,
-                mutable,
-                ty,
-                value,
-            } => IrBlockStatement::Let {
-                name,
-                mutable,
-                ty,
-                value: f(value),
-            },
-            IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
-                target: f(target),
-                value: f(value),
-            },
-            IrBlockStatement::Expr(expr) => IrBlockStatement::Expr(f(expr)),
-        }
-    }
 }
 
 /// A field binding in an event mapping.
@@ -337,14 +258,11 @@ pub enum EventBindingSource {
     Literal(Literal),
 }
 
-/// A match arm: `Variant(bindings) => body` or `_ => body`
+/// A match arm: `Variant(bindings) => body`
 #[derive(Clone, Debug)]
 pub struct IrMatchArm {
-    /// Variant name being matched (empty string for wildcard)
+    /// Variant name being matched
     pub variant: String,
-
-    /// Whether this is a wildcard pattern (`_`)
-    pub is_wildcard: bool,
 
     /// Bindings for associated data: `(name, type)`
     pub bindings: Vec<(String, ResolvedType)>,
@@ -367,7 +285,6 @@ impl IrExpr {
             IrExpr::FieldAccess { ty, .. } => ty,
             IrExpr::LetRef { ty, .. } => ty,
             IrExpr::BinaryOp { ty, .. } => ty,
-            IrExpr::UnaryOp { ty, .. } => ty,
             IrExpr::If { ty, .. } => ty,
             IrExpr::For { ty, .. } => ty,
             IrExpr::Match { ty, .. } => ty,
@@ -376,7 +293,6 @@ impl IrExpr {
             IrExpr::EventMapping { ty, .. } => ty,
             IrExpr::DictLiteral { ty, .. } => ty,
             IrExpr::DictAccess { ty, .. } => ty,
-            IrExpr::Block { ty, .. } => ty,
         }
     }
 }
