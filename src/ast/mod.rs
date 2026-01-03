@@ -1,33 +1,3 @@
-//! Abstract Syntax Tree (AST) for FormaLang
-//!
-//! # Invocation Disambiguation
-//!
-//! FormaLang uses a two-phase approach for handling struct instantiation and function calls:
-//!
-//! 1. **Parsing Phase**: Both struct instantiation (`Point(x: 1, y: 2)`) and function calls
-//!    (`max(a, b)`) are parsed as a unified [`Expr::Invocation`] node. The parser cannot
-//!    distinguish between them syntactically since both use `Name(args)` syntax.
-//!
-//! 2. **Semantic Analysis Phase**: The semantic analyzer looks up the name in the symbol table
-//!    to determine whether it's a struct or function:
-//!    - **Struct instantiation**: Requires named arguments (`field: value`), supports generic
-//!      type arguments and mount fields.
-//!    - **Function call**: Uses positional arguments, type arguments and mounts are rejected.
-//!
-//! This approach follows Rust's model where the same syntax can represent different constructs
-//! depending on what the name resolves to.
-//!
-//! # Argument Representation
-//!
-//! There are two argument representations in the AST:
-//!
-//! - [`Expr::Invocation`] uses `Vec<(Option<Ident>, Expr)>` where `Some(name)` indicates a
-//!   named argument and `None` indicates a positional argument. This allows the parser to
-//!   accept both styles, with semantic analysis enforcing that structs require named args.
-//!
-//! - [`Expr::MethodCall`] uses `Vec<Expr>` (positional only) because method calls are for
-//!   builtin methods which don't have parameter names in their signatures.
-
 use crate::location::Span;
 use serde::{Deserialize, Serialize};
 
@@ -56,8 +26,8 @@ pub struct File {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     Use(UseStmt),
-    Let(Box<LetBinding>), // Boxed to reduce enum size (LetBinding is 576+ bytes)
-    Definition(Box<Definition>), // Boxed to reduce enum size (Definition is 592+ bytes)
+    Let(LetBinding),
+    Definition(Definition),
 }
 
 /// Definition (trait, struct, impl, enum, or module)
@@ -68,19 +38,6 @@ pub enum Definition {
     Impl(ImplDef),
     Enum(EnumDef),
     Module(ModuleDef),
-    /// Standalone function definition (not inside impl block)
-    Function(Box<FunctionDef>), // Boxed to reduce enum size (FunctionDef is 592+ bytes)
-}
-
-/// Standalone function definition with visibility
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FunctionDef {
-    pub visibility: Visibility,
-    pub name: Ident,
-    pub params: Vec<FnParam>,
-    pub return_type: Option<Type>,
-    pub body: Expr,
-    pub span: Span,
 }
 
 /// Visibility modifier
@@ -93,7 +50,6 @@ pub enum Visibility {
 /// Use statement (import items from modules)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UseStmt {
-    pub visibility: Visibility,
     pub path: Vec<Ident>,
     pub items: UseItems,
     pub span: Span,
@@ -156,16 +112,12 @@ pub struct StructField {
 }
 
 /// Impl block definition (implementation body for structs)
-///
-/// Supports two forms:
-/// - `impl Type { ... }` - inherent implementation
-/// - `impl Trait for Type { ... }` - trait implementation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImplDef {
-    pub trait_name: Option<Ident>, // Trait being implemented (None for inherent impl)
-    pub name: Ident,               // Struct/enum name being implemented
-    pub generics: Vec<GenericParam>, // Type parameters
-    pub functions: Vec<FnDef>,     // Function definitions
+    pub name: Ident,                  // Struct name being implemented
+    pub generics: Vec<GenericParam>,  // Type parameters
+    pub defaults: Vec<(Ident, Expr)>, // Field defaults: (field_name, default_value)
+    pub functions: Vec<FnDef>,        // Function definitions
     pub span: Span,
 }
 
@@ -183,8 +135,7 @@ pub struct FnDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnParam {
     pub name: Ident,
-    pub ty: Option<Type>,      // None for `self` parameter
-    pub default: Option<Expr>, // Default value expression
+    pub ty: Option<Type>, // None for `self` parameter
     pub span: Span,
 }
 
@@ -303,29 +254,26 @@ pub enum PrimitiveType {
     Mat4,
 }
 
+/// Provide item for ProvidesExpr
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProvideItem {
+    pub expr: Box<Expr>,
+    pub alias: Option<Ident>, // From 'as' clause
+    pub span: Span,
+}
+
 /// Expression (compile-time evaluated)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     // Literals (remain in final AST)
     Literal(Literal),
 
-    /// Invocation expression: struct instantiation or function call
-    ///
-    /// The parser cannot distinguish between `Point(x: 1)` (struct) and `max(a, b)` (function)
-    /// syntactically. Semantic analysis resolves this by looking up the name in the symbol table:
-    /// - If it's a struct → struct instantiation (requires named args, type_args and mounts valid)
-    /// - If it's a function → function call (uses positional args, type_args and mounts must be empty)
-    Invocation {
-        /// The name/path being invoked (struct name or function name)
-        /// Can be module-qualified: `module::Name`
-        path: Vec<Ident>,
-        /// Generic type arguments (only valid for struct instantiation)
-        type_args: Vec<Type>,
-        /// Arguments: Some(name) for named args, None for positional args
-        /// Structs require named args, functions use positional args
-        args: Vec<(Option<Ident>, Expr)>,
-        /// Mount field arguments (only valid for struct instantiation)
-        mounts: Vec<(Ident, Expr)>,
+    // Struct/enum instantiation (remain in final AST)
+    StructInstantiation {
+        name: Ident,
+        type_args: Vec<Type>, // Generic type arguments (e.g., [String] for Box<String>)
+        args: Vec<(Ident, Expr)>, // Regular field arguments
+        mounts: Vec<(Ident, Expr)>, // Mount field arguments
         span: Span,
     },
 
@@ -369,13 +317,6 @@ pub enum Expr {
         span: Span,
     },
 
-    // Unary operation (evaluated by evaluator crate)
-    UnaryOp {
-        op: UnaryOperator,
-        operand: Box<Expr>,
-        span: Span,
-    },
-
     // For expression (validated by semantic analyzer, expanded by codegen)
     ForExpr {
         var: Ident,
@@ -402,6 +343,20 @@ pub enum Expr {
     // Grouped expression (parentheses)
     Group {
         expr: Box<Expr>,
+        span: Span,
+    },
+
+    // Provides expression
+    ProvidesExpr {
+        items: Vec<ProvideItem>,
+        body: Box<Expr>,
+        span: Span,
+    },
+
+    // Consumes expression
+    ConsumesExpr {
+        names: Vec<Ident>, // Just names, types inferred
+        body: Box<Expr>,
         span: Span,
     },
 
@@ -436,49 +391,20 @@ pub enum Expr {
         span: Span,
     },
 
-    /// Method call: expr.method(arg1, arg2, ...)
-    ///
-    /// Methods are always called on a receiver expression, so there's no ambiguity
-    /// with struct instantiation. Uses positional arguments since builtins don't
-    /// have parameter names.
+    // Function call: func(arg1, arg2) or module::func(arg1, arg2)
+    FunctionCall {
+        path: Vec<Ident>, // Function path (e.g., ["builtin", "math", "sin"])
+        args: Vec<Expr>,  // Positional arguments
+        span: Span,
+    },
+
+    // Method call: expr.method(arg1, arg2)
     MethodCall {
         receiver: Box<Expr>, // The object/value to call method on
         method: Ident,       // Method name
         args: Vec<Expr>,     // Positional arguments
         span: Span,
     },
-
-    /// Block expression: { let x = 1; let y = 2; x + y }
-    ///
-    /// A sequence of let bindings followed by a final expression.
-    /// The final expression's value becomes the block's value.
-    Block {
-        statements: Vec<BlockStatement>,
-        result: Box<Expr>, // Final expression (the block's value)
-        span: Span,
-    },
-}
-
-/// A statement within a block expression
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum BlockStatement {
-    /// Let binding: let x = expr or let mut x = expr
-    Let {
-        mutable: bool,
-        pattern: BindingPattern,
-        ty: Option<Type>,
-        value: Expr,
-        span: Span,
-    },
-    /// Assignment: target = value
-    /// Target must be a mutable binding or field
-    Assign {
-        target: Expr, // Reference path like `x` or `self.field`
-        value: Expr,
-        span: Span,
-    },
-    /// Expression statement (expression evaluated for side effects)
-    Expr(Expr),
 }
 
 /// Closure parameter (name with optional type annotation)
@@ -519,17 +445,6 @@ pub enum BinaryOperator {
     // Logical
     And,
     Or,
-    // Range
-    Range, // start..end
-}
-
-/// Unary operators
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum UnaryOperator {
-    /// Negation: -x
-    Neg,
-    /// Logical not: !x
-    Not,
 }
 
 /// Match arm
@@ -547,8 +462,6 @@ pub enum Pattern {
         name: Ident,
         bindings: Vec<Ident>, // For associated data
     },
-    /// Wildcard pattern: `_` matches anything
-    Wildcard,
 }
 
 /// Binding pattern (for let bindings with destructuring)
@@ -617,24 +530,25 @@ impl Expr {
                 Literal::Nil => Span::default(),
                 _ => Span::default(), // Will be set during parsing
             },
-            Expr::Invocation { span, .. } => *span,
+            Expr::StructInstantiation { span, .. } => *span,
             Expr::EnumInstantiation { span, .. } => *span,
             Expr::InferredEnumInstantiation { span, .. } => *span,
             Expr::Array { span, .. } => *span,
             Expr::Tuple { span, .. } => *span,
             Expr::Reference { span, .. } => *span,
             Expr::BinaryOp { span, .. } => *span,
-            Expr::UnaryOp { span, .. } => *span,
             Expr::ForExpr { span, .. } => *span,
             Expr::IfExpr { span, .. } => *span,
             Expr::MatchExpr { span, .. } => *span,
             Expr::Group { span, .. } => *span,
+            Expr::ProvidesExpr { span, .. } => *span,
+            Expr::ConsumesExpr { span, .. } => *span,
             Expr::DictLiteral { span, .. } => *span,
             Expr::DictAccess { span, .. } => *span,
             Expr::ClosureExpr { span, .. } => *span,
             Expr::LetExpr { span, .. } => *span,
+            Expr::FunctionCall { span, .. } => *span,
             Expr::MethodCall { span, .. } => *span,
-            Expr::Block { span, .. } => *span,
         }
     }
 }
@@ -643,7 +557,6 @@ impl BinaryOperator {
     /// Get operator precedence (higher = tighter binding)
     pub fn precedence(&self) -> u8 {
         match self {
-            BinaryOperator::Range => 0, // Lowest precedence
             BinaryOperator::Or => 1,
             BinaryOperator::And => 2,
             BinaryOperator::Eq | BinaryOperator::Ne => 3,
@@ -729,13 +642,13 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_span_invocation() {
+    fn test_expr_span_struct_instantiation() {
         let test_span = Span::from_range(10, 20);
-        let expr = Expr::Invocation {
-            path: vec![Ident {
+        let expr = Expr::StructInstantiation {
+            name: Ident {
                 name: "Test".to_string(),
                 span: Span::default(),
-            }],
+            },
             type_args: vec![],
             args: vec![],
             mounts: vec![],
@@ -864,6 +777,31 @@ mod tests {
         let test_span = Span::from_range(150, 160);
         let expr = Expr::Group {
             expr: Box::new(Expr::Literal(Literal::Number(42.0))),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_provides() {
+        let test_span = Span::from_range(170, 180);
+        let expr = Expr::ProvidesExpr {
+            items: vec![],
+            body: Box::new(Expr::Literal(Literal::Nil)),
+            span: test_span,
+        };
+        assert_eq!(expr.span(), test_span);
+    }
+
+    #[test]
+    fn test_expr_span_consumes() {
+        let test_span = Span::from_range(190, 200);
+        let expr = Expr::ConsumesExpr {
+            names: vec![Ident {
+                name: "ctx".to_string(),
+                span: Span::default(),
+            }],
+            body: Box::new(Expr::Literal(Literal::Nil)),
             span: test_span,
         };
         assert_eq!(expr.span(), test_span);

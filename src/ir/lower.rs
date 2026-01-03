@@ -1,18 +1,18 @@
 //! IR lowering pass: AST + SymbolTable → IrModule
 
 use crate::ast::{
-    self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Definition, EnumDef, Expr,
-    File, FnDef, FunctionDef, GenericConstraint, ImplDef, LetBinding, Literal, PrimitiveType,
-    Statement, StructDef, StructField, TraitDef, Type, UnaryOperator,
+    self, BinaryOperator, BindingPattern, ClosureParam, Definition, EnumDef, Expr, File, FnDef,
+    GenericConstraint, ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef,
+    StructField, TraitDef, Type,
 };
 use crate::builtins::resolve_method_type;
 use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
-    simple_type_name, EventBindingSource, EventFieldBinding, ExternalKind, IrBlockStatement,
-    IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrFunctionParam, IrGenericParam, IrImpl,
-    IrImport, IrImportItem, IrLet, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
+    EventBindingSource, EventFieldBinding, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField,
+    IrFunction, IrFunctionParam, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet, IrMatchArm,
+    IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
 use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
@@ -57,8 +57,6 @@ struct IrLowerer<'a> {
     imports_by_module: HashMap<Vec<String>, Vec<IrImportItem>>,
     /// Current struct being processed in an impl block (for self references)
     current_impl_struct: Option<String>,
-    /// Current module prefix for nested definitions (e.g., "outer::inner")
-    current_module_prefix: String,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -69,7 +67,6 @@ impl<'a> IrLowerer<'a> {
             errors: Vec::new(),
             imports_by_module: HashMap::new(),
             current_impl_struct: None,
-            current_module_prefix: String::new(),
         }
     }
 
@@ -80,14 +77,14 @@ impl<'a> IrLowerer<'a> {
         // First pass: register all definitions to get IDs
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                self.register_definition(def.as_ref());
+                self.register_definition(def);
             }
         }
 
         // Second pass: lower all definitions with resolved types
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                self.lower_definition(def.as_ref());
+                self.lower_definition(def);
             }
         }
 
@@ -379,9 +376,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Convert trait names to trait IDs
-        // Use get_all_traits_for_struct to include both inline traits and impl blocks
-        let all_trait_names = self.symbols.get_all_traits_for_struct(name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<TraitId> = struct_info
+            .traits
             .iter()
             .filter_map(|trait_name| self.module.trait_id(trait_name))
             .collect();
@@ -446,10 +442,9 @@ impl<'a> IrLowerer<'a> {
                     },
                 );
             }
-            Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {
+            Definition::Impl(_) | Definition::Module(_) => {
                 // Impls are processed after structs
                 // Modules are flattened (nested definitions registered recursively)
-                // Functions are processed in the second pass
             }
         }
     }
@@ -461,175 +456,10 @@ impl<'a> IrLowerer<'a> {
             Definition::Struct(s) => self.lower_struct(s),
             Definition::Enum(e) => self.lower_enum(e),
             Definition::Impl(i) => self.lower_impl(i),
-            Definition::Function(f) => self.lower_function(f.as_ref()),
-            Definition::Module(m) => {
-                // Lower nested definitions within the module
-                self.lower_module(&m.name.name, &m.definitions);
+            Definition::Module(_) => {
+                // TODO: Handle nested modules
             }
         }
-    }
-
-    /// Lower definitions within a module
-    /// This processes nested definitions with their qualified names
-    fn lower_module(&mut self, module_name: &str, definitions: &[Definition]) {
-        // Save current module prefix
-        let saved_prefix = self.current_module_prefix.clone();
-
-        // Update module prefix for nested definitions
-        if self.current_module_prefix.is_empty() {
-            self.current_module_prefix = module_name.to_string();
-        } else {
-            self.current_module_prefix = format!("{}::{}", self.current_module_prefix, module_name);
-        }
-
-        // Lower all definitions in the module
-        for def in definitions {
-            match def {
-                Definition::Trait(t) => {
-                    // Traits in modules use qualified names
-                    self.lower_trait_with_prefix(t, &self.current_module_prefix.clone());
-                }
-                Definition::Struct(s) => {
-                    // Structs in modules use qualified names
-                    self.lower_struct_with_prefix(s, &self.current_module_prefix.clone());
-                }
-                Definition::Enum(e) => {
-                    // Enums in modules use qualified names
-                    self.lower_enum_with_prefix(e, &self.current_module_prefix.clone());
-                }
-                Definition::Impl(i) => {
-                    // Impls in modules
-                    self.lower_impl(i);
-                }
-                Definition::Function(f) => {
-                    // Functions in modules
-                    self.lower_function(f.as_ref());
-                }
-                Definition::Module(m) => {
-                    // Recursively process nested modules
-                    self.lower_module(&m.name.name, &m.definitions);
-                }
-            }
-        }
-
-        // Restore module prefix
-        self.current_module_prefix = saved_prefix;
-    }
-
-    /// Lower trait with module prefix
-    fn lower_trait_with_prefix(&mut self, t: &TraitDef, prefix: &str) {
-        let qualified_name = format!("{}::{}", prefix, t.name.name);
-        let id = match self
-            .module
-            .trait_id(&qualified_name)
-            .or_else(|| self.module.trait_id(&t.name.name))
-        {
-            Some(id) => id,
-            None => return, // Trait not registered, skip
-        };
-
-        let composed_traits: Vec<TraitId> = t
-            .traits
-            .iter()
-            .filter_map(|ident| self.module.trait_id(&ident.name))
-            .collect();
-
-        let generic_params = self.lower_generic_params(&t.generics);
-        let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
-        let mount_fields: Vec<IrField> = t
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_field_def(f))
-            .collect();
-
-        // Update the trait in place
-        let trait_def = &mut self.module.traits[id.0 as usize];
-        trait_def.name = qualified_name;
-        trait_def.visibility = t.visibility;
-        trait_def.composed_traits = composed_traits;
-        trait_def.generic_params = generic_params;
-        trait_def.fields = fields;
-        trait_def.mount_fields = mount_fields;
-    }
-
-    /// Lower struct with module prefix
-    fn lower_struct_with_prefix(&mut self, s: &StructDef, prefix: &str) {
-        let qualified_name = format!("{}::{}", prefix, s.name.name);
-        let id = match self
-            .module
-            .struct_id(&qualified_name)
-            .or_else(|| self.module.struct_id(&s.name.name))
-        {
-            Some(id) => id,
-            None => return, // Struct not registered, skip
-        };
-
-        let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
-            .iter()
-            .filter_map(|trait_name| self.module.trait_id(trait_name))
-            .collect();
-
-        let generic_params = self.lower_generic_params(&s.generics);
-        let fields: Vec<IrField> = s
-            .fields
-            .iter()
-            .map(|f| self.lower_struct_field(f))
-            .collect();
-        let mount_fields: Vec<IrField> = s
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_struct_field(f))
-            .collect();
-
-        // Update the struct in place
-        let struct_def = &mut self.module.structs[id.0 as usize];
-        struct_def.name = qualified_name;
-        struct_def.visibility = s.visibility;
-        struct_def.traits = traits;
-        struct_def.generic_params = generic_params;
-        struct_def.fields = fields;
-        struct_def.mount_fields = mount_fields;
-    }
-
-    /// Lower enum with module prefix
-    fn lower_enum_with_prefix(&mut self, e: &EnumDef, prefix: &str) {
-        let qualified_name = format!("{}::{}", prefix, e.name.name);
-        let id = match self
-            .module
-            .enum_id(&qualified_name)
-            .or_else(|| self.module.enum_id(&e.name.name))
-        {
-            Some(id) => id,
-            None => return, // Enum not registered, skip
-        };
-
-        let generic_params = self.lower_generic_params(&e.generics);
-        let variants: Vec<IrEnumVariant> = e
-            .variants
-            .iter()
-            .map(|v| IrEnumVariant {
-                name: v.name.name.clone(),
-                fields: v
-                    .fields
-                    .iter()
-                    .map(|f| IrField {
-                        name: f.name.name.clone(),
-                        ty: self.lower_type(&f.ty),
-                        default: None,
-                        optional: false,
-                        mutable: false,
-                    })
-                    .collect(),
-            })
-            .collect();
-
-        // Update the enum in place
-        let enum_def = &mut self.module.enums[id.0 as usize];
-        enum_def.name = qualified_name;
-        enum_def.visibility = e.visibility;
-        enum_def.generic_params = generic_params;
-        enum_def.variants = variants;
     }
 
     fn lower_trait(&mut self, t: &TraitDef) {
@@ -668,14 +498,13 @@ impl<'a> IrLowerer<'a> {
             .struct_id(&s.name.name)
             .expect("struct should be registered");
 
-        // Get all traits from both inline definition and impl blocks
-        let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<TraitId> = s
+            .traits
             .iter()
-            .filter_map(|trait_name| {
+            .filter_map(|ident| {
                 // Check if this is an external trait and track the import
-                self.try_track_external_import(trait_name, ExternalKind::Trait);
-                self.module.trait_id(trait_name)
+                self.try_track_external_import(&ident.name, ExternalKind::Trait);
+                self.module.trait_id(&ident.name)
             })
             .collect();
 
@@ -733,6 +562,12 @@ impl<'a> IrLowerer<'a> {
         // Set current impl struct for self reference resolution
         self.current_impl_struct = Some(i.name.name.clone());
 
+        let defaults: Vec<(String, IrExpr)> = i
+            .defaults
+            .iter()
+            .map(|(name, expr)| (name.name.clone(), self.lower_expr(expr)))
+            .collect();
+
         let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
 
         // Clear the context
@@ -740,33 +575,9 @@ impl<'a> IrLowerer<'a> {
 
         self.module.add_impl(IrImpl {
             struct_id,
+            defaults,
             functions,
         });
-    }
-
-    fn lower_function(&mut self, f: &FunctionDef) {
-        let params: Vec<IrFunctionParam> = f
-            .params
-            .iter()
-            .map(|p| IrFunctionParam {
-                name: p.name.name.clone(),
-                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
-                default: p.default.as_ref().map(|e| self.lower_expr(e)),
-            })
-            .collect();
-
-        let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
-        let body = self.lower_expr(&f.body);
-
-        self.module.add_function(
-            f.name.name.clone(),
-            IrFunction {
-                name: f.name.name.clone(),
-                params,
-                return_type,
-                body,
-            },
-        );
     }
 
     fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
@@ -776,7 +587,6 @@ impl<'a> IrLowerer<'a> {
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
-                default: p.default.as_ref().map(|e| self.lower_expr(e)),
             })
             .collect();
 
@@ -833,21 +643,16 @@ impl<'a> IrLowerer<'a> {
 
             Type::Ident(ident) => {
                 let name = &ident.name;
-
-                // For path-qualified names like "alignment::Horizontal",
-                // try looking up just the last component
-                let lookup_name = simple_type_name(name);
-
                 // Check if this is an external type
-                if let Some(external) = self.try_external_type(lookup_name, vec![]) {
+                if let Some(external) = self.try_external_type(name, vec![]) {
                     return external;
                 }
                 // Otherwise try local types
-                if let Some(id) = self.module.struct_id(lookup_name) {
+                if let Some(id) = self.module.struct_id(name) {
                     ResolvedType::Struct(id)
-                } else if let Some(id) = self.module.trait_id(lookup_name) {
+                } else if let Some(id) = self.module.trait_id(name) {
                     ResolvedType::Trait(id)
-                } else if let Some(id) = self.module.enum_id(lookup_name) {
+                } else if let Some(id) = self.module.enum_id(name) {
                     ResolvedType::Enum(id)
                 } else {
                     // Might be a type parameter
@@ -961,27 +766,19 @@ impl<'a> IrLowerer<'a> {
                 ty: self.literal_type(lit),
             },
 
-            Expr::Invocation {
-                path,
+            Expr::StructInstantiation {
+                name,
                 type_args,
                 args,
                 mounts,
                 ..
             } => {
-                // Join path into a single name for lookup
-                let name = path
-                    .iter()
-                    .map(|id| id.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join("::");
-
                 let type_args_resolved: Vec<ResolvedType> =
                     type_args.iter().map(|t| self.lower_type(t)).collect();
 
-                // Check if this is a struct instantiation or function call
-                // For now, we try struct first, then fall back to function call
-                if let Some(id) = self.module.struct_id(&name) {
-                    // Struct instantiation
+                // Check if we have a struct ID (local or imported)
+                let (struct_id, ty) = if let Some(id) = self.module.struct_id(&name.name) {
+                    // Local or imported struct with ID
                     let ty = if type_args_resolved.is_empty() {
                         ResolvedType::Struct(id)
                     } else {
@@ -990,67 +787,30 @@ impl<'a> IrLowerer<'a> {
                             args: type_args_resolved.clone(),
                         }
                     };
-                    // Extract named args for struct (semantic analysis verified all are named)
-                    let named_fields: Vec<(String, IrExpr)> = args
-                        .iter()
-                        .filter_map(|(name_opt, expr)| {
-                            name_opt
-                                .as_ref()
-                                .map(|n| (n.name.clone(), self.lower_expr(expr)))
-                        })
-                        .collect();
-                    IrExpr::StructInst {
-                        struct_id: Some(id),
-                        type_args: type_args_resolved,
-                        fields: named_fields,
-                        mounts: mounts
-                            .iter()
-                            .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
-                            .collect(),
-                        ty,
-                    }
+                    (Some(id), ty)
                 } else if let Some(external_ty) =
-                    self.try_external_type(&name, type_args_resolved.clone())
+                    self.try_external_type(&name.name, type_args_resolved.clone())
                 {
-                    // External struct from unregistered module
-                    let named_fields: Vec<(String, IrExpr)> = args
-                        .iter()
-                        .filter_map(|(name_opt, expr)| {
-                            name_opt
-                                .as_ref()
-                                .map(|n| (n.name.clone(), self.lower_expr(expr)))
-                        })
-                        .collect();
-                    IrExpr::StructInst {
-                        struct_id: None,
-                        type_args: type_args_resolved,
-                        fields: named_fields,
-                        mounts: mounts
-                            .iter()
-                            .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
-                            .collect(),
-                        ty: external_ty,
-                    }
+                    // External struct from unregistered module - no valid ID
+                    (None, external_ty)
                 } else {
-                    // Not a struct - treat as function call
-                    let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
-                    let lowered_args: Vec<(Option<String>, IrExpr)> = args
+                    // Unknown struct - this shouldn't happen after semantic analysis
+                    // but handle gracefully
+                    (None, ResolvedType::TypeParam(name.name.clone()))
+                };
+
+                IrExpr::StructInst {
+                    struct_id,
+                    type_args: type_args_resolved,
+                    fields: args
                         .iter()
-                        .map(|(name_opt, expr)| {
-                            let arg_name = name_opt.as_ref().map(|n| n.name.clone());
-                            (arg_name, self.lower_expr(expr))
-                        })
-                        .collect();
-
-                    // Try to resolve the function return type
-                    let fn_name = path_strs.last().map(|s| s.as_str()).unwrap_or("");
-                    let ty = self.resolve_function_return_type(fn_name, &lowered_args);
-
-                    IrExpr::FunctionCall {
-                        path: path_strs,
-                        args: lowered_args,
-                        ty,
-                    }
+                        .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                        .collect(),
+                    mounts: mounts
+                        .iter()
+                        .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                        .collect(),
+                    ty,
                 }
             }
 
@@ -1191,21 +951,6 @@ impl<'a> IrLowerer<'a> {
                 }
             }
 
-            Expr::UnaryOp { op, operand, .. } => {
-                let operand_ir = self.lower_expr(operand);
-
-                let ty = match op {
-                    UnaryOperator::Not => ResolvedType::Primitive(PrimitiveType::Boolean),
-                    UnaryOperator::Neg => operand_ir.ty().clone(),
-                };
-
-                IrExpr::UnaryOp {
-                    op: *op,
-                    operand: Box::new(operand_ir),
-                    ty,
-                }
-            }
-
             Expr::IfExpr {
                 condition,
                 then_branch,
@@ -1259,9 +1004,7 @@ impl<'a> IrLowerer<'a> {
                         IrMatchArm {
                             variant: match &arm.pattern {
                                 ast::Pattern::Variant { name, .. } => name.name.clone(),
-                                ast::Pattern::Wildcard => String::new(),
                             },
-                            is_wildcard: matches!(&arm.pattern, ast::Pattern::Wildcard),
                             bindings,
                             body: self.lower_expr(&arm.body),
                         }
@@ -1282,8 +1025,10 @@ impl<'a> IrLowerer<'a> {
 
             Expr::Group { expr, .. } => self.lower_expr(expr),
 
-            // Let expressions lower to their body
-            Expr::LetExpr { body, .. } => self.lower_expr(body),
+            // TODO: Handle these expression types
+            Expr::ProvidesExpr { body, .. }
+            | Expr::ConsumesExpr { body, .. }
+            | Expr::LetExpr { body, .. } => self.lower_expr(body),
 
             Expr::DictLiteral { entries, .. } => {
                 let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
@@ -1330,6 +1075,19 @@ impl<'a> IrLowerer<'a> {
 
             Expr::ClosureExpr { params, body, .. } => self.lower_event_mapping(params, body),
 
+            Expr::FunctionCall { path, args, .. } => {
+                let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+                let lowered_args: Vec<IrExpr> = args.iter().map(|a| self.lower_expr(a)).collect();
+
+                // TODO: Resolve function return type properly
+                // For now, use a placeholder type
+                IrExpr::FunctionCall {
+                    path: path_strs,
+                    args: lowered_args,
+                    ty: ResolvedType::TypeParam("FunctionResult".to_string()),
+                }
+            }
+
             Expr::MethodCall {
                 receiver,
                 method,
@@ -1337,11 +1095,7 @@ impl<'a> IrLowerer<'a> {
                 ..
             } => {
                 let receiver_ir = self.lower_expr(receiver);
-                // Lower positional arguments (methods use positional args, so name is None)
-                let lowered_args: Vec<(Option<String>, IrExpr)> = args
-                    .iter()
-                    .map(|expr| (None, self.lower_expr(expr)))
-                    .collect();
+                let lowered_args: Vec<IrExpr> = args.iter().map(|a| self.lower_expr(a)).collect();
 
                 // Resolve method return type based on receiver type
                 let ty = self.resolve_method_return_type(receiver_ir.ty(), &method.name);
@@ -1352,100 +1106,6 @@ impl<'a> IrLowerer<'a> {
                     args: lowered_args,
                     ty,
                 }
-            }
-
-            Expr::Block {
-                statements, result, ..
-            } => {
-                // Lower block statements
-                let ir_statements: Vec<IrBlockStatement> = statements
-                    .iter()
-                    .map(|stmt| self.lower_block_statement(stmt))
-                    .collect();
-
-                // Lower result expression
-                let ir_result = self.lower_expr(result);
-                let ty = ir_result.ty().clone();
-
-                // If no statements, just return the result directly
-                if ir_statements.is_empty() {
-                    return ir_result;
-                }
-
-                IrExpr::Block {
-                    statements: ir_statements,
-                    result: Box::new(ir_result),
-                    ty,
-                }
-            }
-        }
-    }
-
-    /// Lower an AST block statement to an IR block statement.
-    fn lower_block_statement(&mut self, stmt: &BlockStatement) -> IrBlockStatement {
-        match stmt {
-            BlockStatement::Let {
-                mutable,
-                pattern,
-                ty,
-                value,
-                ..
-            } => {
-                // Handle binding patterns
-                let name = match pattern {
-                    BindingPattern::Simple(ident) => ident.name.clone(),
-                    BindingPattern::Tuple { elements, .. } => {
-                        // For tuple destructuring, extract first simple name or use placeholder
-                        elements
-                            .iter()
-                            .find_map(|p| match p {
-                                BindingPattern::Simple(ident) => Some(ident.name.clone()),
-                                _ => None,
-                            })
-                            .unwrap_or_else(|| "_tuple".to_string())
-                    }
-                    BindingPattern::Struct { fields, .. } => {
-                        // For struct destructuring, use first field name or placeholder
-                        fields
-                            .first()
-                            .map(|f| f.name.name.clone())
-                            .unwrap_or_else(|| "_struct".to_string())
-                    }
-                    BindingPattern::Array { elements, .. } => {
-                        // For array destructuring, use first binding name or placeholder
-                        elements
-                            .iter()
-                            .find_map(|elem| match elem {
-                                crate::ast::ArrayPatternElement::Binding(
-                                    BindingPattern::Simple(ident),
-                                ) => Some(ident.name.clone()),
-                                _ => None,
-                            })
-                            .unwrap_or_else(|| "_array".to_string())
-                    }
-                };
-                let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
-                let ir_value = self.lower_expr(value);
-
-                IrBlockStatement::Let {
-                    name,
-                    mutable: *mutable,
-                    ty: ir_ty,
-                    value: ir_value,
-                }
-            }
-            BlockStatement::Assign { target, value, .. } => {
-                let ir_target = self.lower_expr(target);
-                let ir_value = self.lower_expr(value);
-
-                IrBlockStatement::Assign {
-                    target: ir_target,
-                    value: ir_value,
-                }
-            }
-            BlockStatement::Expr(expr) => {
-                let ir_expr = self.lower_expr(expr);
-                IrBlockStatement::Expr(ir_expr)
             }
         }
     }
@@ -1465,7 +1125,7 @@ impl<'a> IrLowerer<'a> {
     ///
     /// Handles:
     /// 1. Builtin methods on GPU types (e.g., vec3.normalize() -> Vec3)
-    /// 2. User-defined methods in impl blocks
+    /// 2. User-defined methods in impl blocks (TODO)
     fn resolve_method_return_type(
         &self,
         receiver_ty: &ResolvedType,
@@ -1497,126 +1157,6 @@ impl<'a> IrLowerer<'a> {
 
         // Fallback: placeholder type
         ResolvedType::TypeParam(format!("{}Result", method_name))
-    }
-
-    /// Resolve the return type of a function call.
-    ///
-    /// Handles:
-    /// 1. User-defined standalone functions in IrModule::functions
-    /// 2. Builtin functions (math, WGSL intrinsics, etc.)
-    /// 3. Falls back to void for unknown functions
-    fn resolve_function_return_type(
-        &self,
-        fn_name: &str,
-        _args: &[(Option<String>, IrExpr)],
-    ) -> ResolvedType {
-        // Check if it's a user-defined function
-        if let Some(func_id) = self.module.function_id(fn_name) {
-            let func = self.module.get_function(func_id);
-            // Return the declared return type, or infer from body
-            return func
-                .return_type
-                .clone()
-                .unwrap_or_else(|| func.body.ty().clone());
-        }
-
-        // Check builtin functions registry
-        if let Some(return_ty) = self.resolve_builtin_function_type(fn_name) {
-            return return_ty;
-        }
-
-        // Fallback: void type for unknown functions
-        ResolvedType::Primitive(PrimitiveType::Never)
-    }
-
-    /// Resolve the return type of a builtin function.
-    ///
-    /// Returns the appropriate type for common builtin/intrinsic functions.
-    fn resolve_builtin_function_type(&self, fn_name: &str) -> Option<ResolvedType> {
-        use PrimitiveType::*;
-
-        // Math functions (return same type as input, typically f32)
-        let math_float_fns = [
-            "sin",
-            "cos",
-            "tan",
-            "asin",
-            "acos",
-            "atan",
-            "sinh",
-            "cosh",
-            "tanh",
-            "exp",
-            "exp2",
-            "log",
-            "log2",
-            "sqrt",
-            "inverseSqrt",
-            "abs",
-            "sign",
-            "floor",
-            "ceil",
-            "round",
-            "trunc",
-            "fract",
-            "saturate",
-            "radians",
-            "degrees",
-        ];
-        if math_float_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        // Two-argument math functions
-        let math_binary_fns = ["pow", "min", "max", "step", "mod", "atan2"];
-        if math_binary_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        // Vector constructors
-        match fn_name {
-            "vec2" => return Some(ResolvedType::Primitive(Vec2)),
-            "vec3" => return Some(ResolvedType::Primitive(Vec3)),
-            "vec4" => return Some(ResolvedType::Primitive(Vec4)),
-            "ivec2" => return Some(ResolvedType::Primitive(IVec2)),
-            "ivec3" => return Some(ResolvedType::Primitive(IVec3)),
-            "ivec4" => return Some(ResolvedType::Primitive(IVec4)),
-            "uvec2" => return Some(ResolvedType::Primitive(UVec2)),
-            "uvec3" => return Some(ResolvedType::Primitive(UVec3)),
-            "uvec4" => return Some(ResolvedType::Primitive(UVec4)),
-            "mat2" => return Some(ResolvedType::Primitive(Mat2)),
-            "mat3" => return Some(ResolvedType::Primitive(Mat3)),
-            "mat4" => return Some(ResolvedType::Primitive(Mat4)),
-            _ => {}
-        }
-
-        // Type casts
-        match fn_name {
-            "f32" | "float" => return Some(ResolvedType::Primitive(Number)),
-            "i32" | "int" => return Some(ResolvedType::Primitive(I32)),
-            "u32" | "uint" => return Some(ResolvedType::Primitive(U32)),
-            "bool" => return Some(ResolvedType::Primitive(Boolean)),
-            _ => {}
-        }
-
-        // Vector operations that return scalars
-        match fn_name {
-            "length" | "distance" | "dot" => return Some(ResolvedType::Primitive(Number)),
-            _ => {}
-        }
-
-        // Vector operations that return vectors (input-dependent, approximate as Vec3)
-        let vec_to_vec_fns = ["normalize", "cross", "reflect", "refract", "faceforward"];
-        if vec_to_vec_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Vec3));
-        }
-
-        // Mix/lerp returns same type as input
-        if fn_name == "mix" || fn_name == "lerp" || fn_name == "smoothstep" || fn_name == "clamp" {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        None
     }
 
     /// Lower a closure expression to an event mapping.
@@ -1795,10 +1335,6 @@ impl<'a> IrLowerer<'a> {
                         (ident.name.clone(), ty)
                     })
                     .collect()
-            }
-            ast::Pattern::Wildcard => {
-                // Wildcard has no bindings
-                Vec::new()
             }
         }
     }

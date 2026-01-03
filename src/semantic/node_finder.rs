@@ -898,6 +898,7 @@ impl<'ast> NodeFinder<'ast> {
             | Expr::DictAccess { span, .. }
             | Expr::ClosureExpr { span, .. }
             | Expr::LetExpr { span, .. }
+            | Expr::FunctionCall { span, .. }
             | Expr::MethodCall { span, .. }
             | Expr::Block { span, .. } => Some(*span),
         }

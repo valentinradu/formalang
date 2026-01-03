@@ -117,7 +117,7 @@ fn fill_statement_span(stmt: &mut Statement, source: &str) {
             fill_expr_span(&mut let_stmt.value, source);
             fill_span(&mut let_stmt.span, source);
         }
-        Statement::Definition(def) => fill_definition_span(def.as_mut(), source),
+        Statement::Definition(def) => fill_definition_span(def, source),
     }
 }
 
@@ -200,20 +200,8 @@ fn fill_definition_span(def: &mut Definition, source: &str) {
                 }
                 fill_span(&mut param.span, source);
             }
-            for func in &mut i.functions {
-                fill_span(&mut func.name.span, source);
-                for p in &mut func.params {
-                    fill_span(&mut p.name.span, source);
-                    if let Some(ty) = &mut p.ty {
-                        fill_type_span(ty, source);
-                    }
-                    fill_span(&mut p.span, source);
-                }
-                if let Some(ret) = &mut func.return_type {
-                    fill_type_span(ret, source);
-                }
-                fill_expr_span(&mut func.body, source);
-                fill_span(&mut func.span, source);
+            for (_field_name, default_expr) in &mut i.defaults {
+                fill_expr_span(default_expr, source);
             }
             fill_span(&mut i.span, source);
         }
@@ -238,21 +226,6 @@ fn fill_definition_span(def: &mut Definition, source: &str) {
                 fill_span(&mut variant.span, source);
             }
             fill_span(&mut e.span, source);
-        }
-        Definition::Function(f) => {
-            fill_span(&mut f.name.span, source);
-            for p in &mut f.params {
-                fill_span(&mut p.name.span, source);
-                if let Some(ty) = &mut p.ty {
-                    fill_type_span(ty, source);
-                }
-                fill_span(&mut p.span, source);
-            }
-            if let Some(ret) = &mut f.return_type {
-                fill_type_span(ret, source);
-            }
-            fill_expr_span(&mut f.body, source);
-            fill_span(&mut f.span, source);
         }
     }
 }
@@ -296,23 +269,19 @@ fn fill_type_span(ty: &mut Type, source: &str) {
 fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
         Expr::Literal(_) => {} // Literals don't have mutable spans
-        Expr::Invocation {
-            path,
+        Expr::StructInstantiation {
+            name,
             type_args,
             args,
             mounts,
             span,
         } => {
-            for ident in path {
-                fill_span(&mut ident.span, source);
-            }
+            fill_span(&mut name.span, source);
             for ty_arg in type_args {
                 fill_type_span(ty_arg, source);
             }
             for (arg_name, arg_expr) in args {
-                if let Some(name) = arg_name {
-                    fill_span(&mut name.span, source);
-                }
+                fill_span(&mut arg_name.span, source);
                 fill_expr_span(arg_expr, source);
             }
             for (mount_name, mount_expr) in mounts {
@@ -373,10 +342,6 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(right, source);
             fill_span(span, source);
         }
-        Expr::UnaryOp { operand, span, .. } => {
-            fill_expr_span(operand, source);
-            fill_span(span, source);
-        }
         Expr::ForExpr {
             var,
             collection,
@@ -418,6 +383,24 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(expr, source);
             fill_span(span, source);
         }
+        Expr::ProvidesExpr { items, body, span } => {
+            for item in items {
+                fill_expr_span(&mut item.expr, source);
+                if let Some(alias) = &mut item.alias {
+                    fill_span(&mut alias.span, source);
+                }
+                fill_span(&mut item.span, source);
+            }
+            fill_expr_span(body, source);
+            fill_span(span, source);
+        }
+        Expr::ConsumesExpr { names, body, span } => {
+            for name in names {
+                fill_span(&mut name.span, source);
+            }
+            fill_expr_span(body, source);
+            fill_span(span, source);
+        }
         Expr::DictLiteral { entries, span } => {
             for (key, value) in entries {
                 fill_expr_span(key, source);
@@ -457,6 +440,15 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(body, source);
             fill_span(span, source);
         }
+        Expr::FunctionCall { path, args, span } => {
+            for ident in path {
+                fill_span(&mut ident.span, source);
+            }
+            for arg in args {
+                fill_expr_span(arg, source);
+            }
+            fill_span(span, source);
+        }
         Expr::MethodCall {
             receiver,
             method,
@@ -465,47 +457,9 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
         } => {
             fill_expr_span(receiver, source);
             fill_span(&mut method.span, source);
-            for arg_expr in args {
-                fill_expr_span(arg_expr, source);
+            for arg in args {
+                fill_expr_span(arg, source);
             }
-            fill_span(span, source);
-        }
-        Expr::Block {
-            statements,
-            result,
-            span,
-        } => {
-            for stmt in statements {
-                match stmt {
-                    BlockStatement::Let {
-                        pattern,
-                        ty,
-                        value,
-                        span: stmt_span,
-                        ..
-                    } => {
-                        fill_binding_pattern_span(pattern, source);
-                        if let Some(type_ann) = ty {
-                            fill_type_span(type_ann, source);
-                        }
-                        fill_expr_span(value, source);
-                        fill_span(stmt_span, source);
-                    }
-                    BlockStatement::Assign {
-                        target,
-                        value,
-                        span: stmt_span,
-                    } => {
-                        fill_expr_span(target, source);
-                        fill_expr_span(value, source);
-                        fill_span(stmt_span, source);
-                    }
-                    BlockStatement::Expr(expr) => {
-                        fill_expr_span(expr, source);
-                    }
-                }
-            }
-            fill_expr_span(result, source);
             fill_span(span, source);
         }
     }
@@ -519,9 +473,6 @@ fn fill_pattern_span(pattern: &mut Pattern, source: &str) {
             for binding in bindings {
                 fill_span(&mut binding.span, source);
             }
-        }
-        Pattern::Wildcard => {
-            // Wildcard has no spans to fill
         }
     }
 }
@@ -625,8 +576,8 @@ where
 {
     choice((
         use_stmt_parser().map(Statement::Use),
-        let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
-        definition_parser().map(|d| Statement::Definition(Box::new(d))),
+        let_binding_parser().map(Statement::Let),
+        definition_parser().map(Statement::Definition),
     ))
 }
 
@@ -636,9 +587,8 @@ fn use_stmt_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    visibility_parser()
-        .then_ignore(just(Token::Use))
-        .then(
+    just(Token::Use)
+        .ignore_then(
             ident_parser()
                 .separated_by(just(Token::DoubleColon))
                 .at_least(1)
@@ -649,7 +599,7 @@ where
                 .ignore_then(use_items_parser())
                 .or_not(),
         )
-        .map_with(|((visibility, mut path), items), e| {
+        .map_with(|(mut path, items), e| {
             let items = items.unwrap_or_else(|| {
                 // If no items specified, last segment is the item
                 let last = path.pop().expect("path must have at least 1 element");
@@ -657,7 +607,6 @@ where
             });
 
             UseStmt {
-                visibility,
                 path,
                 items,
                 span: span_from_simple(e.span()),
@@ -711,7 +660,7 @@ where
         )
 }
 
-/// Parse a definition (trait, struct, impl, enum, module, or function)
+/// Parse a definition (trait, struct, impl, enum, or module)
 fn definition_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Definition, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -724,7 +673,6 @@ where
             impl_def_parser().map(Definition::Impl),
             enum_def_parser().map(Definition::Enum),
             module_def_parser(def).map(Definition::Module),
-            function_def_parser().map(|f| Definition::Function(Box::new(f))),
         ))
     })
 }
@@ -774,40 +722,6 @@ where
         Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span()))
     }
     .labelled("identifier")
-}
-
-/// Parse an invocation target: identifier or WGSL type constructor
-/// Accepts regular identifiers plus vec2, vec3, vec4, ivec2, etc. for type constructors
-fn invocation_target_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    select! {
-        // Regular identifiers
-        Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span())),
-        Token::SelfKeyword = e => Ident::new("self".to_string(), span_from_simple(e.span())),
-        // WGSL scalar type constructors (for casting)
-        Token::F32Type = e => Ident::new("f32".to_string(), span_from_simple(e.span())),
-        Token::I32Type = e => Ident::new("i32".to_string(), span_from_simple(e.span())),
-        Token::U32Type = e => Ident::new("u32".to_string(), span_from_simple(e.span())),
-        Token::BoolType = e => Ident::new("bool".to_string(), span_from_simple(e.span())),
-        // WGSL vector type constructors
-        Token::Vec2Type = e => Ident::new("vec2".to_string(), span_from_simple(e.span())),
-        Token::Vec3Type = e => Ident::new("vec3".to_string(), span_from_simple(e.span())),
-        Token::Vec4Type = e => Ident::new("vec4".to_string(), span_from_simple(e.span())),
-        Token::IVec2Type = e => Ident::new("ivec2".to_string(), span_from_simple(e.span())),
-        Token::IVec3Type = e => Ident::new("ivec3".to_string(), span_from_simple(e.span())),
-        Token::IVec4Type = e => Ident::new("ivec4".to_string(), span_from_simple(e.span())),
-        Token::UVec2Type = e => Ident::new("uvec2".to_string(), span_from_simple(e.span())),
-        Token::UVec3Type = e => Ident::new("uvec3".to_string(), span_from_simple(e.span())),
-        Token::UVec4Type = e => Ident::new("uvec4".to_string(), span_from_simple(e.span())),
-        // WGSL matrix type constructors
-        Token::Mat2Type = e => Ident::new("mat2".to_string(), span_from_simple(e.span())),
-        Token::Mat3Type = e => Ident::new("mat3".to_string(), span_from_simple(e.span())),
-        Token::Mat4Type = e => Ident::new("mat4".to_string(), span_from_simple(e.span())),
-    }
-    .labelled("identifier or type constructor")
 }
 
 /// Parse a binding pattern (for let bindings)
@@ -1092,120 +1006,63 @@ where
 }
 
 /// Parse an impl block definition
-/// Impl blocks contain only functions:
-/// - `impl Struct { fn method(self) -> Type { body } }` - inherent impl
-/// - `impl Trait for Struct { fn method(self) -> Type { body } }` - trait impl
+/// Impl blocks contain field defaults and functions:
+/// `impl Struct { field: value, fn method(self) -> Type { body } }`
 fn impl_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, ImplDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    // Parse optional "Trait for" prefix
-    let trait_for = ident_parser().then_ignore(just(Token::For)).or_not();
-
     just(Token::Impl)
-        .ignore_then(trait_for)
-        .then(ident_parser())
+        .ignore_then(ident_parser())
         .then(generic_params_parser())
         .then(impl_body_parser())
-        .map_with(|(((trait_name, name), generics), functions), e| ImplDef {
-            trait_name,
+        .map_with(|((name, generics), (defaults, functions)), e| ImplDef {
             name,
             generics,
+            defaults,
             functions,
             span: span_from_simple(e.span()),
         })
 }
 
-/// Parse the body of an impl block (functions only)
+/// Parse the body of an impl block (field defaults and functions)
 fn impl_body_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Vec<FnDef>, extra::Err<Rich<'tokens, Token>>> + Clone
+) -> impl Parser<'tokens, I, (Vec<(Ident, Expr)>, Vec<FnDef>), extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    fn_def_parser()
-        .repeated()
+    // Either a field default or a function
+    let field_default = ident_parser()
+        .then_ignore(just(Token::Colon).labelled("':'"))
+        .then(expr_parser().labelled("default value"))
+        .map(|(name, expr)| ImplItem::Default(name, expr));
+
+    let function = fn_def_parser().map(ImplItem::Function);
+
+    // Parse items separated by commas (trailing allowed)
+    choice((function, field_default))
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
+        .map(|items| {
+            let mut defaults = Vec::new();
+            let mut functions = Vec::new();
+            for item in items {
+                match item {
+                    ImplItem::Default(name, expr) => defaults.push((name, expr)),
+                    ImplItem::Function(f) => functions.push(f),
+                }
+            }
+            (defaults, functions)
+        })
 }
 
-/// Convert a list of block statements to an Expr (Block or single expression).
-///
-/// This is shared logic used by both function bodies and block expressions.
-fn block_statements_to_expr(mut statements: Vec<BlockStatement>, span: crate::Span) -> Expr {
-    // Empty body -> Nil
-    if statements.is_empty() {
-        return Expr::Literal(Literal::Nil);
-    }
-
-    // Last item becomes the result expression
-    let last = statements.pop().expect("checked non-empty");
-    let result = match last {
-        BlockStatement::Expr(expr) => expr,
-        // If last is a statement (not expr), push it back and use Nil as result
-        stmt @ BlockStatement::Let { .. } | stmt @ BlockStatement::Assign { .. } => {
-            statements.push(stmt);
-            Expr::Literal(Literal::Nil)
-        }
-    };
-
-    // Single expression with no statements -> return it directly
-    if statements.is_empty() {
-        return result;
-    }
-
-    Expr::Block {
-        statements,
-        result: Box::new(result),
-        span,
-    }
-}
-
-/// Parse a function body: `{ statements... result_expr }` or `{ }` for empty
-///
-/// The function body is parsed as a block with multiple statements followed by a result.
-fn fn_body_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    // Let binding
-    let fn_let = just(Token::Let)
-        .ignore_then(just(Token::Mut).or_not())
-        .then(binding_pattern_parser())
-        .then(just(Token::Colon).ignore_then(type_parser()).or_not())
-        .then_ignore(just(Token::Equals))
-        .then(expr_parser())
-        .map_with(|(((mutable, pattern), ty), value), e| BlockStatement::Let {
-            mutable: mutable.is_some(),
-            pattern,
-            ty,
-            value,
-            span: span_from_simple(e.span()),
-        });
-
-    // Assignment: expr = expr
-    let fn_assign = expr_parser()
-        .then_ignore(just(Token::Equals))
-        .then(expr_parser())
-        .map_with(|(target, value), e| BlockStatement::Assign {
-            target,
-            value,
-            span: span_from_simple(e.span()),
-        });
-
-    // Expression item
-    let fn_expr = expr_parser().map(BlockStatement::Expr);
-
-    // Parse item (let, assign, or expr - in that order)
-    let fn_item = choice((fn_let, fn_assign, fn_expr));
-
-    // Parse body: items inside braces
-    fn_item
-        .repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LBrace), just(Token::RBrace))
-        .map_with(|statements, e| block_statements_to_expr(statements, span_from_simple(e.span())))
+/// Helper enum for parsing impl block items
+enum ImplItem {
+    Default(Ident, Expr),
+    Function(FnDef),
 }
 
 /// Parse a function definition: `fn name(params) -> Type { body }`
@@ -1222,22 +1079,19 @@ where
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
         .then(
-            // Function body in braces - parsed as a block with statements
-            fn_body_parser(),
+            // Function body in braces
+            expr_parser().delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
-        .map_with(|(((name, params), return_type), body), e| {
-            let span = span_from_simple(e.span());
-            FnDef {
-                name,
-                params,
-                return_type,
-                body,
-                span,
-            }
+        .map_with(|(((name, params), return_type), body), e| FnDef {
+            name,
+            params,
+            return_type,
+            body,
+            span: span_from_simple(e.span()),
         })
 }
 
-/// Parse function parameters: `(self, x: Type, y: Type = default)`
+/// Parse function parameters: `(self, x: Type, y: Type)`
 fn fn_params_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -1246,18 +1100,15 @@ where
     let self_param = just(Token::SelfKeyword).map_with(|_, e| FnParam {
         name: Ident::new("self", span_from_simple(e.span())),
         ty: None,
-        default: None,
         span: span_from_simple(e.span()),
     });
 
     let typed_param = ident_parser()
         .then_ignore(just(Token::Colon))
         .then(type_parser())
-        .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
-        .map_with(|((name, ty), default), e| FnParam {
+        .map_with(|(name, ty), e| FnParam {
             name,
             ty: Some(ty),
-            default,
             span: span_from_simple(e.span()),
         });
 
@@ -1266,37 +1117,6 @@ where
         .allow_trailing()
         .collect()
         .delimited_by(just(Token::LParen), just(Token::RParen))
-}
-
-/// Parse a standalone function definition: `pub fn name(params) -> Type { body }`
-fn function_def_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, FunctionDef, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    visibility_parser()
-        .then_ignore(just(Token::Fn))
-        .then(ident_parser())
-        .then(fn_params_parser())
-        .then(
-            // Optional return type: -> Type
-            just(Token::Arrow).ignore_then(type_parser()).or_not(),
-        )
-        .then(
-            // Function body in braces - parsed as a block with statements
-            fn_body_parser(),
-        )
-        .map_with(|((((visibility, name), params), return_type), body), e| {
-            let span = span_from_simple(e.span());
-            FunctionDef {
-                visibility,
-                name,
-                params,
-                return_type,
-                body,
-                span,
-            }
-        })
 }
 
 /// Parse an enum definition
@@ -1552,8 +1372,6 @@ where
         let literal = choice((
             select! { Token::String(s) => Expr::Literal(Literal::String(s)) },
             select! { Token::Number(n) => Expr::Literal(Literal::Number(n)) },
-            select! { Token::UnsignedInt(n) => Expr::Literal(Literal::Number(n as f64)) },
-            select! { Token::SignedInt(n) => Expr::Literal(Literal::Number(n as f64)) },
             select! { Token::Regex(s) => {
                 // Parse regex at parse time
                 if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
@@ -1569,22 +1387,11 @@ where
             just(Token::Nil).to(Expr::Literal(Literal::Nil)),
         ));
 
-        // Helper to parse invocation arguments: either named (name: expr) or positional (expr)
-        // Returns Vec<(Option<Ident>, Expr)> where Some(name) is named, None is positional
-        // Named args use lookahead to check for ident: pattern before committing
-        let named_invoc_arg = ident_parser()
-            .then(just(Token::Colon))
-            .rewind() // Lookahead: check for ident: without consuming
-            .ignore_then(
-                ident_parser()
-                    .then_ignore(just(Token::Colon))
-                    .then(expr.clone()),
-            )
-            .map(|(name, value)| (Some(name), value));
-        let positional_invoc_arg = expr.clone().map(|value| (None, value));
-        let invocation_arg = named_invoc_arg.or(positional_invoc_arg);
-
-        let invocation_args = invocation_arg
+        // Helper to parse named arguments for structs: name: expr, name: expr, ...
+        // Allows empty parens for struct instantiation
+        let struct_named_args = ident_parser()
+            .then_ignore(just(Token::Colon).labelled("':'"))
+            .then(expr.clone().labelled("value"))
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect::<Vec<_>>()
@@ -1592,21 +1399,14 @@ where
 
         // Helper to parse named arguments for enums: name: expr, name: expr, ...
         // Requires at least one argument if parens are present (no empty parens allowed)
-        // Uses lookahead: peek for ( ident : pattern before committing to parse
-        let enum_named_args = just(Token::LParen)
-            .ignore_then(ident_parser())
-            .then(just(Token::Colon))
-            .rewind() // Lookahead: if we see ( ident :, this is a named arg pattern
-            .ignore_then(
-                ident_parser()
-                    .then_ignore(just(Token::Colon))
-                    .then(expr.clone())
-                    .separated_by(just(Token::Comma))
-                    .at_least(1)
-                    .allow_trailing()
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LParen), just(Token::RParen)),
-            );
+        let enum_named_args = ident_parser()
+            .then_ignore(just(Token::Colon).labelled("':'"))
+            .then(expr.clone().labelled("value"))
+            .separated_by(just(Token::Comma))
+            .at_least(1) // Must have at least one arg if using parens
+            .allow_trailing()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen));
 
         // Inferred enum instantiation: .variant(field: value, field: value, ...)
         let inferred_enum_instantiation = just(Token::Dot)
@@ -1618,59 +1418,42 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Enum instantiation: EnumType.variant OR EnumType.variant(field: value, ...)
+        // Enum instantiation: EnumType.variant(field: value, field: value, ...)
         // Supports module-qualified paths: module::EnumType.variant
         // Note: Uses ident_no_self_parser to prevent 'self.field' from being parsed as enum instantiation
-        // IMPORTANT: If there are parens, they MUST contain named args (ident: value).
-        // This prevents foo.bar(1) from being parsed as enum instantiation.
-        let enum_base = ident_no_self_parser()
+        let enum_instantiation = ident_no_self_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
             .then_ignore(just(Token::Dot))
-            .then(ident_parser());
-        // With named args: Type.variant(name: value, ...)
-        let enum_with_args = enum_base
-            .clone()
-            .then(enum_named_args.clone())
-            .map(|((path, variant), data)| (path, variant, data));
-        // Without args: Type.variant (no parens at all - checked by NOT seeing LParen)
-        let enum_without_args = enum_base
-            .clone()
-            .then(just(Token::LParen).not().rewind())
-            .map(|((path, variant), _)| (path, variant, vec![]));
-        // Try with-args first, then without-args
-        let enum_instantiation =
-            enum_with_args
-                .or(enum_without_args)
-                .map_with(|(path, variant, data), e| {
-                    // Join module path into a single identifier
-                    let enum_name_str = path
-                        .iter()
-                        .map(|id| id.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join("::");
-                    let enum_name = Ident::new(enum_name_str, span_from_simple(e.span()));
+            .then(ident_parser())
+            .then(enum_named_args.clone().or_not())
+            .map_with(|((path, variant), data), e| {
+                // Join module path into a single identifier
+                let enum_name_str = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                let enum_name = Ident::new(enum_name_str, span_from_simple(e.span()));
 
-                    Expr::EnumInstantiation {
-                        enum_name,
-                        variant,
-                        data,
-                        span: span_from_simple(e.span()),
-                    }
-                });
+                Expr::EnumInstantiation {
+                    enum_name,
+                    variant,
+                    data: data.unwrap_or_default(),
+                    span: span_from_simple(e.span()),
+                }
+            });
 
-        // Invocation: Name(arg: value, ...) or Name<Type>(arg: value, ...)
-        // Can be struct instantiation, function call, or WGSL type constructor
-        // With optional mount points (for structs): Name(arg: value) { mount: expr, ... }
-        // Supports module-qualified paths: module::Name(...)
-        // Also supports WGSL type constructors: vec2(x, y), mat4(...)
-        let invocation = invocation_target_parser()
+        // Struct instantiation: StructName(field: value, ...) or StructName<Type>(field: value, ...)
+        // With optional mount points: StructName(field: value) { mount: expr, ... }
+        // Supports module-qualified paths: module::StructName(...)
+        let instantiation = ident_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
             .then(
-                // Optional generic arguments (only valid for struct instantiation)
+                // Optional generic arguments
                 type_parser()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
@@ -1679,9 +1462,9 @@ where
                     .delimited_by(just(Token::Lt), just(Token::Gt))
                     .or_not(),
             )
-            .then(invocation_args.clone())
+            .then(struct_named_args.clone())
             .then(
-                // Optional mount points (only valid for struct instantiation)
+                // Optional mount points (without extra parentheses)
                 ident_parser()
                     .then_ignore(just(Token::Colon).labelled("':'"))
                     .then(
@@ -1704,12 +1487,23 @@ where
                     .or_not(),
             )
             .map_with(|(((path, type_args), args), mounts), e| {
-                // Keep path as Vec<Ident> for semantic analysis to resolve
-                Expr::Invocation {
-                    path,
-                    type_args: type_args.unwrap_or_default(),
+                // Join module path into a single identifier
+                let name_str = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                let name = Ident::new(name_str, span_from_simple(e.span()));
+
+                let type_args = type_args.unwrap_or_default();
+                let mounts = mounts.unwrap_or_default();
+
+                // Unified struct instantiation
+                Expr::StructInstantiation {
+                    name,
+                    type_args,
                     args,
-                    mounts: mounts.unwrap_or_default(),
+                    mounts,
                     span: span_from_simple(e.span()),
                 }
             });
@@ -1796,7 +1590,6 @@ where
             });
 
         // Closure expression: () -> expr, x -> expr, x, y -> expr, x: T -> expr
-        // Also supports pipe syntax: |x, y| expr, |x: T, y: T| -> T { body }
         // Closure parameter: identifier with optional type annotation
         let closure_param = ident_parser()
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
@@ -1819,7 +1612,6 @@ where
 
         // Single or multi-param closure: x -> expr OR x, y -> expr OR x: T -> expr
         let param_closure = closure_param
-            .clone()
             .separated_by(just(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()
@@ -1831,81 +1623,57 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Pipe-delimited closure: |params| -> type { body } or |params| { body } or |params| expr
-        // Also handles || { body } for empty params
-        let pipe_closure = just(Token::Pipe)
+        // Provides expression: provides item1, item2 { body }
+        let provides_expr = just(Token::Provides)
             .ignore_then(
-                closure_param
-                    .clone()
+                expr.clone()
+                    .then(just(Token::As).ignore_then(ident_parser()).or_not())
+                    .map_with(|(expr, alias), e| ProvideItem {
+                        expr: Box::new(expr),
+                        alias,
+                        span: span_from_simple(e.span()),
+                    })
                     .separated_by(just(Token::Comma))
-                    .allow_trailing()
+                    .at_least(1)
                     .collect::<Vec<_>>(),
             )
-            .then_ignore(just(Token::Pipe))
             .then(
-                // Optional return type: -> Type
-                just(Token::Arrow).ignore_then(type_parser()).or_not(),
+                expr.clone()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .then(expr.clone())
-            .map_with(|((params, _return_type), body), e| Expr::ClosureExpr {
-                params,
+            .map_with(|(items, body), e| Expr::ProvidesExpr {
+                items,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
 
-        // Block item parsers using BlockStatement directly
-        // Let binding in block
-        let block_let_item = just(Token::Let)
-            .ignore_then(just(Token::Mut).or_not())
-            .then(binding_pattern_parser())
-            .then(just(Token::Colon).ignore_then(type_parser()).or_not())
-            .then_ignore(just(Token::Equals))
-            .then(expr.clone())
-            .map_with(|(((mutable, pattern), ty), value), e| BlockStatement::Let {
-                mutable: mutable.is_some(),
-                pattern,
-                ty,
-                value,
+        // Consumes expression: consumes name1, name2 { body }
+        let consumes_expr = just(Token::Consumes)
+            .ignore_then(
+                ident_parser()
+                    .separated_by(just(Token::Comma))
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .then(
+                expr.clone()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map_with(|(names, body), e| Expr::ConsumesExpr {
+                names,
+                body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
-
-        // Assignment: target = value
-        let block_assign_item = expr
-            .clone()
-            .then_ignore(just(Token::Equals))
-            .then(expr.clone())
-            .map_with(|(target, value), e| BlockStatement::Assign {
-                target,
-                value,
-                span: span_from_simple(e.span()),
-            });
-
-        // Expression item
-        let block_expr_item = expr.clone().map(BlockStatement::Expr);
-
-        // Parse a block item (let, assign, or expr - in that order)
-        let block_item = choice((
-            block_let_item.clone(),
-            block_assign_item.clone(),
-            block_expr_item.clone(),
-        ));
-
-        // Block body parser: { items... } -> Expr (Block or single expr)
-        // Uses shared block_statements_to_expr helper
-        // Reused in for_expr, if_expr
-        let block_body = block_item
-            .clone()
-            .repeated()
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            .map_with(|stmts, e| block_statements_to_expr(stmts, span_from_simple(e.span())));
 
         // For expression: for var in collection { body }
         let for_expr = just(Token::For)
             .ignore_then(ident_parser())
             .then_ignore(just(Token::In))
             .then(expr.clone())
-            .then(block_body.clone())
+            .then(
+                expr.clone()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
             .map_with(|((var, collection), body), e| Expr::ForExpr {
                 var,
                 collection: Box::new(collection),
@@ -1914,26 +1682,48 @@ where
             });
 
         // If expression: if condition { then } else { else }
-        // Also handles else-if chains: if cond { } else if cond { } else { }
-        let if_expr = recursive(|if_expr_rec| {
-            just(Token::If)
-                .ignore_then(expr.clone())
-                .then(block_body.clone())
-                .then(
-                    just(Token::Else)
-                        .ignore_then(
-                            // Either another if expression (else-if chain) or a block { ... }
-                            if_expr_rec.clone().or(block_body.clone()),
-                        )
-                        .or_not(),
-                )
-                .map_with(|((condition, then_branch), else_branch), e| Expr::IfExpr {
-                    condition: Box::new(condition),
-                    then_branch: Box::new(then_branch),
-                    else_branch: else_branch.map(Box::new),
-                    span: span_from_simple(e.span()),
-                })
-        });
+        let if_expr = just(Token::If)
+            .ignore_then(expr.clone())
+            .then(
+                expr.clone()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .then(
+                just(Token::Else)
+                    .ignore_then(
+                        expr.clone()
+                            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    )
+                    .or_not(),
+            )
+            .map_with(|((condition, then_branch), else_branch), e| Expr::IfExpr {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch: else_branch.map(Box::new),
+                span: span_from_simple(e.span()),
+            });
+
+        // Function call: path(arg1, arg2, ...)
+        // Path can be `ident` or `ident::ident::...` (for qualified calls like builtin::math::sin)
+        // Uses positional arguments (unlike struct instantiation which uses named arguments)
+        // Requires at least one argument to distinguish from struct instantiation with zero args
+        let function_call = ident_parser()
+            .separated_by(just(Token::DoubleColon))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .then(
+                expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .at_least(1) // Require at least one arg to distinguish from struct instantiation
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .map_with(|(path, args), e| Expr::FunctionCall {
+                path,
+                args,
+                span: span_from_simple(e.span()),
+            });
 
         // Match expression: match scrutinee { pattern: expr, ... }
         let match_expr = just(Token::Match)
@@ -1971,40 +1761,30 @@ where
                 },
             );
 
-        // Atom: literal, instantiation, enum_instantiation, reference, array/dict, tuple, grouped, for, if, match, closure, let, block
+        // Atom: literal, instantiation, enum_instantiation, reference, array/dict, tuple, grouped, for, if, match, provides, consumes, closure, let
         // Order matters: try more specific parsers first
         let atom = choice((
             literal,
+            provides_expr,
+            consumes_expr,
             for_expr,
             if_expr,
             match_expr,
             let_expr,      // Let expressions
-            block_body,    // Block expressions: { let x = 1; expr }
             array_or_dict, // Handles both array and dictionary literals
             tuple,         // Must come before grouped (tuple is more specific)
             grouped,
-            pipe_closure,                // |x| expr or |x, y| -> T { body }
-            no_param_closure,            // () -> expr (must come before other closures and tuples)
-            param_closure, // x -> expr (must come before reference since starts with ident)
+            no_param_closure, // () -> expr (must come before other closures and tuples)
+            param_closure,    // x -> expr (must come before reference since starts with ident)
             inferred_enum_instantiation, // .variant is most specific
-            enum_instantiation, // Must come before invocation and reference (Type.variant(...))
-            invocation, // Unified struct instantiation / function call - resolved in semantic analysis
-            reference,  // Most general (ident), now includes 'self'
+            enum_instantiation, // Must come before instantiation and reference (Type.variant(...))
+            function_call,    // path(args) with positional args - must come before instantiation
+            instantiation,    // Must come before reference (Type(name: value))
+            reference,        // Most general (ident:ident:ident), now includes 'self'
         ));
 
         // Binary operators with precedence using pratt parser
         atom.pratt((
-            // Unary operators (highest precedence: 9)
-            prefix(9, just(Token::Minus), |_, operand, e| Expr::UnaryOp {
-                op: UnaryOperator::Neg,
-                operand: Box::new(operand),
-                span: span_from_simple(e.span()),
-            }),
-            prefix(9, just(Token::Bang), |_, operand, e| Expr::UnaryOp {
-                op: UnaryOperator::Not,
-                operand: Box::new(operand),
-                span: span_from_simple(e.span()),
-            }),
             // Multiplication, division, modulo (highest precedence: 6)
             infix(left(6), just(Token::Star), |l, _, r, e| Expr::BinaryOp {
                 left: Box::new(l),
@@ -2082,17 +1862,10 @@ where
                 right: Box::new(r),
                 span: span_from_simple(e.span()),
             }),
-            // Logical OR (precedence: 1)
+            // Logical OR (precedence: 1, lowest)
             infix(left(1), just(Token::Or), |l, _, r, e| Expr::BinaryOp {
                 left: Box::new(l),
                 op: BinaryOperator::Or,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Range (precedence: 0, lowest - so arithmetic binds tighter)
-            infix(left(0), just(Token::DotDot), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Range,
                 right: Box::new(r),
                 span: span_from_simple(e.span()),
             }),
@@ -2107,21 +1880,22 @@ where
                     span: span_from_simple(e.span()),
                 },
             ),
-            // Method call: expr.method(arg1, arg2, ...) (precedence: 8, higher than field access)
+            // Method call: expr.method(args) (precedence: 7, same as array access)
             // Must come before field access since it's more specific
-            // Uses invocation_args to handle both named and positional arguments
             postfix(
-                8,
-                just(Token::Dot)
-                    .ignore_then(ident_parser())
-                    .then(invocation_args.clone()),
-                |receiver, (method, args): (Ident, Vec<(Option<Ident>, Expr)>), e| {
-                    Expr::MethodCall {
-                        receiver: Box::new(receiver),
-                        method,
-                        args: args.into_iter().map(|(_, v)| v).collect(),
-                        span: span_from_simple(e.span()),
-                    }
+                7,
+                just(Token::Dot).ignore_then(ident_parser()).then(
+                    expr.clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                ),
+                |receiver, (method, args), e| Expr::MethodCall {
+                    receiver: Box::new(receiver),
+                    method,
+                    args,
+                    span: span_from_simple(e.span()),
                 },
             ),
             // Field access: expr.field (precedence: 7, same as array access)
@@ -2175,17 +1949,14 @@ where
         })
 }
 
-/// Parse a pattern: variant or variant(binding1, binding2) or .variant or .variant(binding1, binding2) or _
+/// Parse a pattern: variant or variant(binding1, binding2) or .variant or .variant(binding1, binding2)
 fn pattern_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Pattern, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    // Wildcard pattern: _
-    let wildcard = just(Token::Underscore).to(Pattern::Wildcard);
-
-    // Variant pattern: .variant or .variant(bindings) or variant or variant(bindings)
-    let variant = choice((
+    // Parse either .variant or variant (short form with dot or full form)
+    choice((
         // Short form: .variant or .variant(bindings)
         just(Token::Dot).ignore_then(ident_parser()),
         // Full form: variant or variant(bindings)
@@ -2202,9 +1973,7 @@ where
     .map(|(name, bindings)| Pattern::Variant {
         name,
         bindings: bindings.unwrap_or_default(),
-    });
-
-    choice((wildcard, variant))
+    })
 }
 
 /// Helper to convert SimpleSpan to our custom Span
@@ -2224,11 +1993,9 @@ mod tests {
         let result = parse_file(&tokens)?;
 
         // Extract the type from the parsed struct
-        if let Some(Statement::Definition(def)) = result.statements.first() {
-            if let Definition::Struct(s) = &**def {
-                if let Some(field) = s.fields.first() {
-                    return Ok(field.ty.clone());
-                }
+        if let Some(Statement::Definition(Definition::Struct(s))) = result.statements.first() {
+            if let Some(field) = s.fields.first() {
+                return Ok(field.ty.clone());
             }
         }
         Err(vec![(
@@ -2321,24 +2088,20 @@ mod tests {
         );
 
         let file = result.unwrap();
-        if let Some(Statement::Definition(def)) = file.statements.first() {
-            if let Definition::Struct(s) = &**def {
-                if let Some(field) = s.fields.first() {
-                    match &field.ty {
-                        Type::Dictionary { key, value } => {
-                            assert_eq!(**key, Type::Primitive(PrimitiveType::String));
-                            assert_eq!(**value, Type::Primitive(PrimitiveType::String));
-                        }
-                        _ => panic!("Expected Dictionary type, got {:?}", field.ty),
+        if let Some(Statement::Definition(Definition::Struct(s))) = file.statements.first() {
+            if let Some(field) = s.fields.first() {
+                match &field.ty {
+                    Type::Dictionary { key, value } => {
+                        assert_eq!(**key, Type::Primitive(PrimitiveType::String));
+                        assert_eq!(**value, Type::Primitive(PrimitiveType::String));
                     }
-                } else {
-                    panic!("No fields found");
+                    _ => panic!("Expected Dictionary type, got {:?}", field.ty),
                 }
             } else {
-                panic!("No struct found");
+                panic!("No fields found");
             }
         } else {
-            panic!("No definition found");
+            panic!("No struct found");
         }
     }
 
@@ -2813,8 +2576,9 @@ mod tests {
     #[test]
     fn test_let_expr_in_for() {
         let input = r#"
-            struct App {
-                content: [String] = for item in items {
+            struct App { content: [String] }
+            impl App {
+                content: for item in items {
                     let formatted = item
                     Label(text: formatted)
                 }
@@ -2853,171 +2617,5 @@ mod tests {
             }
             _ => panic!("Expected LetExpr, got {:?}", expr),
         }
-    }
-
-    #[test]
-    fn test_block_expr_simple() {
-        let result = parse_expr_from_let("{ let x = 1 x }");
-        assert!(result.is_ok(), "Failed to parse block: {:?}", result);
-    }
-
-    #[test]
-    fn test_block_expr_with_call() {
-        let result = parse_expr_from_let("{ let v = foo.bar(1) Result(value: v) }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block with call: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_block_expr_no_let() {
-        // Block with just a result expression (no let statements)
-        let result = parse_expr_from_let("{ Result(value: 1) }");
-        assert!(result.is_ok(), "Failed to parse block no let: {:?}", result);
-    }
-
-    #[test]
-    fn test_block_expr_let_simple_then_call() {
-        // Block with let binding a literal, then a call
-        let result = parse_expr_from_let("{ let v = 1 Result(value: v) }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let simple then call: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_block_expr_let_field_access() {
-        // Block with let binding field access, then a reference
-        let result = parse_expr_from_let("{ let v = foo.bar v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let field access: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_block_expr_let_call_then_ref() {
-        // Block with let binding a call, then a reference
-        let result = parse_expr_from_let("{ let v = foo(1) v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let call then ref: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_block_expr_let_method_call_then_ref() {
-        // Block with let binding a method call, then a reference
-        let result = parse_expr_from_let("{ let v = foo.bar(1) v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let method call then ref: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_let_expr_method_call_then_ref() {
-        // Let expression with method call value, then reference body
-        // This uses the let EXPRESSION, not block statement
-        let result = parse_expr_from_let("let v = foo.bar(1) v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr method call then ref: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_let_expr_fn_call_then_ref() {
-        // Let expression with function call value, then reference body
-        let result = parse_expr_from_let("let v = foo(1) v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr fn call then ref: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_let_expr_field_access_then_ref() {
-        // Let expression with field access value, then reference body
-        let result = parse_expr_from_let("let v = foo.bar v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr field access then ref: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_method_call_standalone() {
-        // Just a method call, no following expression
-        let result = parse_expr_from_let("foo.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse standalone method call: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_method_call_no_args() {
-        // Method call with no args
-        let result = parse_expr_from_let("foo.bar()");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call no args: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_field_access_standalone() {
-        // Field access (no parens)
-        let result = parse_expr_from_let("foo.bar");
-        assert!(result.is_ok(), "Failed to parse field access: {:?}", result);
-    }
-
-    #[test]
-    fn test_reference_standalone() {
-        // Just a reference
-        let result = parse_expr_from_let("foo");
-        assert!(result.is_ok(), "Failed to parse reference: {:?}", result);
-    }
-
-    #[test]
-    fn test_method_call_on_self() {
-        // Method call on self
-        let result = parse_expr_from_let("self.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call on self: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_method_call_on_this() {
-        // Method call on 'this' (not a keyword, just an identifier)
-        let result = parse_expr_from_let("this.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call on this: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_invocation_simple() {
-        // Simple invocation (should work)
-        let result = parse_expr_from_let("foo(1)");
-        assert!(result.is_ok(), "Failed to parse invocation: {:?}", result);
     }
 }
