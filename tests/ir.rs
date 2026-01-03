@@ -1235,6 +1235,15 @@ impl IrVisitor for ExprCounter {
             IrExpr::Reference { .. } | IrExpr::SelfFieldRef { .. } | IrExpr::LetRef { .. } => {
                 self.reference_count += 1
             }
+            IrExpr::FunctionCall { .. } | IrExpr::MethodCall { .. } => {
+                // Function and method calls - counted elsewhere or ignore
+            }
+            IrExpr::EventMapping { .. } => {
+                // Event mappings - counted elsewhere or ignore
+            }
+            IrExpr::DictLiteral { .. } | IrExpr::DictAccess { .. } => {
+                // Dictionary expressions - counted elsewhere or ignore
+            }
         }
         // Walk children
         formalang::ir::walk_expr_children(self, e);
@@ -2200,5 +2209,379 @@ impl Container { p: Point(x: 1, y: 2) }
         assert!(matches!(ty, ResolvedType::Struct(_)));
     } else {
         panic!("Expected StructInst expression");
+    }
+}
+
+// =============================================================================
+// Method Resolution Tests
+// =============================================================================
+
+/// Helper to compile with stdlib access
+fn compile_with_stdlib(source: &str) -> Result<formalang::IrModule, Vec<formalang::CompilerError>> {
+    let root_dir = std::path::PathBuf::from("docs/user");
+    let resolver = formalang::FileSystemResolver::new(root_dir);
+    let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)?;
+    formalang::ir::lower_to_ir(&ast, analyzer.symbols())
+}
+
+/// Test that method calls on GPU types get proper return type resolution
+#[test]
+fn test_method_call_resolve_normalize() {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
+
+    // A struct that uses a method call on a vec3 (lowercase GPU type)
+    let source = r#"
+        struct Particle {
+            velocity: vec3
+        }
+        impl Particle {
+            direction: self.velocity.normalize()
+        }
+    "#;
+
+    let module = compile_with_stdlib(source).expect("Should compile");
+
+    // Find the method call in the impl defaults
+    struct MethodCallFinder {
+        found_normalize: bool,
+        return_type: Option<ResolvedType>,
+    }
+
+    impl IrVisitor for MethodCallFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::MethodCall { method, ty, .. } = e {
+                if method == "normalize" {
+                    self.found_normalize = true;
+                    self.return_type = Some(ty.clone());
+                }
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = MethodCallFinder {
+        found_normalize: false,
+        return_type: None,
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found_normalize, "Should find normalize method call");
+    assert_eq!(
+        finder.return_type,
+        Some(ResolvedType::Primitive(PrimitiveType::Vec3)),
+        "normalize on Vec3 should return Vec3"
+    );
+}
+
+/// Test that method calls for length() return F32
+#[test]
+fn test_method_call_resolve_length() {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
+
+    let source = r#"
+        struct Particle {
+            position: vec3
+        }
+        impl Particle {
+            dist: self.position.length()
+        }
+    "#;
+
+    let module = compile_with_stdlib(source).expect("Should compile");
+
+    struct MethodCallFinder {
+        found_length: bool,
+        return_type: Option<ResolvedType>,
+    }
+
+    impl IrVisitor for MethodCallFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::MethodCall { method, ty, .. } = e {
+                if method == "length" {
+                    self.found_length = true;
+                    self.return_type = Some(ty.clone());
+                }
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = MethodCallFinder {
+        found_length: false,
+        return_type: None,
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found_length, "Should find length method call");
+    assert_eq!(
+        finder.return_type,
+        Some(ResolvedType::Primitive(PrimitiveType::F32)),
+        "length on Vec3 should return F32"
+    );
+}
+
+/// Test method resolution with chained calls (self.field.method())
+#[test]
+fn test_method_call_chained() {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrExpr, ResolvedType};
+
+    let source = r#"
+        struct Particle {
+            velocity: vec4
+        }
+        impl Particle {
+            normalized_velocity: self.velocity.normalize()
+        }
+    "#;
+
+    let module = compile_with_stdlib(source).expect("Should compile");
+
+    // Walk impls and check the default
+    assert_eq!(module.impls.len(), 1);
+    let imp = &module.impls[0];
+    assert_eq!(imp.defaults.len(), 1);
+
+    let (name, expr) = &imp.defaults[0];
+    assert_eq!(name, "normalized_velocity");
+
+    // The expression should be a MethodCall with Vec4 return type
+    if let IrExpr::MethodCall {
+        method,
+        ty,
+        receiver,
+        ..
+    } = expr
+    {
+        assert_eq!(method, "normalize");
+        assert_eq!(ty, &ResolvedType::Primitive(PrimitiveType::Vec4));
+
+        // The receiver should be SelfFieldRef with Vec4 type
+        if let IrExpr::SelfFieldRef { field, ty: recv_ty } = receiver.as_ref() {
+            assert_eq!(field, "velocity");
+            assert_eq!(recv_ty, &ResolvedType::Primitive(PrimitiveType::Vec4));
+        } else {
+            panic!("Expected SelfFieldRef as receiver");
+        }
+    } else {
+        panic!("Expected MethodCall expression");
+    }
+}
+
+// =============================================================================
+// Event Mapping Tests
+// =============================================================================
+
+/// Test that closure expressions with enum return are lowered to EventMapping
+#[test]
+fn test_event_mapping_no_param() {
+    use formalang::ir::{walk_module, IrExpr, IrVisitor};
+
+    // Use inferred enum syntax (.submit) not qualified (Event::submit)
+    let source = r#"
+        enum Event { submit, cancel }
+        struct Button {
+            action: (() -> Event)?
+        }
+        impl Button {
+            action: () -> .submit
+        }
+    "#;
+
+    let module = compile_with_stdlib(source).expect("Should compile");
+
+    struct EventMappingFinder {
+        found: bool,
+        variant: Option<String>,
+        has_param: bool,
+    }
+
+    impl IrVisitor for EventMappingFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::EventMapping { variant, param, .. } = e {
+                self.found = true;
+                self.variant = Some(variant.clone());
+                self.has_param = param.is_some();
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = EventMappingFinder {
+        found: false,
+        variant: None,
+        has_param: false,
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found, "Should find EventMapping");
+    assert_eq!(finder.variant, Some("submit".to_string()));
+    assert!(!finder.has_param, "Should have no param for () -> ...");
+}
+
+/// Test that closure expressions with param are lowered to EventMapping with bindings
+#[test]
+fn test_event_mapping_with_param() {
+    use formalang::ir::{walk_module, EventBindingSource, IrExpr, IrVisitor};
+
+    // Full field binding test - closure params are now tracked in semantic analyzer
+    let source = r#"
+        enum Event { valueChanged(value: Number) }
+        struct Slider {
+            onChange: (Number -> Event)?
+        }
+        impl Slider {
+            onChange: x -> .valueChanged(value: x)
+        }
+    "#;
+
+    let module = compile_with_stdlib(source).expect("Should compile");
+
+    struct EventMappingFinder {
+        found: bool,
+        variant: Option<String>,
+        param: Option<String>,
+        bindings: Vec<(String, String)>,
+    }
+
+    impl IrVisitor for EventMappingFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::EventMapping {
+                variant,
+                param,
+                field_bindings,
+                ..
+            } = e
+            {
+                self.found = true;
+                self.variant = Some(variant.clone());
+                self.param = param.clone();
+                self.bindings = field_bindings
+                    .iter()
+                    .map(|b| {
+                        let source_name = match &b.source {
+                            EventBindingSource::Param(p) => p.clone(),
+                            EventBindingSource::Literal(_) => "literal".to_string(),
+                        };
+                        (b.field_name.clone(), source_name)
+                    })
+                    .collect();
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = EventMappingFinder {
+        found: false,
+        variant: None,
+        param: None,
+        bindings: vec![],
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found, "Should find EventMapping");
+    assert_eq!(finder.variant, Some("valueChanged".to_string()));
+    assert_eq!(finder.param, Some("x".to_string()));
+    assert_eq!(
+        finder.bindings,
+        vec![("value".to_string(), "x".to_string())]
+    );
+}
+
+// =============================================================================
+// Dictionary Lowering Tests
+// =============================================================================
+
+#[test]
+fn test_dict_literal_lowering() {
+    use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
+
+    let source = r#"
+        struct Config { data: [String: Number] }
+        impl Config { data: ["a": 1, "b": 2] }
+        let cfg: Config = Config()
+    "#;
+
+    let module = compile_to_ir(source).expect("should compile");
+
+    struct DictFinder {
+        found: bool,
+        entry_count: usize,
+    }
+
+    impl IrVisitor for DictFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::DictLiteral { entries, ty, .. } = e {
+                self.found = true;
+                self.entry_count = entries.len();
+                // Verify the type is Dictionary
+                assert!(matches!(ty, ResolvedType::Dictionary { .. }));
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = DictFinder {
+        found: false,
+        entry_count: 0,
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found, "Should find DictLiteral");
+    assert_eq!(finder.entry_count, 2, "Should have 2 entries");
+}
+
+#[test]
+fn test_dict_access_lowering() {
+    use formalang::ir::{walk_module, IrExpr, IrVisitor};
+
+    let source = r#"
+        struct Config { value: Number }
+        let data: [String: Number] = ["a": 1]
+        impl Config { value: data["a"] }
+        let cfg: Config = Config()
+    "#;
+
+    let module = compile_to_ir(source).expect("should compile");
+
+    struct AccessFinder {
+        found: bool,
+    }
+
+    impl IrVisitor for AccessFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::DictAccess { .. } = e {
+                self.found = true;
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = AccessFinder { found: false };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found, "Should find DictAccess");
+}
+
+#[test]
+fn test_dict_type_lowering() {
+    use formalang::ir::ResolvedType;
+
+    let source = r#"
+        struct Container { data: [String: Number] }
+    "#;
+
+    let module = compile_to_ir(source).expect("should compile");
+    let container = &module.structs[0];
+    let data_field = container.fields.iter().find(|f| f.name == "data").unwrap();
+
+    match &data_field.ty {
+        ResolvedType::Dictionary { key_ty, value_ty } => {
+            assert!(matches!(key_ty.as_ref(), ResolvedType::Primitive(_)));
+            assert!(matches!(value_ty.as_ref(), ResolvedType::Primitive(_)));
+        }
+        _ => panic!("Expected Dictionary type, got {:?}", data_field.ty),
     }
 }

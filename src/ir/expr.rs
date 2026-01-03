@@ -159,6 +159,89 @@ pub enum IrExpr {
         /// Resolved type (same as arm bodies)
         ty: ResolvedType,
     },
+
+    /// Function call: `sin(x)` or `builtin::math::sin(x)`
+    FunctionCall {
+        /// Function path (e.g., ["builtin", "math", "sin"])
+        path: Vec<String>,
+        /// Arguments
+        args: Vec<IrExpr>,
+        /// Resolved return type
+        ty: ResolvedType,
+    },
+
+    /// Method call: `self.fill.sample(uv)`
+    MethodCall {
+        /// Receiver expression
+        receiver: Box<IrExpr>,
+        /// Method name
+        method: String,
+        /// Arguments
+        args: Vec<IrExpr>,
+        /// Resolved return type
+        ty: ResolvedType,
+    },
+
+    /// Event mapping: `() -> .submit` or `x -> .changed(value: x)`
+    ///
+    /// Event mappings are restricted closures that:
+    /// - Have zero or one parameter
+    /// - Return an enum variant instantiation
+    /// - Cannot capture variables from outer scope
+    ///
+    /// These compile to metadata for the runtime, not executable GPU code.
+    EventMapping {
+        /// The enum being instantiated.
+        /// `None` for external enums - use return type from `ty` field.
+        enum_id: Option<EnumId>,
+        /// Variant name being constructed
+        variant: String,
+        /// Parameter name (None for `() -> ...`)
+        param: Option<String>,
+        /// Maps enum variant fields to the parameter
+        /// e.g., `x -> .changed(value: x)` produces `[("value", "x")]`
+        field_bindings: Vec<EventFieldBinding>,
+        /// Resolved type: the closure/event mapping type
+        ty: ResolvedType,
+    },
+
+    /// Dictionary literal: `["key": value, "key2": value2]`
+    DictLiteral {
+        /// Key-value entries
+        entries: Vec<(IrExpr, IrExpr)>,
+        /// Resolved type: `Dictionary { key_ty, value_ty }`
+        ty: ResolvedType,
+    },
+
+    /// Dictionary access: `dict["key"]` or `dict[index]`
+    DictAccess {
+        /// The dictionary being accessed
+        dict: Box<IrExpr>,
+        /// The key expression
+        key: Box<IrExpr>,
+        /// Resolved type: the value type of the dictionary
+        ty: ResolvedType,
+    },
+}
+
+/// A field binding in an event mapping.
+///
+/// Maps an enum variant field to a source.
+#[derive(Clone, Debug)]
+pub struct EventFieldBinding {
+    /// The field name in the enum variant
+    pub field_name: String,
+    /// The source of the value
+    pub source: EventBindingSource,
+}
+
+/// Source of a value in an event mapping field binding.
+#[derive(Clone, Debug)]
+pub enum EventBindingSource {
+    /// References the event mapping parameter: `x -> .changed(value: x)`
+    Param(String),
+    /// A literal value: `() -> .changed(value: 42)`
+    Literal(Literal),
 }
 
 /// A match arm: `Variant(bindings) => body`
@@ -190,6 +273,11 @@ impl IrExpr {
             IrExpr::If { ty, .. } => ty,
             IrExpr::For { ty, .. } => ty,
             IrExpr::Match { ty, .. } => ty,
+            IrExpr::FunctionCall { ty, .. } => ty,
+            IrExpr::MethodCall { ty, .. } => ty,
+            IrExpr::EventMapping { ty, .. } => ty,
+            IrExpr::DictLiteral { ty, .. } => ty,
+            IrExpr::DictAccess { ty, .. } => ty,
         }
     }
 }

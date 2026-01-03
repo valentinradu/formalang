@@ -1608,3 +1608,420 @@ pub struct EmptyShape: Shape {
 pub struct EmptySegment: ContourSegment {
   mount body: Never
 }
+
+// =============================================================================
+// ANIMATION TYPES
+// =============================================================================
+
+/// Animation timing function.
+///
+/// Defines how animation values interpolate over time.
+///
+/// # Example
+///
+/// ```formalang
+/// Animation(
+///   duration: 0.3,
+///   easing: .easeInOut,
+///   delay: 0.0
+/// )
+/// ```
+pub enum Easing {
+  linear,
+  easeIn,
+  easeOut,
+  easeInOut,
+  cubicBezier(x1: Number, y1: Number, x2: Number, y2: Number),
+  spring(mass: Number, stiffness: Number, damping: Number)
+}
+
+/// Animation configuration.
+///
+/// Defines timing and easing for animated transitions.
+pub struct Animation {
+  duration: Number,
+  easing: Easing,
+  delay: Number,
+  repeatCount: Number,
+  autoreverse: Boolean
+}
+
+impl Animation {
+  duration: 0.3,
+  easing: .easeInOut,
+  delay: 0.0,
+  repeatCount: 1,
+  autoreverse: false
+}
+
+/// Animated wrapper for views.
+///
+/// Applies animation to content changes.
+///
+/// # Example
+///
+/// ```formalang
+/// Animated(
+///   animation: Animation(duration: 0.5, easing: .spring(mass: 1, stiffness: 100, damping: 10))
+/// ) {
+///   body: Rect(width: .px(value: isExpanded ? 200 : 100), height: .auto)
+/// }
+/// ```
+pub struct Animated: View {
+  animation: Animation,
+  mount body: View
+}
+
+impl Animated {
+  animation: Animation(duration: 0.3, easing: .easeInOut, delay: 0.0, repeatCount: 1, autoreverse: false)
+}
+
+/// Transition effects for view appearance/disappearance.
+pub enum TransitionType {
+  opacity,
+  scale(anchor: alignment::Center),
+  slide(edge: Axis),
+  move(edge: Axis),
+  offset(x: Dimension, y: Dimension),
+  combined(transitions: [TransitionType])
+}
+
+/// Transition wrapper for insert/remove animations.
+pub struct Transition: View {
+  insertion: TransitionType,
+  removal: TransitionType,
+  animation: Animation,
+  mount body: View
+}
+
+impl Transition {
+  insertion: .opacity,
+  removal: .opacity,
+  animation: Animation(duration: 0.3, easing: .easeInOut, delay: 0.0, repeatCount: 1, autoreverse: false)
+}
+
+// =============================================================================
+// CANVAS AND CUSTOM RENDERING
+// =============================================================================
+
+/// Custom rendering canvas.
+///
+/// Provides direct access to GPU drawing primitives for custom rendering.
+/// The render callback receives normalized coordinates (0-1) and should
+/// return a color value.
+///
+/// # Example
+///
+/// ```formalang
+/// Canvas(
+///   width: .px(value: 400),
+///   height: .px(value: 300)
+/// ) {
+///   body: Empty()
+/// }
+/// ```
+pub struct Canvas: View {
+  width: Dimension,
+  height: Dimension,
+  isOpaque: Boolean,
+  mount body: View
+}
+
+impl Canvas {
+  width: .auto,
+  height: .auto,
+  isOpaque: false
+}
+
+/// GPU-friendly 2D vector type.
+///
+/// Used for positions, sizes, and 2D math operations.
+pub struct Vec2 {
+  x: Number,
+  y: Number
+}
+
+impl Vec2 {
+  x: 0.0,
+  y: 0.0
+}
+
+/// GPU-friendly 3D vector type.
+///
+/// Used for colors (RGB), 3D positions, and normals.
+pub struct Vec3 {
+  x: Number,
+  y: Number,
+  z: Number
+}
+
+impl Vec3 {
+  x: 0.0,
+  y: 0.0,
+  z: 0.0
+}
+
+/// GPU-friendly 4D vector type.
+///
+/// Used for colors (RGBA), homogeneous coordinates, and quaternions.
+pub struct Vec4 {
+  x: Number,
+  y: Number,
+  z: Number,
+  w: Number
+}
+
+impl Vec4 {
+  x: 0.0,
+  y: 0.0,
+  z: 0.0,
+  w: 1.0
+}
+
+/// 4x4 transformation matrix.
+///
+/// Used for 2D/3D transforms, projections, and view matrices.
+/// Stored in column-major order (GPU-friendly).
+pub struct Mat4 {
+  c0: Vec4,
+  c1: Vec4,
+  c2: Vec4,
+  c3: Vec4
+}
+
+impl Mat4 {
+  c0: Vec4(x: 1.0, y: 0.0, z: 0.0, w: 0.0),
+  c1: Vec4(x: 0.0, y: 1.0, z: 0.0, w: 0.0),
+  c2: Vec4(x: 0.0, y: 0.0, z: 1.0, w: 0.0),
+  c3: Vec4(x: 0.0, y: 0.0, z: 0.0, w: 1.0)
+}
+
+// =============================================================================
+// SAFE AREA AND LAYOUT HELPERS
+// =============================================================================
+
+/// Edge insets for content spacing.
+///
+/// Represents spacing values for all four edges of a rectangle.
+pub struct EdgeInsets {
+  top: Number,
+  leading: Number,
+  bottom: Number,
+  trailing: Number
+}
+
+impl EdgeInsets {
+  top: 0.0,
+  leading: 0.0,
+  bottom: 0.0,
+  trailing: 0.0
+}
+
+/// Safe area insets wrapper.
+///
+/// Automatically applies safe area insets from the environment.
+pub struct SafeAreaInsets: View {
+  edges: SafeAreaEdges,
+  mount body: View
+}
+
+impl SafeAreaInsets {
+  edges: .all
+}
+
+/// Which edges to apply safe area to.
+pub enum SafeAreaEdges {
+  all,
+  horizontal,
+  vertical,
+  top,
+  leading,
+  bottom,
+  trailing,
+  none
+}
+
+/// Geometry reader for accessing layout information.
+///
+/// Provides access to the size and safe area of the container.
+///
+/// # Example
+///
+/// ```formalang
+/// GeometryReader() {
+///   body: Rect(width: .px(value: size.width / 2), height: .auto)
+/// }
+/// ```
+pub struct GeometryReader: View {
+  mount body: View
+}
+
+/// Layout bounds rectangle.
+///
+/// Represents position and size of a layout element.
+pub struct Rect2D {
+  x: Number,
+  y: Number,
+  width: Number,
+  height: Number
+}
+
+impl Rect2D {
+  x: 0.0,
+  y: 0.0,
+  width: 0.0,
+  height: 0.0
+}
+
+// =============================================================================
+// RENDER ATTRIBUTES
+// =============================================================================
+
+/// Blend mode for compositing.
+pub enum BlendMode {
+  normal,
+  multiply,
+  screen,
+  overlay,
+  darken,
+  lighten,
+  colorDodge,
+  colorBurn,
+  softLight,
+  hardLight,
+  difference,
+  exclusion,
+  hue,
+  saturation,
+  color,
+  luminosity,
+  sourceOver,
+  destinationOver,
+  sourceIn,
+  destinationIn,
+  sourceOut,
+  destinationOut,
+  sourceAtop,
+  destinationAtop,
+  xor,
+  plusLighter,
+  plusDarker
+}
+
+/// Apply blend mode to content.
+pub struct Blended: View {
+  mode: BlendMode,
+  mount body: View
+}
+
+impl Blended {
+  mode: .normal
+}
+
+/// Opacity wrapper.
+///
+/// Sets the opacity of the content.
+pub struct Opacity: View {
+  value: Number,
+  mount body: View
+}
+
+impl Opacity {
+  value: 1.0
+}
+
+/// Apply a mask to content.
+pub struct Mask: View {
+  mount mask: View,
+  mount body: View
+}
+
+/// Shadow configuration.
+pub struct ShadowStyle {
+  color: Color,
+  radius: Dimension,
+  x: Dimension,
+  y: Dimension
+}
+
+impl ShadowStyle {
+  color: .hsla(h: 0, s: 0, l: 0, a: 0.3),
+  radius: .px(value: 4),
+  x: .px(value: 0),
+  y: .px(value: 2)
+}
+
+/// Apply shadow to content.
+pub struct Shadow: View {
+  style: ShadowStyle,
+  mount body: View
+}
+
+impl Shadow {
+  style: ShadowStyle(
+    color: .hsla(h: 0, s: 0, l: 0, a: 0.3),
+    radius: .px(value: 4),
+    x: .px(value: 0),
+    y: .px(value: 2)
+  )
+}
+
+/// Apply blur effect.
+pub struct Blur: View {
+  radius: Dimension,
+  mount body: View
+}
+
+impl Blur {
+  radius: .px(value: 0)
+}
+
+/// Apply grayscale filter.
+pub struct Grayscale: View {
+  amount: Number,
+  mount body: View
+}
+
+impl Grayscale {
+  amount: 1.0
+}
+
+/// Apply saturation filter.
+pub struct Saturation: View {
+  amount: Number,
+  mount body: View
+}
+
+impl Saturation {
+  amount: 1.0
+}
+
+/// Apply brightness filter.
+pub struct Brightness: View {
+  amount: Number,
+  mount body: View
+}
+
+impl Brightness {
+  amount: 1.0
+}
+
+/// Apply contrast filter.
+pub struct Contrast: View {
+  amount: Number,
+  mount body: View
+}
+
+impl Contrast {
+  amount: 1.0
+}
+
+/// Apply hue rotation filter.
+pub struct HueRotation: View {
+  angle: Dimension,
+  mount body: View
+}
+
+impl HueRotation {
+  angle: .px(value: 0)
+}

@@ -653,7 +653,9 @@ impl<'ast> NodeFinder<'ast> {
             | Expr::DictLiteral { span, .. }
             | Expr::DictAccess { span, .. }
             | Expr::ClosureExpr { span, .. }
-            | Expr::LetExpr { span, .. } => Some(*span),
+            | Expr::LetExpr { span, .. }
+            | Expr::FunctionCall { span, .. }
+            | Expr::MethodCall { span, .. } => Some(*span),
         }
     }
 }

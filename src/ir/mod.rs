@@ -24,14 +24,21 @@
 //! assert_eq!(module.structs[0].name, "User");
 //! ```
 
+mod dce;
 mod expr;
+mod fold;
 mod lower;
 mod types;
 mod visitor;
 
-pub use expr::{IrExpr, IrMatchArm};
+pub use dce::{eliminate_dead_code, DeadCodeEliminator};
+pub use expr::{EventBindingSource, EventFieldBinding, IrExpr, IrMatchArm};
+pub use fold::{fold_constants, ConstantFolder};
 pub use lower::lower_to_ir;
-pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait};
+pub use types::{
+    IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam, IrImpl, IrLet,
+    IrStruct, IrTrait,
+};
 pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
 use std::collections::HashMap;
@@ -87,7 +94,7 @@ pub struct EnumId(pub u32);
 ///
 /// Used to distinguish between different definition types when referencing
 /// types from other modules.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExternalKind {
     /// External struct type
     Struct,
@@ -123,7 +130,7 @@ pub struct IrImportItem {
 /// Unlike AST types which use string names, resolved types use IDs that
 /// directly reference definitions. This eliminates the need for symbol
 /// table lookups during code generation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
     Primitive(PrimitiveType),
@@ -187,6 +194,27 @@ pub enum ResolvedType {
         kind: ExternalKind,
         /// Type arguments for generic types (empty for non-generic)
         type_args: Vec<ResolvedType>,
+    },
+
+    /// Event mapping type: `() -> E` or `T -> E`
+    ///
+    /// Represents a restricted closure that maps input to an enum variant.
+    /// Used for event handlers like `onChange: x -> .valueChanged(value: x)`.
+    EventMapping {
+        /// Parameter type (None for `() -> E`)
+        param_ty: Option<Box<ResolvedType>>,
+        /// Return type (the event enum type)
+        return_ty: Box<ResolvedType>,
+    },
+
+    /// Dictionary type: `[K: V]`
+    ///
+    /// Maps keys of type K to values of type V.
+    Dictionary {
+        /// Key type
+        key_ty: Box<ResolvedType>,
+        /// Value type
+        value_ty: Box<ResolvedType>,
     },
 }
 
@@ -360,6 +388,27 @@ impl ResolvedType {
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
+                // GPU scalar types
+                PrimitiveType::F32 => "f32".to_string(),
+                PrimitiveType::I32 => "i32".to_string(),
+                PrimitiveType::U32 => "u32".to_string(),
+                PrimitiveType::Bool => "bool".to_string(),
+                // GPU vector types (float)
+                PrimitiveType::Vec2 => "vec2".to_string(),
+                PrimitiveType::Vec3 => "vec3".to_string(),
+                PrimitiveType::Vec4 => "vec4".to_string(),
+                // GPU vector types (signed int)
+                PrimitiveType::IVec2 => "ivec2".to_string(),
+                PrimitiveType::IVec3 => "ivec3".to_string(),
+                PrimitiveType::IVec4 => "ivec4".to_string(),
+                // GPU vector types (unsigned int)
+                PrimitiveType::UVec2 => "uvec2".to_string(),
+                PrimitiveType::UVec3 => "uvec3".to_string(),
+                PrimitiveType::UVec4 => "uvec4".to_string(),
+                // GPU matrix types
+                PrimitiveType::Mat2 => "mat2".to_string(),
+                PrimitiveType::Mat3 => "mat3".to_string(),
+                PrimitiveType::Mat4 => "mat4".to_string(),
             },
             ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
             ResolvedType::Trait(id) => module.get_trait(*id).name.clone(),
@@ -389,6 +438,23 @@ impl ResolvedType {
                         type_args.iter().map(|a| a.display_name(module)).collect();
                     format!("{}<{}>", name, args_str.join(", "))
                 }
+            }
+            ResolvedType::EventMapping {
+                param_ty,
+                return_ty,
+            } => {
+                let param_str = match param_ty {
+                    Some(ty) => ty.display_name(module),
+                    None => "()".to_string(),
+                };
+                format!("{} -> {}", param_str, return_ty.display_name(module))
+            }
+            ResolvedType::Dictionary { key_ty, value_ty } => {
+                format!(
+                    "[{}: {}]",
+                    key_ty.display_name(module),
+                    value_ty.display_name(module)
+                )
             }
         }
     }

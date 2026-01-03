@@ -117,6 +117,25 @@ pub struct ImplDef {
     pub name: Ident,                  // Struct name being implemented
     pub generics: Vec<GenericParam>,  // Type parameters
     pub defaults: Vec<(Ident, Expr)>, // Field defaults: (field_name, default_value)
+    pub functions: Vec<FnDef>,        // Function definitions
+    pub span: Span,
+}
+
+/// Function definition (inside impl blocks)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FnDef {
+    pub name: Ident,
+    pub params: Vec<FnParam>,      // Parameters (first is typically `self`)
+    pub return_type: Option<Type>, // Return type (None = unit/void)
+    pub body: Expr,                // Function body expression
+    pub span: Span,
+}
+
+/// Function parameter
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FnParam {
+    pub name: Ident,
+    pub ty: Option<Type>, // None for `self` parameter
     pub span: Span,
 }
 
@@ -198,7 +217,7 @@ pub struct TupleField {
 }
 
 /// Primitive types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveType {
     String,
     Number,
@@ -207,6 +226,32 @@ pub enum PrimitiveType {
     Regex,
     /// Uninhabited type - has no values, used for terminal structs
     Never,
+
+    // GPU scalar types
+    F32,
+    I32,
+    U32,
+    Bool,
+
+    // GPU vector types (float)
+    Vec2,
+    Vec3,
+    Vec4,
+
+    // GPU vector types (signed int)
+    IVec2,
+    IVec3,
+    IVec4,
+
+    // GPU vector types (unsigned int)
+    UVec2,
+    UVec3,
+    UVec4,
+
+    // GPU matrix types
+    Mat2,
+    Mat3,
+    Mat4,
 }
 
 /// Provide item for ProvidesExpr
@@ -343,6 +388,21 @@ pub enum Expr {
         ty: Option<Type>, // Optional type annotation
         value: Box<Expr>,
         body: Box<Expr>, // Continuation expression after the let
+        span: Span,
+    },
+
+    // Function call: func(arg1, arg2) or module::func(arg1, arg2)
+    FunctionCall {
+        path: Vec<Ident>, // Function path (e.g., ["builtin", "math", "sin"])
+        args: Vec<Expr>,  // Positional arguments
+        span: Span,
+    },
+
+    // Method call: expr.method(arg1, arg2)
+    MethodCall {
+        receiver: Box<Expr>, // The object/value to call method on
+        method: Ident,       // Method name
+        args: Vec<Expr>,     // Positional arguments
         span: Span,
     },
 }
@@ -487,6 +547,8 @@ impl Expr {
             Expr::DictAccess { span, .. } => *span,
             Expr::ClosureExpr { span, .. } => *span,
             Expr::LetExpr { span, .. } => *span,
+            Expr::FunctionCall { span, .. } => *span,
+            Expr::MethodCall { span, .. } => *span,
         }
     }
 }

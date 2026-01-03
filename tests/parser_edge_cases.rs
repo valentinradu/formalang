@@ -605,7 +605,7 @@ fn test_optional_dictionary() {
 
 #[test]
 fn test_closure_chain() {
-    let source = "struct A { fn: String -> Number -> Boolean }";
+    let source = "struct A { callback: String -> Number -> Boolean }";
     assert!(
         compile(source).is_ok(),
         "Closure chain: {:?}",
@@ -766,6 +766,253 @@ fn test_view_hierarchy() {
     assert!(
         compile(source).is_ok(),
         "View hierarchy: {:?}",
+        compile(source).err()
+    );
+}
+
+// =============================================================================
+// Function in Impl Block Tests
+// =============================================================================
+
+#[test]
+fn test_fn_in_impl_simple() {
+    let source = r#"
+        struct Rect {
+            width: Number,
+            height: Number
+        }
+
+        impl Rect {
+            fn area(self) -> Number {
+                self.width
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function in impl: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_in_impl_with_params() {
+    let source = r#"
+        struct Point {
+            x: Number,
+            y: Number
+        }
+
+        impl Point {
+            fn add(self, other: Point) -> Point {
+                Point(x: self.x, y: self.y)
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function with params: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_in_impl_no_return_type() {
+    let source = r#"
+        struct Counter {
+            count: Number
+        }
+
+        impl Counter {
+            fn increment(self) {
+                self.count
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function without return type: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_in_impl_mixed_with_defaults() {
+    let source = r#"
+        struct Rect {
+            width: Number,
+            height: Number
+        }
+
+        impl Rect {
+            width: 100,
+            height: 50,
+
+            fn area(self) -> Number {
+                self.width
+            },
+
+            fn perimeter(self) -> Number {
+                self.width
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Functions mixed with defaults: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_in_impl_multiple_functions() {
+    let source = r#"
+        struct Vec2 {
+            x: Number,
+            y: Number
+        }
+
+        impl Vec2 {
+            fn length(self) -> Number {
+                self.x
+            },
+
+            fn normalize(self) -> Vec2 {
+                Vec2(x: self.x, y: self.y)
+            },
+
+            fn dot(self, other: Vec2) -> Number {
+                self.x
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Multiple functions: {:?}",
+        compile(source).err()
+    );
+}
+
+// =============================================================================
+// Function Call and Method Call Tests
+// =============================================================================
+
+#[test]
+fn test_function_call_single_arg() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: sin(1.0)
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function call single arg: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_function_call_multiple_args() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: max(1.0, 2.0)
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function call multiple args: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_function_call_qualified_path() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: builtin::math::sin(1.0)
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function call qualified path: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_function_call_nested() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: sin(cos(1.0))
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Nested function calls: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_method_call_single() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: self.x.abs()
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Method call: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_method_call_with_args() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: self.x.clamp(0, 100)
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Method call with args: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_method_call_chained() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: self.x.abs().floor()
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Chained method calls: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_function_and_method_mixed() {
+    let source = r#"
+        struct A { x: Number }
+        impl A {
+            x: max(self.x.abs(), 0)
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Mixed function and method calls: {:?}",
         compile(source).err()
     );
 }

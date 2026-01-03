@@ -388,7 +388,7 @@ fn test_multiple_traits() {
 
 #[test]
 fn test_closure_single_param() {
-    let source = "struct A { fn: String -> Boolean }";
+    let source = "struct A { callback: String -> Boolean }";
     assert!(
         compile(source).is_ok(),
         "Closure single param: {:?}",
@@ -398,7 +398,7 @@ fn test_closure_single_param() {
 
 #[test]
 fn test_closure_returning_closure() {
-    let source = "struct A { fn: String -> (Number -> Boolean) }";
+    let source = "struct A { callback: String -> (Number -> Boolean) }";
     assert!(
         compile(source).is_ok(),
         "Closure returning closure: {:?}",

@@ -1,15 +1,18 @@
 //! IR lowering pass: AST + SymbolTable → IrModule
 
 use crate::ast::{
-    self, BinaryOperator, BindingPattern, Definition, EnumDef, Expr, File, GenericConstraint,
-    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
+    self, BinaryOperator, BindingPattern, ClosureParam, Definition, EnumDef, Expr, File, FnDef,
+    GenericConstraint, ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef,
+    StructField, TraitDef, Type,
 };
+use crate::builtins::resolve_method_type;
 use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
-    ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrGenericParam, IrImpl, IrImport,
-    IrImportItem, IrLet, IrMatchArm, IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
+    EventBindingSource, EventFieldBinding, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField,
+    IrFunction, IrFunctionParam, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet, IrMatchArm,
+    IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
 use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
@@ -565,13 +568,37 @@ impl<'a> IrLowerer<'a> {
             .map(|(name, expr)| (name.name.clone(), self.lower_expr(expr)))
             .collect();
 
+        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+
         // Clear the context
         self.current_impl_struct = None;
 
         self.module.add_impl(IrImpl {
             struct_id,
             defaults,
+            functions,
         });
+    }
+
+    fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
+        let params: Vec<IrFunctionParam> = f
+            .params
+            .iter()
+            .map(|p| IrFunctionParam {
+                name: p.name.name.clone(),
+                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
+            })
+            .collect();
+
+        let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
+        let body = self.lower_expr(&f.body);
+
+        IrFunction {
+            name: f.name.name.clone(),
+            params,
+            return_type,
+            body,
+        }
     }
 
     fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
@@ -666,8 +693,13 @@ impl<'a> IrLowerer<'a> {
 
             Type::TypeParameter(ident) => ResolvedType::TypeParam(ident.name.clone()),
 
-            Type::Dictionary { .. } | Type::Closure { .. } => {
-                // TODO: Add dictionary and closure types to IR
+            Type::Dictionary { key, value } => ResolvedType::Dictionary {
+                key_ty: Box::new(self.lower_type(key)),
+                value_ty: Box::new(self.lower_type(value)),
+            },
+
+            Type::Closure { .. } => {
+                // Closures are lowered as EventMapping types
                 ResolvedType::TypeParam("UnsupportedType".to_string())
             }
         }
@@ -998,11 +1030,81 @@ impl<'a> IrLowerer<'a> {
             | Expr::ConsumesExpr { body, .. }
             | Expr::LetExpr { body, .. } => self.lower_expr(body),
 
-            Expr::DictLiteral { .. } | Expr::DictAccess { .. } | Expr::ClosureExpr { .. } => {
-                // Return a placeholder for unsupported expressions
-                IrExpr::Literal {
-                    value: Literal::Nil,
-                    ty: ResolvedType::TypeParam("UnsupportedExpr".to_string()),
+            Expr::DictLiteral { entries, .. } => {
+                let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
+                    .iter()
+                    .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
+                    .collect();
+
+                // Infer dictionary type from entries
+                let ty = if let Some((k, v)) = lowered_entries.first() {
+                    ResolvedType::Dictionary {
+                        key_ty: Box::new(k.ty().clone()),
+                        value_ty: Box::new(v.ty().clone()),
+                    }
+                } else {
+                    // Empty dictionary - use placeholder types
+                    ResolvedType::Dictionary {
+                        key_ty: Box::new(ResolvedType::TypeParam("K".to_string())),
+                        value_ty: Box::new(ResolvedType::TypeParam("V".to_string())),
+                    }
+                };
+
+                IrExpr::DictLiteral {
+                    entries: lowered_entries,
+                    ty,
+                }
+            }
+
+            Expr::DictAccess { dict, key, .. } => {
+                let dict_ir = self.lower_expr(dict);
+                let key_ir = self.lower_expr(key);
+
+                // Extract value type from dictionary type
+                let ty = match dict_ir.ty() {
+                    ResolvedType::Dictionary { value_ty, .. } => (**value_ty).clone(),
+                    _ => ResolvedType::TypeParam("DictValue".to_string()),
+                };
+
+                IrExpr::DictAccess {
+                    dict: Box::new(dict_ir),
+                    key: Box::new(key_ir),
+                    ty,
+                }
+            }
+
+            Expr::ClosureExpr { params, body, .. } => self.lower_event_mapping(params, body),
+
+            Expr::FunctionCall { path, args, .. } => {
+                let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+                let lowered_args: Vec<IrExpr> = args.iter().map(|a| self.lower_expr(a)).collect();
+
+                // TODO: Resolve function return type properly
+                // For now, use a placeholder type
+                IrExpr::FunctionCall {
+                    path: path_strs,
+                    args: lowered_args,
+                    ty: ResolvedType::TypeParam("FunctionResult".to_string()),
+                }
+            }
+
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                let receiver_ir = self.lower_expr(receiver);
+                let lowered_args: Vec<IrExpr> = args.iter().map(|a| self.lower_expr(a)).collect();
+
+                // Resolve method return type based on receiver type
+                let ty = self.resolve_method_return_type(receiver_ir.ty(), &method.name);
+
+                IrExpr::MethodCall {
+                    receiver: Box::new(receiver_ir),
+                    method: method.name.clone(),
+                    args: lowered_args,
+                    ty,
                 }
             }
         }
@@ -1017,6 +1119,178 @@ impl<'a> IrLowerer<'a> {
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),
             Literal::Nil => ResolvedType::TypeParam("Nil".to_string()),
         }
+    }
+
+    /// Resolve the return type of a method call.
+    ///
+    /// Handles:
+    /// 1. Builtin methods on GPU types (e.g., vec3.normalize() -> Vec3)
+    /// 2. User-defined methods in impl blocks (TODO)
+    fn resolve_method_return_type(
+        &self,
+        receiver_ty: &ResolvedType,
+        method_name: &str,
+    ) -> ResolvedType {
+        // Try builtin method resolution for primitive types
+        if let ResolvedType::Primitive(prim) = receiver_ty {
+            if let Some(return_prim) = resolve_method_type(*prim, method_name) {
+                return ResolvedType::Primitive(return_prim);
+            }
+        }
+
+        // Try to find method in impl blocks for struct types
+        if let ResolvedType::Struct(struct_id) = receiver_ty {
+            for impl_block in &self.module.impls {
+                if impl_block.struct_id == *struct_id {
+                    for func in &impl_block.functions {
+                        if func.name == method_name {
+                            // Return the function's return type, or the body type if unspecified
+                            return func
+                                .return_type
+                                .clone()
+                                .unwrap_or_else(|| func.body.ty().clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: placeholder type
+        ResolvedType::TypeParam(format!("{}Result", method_name))
+    }
+
+    /// Lower a closure expression to an event mapping.
+    ///
+    /// Event mappings are restricted closures that:
+    /// - Have zero or one parameter
+    /// - Return an enum variant instantiation
+    /// - Cannot capture variables from outer scope
+    ///
+    /// # Examples
+    ///
+    /// - `() -> .submit` → EventMapping with no param, variant "submit"
+    /// - `x -> .changed(value: x)` → EventMapping with param "x", variant "changed", binding value→x
+    fn lower_event_mapping(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
+        // Validate: 0 or 1 parameter
+        if params.len() > 1 {
+            // For now, return a placeholder for invalid event mappings
+            return IrExpr::Literal {
+                value: Literal::Nil,
+                ty: ResolvedType::TypeParam("InvalidEventMapping".to_string()),
+            };
+        }
+
+        // Extract parameter name and type
+        let param = params.first().map(|p| p.name.name.clone());
+        let param_ty = params
+            .first()
+            .and_then(|p| p.ty.as_ref())
+            .map(|t| Box::new(self.lower_type(t)));
+
+        // Body must be an enum variant instantiation
+        match body {
+            Expr::EnumInstantiation {
+                enum_name,
+                variant,
+                data,
+                ..
+            } => {
+                // Resolve the enum type
+                let (enum_id, return_ty) = self.resolve_event_enum_type(&enum_name.name);
+
+                // Extract field bindings - check if they reference the parameter
+                let field_bindings = self.extract_event_field_bindings(data, param.as_deref());
+
+                // Build the event mapping type
+                let ty = ResolvedType::EventMapping {
+                    param_ty,
+                    return_ty: Box::new(return_ty.clone()),
+                };
+
+                IrExpr::EventMapping {
+                    enum_id,
+                    variant: variant.name.clone(),
+                    param,
+                    field_bindings,
+                    ty,
+                }
+            }
+            // Inferred enum instantiation: .variant or .variant(field: value)
+            Expr::InferredEnumInstantiation { variant, data, .. } => {
+                // Extract field bindings
+                let field_bindings = self.extract_event_field_bindings(data, param.as_deref());
+
+                let ty = ResolvedType::EventMapping {
+                    param_ty,
+                    return_ty: Box::new(ResolvedType::TypeParam("InferredEvent".to_string())),
+                };
+
+                IrExpr::EventMapping {
+                    enum_id: None,
+                    variant: variant.name.clone(),
+                    param,
+                    field_bindings,
+                    ty,
+                }
+            }
+            _ => {
+                // Invalid: body is not an enum variant
+                IrExpr::Literal {
+                    value: Literal::Nil,
+                    ty: ResolvedType::TypeParam("InvalidEventMapping".to_string()),
+                }
+            }
+        }
+    }
+
+    /// Resolve enum type for event mapping, returning (enum_id, resolved_type).
+    fn resolve_event_enum_type(&self, enum_name: &str) -> (Option<super::EnumId>, ResolvedType) {
+        if let Some(enum_id) = self.module.enum_id(enum_name) {
+            (Some(enum_id), ResolvedType::Enum(enum_id))
+        } else {
+            // External or unknown enum
+            (None, ResolvedType::TypeParam(enum_name.to_string()))
+        }
+    }
+
+    /// Extract field bindings from enum variant fields.
+    ///
+    /// Checks if field values reference the event mapping parameter.
+    fn extract_event_field_bindings(
+        &self,
+        fields: &[(ast::Ident, Expr)],
+        param_name: Option<&str>,
+    ) -> Vec<EventFieldBinding> {
+        fields
+            .iter()
+            .map(|(field_name, value)| {
+                let source = match value {
+                    // Field references the parameter: `value: x`
+                    Expr::Reference { path, .. }
+                        if path.len() == 1
+                            && param_name.is_some()
+                            && path[0].name == param_name.unwrap() =>
+                    {
+                        EventBindingSource::Param(path[0].name.clone())
+                    }
+                    // Field has a literal value: `value: 42`
+                    Expr::Literal(lit) => EventBindingSource::Literal(lit.clone()),
+                    // For other expressions, treat as referencing param (best effort)
+                    _ => {
+                        if let Some(p) = param_name {
+                            EventBindingSource::Param(p.to_string())
+                        } else {
+                            EventBindingSource::Literal(Literal::Nil)
+                        }
+                    }
+                };
+
+                EventFieldBinding {
+                    field_name: field_name.name.clone(),
+                    source,
+                }
+            })
+            .collect()
     }
 
     fn string_to_resolved_type(&self, type_str: &str) -> ResolvedType {

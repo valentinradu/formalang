@@ -36,8 +36,8 @@
 //! ```
 
 use super::{
-    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrImpl, IrLet, IrModule, IrStruct, IrTrait,
-    StructId, TraitId,
+    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrLet, IrModule, IrStruct,
+    IrTrait, StructId, TraitId,
 };
 
 /// Visitor trait for traversing IR nodes.
@@ -67,6 +67,9 @@ pub trait IrVisitor {
 
     /// Visit an impl block.
     fn visit_impl(&mut self, _i: &IrImpl) {}
+
+    /// Visit a function definition.
+    fn visit_function(&mut self, _f: &IrFunction) {}
 
     /// Visit a let binding.
     fn visit_let(&mut self, _l: &IrLet) {}
@@ -132,6 +135,10 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         visitor.visit_impl(i);
         for (_field_name, expr) in &i.defaults {
             walk_expr(visitor, expr);
+        }
+        for f in &i.functions {
+            visitor.visit_function(f);
+            walk_expr(visitor, &f.body);
         }
     }
 
@@ -219,6 +226,36 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             for arm in arms {
                 walk_expr(visitor, &arm.body);
             }
+        }
+
+        IrExpr::FunctionCall { args, .. } => {
+            for arg in args {
+                walk_expr(visitor, arg);
+            }
+        }
+
+        IrExpr::MethodCall { receiver, args, .. } => {
+            walk_expr(visitor, receiver);
+            for arg in args {
+                walk_expr(visitor, arg);
+            }
+        }
+
+        IrExpr::EventMapping { .. } => {
+            // Event mappings have no child expressions to walk
+            // (field bindings are data, not expressions)
+        }
+
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                walk_expr(visitor, k);
+                walk_expr(visitor, v);
+            }
+        }
+
+        IrExpr::DictAccess { dict, key, .. } => {
+            walk_expr(visitor, dict);
+            walk_expr(visitor, key);
         }
     }
 }

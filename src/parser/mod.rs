@@ -440,6 +440,28 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(body, source);
             fill_span(span, source);
         }
+        Expr::FunctionCall { path, args, span } => {
+            for ident in path {
+                fill_span(&mut ident.span, source);
+            }
+            for arg in args {
+                fill_expr_span(arg, source);
+            }
+            fill_span(span, source);
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            span,
+        } => {
+            fill_expr_span(receiver, source);
+            fill_span(&mut method.span, source);
+            for arg in args {
+                fill_expr_span(arg, source);
+            }
+            fill_span(span, source);
+        }
     }
 }
 
@@ -984,7 +1006,8 @@ where
 }
 
 /// Parse an impl block definition
-/// Impl blocks contain field defaults: `impl Struct { field: value, field: value }`
+/// Impl blocks contain field defaults and functions:
+/// `impl Struct { field: value, fn method(self) -> Type { body } }`
 fn impl_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, ImplDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -993,22 +1016,107 @@ where
     just(Token::Impl)
         .ignore_then(ident_parser())
         .then(generic_params_parser())
-        .then(
-            // Parse named field defaults: field: value, field: value, ...
-            ident_parser()
-                .then_ignore(just(Token::Colon).labelled("':'"))
-                .then(expr_parser().labelled("default value"))
-                .separated_by(just(Token::Comma))
-                .allow_trailing()
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-        )
-        .map_with(|((name, generics), defaults), e| ImplDef {
+        .then(impl_body_parser())
+        .map_with(|((name, generics), (defaults, functions)), e| ImplDef {
             name,
             generics,
             defaults,
+            functions,
             span: span_from_simple(e.span()),
         })
+}
+
+/// Parse the body of an impl block (field defaults and functions)
+fn impl_body_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, (Vec<(Ident, Expr)>, Vec<FnDef>), extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    // Either a field default or a function
+    let field_default = ident_parser()
+        .then_ignore(just(Token::Colon).labelled("':'"))
+        .then(expr_parser().labelled("default value"))
+        .map(|(name, expr)| ImplItem::Default(name, expr));
+
+    let function = fn_def_parser().map(ImplItem::Function);
+
+    // Parse items separated by commas (trailing allowed)
+    choice((function, field_default))
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+        .map(|items| {
+            let mut defaults = Vec::new();
+            let mut functions = Vec::new();
+            for item in items {
+                match item {
+                    ImplItem::Default(name, expr) => defaults.push((name, expr)),
+                    ImplItem::Function(f) => functions.push(f),
+                }
+            }
+            (defaults, functions)
+        })
+}
+
+/// Helper enum for parsing impl block items
+enum ImplItem {
+    Default(Ident, Expr),
+    Function(FnDef),
+}
+
+/// Parse a function definition: `fn name(params) -> Type { body }`
+fn fn_def_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, FnDef, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    just(Token::Fn)
+        .ignore_then(ident_parser())
+        .then(fn_params_parser())
+        .then(
+            // Optional return type: -> Type
+            just(Token::Arrow).ignore_then(type_parser()).or_not(),
+        )
+        .then(
+            // Function body in braces
+            expr_parser().delimited_by(just(Token::LBrace), just(Token::RBrace)),
+        )
+        .map_with(|(((name, params), return_type), body), e| FnDef {
+            name,
+            params,
+            return_type,
+            body,
+            span: span_from_simple(e.span()),
+        })
+}
+
+/// Parse function parameters: `(self, x: Type, y: Type)`
+fn fn_params_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    let self_param = just(Token::SelfKeyword).map_with(|_, e| FnParam {
+        name: Ident::new("self", span_from_simple(e.span())),
+        ty: None,
+        span: span_from_simple(e.span()),
+    });
+
+    let typed_param = ident_parser()
+        .then_ignore(just(Token::Colon))
+        .then(type_parser())
+        .map_with(|(name, ty), e| FnParam {
+            name,
+            ty: Some(ty),
+            span: span_from_simple(e.span()),
+        });
+
+    choice((self_param, typed_param))
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect()
+        .delimited_by(just(Token::LParen), just(Token::RParen))
 }
 
 /// Parse an enum definition
@@ -1105,6 +1213,25 @@ where
             just(Token::PathType).to(Type::Primitive(PrimitiveType::Path)),
             just(Token::RegexType).to(Type::Primitive(PrimitiveType::Regex)),
             just(Token::NeverType).to(Type::Primitive(PrimitiveType::Never)),
+            // GPU scalar types
+            just(Token::F32Type).to(Type::Primitive(PrimitiveType::F32)),
+            just(Token::I32Type).to(Type::Primitive(PrimitiveType::I32)),
+            just(Token::U32Type).to(Type::Primitive(PrimitiveType::U32)),
+            just(Token::BoolType).to(Type::Primitive(PrimitiveType::Bool)),
+            // GPU vector types
+            just(Token::Vec2Type).to(Type::Primitive(PrimitiveType::Vec2)),
+            just(Token::Vec3Type).to(Type::Primitive(PrimitiveType::Vec3)),
+            just(Token::Vec4Type).to(Type::Primitive(PrimitiveType::Vec4)),
+            just(Token::IVec2Type).to(Type::Primitive(PrimitiveType::IVec2)),
+            just(Token::IVec3Type).to(Type::Primitive(PrimitiveType::IVec3)),
+            just(Token::IVec4Type).to(Type::Primitive(PrimitiveType::IVec4)),
+            just(Token::UVec2Type).to(Type::Primitive(PrimitiveType::UVec2)),
+            just(Token::UVec3Type).to(Type::Primitive(PrimitiveType::UVec3)),
+            just(Token::UVec4Type).to(Type::Primitive(PrimitiveType::UVec4)),
+            // GPU matrix types
+            just(Token::Mat2Type).to(Type::Primitive(PrimitiveType::Mat2)),
+            just(Token::Mat3Type).to(Type::Primitive(PrimitiveType::Mat3)),
+            just(Token::Mat4Type).to(Type::Primitive(PrimitiveType::Mat4)),
         ));
 
         // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments
@@ -1381,16 +1508,13 @@ where
                 }
             });
 
-        // Reference: user:name (field access - deprecated, will be removed)
-        // Note: Enum variants now use dot notation (Type.variant), not double colon
-        let reference = ident_parser()
-            .separated_by(just(Token::Colon))
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .map_with(|path, e| Expr::Reference {
-                path,
-                span: span_from_simple(e.span()),
-            });
+        // Reference: single identifier (e.g., user, self, field)
+        // Field access like foo.bar is handled by the postfix `.` operator
+        // Colon-separated paths are no longer supported
+        let reference = ident_parser().map_with(|ident, e| Expr::Reference {
+            path: vec![ident],
+            span: span_from_simple(e.span()),
+        });
 
         // Dictionary entry: key_expr: value_expr
         let dict_entry = expr
@@ -1579,6 +1703,28 @@ where
                 span: span_from_simple(e.span()),
             });
 
+        // Function call: path(arg1, arg2, ...)
+        // Path can be `ident` or `ident::ident::...` (for qualified calls like builtin::math::sin)
+        // Uses positional arguments (unlike struct instantiation which uses named arguments)
+        // Requires at least one argument to distinguish from struct instantiation with zero args
+        let function_call = ident_parser()
+            .separated_by(just(Token::DoubleColon))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .then(
+                expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .at_least(1) // Require at least one arg to distinguish from struct instantiation
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .map_with(|(path, args), e| Expr::FunctionCall {
+                path,
+                args,
+                span: span_from_simple(e.span()),
+            });
+
         // Match expression: match scrutinee { pattern: expr, ... }
         let match_expr = just(Token::Match)
             .ignore_then(expr.clone())
@@ -1632,7 +1778,8 @@ where
             param_closure,    // x -> expr (must come before reference since starts with ident)
             inferred_enum_instantiation, // .variant is most specific
             enum_instantiation, // Must come before instantiation and reference (Type.variant(...))
-            instantiation,    // Must come before reference (Type(...))
+            function_call,    // path(args) with positional args - must come before instantiation
+            instantiation,    // Must come before reference (Type(name: value))
             reference,        // Most general (ident:ident:ident), now includes 'self'
         ));
 
@@ -1730,6 +1877,24 @@ where
                 |dict, key, e| Expr::DictAccess {
                     dict: Box::new(dict),
                     key: Box::new(key),
+                    span: span_from_simple(e.span()),
+                },
+            ),
+            // Method call: expr.method(args) (precedence: 7, same as array access)
+            // Must come before field access since it's more specific
+            postfix(
+                7,
+                just(Token::Dot).ignore_then(ident_parser()).then(
+                    expr.clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                ),
+                |receiver, (method, args), e| Expr::MethodCall {
+                    receiver: Box::new(receiver),
+                    method,
+                    args,
                     span: span_from_simple(e.span()),
                 },
             ),

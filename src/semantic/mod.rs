@@ -117,6 +117,8 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     current_impl_struct: Option<String>,
     /// Stack of loop variable scopes (for tracking for loop bindings)
     loop_var_scopes: Vec<HashSet<String>>,
+    /// Stack of closure parameter scopes (for tracking closure/event mapping params)
+    closure_param_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context
     local_let_bindings: HashSet<String>,
     /// Recursion depth counter for validate_expr (to prevent stack overflow)
@@ -136,6 +138,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             generic_scopes: Vec::new(),
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
+            closure_param_scopes: Vec::new(),
             local_let_bindings: HashSet::new(),
             validate_expr_depth: 0,
         }
@@ -154,6 +157,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             generic_scopes: Vec::new(),
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
+            closure_param_scopes: Vec::new(),
             local_let_bindings: HashSet::new(),
             validate_expr_depth: 0,
         }
@@ -960,6 +964,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             self.validate_expr(expr, file);
                         }
 
+                        // Validate functions in impl block
+                        for func in &impl_def.functions {
+                            self.validate_function_return_type(func, file);
+                        }
+
                         // Clear impl struct context and local bindings
                         self.current_impl_struct = None;
                         self.local_let_bindings.clear();
@@ -1014,6 +1023,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.local_let_bindings.clear();
                                     for (_field_name, expr) in &impl_def.defaults {
                                         self.validate_expr(expr, file);
+                                    }
+                                    for func in &impl_def.functions {
+                                        self.validate_function_return_type(func, file);
                                     }
                                     self.current_impl_struct = None;
                                     self.local_let_bindings.clear();
@@ -1562,6 +1574,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
 
+                    // Check if it's a closure parameter
+                    for scope in &self.closure_param_scopes {
+                        if scope.contains(name) {
+                            return;
+                        }
+                    }
+
                     // Check if it's a known type (struct, enum, trait)
                     if self.symbols.is_struct(name)
                         || self.symbols.is_enum(name)
@@ -1799,8 +1818,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.validate_type(ty);
                     }
                 }
-                // Validate body expression
+
+                // Push closure parameters to scope before validating body
+                let mut param_scope = HashSet::new();
+                for param in params {
+                    param_scope.insert(param.name.name.clone());
+                }
+                self.closure_param_scopes.push(param_scope);
+
+                // Validate body expression with closure params in scope
                 self.validate_expr(body, file);
+
+                // Pop closure parameter scope
+                self.closure_param_scopes.pop();
             }
             Expr::LetExpr {
                 pattern,
@@ -1827,6 +1857,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                 // Validate body expression with the bindings in scope
                 self.validate_expr(body, file);
+            }
+            Expr::FunctionCall { args, .. } => {
+                // Validate all argument expressions
+                for arg in args {
+                    self.validate_expr(arg, file);
+                }
+                // TODO: Validate function exists and argument types match
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                // Validate receiver and all argument expressions
+                self.validate_expr(receiver, file);
+                for arg in args {
+                    self.validate_expr(arg, file);
+                }
+                // TODO: Validate method exists on receiver type and argument types match
             }
         }
 
@@ -2056,29 +2101,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Check type compatibility based on operator
         let valid = match op {
-            // Add: Number + Number or String + String (concatenation)
+            // Add: Number + Number or String + String (concatenation) or GPU numeric types
             BinaryOperator::Add => {
                 matches!(
                     (&left_type[..], &right_type[..]),
                     ("Number", "Number") | ("String", "String")
-                )
+                ) || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Other arithmetic operators: Number + Number only
+            // Other arithmetic operators: Number + Number or GPU numeric types
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
             | BinaryOperator::Mod => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
+                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Comparison operators: Number + Number → Boolean
+            // Comparison operators: Number + Number or GPU numeric types → Boolean
             BinaryOperator::Lt | BinaryOperator::Gt | BinaryOperator::Le | BinaryOperator::Ge => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
+                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Equality operators: same types
-            BinaryOperator::Eq | BinaryOperator::Ne => left_type == right_type,
-            // Logical operators: Boolean + Boolean
+            // Equality operators: same types or compatible GPU types
+            BinaryOperator::Eq | BinaryOperator::Ne => {
+                left_type == right_type || Self::are_gpu_numeric_compatible(&left_type, &right_type)
+            }
+            // Logical operators: Boolean + Boolean or bool + bool
             BinaryOperator::And | BinaryOperator::Or => {
-                left_type == "Boolean" && right_type == "Boolean"
+                (left_type == "Boolean" && right_type == "Boolean")
+                    || (left_type == "bool" && right_type == "bool")
             }
         };
 
@@ -2090,6 +2140,40 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             });
         }
+    }
+
+    /// Check if two types are compatible GPU numeric types
+    fn are_gpu_numeric_compatible(left: &str, right: &str) -> bool {
+        // GPU scalar types
+        const GPU_SCALARS: &[&str] = &["f32", "i32", "u32"];
+        // GPU vector types (same component type can do arithmetic)
+        const GPU_FLOAT_VECTORS: &[&str] = &["vec2", "vec3", "vec4"];
+        const GPU_INT_VECTORS: &[&str] = &["ivec2", "ivec3", "ivec4"];
+        const GPU_UINT_VECTORS: &[&str] = &["uvec2", "uvec3", "uvec4"];
+
+        // Same scalar type
+        if left == right && GPU_SCALARS.contains(&left) {
+            return true;
+        }
+
+        // Same vector type
+        if left == right
+            && (GPU_FLOAT_VECTORS.contains(&left)
+                || GPU_INT_VECTORS.contains(&left)
+                || GPU_UINT_VECTORS.contains(&left))
+        {
+            return true;
+        }
+
+        // Scalar with matching vector (for scalar*vector operations)
+        if left == "f32" && GPU_FLOAT_VECTORS.contains(&right) {
+            return true;
+        }
+        if right == "f32" && GPU_FLOAT_VECTORS.contains(&left) {
+            return true;
+        }
+
+        false
     }
 
     /// Validate for loop collection is an array
@@ -2519,6 +2603,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
+                // GPU scalar types
+                PrimitiveType::F32 => "f32".to_string(),
+                PrimitiveType::I32 => "i32".to_string(),
+                PrimitiveType::U32 => "u32".to_string(),
+                PrimitiveType::Bool => "bool".to_string(),
+                // GPU vector types (float)
+                PrimitiveType::Vec2 => "vec2".to_string(),
+                PrimitiveType::Vec3 => "vec3".to_string(),
+                PrimitiveType::Vec4 => "vec4".to_string(),
+                // GPU vector types (signed int)
+                PrimitiveType::IVec2 => "ivec2".to_string(),
+                PrimitiveType::IVec3 => "ivec3".to_string(),
+                PrimitiveType::IVec4 => "ivec4".to_string(),
+                // GPU vector types (unsigned int)
+                PrimitiveType::UVec2 => "uvec2".to_string(),
+                PrimitiveType::UVec3 => "uvec3".to_string(),
+                PrimitiveType::UVec4 => "uvec4".to_string(),
+                // GPU matrix types
+                PrimitiveType::Mat2 => "mat2".to_string(),
+                PrimitiveType::Mat3 => "mat3".to_string(),
+                PrimitiveType::Mat4 => "mat4".to_string(),
             },
             Type::Ident(ident) => ident.name.clone(),
             Type::Array(element_type) => {
@@ -2567,6 +2672,64 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+    }
+
+    /// Validate function return type matches the body expression type
+    fn validate_function_return_type(&mut self, func: &crate::ast::FnDef, file: &File) {
+        // Validate the function body expression
+        self.validate_expr(&func.body, file);
+
+        // If there's a declared return type, check it matches the body type
+        if let Some(declared_return_type) = &func.return_type {
+            let body_type = self.infer_type(&func.body, file);
+            let expected_type = self.type_to_string(declared_return_type);
+
+            // Check if types are compatible
+            if !self.type_strings_compatible(&expected_type, &body_type) {
+                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                    function: func.name.name.clone(),
+                    expected: expected_type,
+                    actual: body_type,
+                    span: func.name.span,
+                });
+            }
+        }
+    }
+
+    /// Check if two type strings are compatible
+    ///
+    /// This handles:
+    /// - Exact matches
+    /// - Number/f32/i32/u32 compatibility
+    /// - Unknown/placeholder type params
+    fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
+        // Exact match
+        if expected == actual {
+            return true;
+        }
+
+        // Allow placeholder types to match anything (incomplete type inference)
+        if actual == "Unknown" || actual.ends_with("Result") || actual.starts_with("FunctionResult")
+        {
+            return true;
+        }
+
+        // Number is compatible with f32/i32/u32 for GPU types
+        if expected == "Number" && (actual == "f32" || actual == "i32" || actual == "u32") {
+            return true;
+        }
+        if actual == "Number" && (expected == "f32" || expected == "i32" || expected == "u32") {
+            return true;
+        }
+
+        // Boolean and bool are compatible
+        if (expected == "Boolean" && actual == "bool")
+            || (expected == "bool" && actual == "Boolean")
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Pass 5: Detect circular dependencies
@@ -2850,6 +3013,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 references.extend(self.extract_let_references(value));
                 references.extend(self.extract_let_references(body));
             }
+            Expr::FunctionCall { args, .. } => {
+                // Extract from argument expressions
+                for arg in args {
+                    references.extend(self.extract_let_references(arg));
+                }
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                // Extract from receiver and argument expressions
+                references.extend(self.extract_let_references(receiver));
+                for arg in args {
+                    references.extend(self.extract_let_references(arg));
+                }
+            }
         }
 
         references
@@ -3074,6 +3250,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Let expressions have the type of their body
                 self.infer_type(body, file)
             }
+            Expr::FunctionCall { .. } => {
+                // Function call return type - would need function signature lookup
+                "Unknown".to_string()
+            }
+            Expr::MethodCall { .. } => {
+                // Method call return type - would need method signature lookup
+                "Unknown".to_string()
+            }
         }
     }
 
@@ -3148,6 +3332,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // Let expressions delegate to their body
             Expr::LetExpr { body, .. } => self.is_expr_mutable(body, file),
+
+            // Function calls return new values, not mutable
+            Expr::FunctionCall { .. } => false,
+
+            // Method calls return new values, not mutable
+            Expr::MethodCall { .. } => false,
         }
     }
 

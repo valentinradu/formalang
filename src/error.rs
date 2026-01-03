@@ -319,6 +319,15 @@ pub enum CompilerError {
     // Enum type inference errors
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
     CannotInferEnumType { variant: String, span: Span },
+
+    // Function validation errors
+    #[error("Function '{function}' has return type {expected} but body has type {actual}")]
+    FunctionReturnTypeMismatch {
+        function: String,
+        expected: String,
+        actual: String,
+        span: Span,
+    },
 }
 
 impl CompilerError {
@@ -383,7 +392,8 @@ impl CompilerError {
             | Self::MissingGenericArguments { span, .. }
             | Self::DuplicateGenericParam { span, .. }
             | Self::UnknownMount { span, .. }
-            | Self::CannotInferEnumType { span, .. } => *span,
+            | Self::CannotInferEnumType { span, .. }
+            | Self::FunctionReturnTypeMismatch { span, .. } => *span,
         }
     }
 }
