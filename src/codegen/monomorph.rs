@@ -335,8 +335,7 @@ mod tests {
     fn test_collect_generic_instantiations() {
         let source = r#"
             struct Box<T> { value: T }
-            struct Container { box: Box<f32> }
-            impl Container { box: Box<f32>(value: 1.0) }
+            struct Container { box: Box<f32> = Box<f32>(value: 1.0) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");
@@ -350,8 +349,7 @@ mod tests {
     fn test_monomorphize_struct() {
         let source = r#"
             struct Container<T> { item: T, count: u32 }
-            struct Holder { c: Container<f32> }
-            impl Holder { c: Container<f32>(item: 1.0, count: 1) }
+            struct Holder { c: Container<f32> = Container<f32>(item: 1.0, count: 1) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");
@@ -379,8 +377,7 @@ mod tests {
     fn test_generate_wgsl_structs() {
         let source = r#"
             struct Wrapper<T> { value: T }
-            struct Holder { w: Wrapper<f32> }
-            impl Holder { w: Wrapper<f32>(value: 1.0) }
+            struct Holder { w: Wrapper<f32> = Wrapper<f32>(value: 1.0) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");
@@ -396,10 +393,8 @@ mod tests {
     fn test_multiple_instantiations() {
         let source = r#"
             struct Pair<T> { first: T, second: T }
-            struct HolderA { a: Pair<f32> }
-            struct HolderB { b: Pair<i32> }
-            impl HolderA { a: Pair<f32>(first: 1.0, second: 2.0) }
-            impl HolderB { b: Pair<i32>(first: 1, second: 2) }
+            struct HolderA { a: Pair<f32> = Pair<f32>(first: 1.0, second: 2.0) }
+            struct HolderB { b: Pair<i32> = Pair<i32>(first: 1, second: 2) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");
@@ -418,8 +413,7 @@ mod tests {
     fn test_nested_generic() {
         let source = r#"
             struct Box<T> { value: T }
-            struct Outer { inner: Box<f32> }
-            impl Outer { inner: Box<f32>(value: 1.0) }
+            struct Outer { inner: Box<f32> = Box<f32>(value: 1.0) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");
@@ -434,8 +428,7 @@ mod tests {
     fn test_mangled_name() {
         let source = r#"
             struct Container<T> { value: T }
-            struct Holder { c: Container<f32> }
-            impl Holder { c: Container<f32>(value: 1.0) }
+            struct Holder { c: Container<f32> = Container<f32>(value: 1.0) }
         "#;
 
         let module = compile_to_ir(source).expect("should compile");

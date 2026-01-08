@@ -146,22 +146,6 @@ fn test_match_keyword() {
     assert!(has_match, "Expected Match token");
 }
 
-#[test]
-fn test_provides_keyword() {
-    let source = "provides";
-    let tokens = Lexer::tokenize_all(source);
-    let has_provides = tokens.iter().any(|(t, _)| matches!(t, Token::Provides));
-    assert!(has_provides, "Expected Provides token");
-}
-
-#[test]
-fn test_consumes_keyword() {
-    let source = "consumes";
-    let tokens = Lexer::tokenize_all(source);
-    let has_consumes = tokens.iter().any(|(t, _)| matches!(t, Token::Consumes));
-    assert!(has_consumes, "Expected Consumes token");
-}
-
 // =============================================================================
 // Literal Token Tests
 // =============================================================================

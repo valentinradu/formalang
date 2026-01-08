@@ -263,6 +263,18 @@ pub enum CompilerError {
         span: Span,
     },
 
+    #[error("Cannot assign to immutable binding")]
+    AssignmentToImmutable { span: Span },
+
+    #[error(
+        "Struct '{struct_name}' requires named arguments (field: value), but argument {position} is positional"
+    )]
+    PositionalArgInStruct {
+        struct_name: String,
+        position: usize,
+        span: Span,
+    },
+
     #[error("Enum variant '{variant}' has no data, cannot instantiate with parentheses")]
     EnumVariantWithoutData {
         variant: String,
@@ -383,6 +395,7 @@ impl CompilerError {
             | Self::VariantArityMismatch { span, .. }
             | Self::MissingField { span, .. }
             | Self::UnknownField { span, .. }
+            | Self::PositionalArgInStruct { span, .. }
             | Self::EnumVariantWithoutData { span, .. }
             | Self::EnumVariantRequiresData { span, .. }
             | Self::MutabilityMismatch { span, .. }
@@ -393,7 +406,8 @@ impl CompilerError {
             | Self::DuplicateGenericParam { span, .. }
             | Self::UnknownMount { span, .. }
             | Self::CannotInferEnumType { span, .. }
-            | Self::FunctionReturnTypeMismatch { span, .. } => *span,
+            | Self::FunctionReturnTypeMismatch { span, .. }
+            | Self::AssignmentToImmutable { span, .. } => *span,
         }
     }
 }

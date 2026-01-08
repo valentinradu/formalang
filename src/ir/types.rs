@@ -112,14 +112,11 @@ pub struct IrEnumVariant {
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide field defaults and methods for a struct.
+/// Impl blocks provide methods for a struct.
 #[derive(Clone, Debug)]
 pub struct IrImpl {
     /// The struct this impl is for
     pub struct_id: StructId,
-
-    /// Field defaults: (field_name, default_value)
-    pub defaults: Vec<(String, IrExpr)>,
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
@@ -162,6 +159,9 @@ pub struct IrFunctionParam {
 
     /// Parameter type (None for `self` parameter - type is inferred from impl block)
     pub ty: Option<ResolvedType>,
+
+    /// Default value expression (if provided)
+    pub default: Option<IrExpr>,
 }
 
 /// A field definition.

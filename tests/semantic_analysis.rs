@@ -79,10 +79,7 @@ fn test_model_trait_without_mount() {
 fn test_impl_with_string_literal() {
     let source = r#"
         struct Greeting {
-            name: String
-        }
-        impl Greeting {
-            name: "Hello!"
+            name: String = "Hello!"
         }
     "#;
     let result = compile(source);
@@ -97,10 +94,7 @@ fn test_impl_with_string_literal() {
 fn test_impl_with_number_literal() {
     let source = r#"
         struct Counter {
-            count: Number
-        }
-        impl Counter {
-            count: 42
+            count: Number = 42
         }
     "#;
     let result = compile(source);
@@ -115,10 +109,7 @@ fn test_impl_with_number_literal() {
 fn test_impl_with_boolean_literal() {
     let source = r#"
         struct Flag {
-            enabled: Boolean
-        }
-        impl Flag {
-            enabled: true
+            enabled: Boolean = true
         }
     "#;
     let result = compile(source);
@@ -133,10 +124,7 @@ fn test_impl_with_boolean_literal() {
 fn test_impl_with_array_literal() {
     let source = r#"
         struct List {
-            items: [String]
-        }
-        impl List {
-            items: ["a", "b", "c"]
+            items: [String] = ["a", "b", "c"]
         }
     "#;
     let result = compile(source);
@@ -155,10 +143,7 @@ fn test_impl_with_struct_reference() {
             age: Number
         }
         struct Container {
-            person: Person
-        }
-        impl Container {
-            person: Person(name: "John", age: 30)
+            person: Person = Person(name: "John", age: 30)
         }
     "#;
     let result = compile(source);
@@ -177,10 +162,7 @@ fn test_impl_with_struct_reference() {
 fn test_nested_if_expression() {
     let source = r#"
         struct Logic {
-            a: Boolean
-        }
-        impl Logic {
-            a: if true {
+            a: Boolean = if true {
                 if false { true } else { false }
             } else {
                 true
@@ -195,10 +177,7 @@ fn test_nested_if_expression() {
 fn test_nested_for_expression() {
     let source = r#"
         struct Matrix {
-            data: [[String]]
-        }
-        impl Matrix {
-            data: for item in ["a", "b", "c"] {
+            data: [[String]] = for item in ["a", "b", "c"] {
                 [item]
             }
         }
@@ -211,10 +190,7 @@ fn test_nested_for_expression() {
 fn test_let_with_if() {
     let source = r#"
         struct Conditional {
-            flag: Boolean
-        }
-        impl Conditional {
-            flag: (let x = if true { true } else { false }
+            flag: Boolean = (let x = if true { true } else { false }
             x)
         }
     "#;
@@ -226,10 +202,7 @@ fn test_let_with_if() {
 fn test_let_with_for() {
     let source = r#"
         struct Iterator {
-            items: [String]
-        }
-        impl Iterator {
-            items: (let result = for x in ["a", "b"] { x }
+            items: [String] = (let result = for x in ["a", "b"] { x }
             result)
         }
     "#;
@@ -245,10 +218,7 @@ fn test_let_with_for() {
 fn test_string_in_impl() {
     let source = r#"
         struct Text {
-            value: String
-        }
-        impl Text {
-            value: "hello world"
+            value: String = "hello world"
         }
     "#;
     let result = compile(source);
@@ -259,10 +229,7 @@ fn test_string_in_impl() {
 fn test_number_arithmetic() {
     let source = r#"
         struct Math {
-            value: Number
-        }
-        impl Math {
-            value: 1 + 2 * 3 - 4 / 2
+            value: Number = 1 + 2 * 3 - 4 / 2
         }
     "#;
     let result = compile(source);
@@ -273,10 +240,7 @@ fn test_number_arithmetic() {
 fn test_boolean_logic() {
     let source = r#"
         struct Logic {
-            value: Boolean
-        }
-        impl Logic {
-            value: true && false || true
+            value: Boolean = true && false || true
         }
     "#;
     let result = compile(source);
@@ -287,10 +251,7 @@ fn test_boolean_logic() {
 fn test_comparison_operators() {
     let source = r#"
         struct Compare {
-            result: Boolean
-        }
-        impl Compare {
-            result: 1 < 2 && 3 > 2 && 4 >= 4 && 5 <= 5 && 1 == 1 && 1 != 2
+            result: Boolean = 1 < 2 && 3 > 2 && 4 >= 4 && 5 <= 5 && 1 == 1 && 1 != 2
         }
     "#;
     let result = compile(source);
@@ -561,10 +522,7 @@ fn test_match_basic() {
             none
         }
         struct Handler {
-            option: Option
-        }
-        impl Handler {
-            option: match Option.some {
+            option: Option = match Option.some {
                 .some: .some,
                 .none: .none
             }
@@ -621,10 +579,7 @@ fn test_missing_trait_field_error() {
 fn test_invalid_type_in_binary_op() {
     let source = r#"
         struct Test {
-            value: Boolean
-        }
-        impl Test {
-            value: true + false
+            value: Boolean = true + false
         }
     "#;
     let result = compile(source);
@@ -807,7 +762,7 @@ fn test_full_application_model() {
 
         struct User: Identifiable + Named {
             id: Number,
-            name: String,
+            name: String = "User Profile",
             role: UserRole,
             email: String?
         }
@@ -823,10 +778,6 @@ fn test_full_application_model() {
                 timeout: Number = 30
             }
         }
-
-        impl User {
-            name: "User Profile"
-        }
     "#;
     let result = compile(source);
     assert!(result.is_ok(), "Full application model: {:?}", result.err());
@@ -838,21 +789,13 @@ fn test_view_component_model() {
         struct Button {
             label: String,
             disabled: Boolean = false,
-            @mount onClick: String
+            @mount onClick: String = "click"
         }
 
         struct Card {
             title: String,
-            @mount content: String,
+            @mount content: String = "content",
             @mount footer: String?
-        }
-
-        impl Button {
-            onClick: label
-        }
-
-        impl Card {
-            content: title
         }
     "#;
     let result = compile(source);

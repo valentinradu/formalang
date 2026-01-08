@@ -1,12 +1,12 @@
 //! FormaLang Compiler CLI
 //!
 //! Usage:
-//!   fvc compile <file.fv> [-o output.fvc]
-//!   fvc check <file.fv>
-//!   fvc watch <file.fv>
+//!   fvc compile <file.fv> [-o output.fvc] [--stdlib-path <path>]
+//!   fvc check <file.fv> [--stdlib-path <path>]
+//!   fvc watch <file.fv> [--stdlib-path <path>]
 
 use formalang::codegen::{generate_wgsl, transpile_wgsl, FvcWriter, ShaderTarget};
-use formalang::{compile_to_ir, report_errors};
+use formalang::{compile_to_ir_with_resolver, report_errors, FileSystemResolver};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -21,6 +21,8 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
+    let stdlib_path = parse_stdlib_path(&args);
+
     match args[1].as_str() {
         "compile" => {
             if args.len() < 3 {
@@ -28,7 +30,7 @@ fn main() -> ExitCode {
                 print_usage();
                 return ExitCode::from(1);
             }
-            compile_command(&args[2], parse_output_path(&args))
+            compile_command(&args[2], parse_output_path(&args), stdlib_path)
         }
         "check" => {
             if args.len() < 3 {
@@ -36,7 +38,7 @@ fn main() -> ExitCode {
                 print_usage();
                 return ExitCode::from(1);
             }
-            check_command(&args[2])
+            check_command(&args[2], stdlib_path)
         }
         "watch" => {
             if args.len() < 3 {
@@ -44,7 +46,7 @@ fn main() -> ExitCode {
                 print_usage();
                 return ExitCode::from(1);
             }
-            watch_command(&args[2])
+            watch_command(&args[2], stdlib_path)
         }
         "help" | "--help" | "-h" => {
             print_usage();
@@ -66,11 +68,23 @@ fn print_usage() {
     println!("FormaLang Compiler v{}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("Usage:");
-    println!("  fvc compile <file.fv> [-o output.fvc]  Compile to .fvc binary");
-    println!("  fvc check <file.fv>                    Type check without compiling");
-    println!("  fvc watch <file.fv>                    Watch and recompile on changes");
+    println!("  fvc compile <file.fv> [-o output.fvc] [--stdlib-path <path>]");
+    println!("  fvc check <file.fv> [--stdlib-path <path>]");
+    println!("  fvc watch <file.fv> [--stdlib-path <path>]");
     println!("  fvc help                               Show this help");
     println!("  fvc version                            Show version");
+    println!();
+    println!("Options:");
+    println!("  --stdlib-path <path>  Set the root path for stdlib resolution");
+}
+
+fn parse_stdlib_path(args: &[String]) -> Option<PathBuf> {
+    for i in 0..args.len() - 1 {
+        if args[i] == "--stdlib-path" {
+            return Some(PathBuf::from(&args[i + 1]));
+        }
+    }
+    None
 }
 
 fn parse_output_path(args: &[String]) -> Option<PathBuf> {
@@ -82,7 +96,11 @@ fn parse_output_path(args: &[String]) -> Option<PathBuf> {
     None
 }
 
-fn compile_command(input_path: &str, output_path: Option<PathBuf>) -> ExitCode {
+fn compile_command(
+    input_path: &str,
+    output_path: Option<PathBuf>,
+    stdlib_path: Option<PathBuf>,
+) -> ExitCode {
     let start = Instant::now();
 
     println!("Compiling {}...", input_path);
@@ -103,8 +121,19 @@ fn compile_command(input_path: &str, output_path: Option<PathBuf>) -> ExitCode {
         p
     });
 
+    // Get the base directory for module resolution
+    // Use stdlib_path if provided, otherwise use file's parent directory
+    let input_file = PathBuf::from(input_path);
+    let base_dir = stdlib_path.unwrap_or_else(|| {
+        input_file
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+    });
+    let resolver = FileSystemResolver::new(base_dir);
+
     // Compile to IR
-    let ir = match compile_to_ir(&source) {
+    let ir = match compile_to_ir_with_resolver(&source, resolver) {
         Ok(ir) => ir,
         Err(errors) => {
             eprintln!("{}", report_errors(&errors, &source, input_path));
@@ -176,7 +205,7 @@ fn compile_command(input_path: &str, output_path: Option<PathBuf>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn check_command(input_path: &str) -> ExitCode {
+fn check_command(input_path: &str, stdlib_path: Option<PathBuf>) -> ExitCode {
     let start = Instant::now();
 
     println!("Checking {}...", input_path);
@@ -190,8 +219,19 @@ fn check_command(input_path: &str) -> ExitCode {
         }
     };
 
+    // Get the base directory for module resolution
+    // Use stdlib_path if provided, otherwise use file's parent directory
+    let input_file = PathBuf::from(input_path);
+    let base_dir = stdlib_path.unwrap_or_else(|| {
+        input_file
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+    });
+    let resolver = FileSystemResolver::new(base_dir);
+
     // Compile (type check)
-    match compile_to_ir(&source) {
+    match compile_to_ir_with_resolver(&source, resolver) {
         Ok(ir) => {
             let duration = start.elapsed();
             println!(
@@ -210,7 +250,7 @@ fn check_command(input_path: &str) -> ExitCode {
     }
 }
 
-fn watch_command(input_path: &str) -> ExitCode {
+fn watch_command(input_path: &str, stdlib_path: Option<PathBuf>) -> ExitCode {
     use std::thread;
     use std::time::Duration;
 
@@ -235,7 +275,7 @@ fn watch_command(input_path: &str) -> ExitCode {
                 Some(p)
             };
 
-            let result = compile_command(input_path, output_path);
+            let result = compile_command(input_path, output_path, stdlib_path.clone());
             if result != ExitCode::SUCCESS {
                 println!("Compilation failed. Watching for more changes...");
             }

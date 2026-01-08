@@ -14,8 +14,9 @@ pub mod symbol_table;
 pub(crate) mod type_graph;
 
 use crate::ast::{
-    ArrayPatternElement, BinaryOperator, BindingPattern, Definition, Expr, File, Literal, Pattern,
-    PrimitiveType, Statement, StructDef, TraitDef, Type, UseItems, UseStmt,
+    ArrayPatternElement, BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File,
+    Literal, Pattern, PrimitiveType, Statement, StructDef, TraitDef, Type, UnaryOperator, UseItems,
+    UseStmt, Visibility,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -25,14 +26,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use symbol_table::SymbolTable;
 use type_graph::TypeGraph;
-
-/// A context binding tracks the type and mutability of a value provided via provides/consumes
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct ContextBinding {
-    ty: String,
-    mutable: bool,
-}
 
 /// Tracks generic parameters in scope for a definition
 #[derive(Debug, Clone)]
@@ -109,8 +102,6 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
     /// Current file path being analyzed
     current_file: Option<PathBuf>,
-    /// Stack of context scopes (for provides/consumes)
-    context_scopes: Vec<HashMap<String, ContextBinding>>,
     /// Stack of generic scopes (for tracking type parameters)
     generic_scopes: Vec<GenericScope>,
     /// Current struct name when inside an impl block (for field type resolution)
@@ -119,8 +110,8 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     loop_var_scopes: Vec<HashSet<String>>,
     /// Stack of closure parameter scopes (for tracking closure/event mapping params)
     closure_param_scopes: Vec<HashSet<String>>,
-    /// Local let bindings in current expression context
-    local_let_bindings: HashSet<String>,
+    /// Local let bindings in current expression context: (type, mutable)
+    local_let_bindings: HashMap<String, (String, bool)>,
     /// Recursion depth counter for validate_expr (to prevent stack overflow)
     validate_expr_depth: usize,
 }
@@ -134,12 +125,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
             current_file: None,
-            context_scopes: Vec::new(),
             generic_scopes: Vec::new(),
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
-            local_let_bindings: HashSet::new(),
+            local_let_bindings: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -153,12 +143,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
             current_file: Some(file_path),
-            context_scopes: Vec::new(),
             generic_scopes: Vec::new(),
             current_impl_struct: None,
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
-            local_let_bindings: HashSet::new(),
+            local_let_bindings: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -350,11 +339,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Create a new analyzer for the module with the same resolver
         // Note: We need to temporarily take ownership of the resolver
         // This is a design challenge - we may need to refactor to use &R or Rc<R>
-        // For now, let's build the symbol table directly without a full recursive analysis
+        // Build the symbol table directly without a full recursive analysis
         let mut module_symbols = SymbolTable::new();
         let mut module_errors = Vec::new();
 
-        // Pass 1: Build symbol table for the module
+        // Pass 1: Build symbol table for the module's own definitions
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
                 Self::collect_definition_into(&mut module_symbols, &mut module_errors, def);
@@ -383,11 +372,176 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return Err(module_errors);
         }
 
-        // Cache the module
+        // Pass 2: Process pub use statements for re-exports
+        // We need to cache the module first (with just definitions) to prevent infinite recursion
+        // in case of circular pub use statements
+        self.module_cache.insert(
+            module_path.to_path_buf(),
+            (file.clone(), module_symbols.clone()),
+        );
+
+        // Now process pub use statements
+        for statement in &file.statements {
+            if let Statement::Use(use_stmt) = statement {
+                // Only process public use statements for re-export
+                if use_stmt.visibility == Visibility::Public {
+                    self.process_pub_use_for_module(
+                        use_stmt,
+                        &mut module_symbols,
+                        &mut module_errors,
+                    );
+                }
+            }
+        }
+
+        // Update the cache with the final symbol table (including re-exports)
         self.module_cache
             .insert(module_path.to_path_buf(), (file, module_symbols.clone()));
 
+        if !module_errors.is_empty() {
+            return Err(module_errors);
+        }
+
         Ok(module_symbols)
+    }
+
+    /// Process a pub use statement for a module being loaded
+    /// This adds the re-exported symbols to the module's symbol table
+    fn process_pub_use_for_module(
+        &mut self,
+        use_stmt: &UseStmt,
+        module_symbols: &mut SymbolTable,
+        module_errors: &mut Vec<CompilerError>,
+    ) {
+        // Convert path to string segments
+        let path_segments: Vec<String> = use_stmt
+            .path
+            .iter()
+            .map(|ident| ident.name.clone())
+            .collect();
+
+        // Resolve the module path
+        let (source, imported_module_path) = match self.resolver.resolve(&path_segments, None) {
+            Ok(result) => result,
+            Err(ModuleError::NotFound {
+                path,
+                searched_paths,
+                ..
+            }) => {
+                module_errors.push(CompilerError::ModuleNotFound {
+                    name: format!(
+                        "{} (searched: {})",
+                        path.join("::"),
+                        searched_paths
+                            .iter()
+                            .map(|p| p.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+            Err(ModuleError::ReadError { path, error, .. }) => {
+                module_errors.push(CompilerError::ModuleReadError {
+                    path: path.display().to_string(),
+                    error,
+                    span: use_stmt.span,
+                });
+                return;
+            }
+            Err(ModuleError::CircularImport { cycle, .. }) => {
+                module_errors.push(CompilerError::CircularImport {
+                    cycle: cycle.join(" -> "),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+            Err(ModuleError::PrivateItem { item, module, .. }) => {
+                module_errors.push(CompilerError::PrivateImport {
+                    name: format!("{}::{}", module, item),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+            Err(ModuleError::ItemNotFound {
+                item,
+                module,
+                available,
+                ..
+            }) => {
+                module_errors.push(CompilerError::ImportItemNotFound {
+                    item,
+                    module,
+                    available: available.join(", "),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+        };
+
+        // Load and parse the imported module (recursively handles its own pub use statements)
+        let imported_symbols =
+            if let Some((_, symbols)) = self.module_cache.get(&imported_module_path) {
+                symbols.clone()
+            } else {
+                match self.parse_and_analyze_module(&source, &imported_module_path) {
+                    Ok(symbols) => symbols,
+                    Err(errors) => {
+                        module_errors.extend(errors);
+                        return;
+                    }
+                }
+            };
+
+        // Re-export the symbols with public visibility
+        match &use_stmt.items {
+            UseItems::Single(ident) => {
+                Self::reexport_symbol(
+                    &ident.name,
+                    &imported_symbols,
+                    module_symbols,
+                    imported_module_path.clone(),
+                    path_segments.clone(),
+                );
+            }
+            UseItems::Multiple(idents) => {
+                for ident in idents {
+                    Self::reexport_symbol(
+                        &ident.name,
+                        &imported_symbols,
+                        module_symbols,
+                        imported_module_path.clone(),
+                        path_segments.clone(),
+                    );
+                }
+            }
+            UseItems::Glob => {
+                // Re-export all public symbols from the imported module
+                for name in imported_symbols.all_public_symbols() {
+                    Self::reexport_symbol(
+                        &name,
+                        &imported_symbols,
+                        module_symbols,
+                        imported_module_path.clone(),
+                        path_segments.clone(),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Re-export a symbol from one module into another module's symbol table
+    fn reexport_symbol(
+        name: &str,
+        source_symbols: &SymbolTable,
+        target_symbols: &mut SymbolTable,
+        module_path: PathBuf,
+        logical_path: Vec<String>,
+    ) {
+        // Import the symbol into the target symbol table with public visibility
+        // This makes it available for further re-export
+        let _ = target_symbols.import_symbol(name, source_symbols, module_path, logical_path);
     }
 
     /// Helper to collect a definition into a symbol table (static version for module parsing)
@@ -481,22 +635,39 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Impl(impl_def) => {
                 use symbol_table::ImplInfo;
 
-                let info = ImplInfo {
-                    struct_name: impl_def.name.name.clone(),
-                    generics: impl_def.generics.clone(),
-                    defaults: impl_def.defaults.clone(),
-                    span: impl_def.span,
-                };
+                if let Some(trait_ident) = &impl_def.trait_name {
+                    // Trait implementation: impl Trait for Struct
+                    // Note: We can't validate trait/struct existence here because this is
+                    // a static method called during module loading. Full validation happens
+                    // later in collect_definition.
+                    symbols
+                        .trait_impls
+                        .entry(impl_def.name.name.clone())
+                        .or_default()
+                        .push(symbol_table::TraitImplInfo {
+                            trait_name: trait_ident.name.clone(),
+                            struct_name: impl_def.name.name.clone(),
+                            generics: impl_def.generics.clone(),
+                            span: impl_def.span,
+                        });
+                } else {
+                    // Inherent implementation: impl Struct
+                    let info = ImplInfo {
+                        struct_name: impl_def.name.name.clone(),
+                        generics: impl_def.generics.clone(),
+                        span: impl_def.span,
+                    };
 
-                if let Some((kind, _)) = symbols.define_impl(impl_def.name.name.clone(), info) {
-                    errors.push(CompilerError::DuplicateDefinition {
-                        name: format!(
-                            "{} (already defined as {})",
-                            impl_def.name.name,
-                            kind.as_str()
-                        ),
-                        span: impl_def.name.span,
-                    });
+                    if let Some((kind, _)) = symbols.define_impl(impl_def.name.name.clone(), info) {
+                        errors.push(CompilerError::DuplicateDefinition {
+                            name: format!(
+                                "{} (already defined as {})",
+                                impl_def.name.name,
+                                kind.as_str()
+                            ),
+                            span: impl_def.name.span,
+                        });
+                    }
                 }
             }
             Definition::Enum(enum_def) => {
@@ -512,6 +683,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     enum_def.span,
                     enum_def.generics.clone(),
                     variants,
+                    Vec::new(), // Enums don't support inline trait syntax yet
                 ) {
                     errors.push(CompilerError::DuplicateDefinition {
                         name: format!(
@@ -546,6 +718,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             kind.as_str()
                         ),
                         span: module_def.name.span,
+                    });
+                }
+            }
+            Definition::Function(func_def) => {
+                // Register standalone function in symbol table
+                let params: Vec<(String, Option<Type>)> = func_def
+                    .params
+                    .iter()
+                    .map(|p| (p.name.name.clone(), p.ty.clone()))
+                    .collect();
+
+                if let Some((kind, _)) = symbols.define_function(
+                    func_def.name.name.clone(),
+                    func_def.visibility,
+                    func_def.span,
+                    params,
+                    func_def.return_type.clone(),
+                ) {
+                    errors.push(CompilerError::DuplicateDefinition {
+                        name: format!(
+                            "{} (already defined as {})",
+                            func_def.name.name,
+                            kind.as_str()
+                        ),
+                        span: func_def.name.span,
                     });
                 }
             }
@@ -662,12 +859,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                let generics = match def {
+                let generics = match &**def {
                     Definition::Trait(trait_def) => &trait_def.generics,
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::Module(_) => continue, // Modules don't have generics, skip
+                    Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
                 };
 
                 // Check for duplicate generic parameters
@@ -837,8 +1034,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Impl(impl_def) => {
                 use symbol_table::ImplInfo;
 
-                // Check that struct exists
-                if self.symbols.get_struct(&impl_def.name.name).is_none() {
+                // Check that struct or enum exists
+                let type_exists = self.symbols.get_struct(&impl_def.name.name).is_some()
+                    || self
+                        .symbols
+                        .get_enum_variants(&impl_def.name.name)
+                        .is_some();
+
+                if !type_exists {
                     self.errors.push(CompilerError::UndefinedType {
                         name: impl_def.name.name.clone(),
                         span: impl_def.span,
@@ -846,23 +1049,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     return;
                 }
 
-                let info = ImplInfo {
-                    struct_name: impl_def.name.name.clone(),
-                    generics: impl_def.generics.clone(),
-                    defaults: impl_def.defaults.clone(),
-                    span: impl_def.span,
-                };
+                if let Some(trait_ident) = &impl_def.trait_name {
+                    // Trait implementation: impl Trait for Struct
+                    // Check that trait exists
+                    if !self.symbols.traits.contains_key(&trait_ident.name) {
+                        self.errors.push(CompilerError::UndefinedType {
+                            name: trait_ident.name.clone(),
+                            span: trait_ident.span,
+                        });
+                        return;
+                    }
 
-                if let Some((kind, _)) = self.symbols.define_impl(impl_def.name.name.clone(), info)
-                {
-                    self.errors.push(CompilerError::DuplicateDefinition {
-                        name: format!(
-                            "{} (already defined as {})",
-                            impl_def.name.name,
-                            kind.as_str()
-                        ),
-                        span: impl_def.name.span,
-                    });
+                    // Register using the validated method
+                    if let Err((kind, _)) = self.symbols.define_trait_impl(
+                        trait_ident.name.clone(),
+                        impl_def.name.name.clone(),
+                        impl_def.generics.clone(),
+                        impl_def.span,
+                    ) {
+                        self.errors.push(CompilerError::DuplicateDefinition {
+                            name: format!(
+                                "impl {} for {} (already defined as {})",
+                                trait_ident.name,
+                                impl_def.name.name,
+                                kind.as_str()
+                            ),
+                            span: impl_def.span,
+                        });
+                    }
+                } else {
+                    // Inherent implementation: impl Struct
+                    let info = ImplInfo {
+                        struct_name: impl_def.name.name.clone(),
+                        generics: impl_def.generics.clone(),
+                        span: impl_def.span,
+                    };
+
+                    if let Some((kind, _)) =
+                        self.symbols.define_impl(impl_def.name.name.clone(), info)
+                    {
+                        self.errors.push(CompilerError::DuplicateDefinition {
+                            name: format!(
+                                "{} (already defined as {})",
+                                impl_def.name.name,
+                                kind.as_str()
+                            ),
+                            span: impl_def.name.span,
+                        });
+                    }
                 }
             }
             Definition::Enum(enum_def) => {
@@ -893,6 +1127,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     enum_def.span,
                     enum_def.generics.clone(),
                     variants,
+                    Vec::new(), // Enums don't support inline trait syntax yet
                 ) {
                     self.errors.push(CompilerError::DuplicateDefinition {
                         name: format!(
@@ -934,6 +1169,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     });
                 }
             }
+            Definition::Function(func_def) => {
+                // Register standalone function in symbol table
+                let params: Vec<(String, Option<Type>)> = func_def
+                    .params
+                    .iter()
+                    .map(|p| (p.name.name.clone(), p.ty.clone()))
+                    .collect();
+
+                if let Some((kind, _)) = self.symbols.define_function(
+                    func_def.name.name.clone(),
+                    func_def.visibility,
+                    func_def.span,
+                    params,
+                    func_def.return_type.clone(),
+                ) {
+                    self.errors.push(CompilerError::DuplicateDefinition {
+                        name: format!(
+                            "{} (already defined as {})",
+                            func_def.name.name,
+                            kind.as_str()
+                        ),
+                        span: func_def.name.span,
+                    });
+                }
+            }
         }
     }
 
@@ -942,7 +1202,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn resolve_types(&mut self, file: &File) {
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                match def {
+                match &**def {
                     Definition::Trait(trait_def) => {
                         self.resolve_trait_types(trait_def);
                     }
@@ -958,11 +1218,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                         // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
-
-                        // Validate expressions in impl defaults
-                        for (_field_name, expr) in &impl_def.defaults {
-                            self.validate_expr(expr, file);
-                        }
 
                         // Validate functions in impl block
                         for func in &impl_def.functions {
@@ -1021,9 +1276,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.push_generic_scope(&impl_def.generics);
                                     self.current_impl_struct = Some(impl_def.name.name.clone());
                                     self.local_let_bindings.clear();
-                                    for (_field_name, expr) in &impl_def.defaults {
-                                        self.validate_expr(expr, file);
-                                    }
                                     for func in &impl_def.functions {
                                         self.validate_function_return_type(func, file);
                                     }
@@ -1044,6 +1296,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     // Recursively process nested modules
                                     self.resolve_module_types(nested_module, file);
                                 }
+                                Definition::Function(func_def) => {
+                                    // Validate function parameter and return types
+                                    self.validate_standalone_function(func_def.as_ref(), file);
+                                }
                             }
                         }
 
@@ -1057,6 +1313,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         for name in module_symbols.enums.keys() {
                             self.symbols.enums.remove(name);
                         }
+                    }
+                    Definition::Function(func_def) => {
+                        // Validate standalone function parameter and return types
+                        self.validate_standalone_function(func_def.as_ref(), file);
                     }
                 }
             }
@@ -1131,6 +1391,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         enum_def.span,
                         enum_def.generics.clone(),
                         variants,
+                        Vec::new(), // Enums don't support inline trait syntax yet
                     );
                 }
                 _ => {}
@@ -1167,9 +1428,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.push_generic_scope(&impl_def.generics);
                     self.current_impl_struct = Some(impl_def.name.name.clone());
                     self.local_let_bindings.clear();
-                    for (_field_name, expr) in &impl_def.defaults {
-                        self.validate_expr(expr, file);
-                    }
                     self.current_impl_struct = None;
                     self.local_let_bindings.clear();
                     self.pop_generic_scope();
@@ -1186,6 +1444,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Definition::Module(nested_module) => {
                     // Recursively process nested modules
                     self.resolve_module_types(nested_module, file);
+                }
+                Definition::Function(func_def) => {
+                    // Validate function parameter and return types
+                    self.validate_standalone_function(func_def.as_ref(), file);
                 }
             }
         }
@@ -1296,34 +1558,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Primitive types are always valid
             }
             Type::Ident(ident) => {
-                // Check for module path (e.g., alignment::Horizontal)
+                // Check for module path (e.g., alignment::Horizontal or outer::inner::Type)
                 if ident.name.contains("::") {
                     let parts: Vec<&str> = ident.name.split("::").collect();
-                    if parts.len() == 2 {
-                        let module_name = parts[0];
-                        let type_name = parts[1];
-
-                        // Check if module exists
-                        if let Some(module_info) = self.symbols.modules.get(module_name) {
-                            // Check if type exists in module
-                            if !module_info.symbols.is_type(type_name)
-                                && !module_info.symbols.is_trait(type_name)
-                            {
-                                self.errors.push(CompilerError::UndefinedType {
-                                    name: ident.name.clone(),
-                                    span: ident.span,
-                                });
-                            }
-                        } else {
+                    if parts.len() >= 2 {
+                        // Resolve nested module path
+                        if let Some(error_msg) = self.resolve_nested_module_type(&parts, ident.span)
+                        {
                             self.errors.push(CompilerError::UndefinedType {
-                                name: format!("module '{}' not found", module_name),
+                                name: error_msg,
                                 span: ident.span,
                             });
                         }
                     } else {
-                        // Nested modules not yet supported
+                        // Invalid path format
                         self.errors.push(CompilerError::UndefinedType {
-                            name: format!("nested module paths not supported: {}", ident.name),
+                            name: format!("invalid module path: {}", ident.name),
                             span: ident.span,
                         });
                     }
@@ -1395,6 +1645,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
 
+                // Validate that type arguments satisfy constraints
+                if let Some(expected_params) = self.symbols.get_generics(&name.name) {
+                    for (i, arg) in args.iter().enumerate() {
+                        if let Some(param) = expected_params.get(i) {
+                            for constraint in &param.constraints {
+                                let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                                if !self.type_satisfies_trait_constraint(arg, &trait_ref.name) {
+                                    self.errors.push(CompilerError::GenericConstraintViolation {
+                                        arg: self.type_to_string(arg),
+                                        constraint: trait_ref.name.clone(),
+                                        span: *span,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Recursively validate type arguments
                 for arg in args {
                     self.validate_type(arg);
@@ -1439,7 +1707,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         file,
                     );
                 }
-                Statement::Definition(def) => match def {
+                Statement::Definition(def) => match &**def {
                     Definition::Struct(struct_def) => {
                         self.validate_struct_expressions(struct_def, file);
                     }
@@ -1448,10 +1716,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.current_impl_struct = Some(impl_def.name.name.clone());
                         // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
-                        // Validate impl defaults expressions
-                        for (_field_name, expr) in &impl_def.defaults {
-                            self.validate_expr(expr, file);
-                        }
                         // Clear impl struct context and local bindings
                         self.current_impl_struct = None;
                         self.local_let_bindings.clear();
@@ -1563,7 +1827,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
 
                     // Check if it's a local let binding (from let expressions)
-                    if self.local_let_bindings.contains(name) {
+                    if self.local_let_bindings.contains_key(name) {
                         return;
                     }
 
@@ -1615,52 +1879,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 // Multi-segment paths (like Foo.bar or Foo::bar) are validated elsewhere
             }
-            Expr::StructInstantiation {
-                name,
+            Expr::Invocation {
+                path,
                 type_args,
                 args,
                 mounts,
                 span,
             } => {
-                // Check if the struct has generic parameters
-                if let Some(expected_params) = self.symbols.get_generics(&name.name) {
-                    let expected = expected_params.len();
-                    let actual = type_args.len();
+                // Join path to get the name for lookup
+                let name = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
 
-                    // Check for arity mismatch
-                    if expected != actual {
-                        if actual == 0 && expected > 0 {
-                            // Missing generic arguments
-                            self.errors.push(CompilerError::MissingGenericArguments {
-                                name: name.name.clone(),
-                                span: *span,
-                            });
-                        } else {
-                            // Wrong number of generic arguments
-                            self.errors.push(CompilerError::GenericArityMismatch {
-                                name: name.name.clone(),
-                                expected,
-                                actual,
-                                span: *span,
-                            });
-                        }
-                    }
-                } else if !type_args.is_empty() {
-                    // Struct is not generic but type arguments were provided
-                    self.errors.push(CompilerError::GenericArityMismatch {
-                        name: name.name.clone(),
-                        expected: 0,
-                        actual: type_args.len(),
-                        span: *span,
-                    });
-                }
-
-                // Validate each type argument
-                for type_arg in type_args {
-                    self.validate_type(type_arg);
-                }
-
-                // Validate argument expressions
+                // First validate all argument expressions
                 for (_, arg_expr) in args {
                     self.validate_expr(arg_expr, file);
                 }
@@ -1668,11 +1901,108 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(mount_expr, file);
                 }
 
-                // Validate struct field requirements
-                self.validate_struct_fields(&name.name, args, mounts, *span, file);
+                // Validate each type argument
+                for type_arg in type_args {
+                    self.validate_type(type_arg);
+                }
 
-                // Validate mutability: mut parameters must receive mut values
-                self.validate_struct_mutability(&name.name, args, mounts, file, *span);
+                // Determine if this is a struct instantiation or function call
+                let is_struct = self.symbols.is_struct(&name);
+
+                if is_struct {
+                    // Validate as struct instantiation
+                    // Struct instantiation requires named arguments
+                    let named_args: Vec<(crate::ast::Ident, Expr)> = args
+                        .iter()
+                        .filter_map(|(name_opt, expr)| {
+                            name_opt.as_ref().map(|name| (name.clone(), expr.clone()))
+                        })
+                        .collect();
+
+                    // Check that all args are named - report all positional args
+                    for (i, (name_opt, arg_expr)) in args.iter().enumerate() {
+                        if name_opt.is_none() {
+                            self.errors.push(CompilerError::PositionalArgInStruct {
+                                struct_name: name.clone(),
+                                position: i + 1, // 1-indexed for user-friendly message
+                                span: arg_expr.span(),
+                            });
+                        }
+                    }
+
+                    // Check if the struct has generic parameters
+                    if let Some(expected_params) = self.symbols.get_generics(&name) {
+                        let expected = expected_params.len();
+                        let actual = type_args.len();
+
+                        // Check for arity mismatch
+                        if expected != actual {
+                            if actual == 0 && expected > 0 {
+                                // Missing generic arguments
+                                self.errors.push(CompilerError::MissingGenericArguments {
+                                    name: name.clone(),
+                                    span: *span,
+                                });
+                            } else {
+                                // Wrong number of generic arguments
+                                self.errors.push(CompilerError::GenericArityMismatch {
+                                    name: name.clone(),
+                                    expected,
+                                    actual,
+                                    span: *span,
+                                });
+                            }
+                        }
+                    } else if !type_args.is_empty() {
+                        // Struct is not generic but type arguments were provided
+                        self.errors.push(CompilerError::GenericArityMismatch {
+                            name: name.clone(),
+                            expected: 0,
+                            actual: type_args.len(),
+                            span: *span,
+                        });
+                    }
+
+                    // Validate struct field requirements
+                    self.validate_struct_fields(&name, &named_args, mounts, *span, file);
+
+                    // Validate mutability: mut parameters must receive mut values
+                    self.validate_struct_mutability(&name, &named_args, mounts, file, *span);
+                } else {
+                    // Validate as function call
+                    // Function calls use positional arguments (named args are allowed too)
+                    // Function calls should not have type_args or mounts
+                    if !type_args.is_empty() {
+                        self.errors.push(CompilerError::GenericArityMismatch {
+                            name: name.clone(),
+                            expected: 0,
+                            actual: type_args.len(),
+                            span: *span,
+                        });
+                    }
+                    if !mounts.is_empty() {
+                        self.errors.push(CompilerError::UnknownMount {
+                            mount: mounts[0].0.name.clone(),
+                            struct_name: name.clone(),
+                            span: mounts[0].0.span,
+                        });
+                    }
+
+                    // Validate function exists
+                    // For qualified names like "math::sin", check the last component against builtins
+                    let simple_name = name.rsplit("::").next().unwrap_or(&name);
+                    let is_builtin =
+                        crate::builtins::BuiltinRegistry::global().is_builtin(simple_name);
+                    let is_user_function = self.symbols.get_function(&name).is_some()
+                        || self.symbols.get_function(simple_name).is_some();
+
+                    if !is_builtin && !is_user_function {
+                        self.errors.push(CompilerError::UndefinedType {
+                            name: format!("function '{}'", name),
+                            span: *span,
+                        });
+                    }
+                }
             }
             Expr::EnumInstantiation {
                 enum_name,
@@ -1713,6 +2043,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                 // Validate operator type compatibility
                 self.validate_binary_op(left, *op, right, *span, file);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                // Recursively validate operand
+                self.validate_expr(operand, file);
             }
             Expr::ForExpr {
                 var,
@@ -1770,35 +2104,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Group { expr, .. } => {
                 self.validate_expr(expr, file);
             }
-            Expr::ProvidesExpr { items, body, .. } => {
-                // Validate each provide item expression
-                for item in items {
-                    self.validate_expr(&item.expr, file);
-                }
-
-                // Push provided values to scope
-                self.push_provides_scope(items, file);
-
-                // Validate the body within the provided scope
-                self.validate_expr(body, file);
-
-                // Pop the provided scope
-                self.pop_context_scope();
-            }
-            Expr::ConsumesExpr { names, body, span } => {
-                // Validate that all consumed names are available in scope
-                for name in names {
-                    if self.lookup_context_binding(&name.name).is_none() {
-                        self.errors.push(CompilerError::UndefinedReference {
-                            name: format!("{} (not provided in scope)", name.name),
-                            span: *span,
-                        });
-                    }
-                }
-
-                // Validate the body (consumed names are already in scope from parent)
-                self.validate_expr(body, file);
-            }
             Expr::DictLiteral { entries, .. } => {
                 // Validate all key-value expressions
                 for (key, value) in entries {
@@ -1833,12 +2138,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.closure_param_scopes.pop();
             }
             Expr::LetExpr {
+                mutable,
                 pattern,
                 ty,
                 value,
                 body,
                 span,
-                ..
             } => {
                 // Validate type annotation if present
                 if let Some(type_ann) = ty {
@@ -1852,26 +2157,81 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                 // Add all bindings from the pattern to local scope before validating body
                 for binding in collect_bindings_from_pattern(pattern) {
-                    self.local_let_bindings.insert(binding.name);
+                    // Infer the type of the binding from the value
+                    let ty = self.infer_type(value, file);
+                    self.local_let_bindings.insert(binding.name, (ty, *mutable));
                 }
 
                 // Validate body expression with the bindings in scope
                 self.validate_expr(body, file);
             }
-            Expr::FunctionCall { args, .. } => {
-                // Validate all argument expressions
-                for arg in args {
-                    self.validate_expr(arg, file);
-                }
-                // TODO: Validate function exists and argument types match
-            }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                span,
+            } => {
                 // Validate receiver and all argument expressions
                 self.validate_expr(receiver, file);
                 for arg in args {
                     self.validate_expr(arg, file);
                 }
-                // TODO: Validate method exists on receiver type and argument types match
+
+                // Validate method exists on receiver type
+                let receiver_type = self.infer_type(receiver, file);
+                if !self.method_exists_on_type(&receiver_type, &method.name, file) {
+                    self.errors.push(CompilerError::UndefinedReference {
+                        name: format!("method '{}' on type '{}'", method.name, receiver_type),
+                        span: *span,
+                    });
+                }
+            }
+            Expr::Block {
+                statements, result, ..
+            } => {
+                // Validate all statements in the block
+                for stmt in statements {
+                    match stmt {
+                        BlockStatement::Let {
+                            mutable,
+                            pattern,
+                            value,
+                            ty,
+                            ..
+                        } => {
+                            self.validate_expr(value, file);
+                            // Register bindings with their types and mutability
+                            let ty_str = if let Some(t) = ty {
+                                self.type_to_string(t)
+                            } else {
+                                self.infer_type(value, file)
+                            };
+                            for binding in collect_bindings_from_pattern(pattern) {
+                                self.local_let_bindings
+                                    .insert(binding.name, (ty_str.clone(), *mutable));
+                            }
+                        }
+                        BlockStatement::Assign {
+                            target,
+                            value,
+                            span,
+                        } => {
+                            // Validate both target and value expressions
+                            self.validate_expr(target, file);
+                            self.validate_expr(value, file);
+                            // Check that target is mutable
+                            if !self.is_expr_mutable(target, file) {
+                                self.errors
+                                    .push(CompilerError::AssignmentToImmutable { span: *span });
+                            }
+                        }
+                        BlockStatement::Expr(expr) => {
+                            self.validate_expr(expr, file);
+                        }
+                    }
+                }
+                // Validate the result expression
+                self.validate_expr(result, file);
             }
         }
 
@@ -1901,28 +2261,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .map(|f| f.name.name.clone())
                     .collect();
 
-                // Get fields that have defaults in impl blocks
-                let impl_default_fields: Vec<String> = self
-                    .symbols
-                    .get_impl(struct_name)
-                    .map(|impl_info| {
-                        impl_info
-                            .defaults
-                            .iter()
-                            .map(|(ident, _)| ident.name.clone())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
                 let required_fields: Vec<String> = def
                     .fields
                     .iter()
                     .filter(|f| {
-                        // Field is required if it has no inline default, is not optional,
-                        // AND has no default in an impl block
-                        f.default.is_none()
-                            && !f.optional
-                            && !impl_default_fields.contains(&f.name.name)
+                        // Field is required if it has no inline default and is not optional
+                        f.default.is_none() && !f.optional
                     })
                     .map(|f| f.name.name.clone())
                     .collect();
@@ -1933,10 +2277,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .filter(|f| {
                         // Mount fields with inline defaults are optional
                         if f.default.is_some() {
-                            return false;
-                        }
-                        // Mount fields with impl block defaults are optional
-                        if impl_default_fields.contains(&f.name.name) {
                             return false;
                         }
                         // Mount fields of type `Never` are always optional since
@@ -2014,9 +2354,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) -> Option<&'a StructDef> {
         // Search in current file
         for statement in &current_file.statements {
-            if let Statement::Definition(Definition::Struct(def)) = statement {
-                if def.name.name == struct_name {
-                    return Some(def);
+            if let Statement::Definition(def) = statement {
+                if let Definition::Struct(struct_def) = &**def {
+                    if struct_def.name.name == struct_name {
+                        return Some(struct_def);
+                    }
                 }
             }
         }
@@ -2024,9 +2366,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Search in module cache
         for (file, _) in self.module_cache.values() {
             for statement in &file.statements {
-                if let Statement::Definition(Definition::Struct(def)) = statement {
-                    if def.name.name == struct_name {
-                        return Some(def);
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Struct(struct_def) = &**def {
+                        if struct_def.name.name == struct_name {
+                            return Some(struct_def);
+                        }
                     }
                 }
             }
@@ -2045,43 +2389,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         // Find the struct definition
         for statement in &file.statements {
-            if let Statement::Definition(Definition::Struct(struct_def)) = statement {
-                if struct_def.name.name == struct_name {
-                    // Check each regular field argument
-                    for (arg_name, arg_expr) in args {
-                        // Find the corresponding field in the struct
-                        if let Some(field) = struct_def
-                            .fields
-                            .iter()
-                            .find(|f| f.name.name == arg_name.name)
-                        {
-                            // If field is mutable, check that the arg expression is mutable
-                            if field.mutable && !self.is_expr_mutable(arg_expr, file) {
-                                self.errors.push(CompilerError::MutabilityMismatch {
-                                    param: arg_name.name.clone(),
-                                    span,
-                                });
+            if let Statement::Definition(def) = statement {
+                if let Definition::Struct(struct_def) = &**def {
+                    if struct_def.name.name == struct_name {
+                        // Check each regular field argument
+                        for (arg_name, arg_expr) in args {
+                            // Find the corresponding field in the struct
+                            if let Some(field) = struct_def
+                                .fields
+                                .iter()
+                                .find(|f| f.name.name == arg_name.name)
+                            {
+                                // If field is mutable, check that the arg expression is mutable
+                                if field.mutable && !self.is_expr_mutable(arg_expr, file) {
+                                    self.errors.push(CompilerError::MutabilityMismatch {
+                                        param: arg_name.name.clone(),
+                                        span,
+                                    });
+                                }
                             }
                         }
-                    }
-                    // Check each mount field argument
-                    for (mount_name, mount_expr) in mounts {
-                        // Find the corresponding mount field in the struct
-                        if let Some(field) = struct_def
-                            .mount_fields
-                            .iter()
-                            .find(|f| f.name.name == mount_name.name)
-                        {
-                            // If mount field is mutable, check that the mount expression is mutable
-                            if field.mutable && !self.is_expr_mutable(mount_expr, file) {
-                                self.errors.push(CompilerError::MutabilityMismatch {
-                                    param: mount_name.name.clone(),
-                                    span,
-                                });
+                        // Check each mount field argument
+                        for (mount_name, mount_expr) in mounts {
+                            // Find the corresponding mount field in the struct
+                            if let Some(field) = struct_def
+                                .mount_fields
+                                .iter()
+                                .find(|f| f.name.name == mount_name.name)
+                            {
+                                // If mount field is mutable, check that the mount expression is mutable
+                                if field.mutable && !self.is_expr_mutable(mount_expr, file) {
+                                    self.errors.push(CompilerError::MutabilityMismatch {
+                                        param: mount_name.name.clone(),
+                                        span,
+                                    });
+                                }
                             }
                         }
+                        return;
                     }
-                    return;
                 }
             }
         }
@@ -2129,6 +2475,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             BinaryOperator::And | BinaryOperator::Or => {
                 (left_type == "Boolean" && right_type == "Boolean")
                     || (left_type == "bool" && right_type == "bool")
+            }
+            // Range operator: Number + Number or compatible GPU integer types
+            BinaryOperator::Range => {
+                matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
+                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
         };
 
@@ -2281,6 +2632,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Collect all variant names from match arms
         let mut covered_variants = HashSet::new();
+        let mut has_wildcard = false;
         for arm in arms {
             match &arm.pattern {
                 Pattern::Variant { name, bindings } => {
@@ -2302,21 +2654,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         &variants,
                     );
                 }
+                Pattern::Wildcard => {
+                    // Wildcard covers all remaining variants
+                    has_wildcard = true;
+                }
             }
         }
 
-        // Check exhaustiveness - all variants must be covered
-        let missing_variants: Vec<String> = variants
-            .keys()
-            .filter(|v| !covered_variants.contains(*v))
-            .cloned()
-            .collect();
+        // Check exhaustiveness - all variants must be covered (unless there's a wildcard)
+        if !has_wildcard {
+            let missing_variants: Vec<String> = variants
+                .keys()
+                .filter(|v| !covered_variants.contains(*v))
+                .cloned()
+                .collect();
 
-        if !missing_variants.is_empty() {
-            self.errors.push(CompilerError::NonExhaustiveMatch {
-                missing: missing_variants.join(", "),
-                span,
-            });
+            if !missing_variants.is_empty() {
+                self.errors.push(CompilerError::NonExhaustiveMatch {
+                    missing: missing_variants.join(", "),
+                    span,
+                });
+            }
         }
     }
 
@@ -2413,23 +2771,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) -> Option<Vec<crate::ast::FieldDef>> {
         // First, search in the current file
         for statement in &current_file.statements {
-            if let Statement::Definition(Definition::Enum(enum_def)) = statement {
-                if enum_def.name.name == enum_name {
-                    // Find the variant
-                    for variant in &enum_def.variants {
-                        if variant.name.name == variant_name {
-                            return Some(variant.fields.clone());
-                        }
-                    }
-                    return None; // Variant not found
-                }
-            }
-        }
-
-        // If not found in current file, search through module cache
-        for (file, _) in self.module_cache.values() {
-            for statement in &file.statements {
-                if let Statement::Definition(Definition::Enum(enum_def)) = statement {
+            if let Statement::Definition(def) = statement {
+                if let Definition::Enum(enum_def) = &**def {
                     if enum_def.name.name == enum_name {
                         // Find the variant
                         for variant in &enum_def.variants {
@@ -2438,6 +2781,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             }
                         }
                         return None; // Variant not found
+                    }
+                }
+            }
+        }
+
+        // If not found in current file, search through module cache
+        for (file, _) in self.module_cache.values() {
+            for statement in &file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Enum(enum_def) = &**def {
+                        if enum_def.name.name == enum_name {
+                            // Find the variant
+                            for variant in &enum_def.variants {
+                                if variant.name.name == variant_name {
+                                    return Some(variant.fields.clone());
+                                }
+                            }
+                            return None; // Variant not found
+                        }
                     }
                 }
             }
@@ -2482,8 +2844,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check that structs implement all required fields from their traits
     fn validate_trait_implementations(&mut self, file: &File) {
         for statement in &file.statements {
-            if let Statement::Definition(Definition::Struct(struct_def)) = statement {
-                self.validate_struct_trait_implementation(struct_def);
+            if let Statement::Definition(def) = statement {
+                if let Definition::Struct(struct_def) = &**def {
+                    self.validate_struct_trait_implementation(struct_def);
+                }
             }
         }
     }
@@ -2579,7 +2943,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     name: n2, args: a2, ..
                 },
             ) => {
-                // TODO: Phase 3 - Proper generic type matching
+                // Generic types match if they have the same base type and matching arguments
                 n1.name == n2.name
                     && a1.len() == a2.len()
                     && a1
@@ -2696,6 +3060,53 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// Validate a standalone function definition (outside of impl blocks)
+    fn validate_standalone_function(&mut self, func: &crate::ast::FunctionDef, file: &File) {
+        // Clear local let bindings for this function
+        self.local_let_bindings.clear();
+
+        // Register function parameters as local bindings
+        // Function parameters are mutable by default (can be assigned to)
+        for param in &func.params {
+            let ty_str = if let Some(ty) = &param.ty {
+                self.validate_type(ty);
+                self.type_to_string(ty)
+            } else {
+                "Unknown".to_string()
+            };
+            // Register parameter as a local binding with its type (mutable=true for params)
+            self.local_let_bindings
+                .insert(param.name.name.clone(), (ty_str, true));
+        }
+
+        // Validate return type if declared
+        if let Some(return_type) = &func.return_type {
+            self.validate_type(return_type);
+        }
+
+        // Validate the function body expression
+        self.validate_expr(&func.body, file);
+
+        // If there's a declared return type, check it matches the body type
+        if let Some(declared_return_type) = &func.return_type {
+            let body_type = self.infer_type(&func.body, file);
+            let expected_type = self.type_to_string(declared_return_type);
+
+            // Check if types are compatible
+            if !self.type_strings_compatible(&expected_type, &body_type) {
+                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                    function: func.name.name.clone(),
+                    expected: expected_type,
+                    actual: body_type,
+                    span: func.name.span,
+                });
+            }
+        }
+
+        // Clear local let bindings after function
+        self.local_let_bindings.clear();
+    }
+
     /// Check if two type strings are compatible
     ///
     /// This handles:
@@ -2751,7 +3162,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Build the type dependency graph
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                match def {
+                match &**def {
                     Definition::Trait(trait_def) => {
                         let trait_name = trait_def.name.name.clone();
                         type_spans.insert(trait_name.clone(), trait_def.span);
@@ -2796,6 +3207,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Module(_) => {
                         // Modules don't create type dependencies themselves
                         // Type dependencies are handled per nested definition
+                    }
+                    Definition::Function(_) => {
+                        // Standalone functions don't create type dependencies
                     }
                 }
             }
@@ -2915,7 +3329,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Path references like User::admin or user.name don't reference let bindings directly
                 // (they reference fields/variants, not let bindings)
             }
-            Expr::StructInstantiation {
+            Expr::Invocation {
                 args,
                 mounts,
                 type_args: _,
@@ -2946,6 +3360,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Extract from both operands
                 references.extend(self.extract_let_references(left));
                 references.extend(self.extract_let_references(right));
+            }
+            Expr::UnaryOp { operand, .. } => {
+                // Extract from operand
+                references.extend(self.extract_let_references(operand));
             }
             Expr::ForExpr {
                 collection, body, ..
@@ -2980,18 +3398,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Extract from grouped expression
                 references.extend(self.extract_let_references(expr));
             }
-            Expr::ProvidesExpr { items, body, .. } => {
-                // Extract from provide item expressions
-                for item in items {
-                    references.extend(self.extract_let_references(&item.expr));
-                }
-                // Extract from body
-                references.extend(self.extract_let_references(body));
-            }
-            Expr::ConsumesExpr { body, .. } => {
-                // Extract from body (consumed names are not let references)
-                references.extend(self.extract_let_references(body));
-            }
             Expr::DictLiteral { entries, .. } => {
                 // Extract from all key-value expressions
                 for (key, value) in entries {
@@ -3013,18 +3419,32 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 references.extend(self.extract_let_references(value));
                 references.extend(self.extract_let_references(body));
             }
-            Expr::FunctionCall { args, .. } => {
-                // Extract from argument expressions
-                for arg in args {
-                    references.extend(self.extract_let_references(arg));
-                }
-            }
             Expr::MethodCall { receiver, args, .. } => {
                 // Extract from receiver and argument expressions
                 references.extend(self.extract_let_references(receiver));
                 for arg in args {
                     references.extend(self.extract_let_references(arg));
                 }
+            }
+            Expr::Block {
+                statements, result, ..
+            } => {
+                // Extract from block statements and result
+                for stmt in statements {
+                    match stmt {
+                        BlockStatement::Let { value, .. } => {
+                            references.extend(self.extract_let_references(value));
+                        }
+                        BlockStatement::Assign { target, value, .. } => {
+                            references.extend(self.extract_let_references(target));
+                            references.extend(self.extract_let_references(value));
+                        }
+                        BlockStatement::Expr(expr) => {
+                            references.extend(self.extract_let_references(expr));
+                        }
+                    }
+                }
+                references.extend(self.extract_let_references(result));
             }
         }
 
@@ -3058,17 +3478,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Type::Generic { name, args, .. } => {
-                // TODO: Phase 3 - Handle generic type dependencies properly
-                // For now, treat the base type as a dependency
+                // Generic type: Container<T, U> creates dependency on the base type
+                // and recursively on all type arguments
                 graph.add_dependency(from.to_string(), name.name.clone());
-                // And recursively add dependencies for type arguments
                 for arg in args {
                     Self::add_type_dependencies(graph, from, arg);
                 }
             }
             Type::TypeParameter(_) => {
-                // TODO: Phase 3 - Type parameters don't create dependencies
-                // as they are resolved within their generic context
+                // Type parameters (e.g., T in struct Container<T>) don't create dependencies
+                // because they're resolved at instantiation time, not definition time
             }
             Type::Dictionary { key, value } => {
                 // Recursively add dependencies for key and value types
@@ -3117,16 +3536,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .collect();
                 format!("({})", field_types.join(", "))
             }
-            Expr::StructInstantiation {
-                name, type_args, ..
+            Expr::Invocation {
+                path,
+                type_args,
+                args,
+                ..
             } => {
-                // Include generic type arguments in the inferred type
-                if type_args.is_empty() {
-                    name.name.clone()
+                // Join path to get the name
+                let name = path
+                    .iter()
+                    .map(|id| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+
+                // Check if this is a struct instantiation or function call
+                if self.symbols.is_struct(&name) {
+                    // Struct instantiation - return the struct type
+                    if type_args.is_empty() {
+                        name
+                    } else {
+                        let arg_types: Vec<String> =
+                            type_args.iter().map(|ty| self.type_to_string(ty)).collect();
+                        format!("{}<{}>", name, arg_types.join(", "))
+                    }
                 } else {
-                    let arg_types: Vec<String> =
-                        type_args.iter().map(|ty| self.type_to_string(ty)).collect();
-                    format!("{}<{}>", name.name, arg_types.join(", "))
+                    // Function call - infer return type from builtin or user-defined function
+                    // For builtins, we can look up the return type based on argument types
+                    if crate::builtins::BuiltinRegistry::global().is_builtin(&name) {
+                        // Get argument types for builtin function resolution
+                        let arg_types: Vec<String> = args
+                            .iter()
+                            .map(|(_, expr)| self.infer_type(expr, file))
+                            .collect();
+                        // Try to resolve builtin return type
+                        if let Some(ret_type) = crate::builtins::BuiltinRegistry::global()
+                            .resolve_return_type(&name, &arg_types)
+                        {
+                            ret_type
+                        } else {
+                            "Number".to_string() // Fallback for builtin functions
+                        }
+                    } else {
+                        // User-defined function - would need function table lookup
+                        // For now, return a generic type
+                        "Function".to_string()
+                    }
                 }
             }
             Expr::EnumInstantiation { enum_name, .. } => enum_name.name.clone(),
@@ -3168,6 +3622,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     if let Some(let_type) = self.symbols.get_let_type(name) {
                         return let_type.to_string();
                     }
+                    // Check if it's a local let binding or function parameter
+                    if let Some((local_type, _mutable)) = self.local_let_bindings.get(name) {
+                        return local_type.clone();
+                    }
                     // Check if we're inside an impl block and this is a field reference
                     if let Some(ref struct_name) = self.current_impl_struct {
                         if let Some(struct_info) = self.symbols.get_struct(struct_name) {
@@ -3208,6 +3666,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     | BinaryOperator::Ne
                     | BinaryOperator::And
                     | BinaryOperator::Or => "Boolean".to_string(),
+                    BinaryOperator::Range => format!("Range<{}>", self.infer_type(left, file)),
+                }
+            }
+            Expr::UnaryOp { op, operand, .. } => {
+                // Result type depends on operator
+                match op {
+                    UnaryOperator::Neg => self.infer_type(operand, file), // Same as operand type
+                    UnaryOperator::Not => "Boolean".to_string(),
                 }
             }
             Expr::ForExpr { body, .. } => {
@@ -3226,14 +3692,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .unwrap_or_else(|| "Unknown".to_string())
             }
             Expr::Group { expr, .. } => self.infer_type(expr, file),
-            Expr::ProvidesExpr { body, .. } => {
-                // The type of a provides expression is the type of its body
-                self.infer_type(body, file)
-            }
-            Expr::ConsumesExpr { body, .. } => {
-                // The type of a consumes expression is the type of its body
-                self.infer_type(body, file)
-            }
             Expr::DictLiteral { .. } => {
                 // Dictionary literals - type would need to be inferred from entries
                 "Dictionary".to_string()
@@ -3250,13 +3708,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Let expressions have the type of their body
                 self.infer_type(body, file)
             }
-            Expr::FunctionCall { .. } => {
-                // Function call return type - would need function signature lookup
-                "Unknown".to_string()
-            }
             Expr::MethodCall { .. } => {
                 // Method call return type - would need method signature lookup
                 "Unknown".to_string()
+            }
+            Expr::Block { result, .. } => {
+                // Block expressions have the type of their result expression
+                self.infer_type(result, file)
             }
         }
     }
@@ -3305,23 +3763,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Tuple literals are not mutable
             Expr::Tuple { .. } => false,
 
-            // Struct/Enum instantiations are not mutable
-            Expr::StructInstantiation { .. }
+            // Invocation (struct instantiation or function call) returns new values, not mutable
+            Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. } => false,
 
-            // Binary operations are not mutable
+            // Binary and unary operations are not mutable
             Expr::BinaryOp { .. } => false,
+            Expr::UnaryOp { .. } => false,
 
             // For/If/Match expressions result in new values, not mutable
             Expr::ForExpr { .. } | Expr::IfExpr { .. } | Expr::MatchExpr { .. } => false,
 
             // Grouped expressions delegate to inner expression
             Expr::Group { expr, .. } => self.is_expr_mutable(expr, file),
-
-            // Provides and consumes expressions are not mutable
-            Expr::ProvidesExpr { .. } => false,
-            Expr::ConsumesExpr { .. } => false,
 
             // Dictionary expressions are not mutable
             Expr::DictLiteral { .. } => false,
@@ -3333,16 +3788,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Let expressions delegate to their body
             Expr::LetExpr { body, .. } => self.is_expr_mutable(body, file),
 
-            // Function calls return new values, not mutable
-            Expr::FunctionCall { .. } => false,
-
             // Method calls return new values, not mutable
             Expr::MethodCall { .. } => false,
+
+            // Block expressions delegate to their result
+            Expr::Block { result, .. } => self.is_expr_mutable(result, file),
         }
     }
 
     /// Check if a let binding is mutable
     fn is_let_mutable(&self, name: &str, file: &File) -> bool {
+        // First check local let bindings (function params, block lets)
+        if let Some((_, mutable)) = self.local_let_bindings.get(name) {
+            return *mutable;
+        }
+
+        // Then check file-level let bindings
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
                 // Check if the name is in any binding from this pattern
@@ -3404,11 +3865,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check if a struct field is mutable
     fn is_struct_field_mutable(&self, type_name: &str, field_name: &str, file: &File) -> bool {
         for statement in &file.statements {
-            if let Statement::Definition(Definition::Struct(struct_def)) = statement {
-                if struct_def.name.name == type_name {
-                    for field in &struct_def.fields {
-                        if field.name.name == field_name {
-                            return field.mutable;
+            if let Statement::Definition(def) = statement {
+                if let Definition::Struct(struct_def) = &**def {
+                    if struct_def.name.name == type_name {
+                        for field in &struct_def.fields {
+                            if field.name.name == field_name {
+                                return field.mutable;
+                            }
                         }
                     }
                 }
@@ -3420,71 +3883,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Get the type of a struct field
     fn get_field_type(&self, type_name: &str, field_name: &str, file: &File) -> String {
         for statement in &file.statements {
-            if let Statement::Definition(Definition::Struct(struct_def)) = statement {
-                if struct_def.name.name == type_name {
-                    for field in &struct_def.fields {
-                        if field.name.name == field_name {
-                            return self.type_to_string(&field.ty);
+            if let Statement::Definition(def) = statement {
+                if let Definition::Struct(struct_def) = &**def {
+                    if struct_def.name.name == type_name {
+                        for field in &struct_def.fields {
+                            if field.name.name == field_name {
+                                return self.type_to_string(&field.ty);
+                            }
                         }
                     }
                 }
             }
         }
         "Unknown".to_string()
-    }
-
-    /// Push a new provides scope with the given items
-    fn push_provides_scope(&mut self, items: &[crate::ast::ProvideItem], file: &File) {
-        let mut scope = HashMap::new();
-
-        for item in items {
-            let name = if let Some(alias) = &item.alias {
-                Some(alias.name.clone())
-            } else if let Expr::Reference { path, .. } = &*item.expr {
-                path.first().map(|p| p.name.clone())
-            } else {
-                None
-            };
-
-            if let Some(name) = name {
-                // Infer the type of the item expression
-                let ty = self.infer_type(&item.expr, file);
-
-                let binding = ContextBinding {
-                    ty,
-                    mutable: false, // Provides are immutable by default
-                };
-
-                scope.insert(name, binding);
-            }
-        }
-
-        self.context_scopes.push(scope);
-    }
-
-    /// Pop the current context scope
-    fn pop_context_scope(&mut self) {
-        self.context_scopes.pop();
-    }
-
-    /// Look up a context binding by name in the current scope stack
-    fn lookup_context_binding(&self, name: &str) -> Option<&ContextBinding> {
-        // Search from the most recent scope backwards
-        for scope in self.context_scopes.iter().rev() {
-            if let Some(binding) = scope.get(name) {
-                return Some(binding);
-            }
-        }
-        None
-    }
-
-    /// Check if a context item is mutable
-    #[allow(dead_code)]
-    fn is_context_item_mutable(&self, name: &str, _file: &File) -> bool {
-        // Look up the context binding and return its mutability
-        self.lookup_context_binding(name)
-            .map(|binding| binding.mutable)
-            .unwrap_or(false)
     }
 
     /// Push a generic scope for a definition with generic parameters
@@ -3525,7 +3936,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Get the constraints for a type parameter if it's in scope
-    #[allow(dead_code)]
     fn get_type_parameter_constraints(&self, name: &str) -> Option<Vec<String>> {
         // Search from the most recent scope backwards
         for scope in self.generic_scopes.iter().rev() {
@@ -3534,6 +3944,201 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
         None
+    }
+
+    /// Resolve a nested module type path (e.g., ["outer", "inner", "Type"])
+    /// Returns Some(error_message) if the type doesn't exist, None if valid
+    fn resolve_nested_module_type(&self, parts: &[&str], _span: Span) -> Option<String> {
+        if parts.is_empty() {
+            return Some("empty module path".to_string());
+        }
+
+        // The last part is the type name, the rest are module names
+        let type_name = parts[parts.len() - 1];
+        let module_parts = &parts[..parts.len() - 1];
+
+        // Traverse nested modules
+        let mut current_symbols = &self.symbols;
+        let mut path_so_far = String::new();
+
+        for (i, module_name) in module_parts.iter().enumerate() {
+            if i > 0 {
+                path_so_far.push_str("::");
+            }
+            path_so_far.push_str(module_name);
+
+            if let Some(module_info) = current_symbols.modules.get(*module_name) {
+                current_symbols = &module_info.symbols;
+            } else {
+                return Some(format!("module '{}' not found", path_so_far));
+            }
+        }
+
+        // Check if type exists in the final module
+        if !current_symbols.is_type(type_name) && !current_symbols.is_trait(type_name) {
+            return Some(format!(
+                "type '{}' not found in module '{}'",
+                type_name, path_so_far
+            ));
+        }
+
+        None // Type is valid
+    }
+
+    /// Check if a method exists on a given type
+    ///
+    /// Handles:
+    /// 1. Builtin methods on primitive types (vec3.normalize(), mat4.transpose(), etc.)
+    /// 2. User-defined methods in impl blocks
+    fn method_exists_on_type(&self, type_name: &str, method_name: &str, file: &File) -> bool {
+        // Skip validation for unknown types (chained method calls where we can't infer intermediate types)
+        if type_name == "Unknown" || type_name.contains("Unknown") {
+            return true;
+        }
+
+        // Check if it's a primitive GPU type with builtin methods
+        if let Some(prim) = self.string_to_primitive_type(type_name) {
+            if crate::builtins::resolve_method_type(prim, method_name).is_some() {
+                return true;
+            }
+        }
+
+        // Check if the method is a common builtin that works on numbers/vectors
+        // This handles chained calls where type inference might not propagate correctly
+        let common_builtins = [
+            "abs",
+            "sign",
+            "floor",
+            "ceil",
+            "round",
+            "trunc",
+            "fract",
+            "sin",
+            "cos",
+            "tan",
+            "asin",
+            "acos",
+            "atan",
+            "exp",
+            "log",
+            "sqrt",
+            "pow",
+            "min",
+            "max",
+            "clamp",
+            "normalize",
+            "length",
+            "distance",
+            "dot",
+            "cross",
+            "saturate",
+            "radians",
+            "degrees",
+        ];
+        if common_builtins.contains(&method_name) {
+            return true;
+        }
+
+        // Check if it's a struct with an impl block containing the method
+        if self.symbols.is_struct(type_name) {
+            // Check impl blocks in the current file
+            for statement in &file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Impl(impl_def) = &**def {
+                        if impl_def.name.name == type_name {
+                            for func in &impl_def.functions {
+                                if func.name.name == method_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Also check if there's an impl in the symbol table
+            if self.symbols.impls.contains_key(type_name) {
+                // The impl exists, but we need to check for the method
+                // For now, if we find an impl, we assume the method might exist
+                // (the impl block methods aren't stored in the symbol table currently)
+            }
+        }
+
+        false
+    }
+
+    /// Convert a type string to a PrimitiveType if applicable
+    fn string_to_primitive_type(&self, type_name: &str) -> Option<PrimitiveType> {
+        match type_name {
+            "f32" | "Number" => Some(PrimitiveType::F32),
+            "i32" => Some(PrimitiveType::I32),
+            "u32" => Some(PrimitiveType::U32),
+            "bool" | "Boolean" => Some(PrimitiveType::Bool),
+            "vec2" => Some(PrimitiveType::Vec2),
+            "vec3" => Some(PrimitiveType::Vec3),
+            "vec4" => Some(PrimitiveType::Vec4),
+            "ivec2" => Some(PrimitiveType::IVec2),
+            "ivec3" => Some(PrimitiveType::IVec3),
+            "ivec4" => Some(PrimitiveType::IVec4),
+            "uvec2" => Some(PrimitiveType::UVec2),
+            "uvec3" => Some(PrimitiveType::UVec3),
+            "uvec4" => Some(PrimitiveType::UVec4),
+            "mat2" => Some(PrimitiveType::Mat2),
+            "mat3" => Some(PrimitiveType::Mat3),
+            "mat4" => Some(PrimitiveType::Mat4),
+            _ => None,
+        }
+    }
+
+    /// Check if a type satisfies a trait constraint
+    ///
+    /// A type satisfies a trait constraint if:
+    /// 1. It's a struct that implements the trait (via : Trait or impl Trait for Struct)
+    /// 2. It's an enum that implements the trait
+    /// 3. It's a type parameter that has the constraint in scope
+    fn type_satisfies_trait_constraint(&self, ty: &Type, trait_name: &str) -> bool {
+        match ty {
+            Type::Ident(ident) => {
+                // Check if struct implements the trait
+                if let Some(struct_info) = self.symbols.get_struct(&ident.name) {
+                    // Check inline traits (struct Foo: Trait)
+                    if struct_info.traits.iter().any(|t| t == trait_name) {
+                        return true;
+                    }
+                }
+                // Check trait impls (impl Trait for Struct)
+                let all_traits = self.symbols.get_all_traits_for_struct(&ident.name);
+                if all_traits.contains(&trait_name.to_string()) {
+                    return true;
+                }
+                // Check if enum implements the trait
+                let enum_traits = self.symbols.get_all_traits_for_enum(&ident.name);
+                if enum_traits.contains(&trait_name.to_string()) {
+                    return true;
+                }
+                false
+            }
+            Type::Generic { name, .. } => {
+                // For generic types, check if the base type implements the trait
+                if let Some(struct_info) = self.symbols.get_struct(&name.name) {
+                    if struct_info.traits.iter().any(|t| t == trait_name) {
+                        return true;
+                    }
+                }
+                let all_traits = self.symbols.get_all_traits_for_struct(&name.name);
+                all_traits.contains(&trait_name.to_string())
+            }
+            Type::TypeParameter(param) => {
+                // Check if the type parameter has the constraint in scope
+                if let Some(constraints) = self.get_type_parameter_constraints(&param.name) {
+                    return constraints.contains(&trait_name.to_string());
+                }
+                false
+            }
+            // Primitives don't implement user-defined traits
+            Type::Primitive(_) => false,
+            // Arrays, optionals, tuples, etc. don't implement user-defined traits
+            _ => false,
+        }
     }
 
     /// Get a reference to the symbol table for querying

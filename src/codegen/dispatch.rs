@@ -192,52 +192,24 @@ impl<'a> DispatchGenerator<'a> {
         output
     }
 
-    /// Generate a dispatch function stub (legacy, for backward compatibility).
-    #[deprecated(note = "Use gen_dispatch_function instead")]
-    pub fn gen_dispatch_function_stub(
-        &self,
-        info: &TraitDispatchInfo,
-        method_name: &str,
-        params: &[(String, String)],
-        return_type: Option<&str>,
-    ) -> String {
-        self.gen_dispatch_function(info, method_name, params, return_type, None)
-    }
-
-    /// Generate a dispatch table as a data structure.
-    ///
-    /// Useful for render dispatch where we want to look up
-    /// rendering parameters by type.
-    pub fn gen_dispatch_table_struct(&self, info: &TraitDispatchInfo) -> String {
-        let mut output = String::new();
-
-        output.push_str(&format!(
-            "// Dispatch table for {} ({} implementors)\n",
-            info.trait_name,
-            info.implementors.len()
-        ));
-
-        output.push_str(&format!("struct {}DispatchTable {{\n", info.trait_name));
-        output.push_str("    type_tag: u32,\n");
-        output.push_str("    // Add trait-specific fields here\n");
-        output.push_str("}\n");
-
-        output
-    }
-
-    /// Generate the common ElementData struct for storing element field data.
+    /// Generate the trait-specific data struct for storing element field data.
     ///
     /// This struct is a union-like storage that can hold data for any
-    /// concrete type that implements the trait.
+    /// concrete type that implements the trait. The struct name is derived
+    /// from the trait name (e.g., `Fill` -> `FillData`).
     pub fn gen_element_data_struct(
         &self,
         info: &TraitDispatchInfo,
         max_f32_fields: usize,
     ) -> String {
         let mut output = String::new();
+        let data_struct_name = format!("{}Data", info.trait_name);
 
-        output.push_str("// Element data storage (union-like struct for all implementors)\n");
-        output.push_str("struct ElementData {\n");
+        output.push_str(&format!(
+            "// {} data storage (union-like struct for all implementors)\n",
+            info.trait_name
+        ));
+        output.push_str(&format!("struct {} {{\n", data_struct_name));
         output.push_str("    type_tag: u32,\n");
         output.push_str("    element_index: u32,\n");
         output.push_str(&format!("    data: array<f32, {}>,\n", max_f32_fields));
@@ -267,15 +239,17 @@ impl<'a> DispatchGenerator<'a> {
 
     /// Generate a load function for a specific struct type.
     ///
-    /// This reads field values from ElementData and constructs a struct instance.
-    pub fn gen_struct_load_function(&self, imp: &ImplementorInfo) -> String {
+    /// This reads field values from the trait-specific data struct and
+    /// constructs a struct instance.
+    pub fn gen_struct_load_function(&self, imp: &ImplementorInfo, trait_name: &str) -> String {
         let mut output = String::new();
         let struct_def = self.module.get_struct(imp.struct_id);
         let struct_name_lower = imp.struct_name.to_lowercase();
+        let data_struct_name = format!("{}Data", trait_name);
 
         output.push_str(&format!(
-            "fn load_{}(data: ptr<function, ElementData>) -> {} {{\n",
-            struct_name_lower, imp.struct_name
+            "fn load_{}(data: ptr<function, {}>) -> {} {{\n",
+            struct_name_lower, data_struct_name, imp.struct_name
         ));
         output.push_str(&format!("    var result: {};\n", imp.struct_name));
 
@@ -298,7 +272,7 @@ impl<'a> DispatchGenerator<'a> {
         let mut output = String::new();
 
         for imp in &info.implementors {
-            output.push_str(&self.gen_struct_load_function(imp));
+            output.push_str(&self.gen_struct_load_function(imp, &info.trait_name));
             output.push('\n');
         }
 
@@ -387,7 +361,37 @@ impl<'a> DispatchGenerator<'a> {
     }
 }
 
+/// Default data size for external trait placeholders (in f32 units).
+pub const DEFAULT_EXTERNAL_TRAIT_DATA_SIZE: usize = 16;
+
 impl<'a> DispatchGenerator<'a> {
+    /// Generate a placeholder data struct for an external trait.
+    ///
+    /// When we reference a trait from an imported module, we don't have
+    /// the implementor information available. This generates a placeholder
+    /// data struct that can store trait dispatch data at runtime.
+    ///
+    /// # Parameters
+    ///
+    /// - `trait_name`: The simple name of the trait (without module path)
+    /// - `data_size`: Size of the data array in f32 units
+    pub fn gen_external_trait_data_struct(trait_name: &str, data_size: usize) -> String {
+        let mut output = String::new();
+        let data_struct_name = format!("{}Data", trait_name);
+
+        output.push_str(&format!(
+            "// {} data storage (external trait placeholder)\n",
+            trait_name
+        ));
+        output.push_str(&format!("struct {} {{\n", data_struct_name));
+        output.push_str("    type_tag: u32,\n");
+        output.push_str("    element_index: u32,\n");
+        output.push_str(&format!("    data: array<f32, {}>,\n", data_size));
+        output.push_str("}\n");
+
+        output
+    }
+
     /// Generate complete dispatch code for a trait.
     ///
     /// This generates:
@@ -543,9 +547,9 @@ mod tests {
 
         let info = gen.collect_trait_dispatch("Renderable").unwrap();
         let box_imp = &info.implementors[0];
-        let code = gen.gen_struct_load_function(box_imp);
+        let code = gen.gen_struct_load_function(box_imp, &info.trait_name);
 
-        assert!(code.contains("fn load_box(data: ptr<function, ElementData>) -> Box"));
+        assert!(code.contains("fn load_box(data: ptr<function, RenderableData>) -> Box"));
         assert!(code.contains("var result: Box;"));
         assert!(code.contains("result.width = (*data).data[0]"));
         assert!(code.contains("result.height = (*data).data[1]"));
@@ -567,7 +571,8 @@ mod tests {
         let info = gen.collect_trait_dispatch("Shape").unwrap();
         let code = gen.gen_element_data_struct(&info, 16);
 
-        assert!(code.contains("struct ElementData"));
+        // Struct should be named after the trait (ShapeData, not ElementData)
+        assert!(code.contains("struct ShapeData"));
         assert!(code.contains("type_tag: u32"));
         assert!(code.contains("data: array<f32, 16>"));
         assert!(code.contains("CIRCLE_AREA_OFFSET: u32 = 0u"));
@@ -600,7 +605,8 @@ mod tests {
         // Should have all components
         assert!(code.contains("FILL_TAG_SOLID"));
         assert!(code.contains("FILL_TAG_GRADIENT"));
-        assert!(code.contains("struct ElementData"));
+        // Data struct should be named after trait (FillData, not ElementData)
+        assert!(code.contains("struct FillData"));
         assert!(code.contains("fn load_solid"));
         assert!(code.contains("fn load_gradient"));
         assert!(code.contains("fn dispatch_fill_sample"));

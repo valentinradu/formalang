@@ -49,6 +49,21 @@ pub enum NodeAtPosition<'ast> {
     /// Identifier
     Identifier(&'ast Ident),
 
+    /// Impl block definition
+    ImplDef(&'ast ImplDef),
+
+    /// Module definition
+    ModuleDef(&'ast ModuleDef),
+
+    /// Standalone function definition
+    FunctionDef(&'ast FunctionDef),
+
+    /// Function definition inside impl block
+    FnDef(&'ast FnDef),
+
+    /// Function parameter
+    FunctionParam(&'ast FnParam),
+
     /// No node found at position
     None,
 }
@@ -67,7 +82,7 @@ pub struct PositionContext<'ast> {
 }
 
 impl<'ast> PositionContext<'ast> {
-    /// Find the enclosing definition (trait, model, view, enum)
+    /// Find the enclosing definition (trait, struct, enum, impl, module, function)
     pub fn enclosing_definition(&self) -> Option<&NodeAtPosition<'ast>> {
         self.parents.iter().find(|node| {
             matches!(
@@ -75,6 +90,10 @@ impl<'ast> PositionContext<'ast> {
                 NodeAtPosition::TraitDef(_)
                     | NodeAtPosition::StructDef(_)
                     | NodeAtPosition::EnumDef(_)
+                    | NodeAtPosition::ImplDef(_)
+                    | NodeAtPosition::ModuleDef(_)
+                    | NodeAtPosition::FunctionDef(_)
+                    | NodeAtPosition::FnDef(_)
             )
         })
     }
@@ -153,7 +172,7 @@ impl<'ast> NodeFinder<'ast> {
                 }
             }
             Statement::Definition(definition) => {
-                self.visit_definition(definition);
+                self.visit_definition(definition.as_ref());
             }
         }
     }
@@ -189,17 +208,73 @@ impl<'ast> NodeFinder<'ast> {
 
     /// Visit a let binding
     fn visit_let_binding(&mut self, let_binding: &'ast LetBinding) {
-        // Check pattern (for simple patterns, check the identifier)
-        if let BindingPattern::Simple(ident) = &let_binding.pattern {
-            if span_contains_offset(&ident.span, self.offset) {
-                self.found_node = Some(NodeAtPosition::Identifier(ident));
-                return;
-            }
+        // Check pattern
+        self.visit_binding_pattern(&let_binding.pattern);
+        if self.found_node.is_some() {
+            return;
         }
-        // TODO: Handle other binding patterns (Array, Struct, Tuple)
 
         // Check value expression
         self.visit_expr(&let_binding.value);
+    }
+
+    /// Visit a binding pattern (for destructuring support)
+    fn visit_binding_pattern(&mut self, pattern: &'ast BindingPattern) {
+        match pattern {
+            BindingPattern::Simple(ident) => {
+                if span_contains_offset(&ident.span, self.offset) {
+                    self.found_node = Some(NodeAtPosition::Identifier(ident));
+                }
+            }
+            BindingPattern::Array { elements, .. } => {
+                for element in elements {
+                    self.visit_array_pattern_element(element);
+                    if self.found_node.is_some() {
+                        return;
+                    }
+                }
+            }
+            BindingPattern::Struct { fields, .. } => {
+                for field in fields {
+                    if span_contains_offset(&field.name.span, self.offset) {
+                        self.found_node = Some(NodeAtPosition::Identifier(&field.name));
+                        return;
+                    }
+                    // Check alias if present
+                    if let Some(alias) = &field.alias {
+                        if span_contains_offset(&alias.span, self.offset) {
+                            self.found_node = Some(NodeAtPosition::Identifier(alias));
+                            return;
+                        }
+                    }
+                }
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                for element in elements {
+                    self.visit_binding_pattern(element);
+                    if self.found_node.is_some() {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Visit an array pattern element
+    fn visit_array_pattern_element(&mut self, element: &'ast ArrayPatternElement) {
+        match element {
+            ArrayPatternElement::Binding(pattern) => {
+                self.visit_binding_pattern(pattern);
+            }
+            ArrayPatternElement::Rest(Some(ident)) => {
+                if span_contains_offset(&ident.span, self.offset) {
+                    self.found_node = Some(NodeAtPosition::Identifier(ident));
+                }
+            }
+            ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {
+                // No identifier to check
+            }
+        }
     }
 
     /// Visit a definition
@@ -235,13 +310,33 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
-            Definition::Impl(_impl_def) => {
-                // Impl blocks don't have position tracking yet
-                // TODO: Add proper impl block navigation
+            Definition::Impl(impl_def) => {
+                if span_contains_offset(&impl_def.span, self.offset) {
+                    self.parents.push(NodeAtPosition::ImplDef(impl_def));
+                    self.visit_impl_def(impl_def);
+                    if self.found_node.is_none() {
+                        self.parents.pop();
+                    }
+                }
             }
-            Definition::Module(_module_def) => {
-                // Module definitions don't have position tracking yet
-                // TODO: Add proper module navigation
+            Definition::Module(module_def) => {
+                if span_contains_offset(&module_def.span, self.offset) {
+                    self.parents.push(NodeAtPosition::ModuleDef(module_def));
+                    self.visit_module_def(module_def);
+                    if self.found_node.is_none() {
+                        self.parents.pop();
+                    }
+                }
+            }
+            Definition::Function(func_def) => {
+                if span_contains_offset(&func_def.span, self.offset) {
+                    self.parents
+                        .push(NodeAtPosition::FunctionDef(func_def.as_ref()));
+                    self.visit_function_def(func_def.as_ref());
+                    if self.found_node.is_none() {
+                        self.parents.pop();
+                    }
+                }
             }
         }
     }
@@ -411,6 +506,156 @@ impl<'ast> NodeFinder<'ast> {
         // If no specific node found, return the variant itself
         if self.found_node.is_none() {
             self.found_node = Some(NodeAtPosition::EnumVariant(variant));
+        }
+    }
+
+    /// Visit an impl block definition
+    fn visit_impl_def(&mut self, impl_def: &'ast ImplDef) {
+        // Check the struct name
+        if span_contains_offset(&impl_def.name.span, self.offset) {
+            self.found_node = Some(NodeAtPosition::Identifier(&impl_def.name));
+            return;
+        }
+
+        // Check trait name if present
+        if let Some(trait_name) = &impl_def.trait_name {
+            if span_contains_offset(&trait_name.span, self.offset) {
+                self.found_node = Some(NodeAtPosition::Identifier(trait_name));
+                return;
+            }
+        }
+
+        // Check functions within the impl block
+        for func in &impl_def.functions {
+            if span_contains_offset(&func.span, self.offset) {
+                self.parents.push(NodeAtPosition::FnDef(func));
+                self.visit_fn_def(func);
+                if self.found_node.is_none() {
+                    self.parents.pop();
+                }
+                if self.found_node.is_some() {
+                    return;
+                }
+            }
+        }
+
+        // If no specific node found, return the impl def itself
+        if self.found_node.is_none() {
+            self.found_node = Some(NodeAtPosition::ImplDef(impl_def));
+        }
+    }
+
+    /// Visit a function definition inside an impl block (FnDef)
+    fn visit_fn_def(&mut self, func_def: &'ast FnDef) {
+        // Check function name
+        if span_contains_offset(&func_def.name.span, self.offset) {
+            self.found_node = Some(NodeAtPosition::Identifier(&func_def.name));
+            return;
+        }
+
+        // Check parameters
+        for param in &func_def.params {
+            if span_contains_offset(&param.span, self.offset) {
+                // Check parameter name
+                if span_contains_offset(&param.name.span, self.offset) {
+                    self.found_node = Some(NodeAtPosition::Identifier(&param.name));
+                    return;
+                }
+                // Check parameter type
+                if let Some(ref ty) = param.ty {
+                    self.visit_type(ty);
+                    if self.found_node.is_some() {
+                        return;
+                    }
+                }
+                // Return the parameter itself
+                self.found_node = Some(NodeAtPosition::FunctionParam(param));
+                return;
+            }
+        }
+
+        // Check return type
+        if let Some(ref ret_ty) = func_def.return_type {
+            self.visit_type(ret_ty);
+            if self.found_node.is_some() {
+                return;
+            }
+        }
+
+        // Check body expression
+        self.visit_expr(&func_def.body);
+
+        // If no specific node found, return the fn def itself
+        if self.found_node.is_none() {
+            self.found_node = Some(NodeAtPosition::FnDef(func_def));
+        }
+    }
+
+    /// Visit a module definition
+    fn visit_module_def(&mut self, module_def: &'ast ModuleDef) {
+        // Check the module name
+        if span_contains_offset(&module_def.name.span, self.offset) {
+            self.found_node = Some(NodeAtPosition::Identifier(&module_def.name));
+            return;
+        }
+
+        // Check nested definitions
+        for def in &module_def.definitions {
+            self.visit_definition(def);
+            if self.found_node.is_some() {
+                return;
+            }
+        }
+
+        // If no specific node found, return the module def itself
+        if self.found_node.is_none() {
+            self.found_node = Some(NodeAtPosition::ModuleDef(module_def));
+        }
+    }
+
+    /// Visit a standalone function definition
+    fn visit_function_def(&mut self, func_def: &'ast FunctionDef) {
+        // Check function name
+        if span_contains_offset(&func_def.name.span, self.offset) {
+            self.found_node = Some(NodeAtPosition::Identifier(&func_def.name));
+            return;
+        }
+
+        // Check parameters
+        for param in &func_def.params {
+            if span_contains_offset(&param.span, self.offset) {
+                // Check parameter name
+                if span_contains_offset(&param.name.span, self.offset) {
+                    self.found_node = Some(NodeAtPosition::Identifier(&param.name));
+                    return;
+                }
+                // Check parameter type
+                if let Some(ref ty) = param.ty {
+                    self.visit_type(ty);
+                    if self.found_node.is_some() {
+                        return;
+                    }
+                }
+                // Return the parameter itself
+                self.found_node = Some(NodeAtPosition::FunctionParam(param));
+                return;
+            }
+        }
+
+        // Check return type
+        if let Some(ref ret_ty) = func_def.return_type {
+            self.visit_type(ret_ty);
+            if self.found_node.is_some() {
+                return;
+            }
+        }
+
+        // Check body expression
+        self.visit_expr(&func_def.body);
+
+        // If no specific node found, return the function def itself
+        if self.found_node.is_none() {
+            self.found_node = Some(NodeAtPosition::FunctionDef(func_def));
         }
     }
 
@@ -637,25 +882,24 @@ impl<'ast> NodeFinder<'ast> {
     fn expr_span(expr: &Expr) -> Option<Span> {
         match expr {
             Expr::Literal(_) => None, // Literals don't have their own spans
-            Expr::StructInstantiation { span, .. }
+            Expr::Invocation { span, .. }
             | Expr::EnumInstantiation { span, .. }
             | Expr::InferredEnumInstantiation { span, .. }
             | Expr::Array { span, .. }
             | Expr::Tuple { span, .. }
             | Expr::Reference { span, .. }
             | Expr::BinaryOp { span, .. }
+            | Expr::UnaryOp { span, .. }
             | Expr::ForExpr { span, .. }
             | Expr::IfExpr { span, .. }
             | Expr::MatchExpr { span, .. }
             | Expr::Group { span, .. }
-            | Expr::ProvidesExpr { span, .. }
-            | Expr::ConsumesExpr { span, .. }
             | Expr::DictLiteral { span, .. }
             | Expr::DictAccess { span, .. }
             | Expr::ClosureExpr { span, .. }
             | Expr::LetExpr { span, .. }
-            | Expr::FunctionCall { span, .. }
-            | Expr::MethodCall { span, .. } => Some(*span),
+            | Expr::MethodCall { span, .. }
+            | Expr::Block { span, .. } => Some(*span),
         }
     }
 }

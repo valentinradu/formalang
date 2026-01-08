@@ -204,10 +204,7 @@ fn test_struct_instantiation_with_type_args() {
             value: T
         }
         struct Container {
-            box: Box<String>
-        }
-        impl Container {
-            box: Box<String>(value: "hello")
+            box: Box<String> = Box<String>(value: "hello")
         }
     "#;
     let result = compile(source);
@@ -222,11 +219,8 @@ fn test_struct_instantiation_shorthand() {
             y: Number
         }
         struct Line {
-            start: Point,
+            start: Point = Point(x: 0, y: 0),
             end: Point
-        }
-        impl Line {
-            start: Point(x: 0, y: 0)
         }
     "#;
     let result = compile(source);
@@ -244,10 +238,7 @@ fn test_impl_with_array() {
             name: String
         }
         struct List {
-            items: [Item]
-        }
-        impl List {
-            items: [Item(name: "a"), Item(name: "b")]
+            items: [Item] = [Item(name: "a"), Item(name: "b")]
         }
     "#;
     let result = compile(source);
@@ -258,10 +249,7 @@ fn test_impl_with_array() {
 fn test_impl_with_if() {
     let source = r#"
         struct Result {
-            value: String
-        }
-        impl Result {
-            value: if true { "yes" } else { "no" }
+            value: String = if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -275,10 +263,7 @@ fn test_impl_with_for() {
             id: Number
         }
         struct Collection {
-            items: [Item]
-        }
-        impl Collection {
-            items: for i in [1, 2, 3] { Item(id: i) }
+            items: [Item] = for i in [1, 2, 3] { Item(id: i) }
         }
     "#;
     let result = compile(source);
@@ -325,10 +310,7 @@ fn test_mount_with_trait() {
 fn test_dictionary_field_type() {
     let source = r#"
         struct Cache {
-            data: [String: Number]
-        }
-        impl Cache {
-            data: ["a": 1, "b": 2]
+            data: [String: Number] = ["a": 1, "b": 2]
         }
     "#;
     let result = compile(source);

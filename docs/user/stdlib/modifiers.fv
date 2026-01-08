@@ -1,0 +1,551 @@
+/// Transform and Modifier Types
+///
+/// This module provides transform operations and the modifier system.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+
+// =============================================================================
+// TRANSFORM TYPES
+// =============================================================================
+
+/// Basic transform operations.
+pub enum TransformType {
+    rotation(angle: f32),
+    scale(x: f32, y: f32),
+    skew(x: f32, y: f32),
+    translation(x: f32, y: f32)
+}
+
+impl TransformType {
+    /// Convert to 3x3 transformation matrix.
+    fn to_matrix(self) -> mat3 {
+        match self {
+            .rotation(angle): {
+                let rad = angle * 3.14159265359 / 180.0
+                let c = cos(rad)
+                let s = sin(rad)
+                mat3(
+                    vec3(c, s, 0.0),
+                    vec3(-s, c, 0.0),
+                    vec3(0.0, 0.0, 1.0)
+                )
+            },
+            .scale(x, y): mat3(
+                vec3(x, 0.0, 0.0),
+                vec3(0.0, y, 0.0),
+                vec3(0.0, 0.0, 1.0)
+            ),
+            .skew(x, y): {
+                let rad_x = x * 3.14159265359 / 180.0
+                let rad_y = y * 3.14159265359 / 180.0
+                mat3(
+                    vec3(1.0, tan(rad_y), 0.0),
+                    vec3(tan(rad_x), 1.0, 0.0),
+                    vec3(0.0, 0.0, 1.0)
+                )
+            },
+            .translation(x, y): mat3(
+                vec3(1.0, 0.0, 0.0),
+                vec3(0.0, 1.0, 0.0),
+                vec3(x, y, 1.0)
+            )
+        }
+    }
+
+    /// Apply transform to a point.
+    fn apply(self, point: vec2) -> vec2 {
+        match self {
+            .rotation(angle): {
+                let rad = angle * 3.14159265359 / 180.0
+                let c = cos(rad)
+                let s = sin(rad)
+                vec2(point.x * c - point.y * s, point.x * s + point.y * c)
+            },
+            .scale(x, y): vec2(point.x * x, point.y * y),
+            .skew(x, y): {
+                let rad_x = x * 3.14159265359 / 180.0
+                let rad_y = y * 3.14159265359 / 180.0
+                vec2(point.x + point.y * tan(rad_x), point.y + point.x * tan(rad_y))
+            },
+            .translation(x, y): vec2(point.x + x, point.y + y)
+        }
+    }
+
+    /// Apply inverse transform to a point.
+    fn apply_inverse(self, point: vec2) -> vec2 {
+        match self {
+            .rotation(angle): {
+                let rad = -angle * 3.14159265359 / 180.0
+                let c = cos(rad)
+                let s = sin(rad)
+                vec2(point.x * c - point.y * s, point.x * s + point.y * c)
+            },
+            .scale(x, y): vec2(point.x / x, point.y / y),
+            .skew(x, y): {
+                // Approximate inverse
+                let rad_x = -x * 3.14159265359 / 180.0
+                let rad_y = -y * 3.14159265359 / 180.0
+                vec2(point.x + point.y * tan(rad_x), point.y + point.x * tan(rad_y))
+            },
+            .translation(x, y): vec2(point.x - x, point.y - y)
+        }
+    }
+}
+
+// =============================================================================
+// PATH MODIFIER TYPES
+// =============================================================================
+
+/// Wave modifier axis direction.
+pub enum WaveAxis {
+    tangent,
+    normal,
+    radial
+}
+
+/// Point type for zig-zag effects.
+pub enum PointType {
+    smooth,
+    corner,
+    zigzag
+}
+
+/// Path subdivision method.
+pub enum SubdivideMethod {
+    linear,
+    smooth,
+    adaptive
+}
+
+/// Path join type for offset operations.
+pub enum JoinType {
+    miter,
+    round,
+    bevel
+}
+
+/// Mirror axis for mirror operations.
+pub enum MirrorAxis {
+    horizontal,
+    vertical,
+    custom(angle: f32)
+}
+
+/// Stroke cap style for line endings.
+pub enum StrokeCap {
+    butt,
+    round,
+    square
+}
+
+/// Stroke join style for connected segments.
+pub enum StrokeJoin {
+    miter,
+    round,
+    bevel
+}
+
+// =============================================================================
+// FFD CONTROL POINT
+// =============================================================================
+
+/// FFD (Free Form Deformation) control point.
+///
+/// Used in ffd modifier operations for mesh-based deformation.
+pub struct ControlPoint {
+    gridX: f32 = 0.0,
+    gridY: f32 = 0.0,
+    offset: Point = Point(x: 0.0, y: 0.0)
+}
+
+// =============================================================================
+// MODIFIER OPERATIONS
+// =============================================================================
+
+/// Comprehensive modifier operations.
+///
+/// ModifierOp provides all transform, effect, path, and arrange operations
+/// that can be applied via the Modifier component.
+pub enum ModifierOp {
+    // Path modifiers
+    wave(amplitude: f32, frequency: f32, phase: f32, axis: WaveAxis),
+    noise(intensity: f32, scale: f32, seed: f32, octaves: u32),
+    ffd(gridX: u32, gridY: u32, controlPoints: [ControlPoint]),
+    twist(angle: f32, centerX: f32, centerY: f32, falloff: f32),
+    zigZag(amplitude: f32, frequency: f32, pointType: PointType),
+    pucker(amount: f32),
+    smooth(tension: f32, iterations: u32),
+    subdivide(segments: u32, method: SubdivideMethod),
+    simplify(tolerance: f32),
+    inflate(amount: f32, segments: u32?),
+    offset(distance: f32, joinType: JoinType),
+    trimPath(start: f32, end: f32, offset: f32),
+    stroke(width: f32, cap: StrokeCap, join: StrokeJoin),
+
+    // Transform modifiers
+    scale(x: f32, y: f32, pivotX: f32, pivotY: f32),
+    rotate(angle: f32, pivotX: f32, pivotY: f32),
+    translate(x: f32, y: f32),
+    skew(angleX: f32, angleY: f32),
+
+    // Effect modifiers
+    blur(radius: f32),
+    shadow(color: Color, radius: f32, x: f32, y: f32),
+    opacity(value: f32),
+
+    // Arrange modifiers
+    array(count: u32, offsetX: f32, offsetY: f32, spacing: f32),
+    radialArray(count: u32, angle: f32, radius: f32),
+    mirror(axis: MirrorAxis, distance: f32, keepOriginal: bool),
+    repeat(copies: u32, offsetX: f32, offsetY: f32, scaleOffset: f32, rotationOffset: f32)
+}
+
+impl ModifierOp {
+    /// Apply modifier to a point (for path operations).
+    fn apply_to_point(self, point: vec2, size: vec2) -> vec2 {
+        match self {
+            .wave(amplitude, frequency, phase, axis): {
+                let t = match axis {
+                    .tangent: point.x / size.x,
+                    .normal: point.y / size.y,
+                    .radial: length(point - size * 0.5) / length(size * 0.5)
+                }
+                let wave_value = sin(t * frequency * 6.28318 + phase) * amplitude
+                match axis {
+                    .tangent: vec2(point.x, point.y + wave_value),
+                    .normal: vec2(point.x + wave_value, point.y),
+                    .radial: {
+                        let dir = normalize(point - size * 0.5)
+                        point + dir * wave_value
+                    }
+                }
+            },
+            .twist(angle, centerX, centerY, falloff): {
+                let center = vec2(centerX, centerY)
+                let offset = point - center
+                let dist = length(offset)
+                let twist_angle = angle * (1.0 - clamp(dist / falloff, 0.0, 1.0))
+                let rad = twist_angle * 3.14159265359 / 180.0
+                let c = cos(rad)
+                let s = sin(rad)
+                center + vec2(offset.x * c - offset.y * s, offset.x * s + offset.y * c)
+            },
+            .scale(x, y, pivotX, pivotY): {
+                let pivot = vec2(pivotX, pivotY)
+                let offset = point - pivot
+                pivot + vec2(offset.x * x, offset.y * y)
+            },
+            .rotate(angle, pivotX, pivotY): {
+                let pivot = vec2(pivotX, pivotY)
+                let offset = point - pivot
+                let rad = angle * 3.14159265359 / 180.0
+                let c = cos(rad)
+                let s = sin(rad)
+                pivot + vec2(offset.x * c - offset.y * s, offset.x * s + offset.y * c)
+            },
+            .translate(x, y): point + vec2(x, y),
+            .skew(angleX, angleY): {
+                let rad_x = angleX * 3.14159265359 / 180.0
+                let rad_y = angleY * 3.14159265359 / 180.0
+                vec2(point.x + point.y * tan(rad_x), point.y + point.x * tan(rad_y))
+            },
+            _: point  // Other modifiers don't transform points directly
+        }
+    }
+
+    /// Apply modifier to a color (for effect operations).
+    fn apply_to_color(self, color: Color4) -> Color4 {
+        match self {
+            .opacity(value): Color4(
+                r: color.r,
+                g: color.g,
+                b: color.b,
+                a: color.a * value
+            ),
+            _: color
+        }
+    }
+}
+
+// =============================================================================
+// MODIFIER COMPONENT
+// =============================================================================
+
+/// Apply transform/effect operations to content.
+///
+/// # Example
+///
+/// ```formalang
+/// Modifier(transforms: [
+///   .rotate(angle: 45.0, pivotX: 50.0, pivotY: 50.0),
+///   .blur(radius: 4.0),
+///   .opacity(value: 0.8)
+/// ]) {
+///   body: Image(source: /photo.jpg)
+/// }
+/// ```
+pub struct Modifier: View {
+    transforms: [ModifierOp] = [],
+    mount mask: Shape?,
+    mount body: View
+}
+
+impl Modifier {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        // Modifiers might expand bounds (e.g., blur, shadow)
+        // For now, return child size
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Apply all transforms to UV coordinate (inverse order).
+    fn transform_uv(self, uv: vec2, size: vec2) -> vec2 {
+        let result = uv * size
+
+        // Apply transforms in reverse order
+        for i in 0u..len(self.transforms) {
+            let idx = len(self.transforms) - 1u - i
+            result = self.transforms[idx].apply_to_point(result, size)
+        }
+
+        result / size
+    }
+
+    /// Render with transforms applied.
+    fn render(self, uv: vec2, size: vec2, child_color: Color4) -> Color4 {
+        let result = child_color
+
+        // Apply color modifiers
+        for op in self.transforms {
+            result = op.apply_to_color(result)
+        }
+
+        result
+    }
+}
+
+// =============================================================================
+// LAYOUT MODIFIERS
+// =============================================================================
+
+/// Offset content position.
+pub struct Offset: View {
+    x: Dimension = .px(value: 0.0),
+    y: Dimension = .px(value: 0.0),
+    mount body: View
+}
+
+impl Offset {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D, resolved_x: f32, resolved_y: f32) -> Bounds2D {
+        Bounds2D(
+            x: bounds.x + resolved_x,
+            y: bounds.y + resolved_y,
+            width: bounds.width,
+            height: bounds.height
+        )
+    }
+
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        child_color
+    }
+}
+
+/// Apply corner radius.
+pub struct CornerRadius: View {
+    radius: Dimension = .px(value: 0.0),
+    mount body: View
+}
+
+impl CornerRadius {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Clip to rounded rectangle.
+    fn render(self, uv: vec2, size: vec2, radius_px: f32, child_color: Color4) -> Color4 {
+        // Calculate rounded rect SDF
+        let point = uv * size
+        let half_size = size * 0.5
+        let p = abs(point - half_size) - half_size + vec2(radius_px, radius_px)
+        let dist = length(max(p, vec2(0.0, 0.0))) + min(max(p.x, p.y), 0.0) - radius_px
+
+        let aa_width = 1.0 / min(size.x, size.y)
+        let clip_alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        Color4(
+            r: child_color.r,
+            g: child_color.g,
+            b: child_color.b,
+            a: child_color.a * clip_alpha
+        )
+    }
+}
+
+// =============================================================================
+// SIZE CONSTRAINTS
+// =============================================================================
+
+/// Set minimum/maximum size constraints.
+pub struct SizeConstraint: View {
+    minWidth: Dimension = .px(value: 0.0),
+    maxWidth: Dimension = .px(value: 1000000.0),
+    minHeight: Dimension = .px(value: 0.0),
+    maxHeight: Dimension = .px(value: 1000000.0),
+    mount body: View
+}
+
+impl SizeConstraint {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let min_w = self.minWidth.resolve(proposed.width)
+        let max_w = self.maxWidth.resolve(proposed.width)
+        let min_h = self.minHeight.resolve(proposed.height)
+        let max_h = self.maxHeight.resolve(proposed.height)
+
+        Size2D(
+            width: clamp(proposed.width, min_w, max_w),
+            height: clamp(proposed.height, min_h, max_h)
+        )
+    }
+
+    fn layout_report(self, child_size: Size2D, proposed: Size2D) -> Size2D {
+        let min_w = self.minWidth.resolve(proposed.width)
+        let max_w = self.maxWidth.resolve(proposed.width)
+        let min_h = self.minHeight.resolve(proposed.height)
+        let max_h = self.maxHeight.resolve(proposed.height)
+
+        Size2D(
+            width: clamp(child_size.width, min_w, max_w),
+            height: clamp(child_size.height, min_h, max_h)
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        child_color
+    }
+}
+
+/// Fix size to content's ideal size.
+pub struct FixedSize: View {
+    horizontal: bool = false,
+    vertical: bool = false,
+    mount body: View
+}
+
+impl FixedSize {
+    fn layout_propose(self, proposed: Size2D, ideal: Size2D) -> Size2D {
+        Size2D(
+            width: if self.horizontal { ideal.width } else { proposed.width },
+            height: if self.vertical { ideal.height } else { proposed.height }
+        )
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        child_color
+    }
+}
+
+/// Maintain aspect ratio.
+pub struct AspectRatio: View {
+    ratio: f32 = 1.0,
+    contentMode: ContentMode = .fit,
+    mount body: View
+}
+
+impl AspectRatio {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let proposed_ratio = proposed.width / proposed.height
+
+        match self.contentMode {
+            .fit: {
+                if proposed_ratio > self.ratio {
+                    // Width is too wide, constrain by height
+                    Size2D(width: proposed.height * self.ratio, height: proposed.height)
+                } else {
+                    // Height is too tall, constrain by width
+                    Size2D(width: proposed.width, height: proposed.width / self.ratio)
+                }
+            },
+            .fill: {
+                if proposed_ratio > self.ratio {
+                    Size2D(width: proposed.width, height: proposed.width / self.ratio)
+                } else {
+                    Size2D(width: proposed.height * self.ratio, height: proposed.height)
+                }
+            }
+        }
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        child_color
+    }
+}
+
+/// Set layout priority for space distribution.
+pub struct LayoutPriority: View {
+    value: f32 = 0.0,
+    mount body: View
+}
+
+impl LayoutPriority {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        child_color
+    }
+}

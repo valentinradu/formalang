@@ -597,10 +597,10 @@ fn test_find_node_at_offset_enum_variant() {
 fn test_find_node_at_offset_impl_block() {
     let source = r#"
         struct Value {
-            data: String
+            data: String = "test"
         }
         impl Value {
-            data: "test"
+            fn get_data() -> String { self.data }
         }
     "#;
     let result = compile_with_analyzer(source);
@@ -1112,8 +1112,7 @@ fn test_find_node_enclosing_definition() {
 #[test]
 fn test_find_node_is_in_expression() {
     let source = r#"
-        struct Result { value: Number }
-        impl Result { value: 42 }
+        struct Result { value: Number = 42 }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1217,8 +1216,7 @@ fn test_find_node_at_enum_variant() {
 fn test_find_node_in_impl_with_struct_instantiation() {
     let source = r#"
         struct Point { x: Number, y: Number }
-        struct Container { point: Point }
-        impl Container { point: Point(x: 1, y: 2) }
+        struct Container { point: Point = Point(x: 1, y: 2) }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1238,8 +1236,7 @@ fn test_find_node_in_impl_with_struct_instantiation() {
 #[test]
 fn test_find_node_in_for_expression() {
     let source = r#"
-        struct List { items: [String] }
-        impl List { items: for x in ["a", "b"] { x } }
+        struct List { items: [String] = for x in ["a", "b"] { x } }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1259,8 +1256,7 @@ fn test_find_node_in_for_expression() {
 #[test]
 fn test_find_node_in_if_expression() {
     let source = r#"
-        struct Result { value: String }
-        impl Result { value: if true { "yes" } else { "no" } }
+        struct Result { value: String = if true { "yes" } else { "no" } }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());
@@ -1280,8 +1276,7 @@ fn test_find_node_in_if_expression() {
 #[test]
 fn test_find_node_in_binary_expression() {
     let source = r#"
-        struct Math { result: Number }
-        impl Math { result: 1 + 2 }
+        struct Math { result: Number = 1 + 2 }
     "#;
     let result = compile_with_analyzer(source);
     assert!(result.is_ok());

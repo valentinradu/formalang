@@ -102,9 +102,17 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         visitor.visit_struct(StructId(idx as u32), s);
         for field in &s.fields {
             visitor.visit_field(field);
+            // Walk field default expressions
+            if let Some(default) = &field.default {
+                walk_expr(visitor, default);
+            }
         }
         for field in &s.mount_fields {
             visitor.visit_field(field);
+            // Walk field default expressions
+            if let Some(default) = &field.default {
+                walk_expr(visitor, default);
+            }
         }
     }
 
@@ -133,9 +141,6 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
     // Visit impls
     for i in &module.impls {
         visitor.visit_impl(i);
-        for (_field_name, expr) in &i.defaults {
-            walk_expr(visitor, expr);
-        }
         for f in &i.functions {
             visitor.visit_function(f);
             walk_expr(visitor, &f.body);
@@ -199,6 +204,10 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             walk_expr(visitor, right);
         }
 
+        IrExpr::UnaryOp { operand, .. } => {
+            walk_expr(visitor, operand);
+        }
+
         IrExpr::If {
             condition,
             then_branch,
@@ -229,14 +238,14 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
         }
 
         IrExpr::FunctionCall { args, .. } => {
-            for arg in args {
+            for (_, arg) in args {
                 walk_expr(visitor, arg);
             }
         }
 
         IrExpr::MethodCall { receiver, args, .. } => {
             walk_expr(visitor, receiver);
-            for arg in args {
+            for (_, arg) in args {
                 walk_expr(visitor, arg);
             }
         }
@@ -256,6 +265,35 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
         IrExpr::DictAccess { dict, key, .. } => {
             walk_expr(visitor, dict);
             walk_expr(visitor, key);
+        }
+
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            for stmt in statements {
+                walk_block_statement(visitor, stmt);
+            }
+            walk_expr(visitor, result);
+        }
+    }
+}
+
+/// Walk the children of a block statement.
+pub fn walk_block_statement<V: IrVisitor + ?Sized>(
+    visitor: &mut V,
+    stmt: &crate::ir::IrBlockStatement,
+) {
+    use crate::ir::IrBlockStatement;
+    match stmt {
+        IrBlockStatement::Let { value, .. } => {
+            walk_expr(visitor, value);
+        }
+        IrBlockStatement::Assign { target, value } => {
+            walk_expr(visitor, target);
+            walk_expr(visitor, value);
+        }
+        IrBlockStatement::Expr(expr) => {
+            walk_expr(visitor, expr);
         }
     }
 }

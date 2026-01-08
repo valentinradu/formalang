@@ -48,8 +48,7 @@ fn test_compile_comments() {
 #[test]
 fn test_nil_literal() {
     let source = r#"
-        struct A { x: String? }
-        impl A { x: nil }
+        struct A { x: String? = nil }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -61,8 +60,7 @@ fn test_nil_literal() {
 #[test]
 fn test_array_literal_empty() {
     let source = r#"
-        struct A { items: [String] }
-        impl A { items: [] }
+        struct A { items: [String] = [] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -74,8 +72,7 @@ fn test_array_literal_empty() {
 #[test]
 fn test_array_literal_single() {
     let source = r#"
-        struct A { items: [String] }
-        impl A { items: ["one"] }
+        struct A { items: [String] = ["one"] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -87,8 +84,7 @@ fn test_array_literal_single() {
 #[test]
 fn test_array_literal_many() {
     let source = r#"
-        struct A { items: [Number] }
-        impl A { items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+        struct A { items: [Number] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -100,8 +96,7 @@ fn test_array_literal_many() {
 #[test]
 fn test_negative_number() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: -42 }
+        struct A { x: Number = -42 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -113,8 +108,7 @@ fn test_negative_number() {
 #[test]
 fn test_decimal_number() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: 3.14159 }
+        struct A { x: Number = 3.14159 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -126,8 +120,7 @@ fn test_decimal_number() {
 #[test]
 fn test_negative_decimal() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: -0.5 }
+        struct A { x: Number = -0.5 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -139,8 +132,7 @@ fn test_negative_decimal() {
 #[test]
 fn test_string_with_escapes() {
     let source = r#"
-        struct A { x: String }
-        impl A { x: "hello\nworld\t!" }
+        struct A { x: String = "hello\nworld\t!" }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -152,8 +144,7 @@ fn test_string_with_escapes() {
 #[test]
 fn test_string_with_quotes() {
     let source = r#"
-        struct A { x: String }
-        impl A { x: "say \"hello\"" }
+        struct A { x: String = "say \"hello\"" }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -169,8 +160,7 @@ fn test_string_with_quotes() {
 #[test]
 fn test_arithmetic_precedence() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: 1 + 2 * 3 }
+        struct A { x: Number = 1 + 2 * 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -182,8 +172,7 @@ fn test_arithmetic_precedence() {
 #[test]
 fn test_comparison_chain() {
     let source = r#"
-        struct A { x: Boolean }
-        impl A { x: 1 < 2 && 2 < 3 }
+        struct A { x: Boolean = 1 < 2 && 2 < 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -195,8 +184,7 @@ fn test_comparison_chain() {
 #[test]
 fn test_logical_precedence() {
     let source = r#"
-        struct A { x: Boolean }
-        impl A { x: true || false && true }
+        struct A { x: Boolean = true || false && true }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -208,8 +196,7 @@ fn test_logical_precedence() {
 #[test]
 fn test_parenthesized_expression() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: (1 + 2) * 3 }
+        struct A { x: Number = (1 + 2) * 3 }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -221,8 +208,7 @@ fn test_parenthesized_expression() {
 #[test]
 fn test_nested_parentheses() {
     let source = r#"
-        struct A { x: Number }
-        impl A { x: ((1 + 2) * (3 + 4)) }
+        struct A { x: Number = ((1 + 2) * (3 + 4)) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -238,8 +224,7 @@ fn test_nested_parentheses() {
 #[test]
 fn test_if_without_else() {
     let source = r#"
-        struct A { x: String? }
-        impl A { x: if true { "yes" } }
+        struct A { x: String? = if true { "yes" } }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -251,10 +236,7 @@ fn test_if_without_else() {
 #[test]
 fn test_simple_else() {
     let source = r#"
-        struct A { x: String }
-        impl A {
-            x: if false { "a" } else { "b" }
-        }
+        struct A { x: String = if false { "a" } else { "b" } }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -266,9 +248,8 @@ fn test_simple_else() {
 #[test]
 fn test_for_with_if() {
     let source = r#"
-        struct A { x: [String] }
-        impl A {
-            x: for item in ["a", "b", "c"] {
+        struct A {
+            x: [String] = for item in ["a", "b", "c"] {
                 if true { item } else { "default" }
             }
         }
@@ -283,9 +264,8 @@ fn test_for_with_if() {
 #[test]
 fn test_let_chain() {
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: (let a = 1
+        struct A {
+            x: Number = (let a = 1
             let b = 2
             let c = 3
             a)
@@ -304,10 +284,13 @@ fn test_let_chain() {
 
 #[test]
 fn test_field_access_simple() {
+    // Field access to another field uses self, which is only valid in impl functions
     let source = r#"
         struct Inner { value: String }
-        struct Outer { inner: Inner, display: Inner }
-        impl Outer { display: inner }
+        struct Outer { inner: Inner }
+        impl Outer {
+            fn display() -> Inner { self.inner }
+        }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -354,11 +337,13 @@ fn test_enum_many_variants() {
 fn test_match_exhaustive() {
     let source = r#"
         enum AB { a, b }
-        struct Handler { x: AB, result: String }
+        struct Handler { x: AB }
         impl Handler {
-            result: match AB.a {
-                .a: "first",
-                .b: "second"
+            fn result() -> String {
+                match self.x {
+                    .a: "first",
+                    .b: "second"
+                }
             }
         }
     "#;
@@ -539,32 +524,28 @@ fn test_struct_multiple_generic_params() {
 // =============================================================================
 
 #[test]
-fn test_impl_empty_struct() {
+fn test_struct_with_default() {
     let source = r#"
-        struct Empty { x: String }
-        impl Empty { x: "empty" }
+        struct Empty { x: String = "empty" }
     "#;
     assert!(
         compile(source).is_ok(),
-        "Impl empty struct: {:?}",
+        "Struct with default: {:?}",
         compile(source).err()
     );
 }
 
 #[test]
-fn test_impl_with_expression() {
+fn test_struct_with_default_expression() {
     let source = r#"
         struct Config {
-            name: String,
+            name: String = "default config",
             value: Number
-        }
-        impl Config {
-            name: "default config"
         }
     "#;
     assert!(
         compile(source).is_ok(),
-        "Impl with expression: {:?}",
+        "Struct with default expression: {:?}",
         compile(source).err()
     );
 }
@@ -678,26 +659,6 @@ fn test_let_expression() {
 }
 
 // =============================================================================
-// Provides/Consumes Tests
-// =============================================================================
-
-#[test]
-fn test_provides_simple() {
-    let source = r#"
-        struct Theme { color: String }
-        struct Provider { theme: Theme, result: String }
-        impl Provider {
-            result: provides Theme(color: "red") { "blue" }
-        }
-    "#;
-    assert!(
-        compile(source).is_ok(),
-        "Provides simple: {:?}",
-        compile(source).err()
-    );
-}
-
-// =============================================================================
 // Complex Integration Tests
 // =============================================================================
 
@@ -727,10 +688,9 @@ fn test_full_file() {
         // Let bindings
         let VERSION = "1.0.0"
 
-        // Impls
-        struct Display { user: User }
-        impl Display {
-            user: User(id: 1, name: "test", status: Status.active)
+        // Structs with defaults
+        struct Display {
+            user: User = User(id: 1, name: "test", status: Status.active)
         }
     "#;
     assert!(
@@ -742,9 +702,10 @@ fn test_full_file() {
 
 #[test]
 fn test_view_hierarchy() {
+    // Mount field references to other fields use self, which is only valid in impl functions
     let source = r#"
         struct Container {
-            @mount header: String,
+            @mount header: String = "Container",
             @mount content: String,
             @mount footer: String?
         }
@@ -759,9 +720,13 @@ fn test_view_hierarchy() {
             @mount onClick: String
         }
 
-        impl Container { header: "Container" }
-        impl Card { body: title }
-        impl Button { onClick: label }
+        impl Card {
+            fn getBody() -> String { self.title }
+        }
+
+        impl Button {
+            fn getOnClick() -> String { self.label }
+        }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -837,20 +802,18 @@ fn test_fn_in_impl_no_return_type() {
 }
 
 #[test]
-fn test_fn_in_impl_mixed_with_defaults() {
+fn test_fn_in_impl_with_struct_defaults() {
+    // Impl blocks now only contain functions; defaults go in struct
     let source = r#"
         struct Rect {
-            width: Number,
-            height: Number
+            width: Number = 100,
+            height: Number = 50
         }
 
         impl Rect {
-            width: 100,
-            height: 50,
-
             fn area(self) -> Number {
                 self.width
-            },
+            }
 
             fn perimeter(self) -> Number {
                 self.width
@@ -859,13 +822,14 @@ fn test_fn_in_impl_mixed_with_defaults() {
     "#;
     assert!(
         compile(source).is_ok(),
-        "Functions mixed with defaults: {:?}",
+        "Functions with struct defaults: {:?}",
         compile(source).err()
     );
 }
 
 #[test]
 fn test_fn_in_impl_multiple_functions() {
+    // No commas between functions in impl blocks
     let source = r#"
         struct Vec2 {
             x: Number,
@@ -875,11 +839,11 @@ fn test_fn_in_impl_multiple_functions() {
         impl Vec2 {
             fn length(self) -> Number {
                 self.x
-            },
+            }
 
             fn normalize(self) -> Vec2 {
                 Vec2(x: self.x, y: self.y)
-            },
+            }
 
             fn dot(self, other: Vec2) -> Number {
                 self.x
@@ -899,11 +863,9 @@ fn test_fn_in_impl_multiple_functions() {
 
 #[test]
 fn test_function_call_single_arg() {
+    // Function calls require module::function syntax with named args
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: sin(1.0)
-        }
+        struct A { x: Number = math::sin(angle: 1.0) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -914,11 +876,9 @@ fn test_function_call_single_arg() {
 
 #[test]
 fn test_function_call_multiple_args() {
+    // Function calls require module::function syntax with named args
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: max(1.0, 2.0)
-        }
+        struct A { x: Number = math::max(a: 1.0, b: 2.0) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -929,11 +889,9 @@ fn test_function_call_multiple_args() {
 
 #[test]
 fn test_function_call_qualified_path() {
+    // Function calls require module::function syntax with named args
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: builtin::math::sin(1.0)
-        }
+        struct A { x: Number = builtin::math::sin(angle: 1.0) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -944,11 +902,9 @@ fn test_function_call_qualified_path() {
 
 #[test]
 fn test_function_call_nested() {
+    // Function calls require module::function syntax with named args
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: sin(cos(1.0))
-        }
+        struct A { x: Number = math::sin(angle: math::cos(angle: 1.0)) }
     "#;
     assert!(
         compile(source).is_ok(),
@@ -959,10 +915,11 @@ fn test_function_call_nested() {
 
 #[test]
 fn test_method_call_single() {
+    // self is only valid in impl functions
     let source = r#"
         struct A { x: Number }
         impl A {
-            x: self.x.abs()
+            fn get_abs() -> Number { self.x.abs() }
         }
     "#;
     assert!(
@@ -974,10 +931,11 @@ fn test_method_call_single() {
 
 #[test]
 fn test_method_call_with_args() {
+    // self is only valid in impl functions
     let source = r#"
         struct A { x: Number }
         impl A {
-            x: self.x.clamp(0, 100)
+            fn get_clamped() -> Number { self.x.clamp(0, 100) }
         }
     "#;
     assert!(
@@ -989,10 +947,11 @@ fn test_method_call_with_args() {
 
 #[test]
 fn test_method_call_chained() {
+    // self is only valid in impl functions
     let source = r#"
         struct A { x: Number }
         impl A {
-            x: self.x.abs().floor()
+            fn get_floored() -> Number { self.x.abs().floor() }
         }
     "#;
     assert!(
@@ -1004,15 +963,134 @@ fn test_method_call_chained() {
 
 #[test]
 fn test_function_and_method_mixed() {
+    // self is only valid in impl functions
     let source = r#"
         struct A { x: Number }
         impl A {
-            x: max(self.x.abs(), 0)
+            fn get_max() -> Number { max(self.x.abs(), 0) }
         }
     "#;
     assert!(
         compile(source).is_ok(),
         "Mixed function and method calls: {:?}",
+        compile(source).err()
+    );
+}
+
+// =============================================================================
+// Function Parameter Default Tests
+// =============================================================================
+
+#[test]
+fn test_fn_param_with_default() {
+    let source = r#"
+        struct Counter {
+            value: Number
+        }
+        impl Counter {
+            fn add(self, amount: Number = 1) -> Number {
+                self.value
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function parameter with default: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_param_multiple_defaults() {
+    let source = r#"
+        struct Config {
+            value: Number
+        }
+        impl Config {
+            fn configure(self, timeout: Number = 30, retries: Number = 3) -> Number {
+                self.value
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Multiple function parameters with defaults: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_param_mixed_with_and_without_defaults() {
+    let source = r#"
+        struct Calculator {
+            value: Number
+        }
+        impl Calculator {
+            fn compute(self, x: Number, scale: Number = 1.0, offset: Number = 0.0) -> Number {
+                self.value
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function with mixed default/non-default params: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_param_default_with_expression() {
+    let source = r#"
+        struct Math {
+            base: Number
+        }
+        impl Math {
+            fn calculate(self, factor: Number = 2 * 3 + 1) -> Number {
+                self.base
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function parameter with expression default: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_param_default_with_string() {
+    let source = r#"
+        struct Greeter {
+            name: String
+        }
+        impl Greeter {
+            fn greet(self, message: String = "Hello") -> String {
+                self.name
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function parameter with string default: {:?}",
+        compile(source).err()
+    );
+}
+
+#[test]
+fn test_fn_param_default_with_boolean() {
+    let source = r#"
+        struct Toggle {
+            state: Boolean
+        }
+        impl Toggle {
+            fn set(self, enabled: Boolean = true) -> Boolean {
+                self.state
+            }
+        }
+    "#;
+    assert!(
+        compile(source).is_ok(),
+        "Function parameter with boolean default: {:?}",
         compile(source).err()
     );
 }

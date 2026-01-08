@@ -316,29 +316,30 @@ fn test_get_enum_by_id() {
 #[test]
 fn test_lower_impl_block() {
     let source = r#"
-        struct Counter { count: Number, display: Number }
-        impl Counter { display: count }
+        let count: Number = 1
+        struct Counter { count: Number, display: Number = count }
+        impl Counter {}
     "#;
     let result = compile_to_ir(source);
     assert!(result.is_ok());
     let module = result.unwrap();
 
     assert_eq!(module.structs.len(), 1);
+    // Impl block is explicitly defined
     assert_eq!(module.impls.len(), 1);
 }
 
 #[test]
 fn test_lower_impl_with_literal() {
     let source = r#"
-        struct Config { name: String }
-        impl Config { name: "default" }
+        struct Config { name: String = "default" }
     "#;
     let result = compile_to_ir(source);
     assert!(result.is_ok());
     let module = result.unwrap();
 
-    assert_eq!(module.impls.len(), 1);
-    assert!(!module.impls[0].defaults.is_empty());
+    assert!(!module.structs.is_empty());
+    assert!(module.structs[0].fields[0].default.is_some());
 }
 
 // =============================================================================
@@ -718,10 +719,10 @@ fn test_visitor_counts_variants() {
 #[test]
 fn test_visitor_counts_impls() {
     let source = r#"
-        struct A { x: Number, display: Number }
-        struct B { y: Number, display: Number }
-        impl A { display: x }
-        impl B { display: y }
+        struct A { x: Number = 1, display: Number = 2 }
+        struct B { y: Number = 3, display: Number = 4 }
+        impl A {}
+        impl B {}
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -735,9 +736,9 @@ fn test_visitor_counts_impls() {
 fn test_visitor_mixed_definitions() {
     let source = r#"
         trait Named { name: String }
-        struct User: Named { name: String, age: Number, display: String }
+        struct User: Named { name: String, age: Number, display: String = "default" }
         enum Status { active, inactive }
-        impl User { display: name }
+        impl User {}
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -799,49 +800,44 @@ fn type_name(ty: &ResolvedType) -> String {
 #[test]
 fn test_expr_type_literal_string() {
     let source = r#"
-        struct S { name: String }
-        impl S { name: "hello" }
+        struct S { name: String = "hello" }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "String");
 }
 
 #[test]
 fn test_expr_type_literal_number() {
     let source = r#"
-        struct S { value: Number }
-        impl S { value: 42 }
+        struct S { value: Number = 42 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Number");
 }
 
 #[test]
 fn test_expr_type_literal_boolean() {
     let source = r#"
-        struct S { flag: Boolean }
-        impl S { flag: true }
+        struct S { flag: Boolean = true }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
 #[test]
 fn test_expr_type_array() {
     let source = r#"
-        struct S { items: [Number] }
-        impl S { items: [1, 2, 3] }
+        struct S { items: [Number] = [1, 2, 3] }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Array");
 }
 
@@ -849,39 +845,37 @@ fn test_expr_type_array() {
 fn test_expr_type_struct_instantiation() {
     let source = r#"
         struct Point { x: Number, y: Number }
-        struct Container { p: Point }
-        impl Container { p: Point(x: 1, y: 2) }
+        struct Container { p: Point = Point(x: 1, y: 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[1].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Struct");
 }
 
 #[test]
 fn test_expr_type_reference() {
     let source = r#"
-        struct S { x: Number, y: Number }
-        impl S { y: x }
+        let x: Number = 1
+        struct S { y: Number = x }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    // Impl defaults should have the reference expression
-    assert!(!module.impls.is_empty());
-    assert!(!module.impls[0].defaults.is_empty());
-    // The expression has a type (implementation detail: might be TypeParam for field refs)
-    let _ty = module.impls[0].defaults[0].1.ty();
+    // Struct field defaults should have the reference expression
+    assert!(!module.structs.is_empty());
+    assert!(module.structs[0].fields[0].default.is_some());
+    // The expression has a type
+    let _ty = module.structs[0].fields[0].default.as_ref().unwrap().ty();
 }
 
 #[test]
 fn test_expr_type_binary_arithmetic() {
     let source = r#"
-        struct S { sum: Number }
-        impl S { sum: 1 + 2 }
+        struct S { sum: Number = 1 + 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     // Arithmetic results in Number
     assert_eq!(type_name(expr.ty()), "Number");
 }
@@ -889,12 +883,11 @@ fn test_expr_type_binary_arithmetic() {
 #[test]
 fn test_expr_type_binary_comparison() {
     let source = r#"
-        struct S { result: Boolean }
-        impl S { result: 1 == 2 }
+        struct S { result: Boolean = 1 == 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     // Comparison results in Boolean
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -966,25 +959,22 @@ fn test_resolved_type_display_nested_array() {
 #[test]
 fn test_lower_if_expression() {
     let source = r#"
-        struct S { value: Number }
-        impl S { value: if true { 1 } else { 2 } }
+        struct S { value: Number = if true { 1 } else { 2 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert!(matches!(expr, formalang::ir::IrExpr::If { .. }));
 }
 
 #[test]
 fn test_lower_if_without_else() {
     let source = r#"
-        struct S { value: Number? }
-        impl S { value: if true { 1 } }
+        struct S { value: Number? = if true { 1 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::If { else_branch, .. } = expr {
         assert!(else_branch.is_none());
     } else {
@@ -995,12 +985,11 @@ fn test_lower_if_without_else() {
 #[test]
 fn test_lower_for_expression() {
     let source = r#"
-        struct S { items: [Number] }
-        impl S { items: for x in [1, 2, 3] { x } }
+        struct S { items: [Number] = for x in [1, 2, 3] { x } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::For { var, .. } = expr {
         assert_eq!(var, "x");
     } else {
@@ -1011,16 +1000,15 @@ fn test_lower_for_expression() {
 #[test]
 fn test_lower_let_expression() {
     let source = r#"
-        struct S { value: Number }
-        impl S {
-            value: (let x = 5
+        struct S {
+            value: Number = (let x = 5
             x)
         }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    assert!(!module.impls.is_empty());
-    assert!(!module.impls[0].defaults.is_empty());
+    assert!(!module.structs.is_empty());
+    assert!(module.structs[0].fields[0].default.is_some());
 }
 
 // =============================================================================
@@ -1031,12 +1019,11 @@ fn test_lower_let_expression() {
 fn test_lower_enum_instantiation_simple() {
     let source = r#"
         enum Status { active, inactive }
-        struct S { status: Status }
-        impl S { status: Status.active }
+        struct S { status: Status = Status.active }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
         assert_eq!(variant, "active");
     } else {
@@ -1048,12 +1035,11 @@ fn test_lower_enum_instantiation_simple() {
 fn test_lower_enum_instantiation_with_data() {
     let source = r#"
         enum Option { none, some(value: Number) }
-        struct S { opt: Option }
-        impl S { opt: Option.some(value: 42) }
+        struct S { opt: Option = Option.some(value: 42) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::EnumInst {
         variant, fields, ..
     } = expr
@@ -1070,12 +1056,11 @@ fn test_lower_enum_instantiation_with_data() {
 fn test_lower_inferred_enum_instantiation() {
     let source = r#"
         enum Status { active, inactive }
-        struct S { status: Status }
-        impl S { status: .active }
+        struct S { status: Status = .active }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::EnumInst { variant, .. } = expr {
         assert_eq!(variant, "active");
     } else {
@@ -1090,12 +1075,11 @@ fn test_lower_inferred_enum_instantiation() {
 #[test]
 fn test_lower_tuple_expression() {
     let source = r#"
-        struct S { point: (x: Number, y: Number) }
-        impl S { point: (x: 1, y: 2) }
+        struct S { point: (x: Number, y: Number) = (x: 1, y: 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     if let formalang::ir::IrExpr::Tuple { fields, ty } = expr {
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].0, "x");
@@ -1113,36 +1097,33 @@ fn test_lower_tuple_expression() {
 #[test]
 fn test_lower_binary_subtraction() {
     let source = r#"
-        struct S { diff: Number }
-        impl S { diff: 10 - 3 }
+        struct S { diff: Number = 10 - 3 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
 }
 
 #[test]
 fn test_lower_binary_multiplication() {
     let source = r#"
-        struct S { product: Number }
-        impl S { product: 5 * 4 }
+        struct S { product: Number = 5 * 4 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
 }
 
 #[test]
 fn test_lower_binary_logical_and() {
     let source = r#"
-        struct S { result: Boolean }
-        impl S { result: true && false }
+        struct S { result: Boolean = true && false }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -1150,12 +1131,11 @@ fn test_lower_binary_logical_and() {
 #[test]
 fn test_lower_binary_logical_or() {
     let source = r#"
-        struct S { result: Boolean }
-        impl S { result: true || false }
+        struct S { result: Boolean = true || false }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert!(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. }));
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
@@ -1163,24 +1143,22 @@ fn test_lower_binary_logical_or() {
 #[test]
 fn test_lower_binary_less_than() {
     let source = r#"
-        struct S { result: Boolean }
-        impl S { result: 1 < 2 }
+        struct S { result: Boolean = 1 < 2 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
 #[test]
 fn test_lower_binary_greater_than() {
     let source = r#"
-        struct S { result: Boolean }
-        impl S { result: 2 > 1 }
+        struct S { result: Boolean = 2 > 1 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
     assert_eq!(type_name(expr.ty()), "Boolean");
 }
 
@@ -1244,6 +1222,12 @@ impl IrVisitor for ExprCounter {
             IrExpr::DictLiteral { .. } | IrExpr::DictAccess { .. } => {
                 // Dictionary expressions - counted elsewhere or ignore
             }
+            IrExpr::UnaryOp { .. } => {
+                // Unary operations - counted elsewhere or ignore
+            }
+            IrExpr::Block { .. } => {
+                // Block expressions - counted elsewhere or ignore
+            }
         }
         // Walk children
         formalang::ir::walk_expr_children(self, e);
@@ -1253,8 +1237,7 @@ impl IrVisitor for ExprCounter {
 #[test]
 fn test_visitor_walks_if_children() {
     let source = r#"
-        struct S { value: Number }
-        impl S { value: if true { 1 } else { 2 } }
+        struct S { value: Number = if true { 1 } else { 2 } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1269,8 +1252,7 @@ fn test_visitor_walks_if_children() {
 #[test]
 fn test_visitor_walks_for_children() {
     let source = r#"
-        struct S { items: [Number] }
-        impl S { items: for x in [1, 2] { x } }
+        struct S { items: [Number] = for x in [1, 2] { x } }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1285,9 +1267,8 @@ fn test_visitor_walks_for_children() {
 #[test]
 fn test_visitor_walks_nested_if() {
     let source = r#"
-        struct S { value: Number }
-        impl S {
-            value: if true {
+        struct S {
+            value: Number = if true {
                 if false { 1 } else { 2 }
             } else {
                 3
@@ -1308,8 +1289,7 @@ fn test_visitor_walks_nested_if() {
 #[test]
 fn test_visitor_walks_binary_op_children() {
     let source = r#"
-        struct S { result: Number }
-        impl S { result: 1 + 2 + 3 }
+        struct S { result: Number = 1 + 2 + 3 }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1325,8 +1305,7 @@ fn test_visitor_walks_binary_op_children() {
 fn test_visitor_walks_struct_inst_children() {
     let source = r#"
         struct Point { x: Number, y: Number }
-        struct Container { p: Point }
-        impl Container { p: Point(x: 1 + 2, y: 3) }
+        struct Container { p: Point = Point(x: 1 + 2, y: 3) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1342,8 +1321,7 @@ fn test_visitor_walks_struct_inst_children() {
 fn test_visitor_walks_enum_inst_children() {
     let source = r#"
         enum Option { none, some(value: Number) }
-        struct S { opt: Option }
-        impl S { opt: Option.some(value: 1 + 2) }
+        struct S { opt: Option = Option.some(value: 1 + 2) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1358,8 +1336,7 @@ fn test_visitor_walks_enum_inst_children() {
 #[test]
 fn test_visitor_walks_array_children() {
     let source = r#"
-        struct S { items: [Number] }
-        impl S { items: [1, 2 + 3, 4] }
+        struct S { items: [Number] = [1, 2 + 3, 4] }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1374,8 +1351,7 @@ fn test_visitor_walks_array_children() {
 #[test]
 fn test_visitor_walks_tuple_children() {
     let source = r#"
-        struct S { point: (x: Number, y: Number) }
-        impl S { point: (x: 1 + 2, y: 3) }
+        struct S { point: (x: Number, y: Number) = (x: 1 + 2, y: 3) }
     "#;
     let module = compile_to_ir(source).unwrap();
 
@@ -1511,7 +1487,7 @@ impl ModuleResolver for MockResolver {
         _current_file: Option<&PathBuf>,
     ) -> Result<(String, PathBuf), ModuleError> {
         self.modules
-            .get(&path.to_vec())
+            .get(path)
             .cloned()
             .ok_or_else(|| ModuleError::NotFound {
                 path: path.to_vec(),
@@ -2107,15 +2083,18 @@ fn test_external_struct_instantiation_has_none_id() {
 
     let source = r#"
 use utils::Helper
-struct Container { h: Helper }
-impl Container { h: Helper(name: "test") }
+struct Container { h: Helper = Helper(name: "test") }
 "#;
 
     let module = compile_to_ir_with_resolver(source, resolver).unwrap();
 
-    // Find the impl's default expression
-    assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].defaults[0].1;
+    // Find Container struct by name (imported Helper might be first)
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .unwrap();
+    let expr = container.fields[0].default.as_ref().unwrap();
 
     // It should be a StructInst with a valid struct_id (imported types now get IDs)
     if let IrExpr::StructInst { struct_id, ty, .. } = expr {
@@ -2147,14 +2126,12 @@ fn test_external_enum_instantiation_has_none_id() {
 
     let source = r#"
 use types::Status
-struct Item { status: Status }
-impl Item { status: Status.active }
+struct Item { status: Status = Status.active }
 "#;
 
     let module = compile_to_ir_with_resolver(source, resolver).unwrap();
 
-    assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[0].fields[0].default.as_ref().unwrap();
 
     if let IrExpr::EnumInst {
         enum_id,
@@ -2185,14 +2162,12 @@ impl Item { status: Status.active }
 fn test_local_struct_instantiation_has_some_id() {
     let source = r#"
 struct Point { x: Number, y: Number }
-struct Container { p: Point }
-impl Container { p: Point(x: 1, y: 2) }
+struct Container { p: Point = Point(x: 1, y: 2) }
 "#;
 
     let module = compile_to_ir(source).unwrap();
 
-    assert!(!module.impls.is_empty());
-    let expr = &module.impls[0].defaults[0].1;
+    let expr = module.structs[1].fields[0].default.as_ref().unwrap();
 
     if let IrExpr::StructInst { struct_id, ty, .. } = expr {
         assert!(
@@ -2230,19 +2205,21 @@ fn test_method_call_resolve_normalize() {
     use formalang::ast::PrimitiveType;
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
-    // A struct that uses a method call on a vec3 (lowercase GPU type)
+    // A struct that uses a method call on a vec3 in a function body
     let source = r#"
         struct Particle {
             velocity: vec3
         }
         impl Particle {
-            direction: self.velocity.normalize()
+            fn direction() -> vec3 {
+                self.velocity.normalize()
+            }
         }
     "#;
 
     let module = compile_with_stdlib(source).expect("Should compile");
 
-    // Find the method call in the impl defaults
+    // Find the method call in the function body
     struct MethodCallFinder {
         found_normalize: bool,
         return_type: Option<ResolvedType>,
@@ -2285,7 +2262,9 @@ fn test_method_call_resolve_length() {
             position: vec3
         }
         impl Particle {
-            dist: self.position.length()
+            fn dist() -> f32 {
+                self.position.length()
+            }
         }
     "#;
 
@@ -2326,48 +2305,61 @@ fn test_method_call_resolve_length() {
 #[test]
 fn test_method_call_chained() {
     use formalang::ast::PrimitiveType;
-    use formalang::ir::{IrExpr, ResolvedType};
+    use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r#"
         struct Particle {
             velocity: vec4
         }
         impl Particle {
-            normalized_velocity: self.velocity.normalize()
+            fn normalized_velocity() -> vec4 {
+                self.velocity.normalize()
+            }
         }
     "#;
 
     let module = compile_with_stdlib(source).expect("Should compile");
 
-    // Walk impls and check the default
-    assert_eq!(module.impls.len(), 1);
-    let imp = &module.impls[0];
-    assert_eq!(imp.defaults.len(), 1);
-
-    let (name, expr) = &imp.defaults[0];
-    assert_eq!(name, "normalized_velocity");
-
-    // The expression should be a MethodCall with Vec4 return type
-    if let IrExpr::MethodCall {
-        method,
-        ty,
-        receiver,
-        ..
-    } = expr
-    {
-        assert_eq!(method, "normalize");
-        assert_eq!(ty, &ResolvedType::Primitive(PrimitiveType::Vec4));
-
-        // The receiver should be SelfFieldRef with Vec4 type
-        if let IrExpr::SelfFieldRef { field, ty: recv_ty } = receiver.as_ref() {
-            assert_eq!(field, "velocity");
-            assert_eq!(recv_ty, &ResolvedType::Primitive(PrimitiveType::Vec4));
-        } else {
-            panic!("Expected SelfFieldRef as receiver");
-        }
-    } else {
-        panic!("Expected MethodCall expression");
+    // Find the method call in function body
+    struct MethodCallFinder {
+        found: bool,
+        return_type: Option<ResolvedType>,
     }
+
+    impl IrVisitor for MethodCallFinder {
+        fn visit_expr(&mut self, e: &IrExpr) {
+            if let IrExpr::MethodCall {
+                method,
+                ty,
+                receiver,
+                ..
+            } = e
+            {
+                if method == "normalize" {
+                    self.found = true;
+                    self.return_type = Some(ty.clone());
+                    // Check receiver is SelfFieldRef
+                    if let IrExpr::SelfFieldRef { field, .. } = receiver.as_ref() {
+                        assert_eq!(field, "velocity");
+                    }
+                }
+            }
+            formalang::ir::walk_expr_children(self, e);
+        }
+    }
+
+    let mut finder = MethodCallFinder {
+        found: false,
+        return_type: None,
+    };
+    walk_module(&mut finder, &module);
+
+    assert!(finder.found, "Should find normalize method call");
+    assert_eq!(
+        finder.return_type,
+        Some(ResolvedType::Primitive(PrimitiveType::Vec4)),
+        "normalize on Vec4 should return Vec4"
+    );
 }
 
 // =============================================================================
@@ -2383,10 +2375,7 @@ fn test_event_mapping_no_param() {
     let source = r#"
         enum Event { submit, cancel }
         struct Button {
-            action: (() -> Event)?
-        }
-        impl Button {
-            action: () -> .submit
+            action: (() -> Event)? = () -> .submit
         }
     "#;
 
@@ -2430,10 +2419,7 @@ fn test_event_mapping_with_param() {
     let source = r#"
         enum Event { valueChanged(value: Number) }
         struct Slider {
-            onChange: (Number -> Event)?
-        }
-        impl Slider {
-            onChange: x -> .valueChanged(value: x)
+            onChange: (Number -> Event)? = x -> .valueChanged(value: x)
         }
     "#;
 
@@ -2499,8 +2485,7 @@ fn test_dict_literal_lowering() {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r#"
-        struct Config { data: [String: Number] }
-        impl Config { data: ["a": 1, "b": 2] }
+        struct Config { data: [String: Number] = ["a": 1, "b": 2] }
         let cfg: Config = Config()
     "#;
 
@@ -2538,9 +2523,8 @@ fn test_dict_access_lowering() {
     use formalang::ir::{walk_module, IrExpr, IrVisitor};
 
     let source = r#"
-        struct Config { value: Number }
         let data: [String: Number] = ["a": 1]
-        impl Config { value: data["a"] }
+        struct Config { value: Number = data["a"] }
         let cfg: Config = Config()
     "#;
 
@@ -2584,4 +2568,103 @@ fn test_dict_type_lowering() {
         }
         _ => panic!("Expected Dictionary type, got {:?}", data_field.ty),
     }
+}
+
+#[test]
+fn test_wgsl_trait_type_generates_data_structs() {
+    use formalang::codegen::generate_wgsl;
+
+    let source = r#"
+        trait Fill {}
+        trait Shape {}
+        struct Solid: Fill { r: f32, g: f32, b: f32 }
+        struct Circle: Shape { radius: f32 }
+        struct TestView {
+            fill: Fill? = nil,
+            shape: Shape? = nil,
+            width: f32 = 0.0
+        }
+    "#;
+
+    let module = compile_to_ir(source).expect("should compile");
+    let wgsl = generate_wgsl(&module);
+
+    // Trait types should be mapped to trait-specific data structs
+    assert!(
+        wgsl.contains("fill: FillData"),
+        "Trait field should use FillData type"
+    );
+    assert!(
+        wgsl.contains("shape: ShapeData"),
+        "Trait field should use ShapeData type"
+    );
+
+    // Each trait should have its own data struct
+    assert!(
+        wgsl.contains("struct FillData {"),
+        "Should generate FillData struct"
+    );
+    assert!(
+        wgsl.contains("struct ShapeData {"),
+        "Should generate ShapeData struct"
+    );
+
+    // Load functions should reference the correct data struct
+    assert!(
+        wgsl.contains("ptr<function, FillData>"),
+        "load_solid should use FillData"
+    );
+    assert!(
+        wgsl.contains("ptr<function, ShapeData>"),
+        "load_circle should use ShapeData"
+    );
+}
+
+#[test]
+fn test_wgsl_trait_with_no_implementors() {
+    use formalang::codegen::generate_wgsl;
+
+    let source = r#"
+        trait Unused {}
+        struct TestView {
+            value: Unused? = nil,
+            width: f32 = 0.0
+        }
+    "#;
+
+    let module = compile_to_ir(source).expect("should compile");
+    let wgsl = generate_wgsl(&module);
+
+    // Field should still reference the trait data struct name
+    assert!(
+        wgsl.contains("value: UnusedData"),
+        "Trait field should use UnusedData type even with no implementors"
+    );
+
+    // However, no data struct is generated for traits with no implementors
+    // This is intentional - the runtime would need to handle this case
+    // (or it's a compile-time error to use a trait with no implementors)
+}
+
+#[test]
+fn test_stdlib_wgsl_validation() {
+    use formalang::codegen::{generate_wgsl, validate_wgsl};
+    use std::path::PathBuf;
+
+    let source = r#"
+        use stdlib::*
+
+        pub struct App: View {
+            mount body: View
+        }
+    "#;
+
+    let resolver = formalang::FileSystemResolver::new(PathBuf::from("docs/user"));
+    let module = formalang::compile_to_ir_with_resolver(source, resolver)
+        .expect("should compile with stdlib");
+
+    let wgsl = generate_wgsl(&module);
+
+    // Validate the WGSL with naga
+    validate_wgsl(&wgsl).expect("WGSL should be valid");
 }

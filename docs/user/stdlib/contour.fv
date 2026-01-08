@@ -1,0 +1,273 @@
+/// Path and Contour Types
+///
+/// This module provides path drawing primitives for custom vector shapes.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+use stdlib::fill::fill
+
+// =============================================================================
+// CONTOUR
+// =============================================================================
+
+/// Custom vector path shape.
+///
+/// Contour allows building complex shapes from path segments.
+///
+/// # Example
+///
+/// ```formalang
+/// Contour(start: Point(x: 0.0, y: 0.0), closed: true) {
+///   segments: {
+///     LineTo(to: Point(x: 100.0, y: 0.0))
+///     LineTo(to: Point(x: 100.0, y: 100.0))
+///     LineTo(to: Point(x: 0.0, y: 100.0))
+///   }
+/// }
+/// ```
+pub struct Contour: Shape {
+    tint: Color? = nil,
+    start: Point = Point(x: 0.0, y: 0.0),
+    closed: bool = false,
+    fill: Fill? = nil,
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never,
+    mount segments: ContourSegment
+}
+
+impl Contour {
+    /// Compute SDF for the contour path.
+    ///
+    /// Path SDF is computed by finding the minimum distance to all segments.
+    fn sdf(self, point: vec2, segment_distances: [f32]) -> f32 {
+        let min_dist = segment_distances[0]
+        for i in 1u..len(segment_distances) {
+            min_dist = min(min_dist, segment_distances[i])
+        }
+
+        // For filled contours, we need inside/outside determination
+        // This requires winding number calculation
+        if self.fill != nil {
+            // Return negative distance if inside (winding rule)
+            // Simplified: assume segments provide signed distance
+            min_dist
+        } else {
+            // Stroke only - absolute distance
+            abs(min_dist) - self.strokeWidth * 0.5
+        }
+    }
+
+    fn render(self, uv: vec2, size: vec2, sdf_value: f32) -> Color4 {
+        let aa_width = 1.0 / min(size.x, size.y)
+
+        // Fill
+        let fill_color = if self.fill != nil {
+            let fill_alpha = 1.0 - smoothstep(-aa_width, aa_width, sdf_value)
+            let sampled = self.fill.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * fill_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        // Stroke
+        let stroke_color = if self.stroke != nil {
+            let stroke_dist = abs(sdf_value) - self.strokeWidth * 0.5
+            let stroke_alpha = 1.0 - smoothstep(-aa_width, aa_width, stroke_dist)
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * stroke_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        blend_over(stroke_color, fill_color)
+    }
+
+    fn layout_propose(self, proposed: Size2D, path_bounds: Bounds2D) -> Size2D {
+        Size2D(
+            width: min(path_bounds.width, proposed.width),
+            height: min(path_bounds.height, proposed.height)
+        )
+    }
+
+    fn layout_report(self, path_bounds: Bounds2D) -> Size2D {
+        Size2D(width: path_bounds.width, height: path_bounds.height)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+// =============================================================================
+// PATH SEGMENTS
+// =============================================================================
+
+/// Move to a point without drawing.
+pub struct Move: ContourSegment {
+    to: Point = Point(x: 0.0, y: 0.0),
+    mount body: Never
+}
+
+impl Move {
+    /// Move doesn't contribute to SDF (no visual).
+    fn sdf(self, point: vec2, from: vec2) -> f32 {
+        1000000.0  // Large distance (not visible)
+    }
+}
+
+/// Draw a straight line to a point.
+pub struct LineTo: ContourSegment {
+    to: Point = Point(x: 0.0, y: 0.0),
+    mount body: Never
+}
+
+impl LineTo {
+    /// SDF for line segment.
+    fn sdf(self, point: vec2, from: vec2) -> f32 {
+        let a = from
+        let b = self.to.to_vec2()
+
+        let pa = point - a
+        let ba = b - a
+
+        let t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)
+        let closest = a + ba * t
+
+        length(point - closest)
+    }
+}
+
+/// Draw an arc to a point.
+pub struct Arc: ContourSegment {
+    to: Point = Point(x: 0.0, y: 0.0),
+    radius: f32 = 10.0,
+    clockwise: bool = true,
+    largeArc: bool = false,
+    mount body: Never
+}
+
+impl Arc {
+    /// SDF for circular arc segment.
+    fn sdf(self, point: vec2, from: vec2) -> f32 {
+        let a = from
+        let b = self.to.to_vec2()
+
+        // Find arc center
+        let mid = (a + b) * 0.5
+        let chord = b - a
+        let chord_len = length(chord)
+
+        if chord_len < 0.001 {
+            return length(point - mid)
+        }
+
+        // Perpendicular direction
+        let perp = vec2(-chord.y, chord.x) / chord_len
+
+        // Distance from mid to center
+        let half_chord = chord_len * 0.5
+        let r = self.radius
+
+        if r < half_chord {
+            // Radius too small, treat as line
+            return LineTo(to: self.to).sdf(point, from)
+        }
+
+        let d = sqrt(r * r - half_chord * half_chord)
+        let center = if self.largeArc != self.clockwise {
+            mid + perp * d
+        } else {
+            mid - perp * d
+        }
+
+        // Distance to circle
+        let dist_to_center = length(point - center)
+        let dist_to_circle = abs(dist_to_center - r)
+
+        // Check if point is within arc angle range
+        let angle_a = atan2(a.y - center.y, a.x - center.x)
+        let angle_b = atan2(b.y - center.y, b.x - center.x)
+        let angle_p = atan2(point.y - center.y, point.x - center.x)
+
+        // Simplified: return distance to circle
+        dist_to_circle
+    }
+}
+
+/// Draw a quadratic Bezier curve.
+pub struct QuadBezier: ContourSegment {
+    to: Point = Point(x: 0.0, y: 0.0),
+    control: Point = Point(x: 0.0, y: 0.0),
+    mount body: Never
+}
+
+impl QuadBezier {
+    /// Approximate SDF for quadratic Bezier.
+    fn sdf(self, point: vec2, from: vec2) -> f32 {
+        let p0 = from
+        let p1 = self.control.to_vec2()
+        let p2 = self.to.to_vec2()
+
+        // Sample curve at multiple points and find minimum distance
+        let min_dist = 1000000.0
+        let samples = 16u
+
+        for i in 0u..samples {
+            let t = f32(i) / f32(samples - 1u)
+
+            // Quadratic Bezier: B(t) = (1-t)^2*P0 + 2*(1-t)*t*P1 + t^2*P2
+            let one_minus_t = 1.0 - t
+            let curve_point = p0 * one_minus_t * one_minus_t +
+                             p1 * 2.0 * one_minus_t * t +
+                             p2 * t * t
+
+            let dist = length(point - curve_point)
+            min_dist = min(min_dist, dist)
+        }
+
+        min_dist
+    }
+}
+
+/// Draw a cubic Bezier curve.
+pub struct CubicBezier: ContourSegment {
+    to: Point = Point(x: 0.0, y: 0.0),
+    control1: Point = Point(x: 0.0, y: 0.0),
+    control2: Point = Point(x: 0.0, y: 0.0),
+    mount body: Never
+}
+
+impl CubicBezier {
+    /// Approximate SDF for cubic Bezier.
+    fn sdf(self, point: vec2, from: vec2) -> f32 {
+        let p0 = from
+        let p1 = self.control1.to_vec2()
+        let p2 = self.control2.to_vec2()
+        let p3 = self.to.to_vec2()
+
+        let min_dist = 1000000.0
+        let samples = 20u
+
+        for i in 0u..samples {
+            let t = f32(i) / f32(samples - 1u)
+
+            // Cubic Bezier: B(t) = (1-t)^3*P0 + 3*(1-t)^2*t*P1 + 3*(1-t)*t^2*P2 + t^3*P3
+            let one_minus_t = 1.0 - t
+            let omt2 = one_minus_t * one_minus_t
+            let omt3 = omt2 * one_minus_t
+            let t2 = t * t
+            let t3 = t2 * t
+
+            let curve_point = p0 * omt3 +
+                             p1 * 3.0 * omt2 * t +
+                             p2 * 3.0 * one_minus_t * t2 +
+                             p3 * t3
+
+            let dist = length(point - curve_point)
+            min_dist = min(min_dist, dist)
+        }
+
+        min_dist
+    }
+}

@@ -1,0 +1,576 @@
+/// Visual Effect Components
+///
+/// This module provides visual effect wrappers like blur, shadow, opacity, and filters.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+
+// =============================================================================
+// OPACITY
+// =============================================================================
+
+/// Opacity wrapper.
+///
+/// Sets the opacity of the content.
+pub struct Opacity: View {
+    value: f32 = 1.0,
+    mount body: View
+}
+
+impl Opacity {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Apply opacity multiplier to child color.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        Color4(
+            r: child_color.r,
+            g: child_color.g,
+            b: child_color.b,
+            a: child_color.a * self.value
+        )
+    }
+}
+
+// =============================================================================
+// BLUR
+// =============================================================================
+
+/// Apply blur effect.
+///
+/// Uses Gaussian blur with the specified radius.
+pub struct Blur: View {
+    radius: Dimension = .px(value: 0.0),
+    mount body: View
+}
+
+impl Blur {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Gaussian blur kernel.
+    ///
+    /// In practice, this is implemented as a multi-pass separable filter.
+    /// For GPU, we sample nearby texels and weight by Gaussian distribution.
+    fn render(self, uv: vec2, size: vec2, radius_px: f32, sample_colors: [Color4]) -> Color4 {
+        if radius_px < 0.5 {
+            // No blur
+            return sample_colors[0]  // Center sample
+        }
+
+        // Gaussian weights for 9-tap kernel
+        let sigma = radius_px / 3.0
+        let sum = Color4(r: 0.0, g: 0.0, b: 0.0, a: 0.0)
+        let total_weight = 0.0
+
+        for i in 0u..len(sample_colors) {
+            // Calculate weight based on distance from center
+            let offset = f32(i) - f32(len(sample_colors) / 2u)
+            let weight = exp(-(offset * offset) / (2.0 * sigma * sigma))
+
+            sum = Color4(
+                r: sum.r + sample_colors[i].r * weight,
+                g: sum.g + sample_colors[i].g * weight,
+                b: sum.b + sample_colors[i].b * weight,
+                a: sum.a + sample_colors[i].a * weight
+            )
+            total_weight = total_weight + weight
+        }
+
+        Color4(
+            r: sum.r / total_weight,
+            g: sum.g / total_weight,
+            b: sum.b / total_weight,
+            a: sum.a / total_weight
+        )
+    }
+}
+
+// =============================================================================
+// SHADOW
+// =============================================================================
+
+/// Shadow configuration.
+pub struct ShadowStyle {
+    color: Color = .rgba(r: 0, g: 0, b: 0, a: 0.3),
+    radius: Dimension = .px(value: 4.0),
+    x: Dimension = .px(value: 0.0),
+    y: Dimension = .px(value: 2.0)
+}
+
+impl ShadowStyle {
+}
+
+/// Apply shadow to content.
+pub struct Shadow: View {
+    style: ShadowStyle = ShadowStyle(
+        color: .rgba(r: 0, g: 0, b: 0, a: 0.3),
+        radius: .px(value: 4.0),
+        x: .px(value: 0.0),
+        y: .px(value: 2.0)
+    ),
+    mount body: View
+}
+
+impl Shadow {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D, style: ShadowStyle, container_size: Size2D) -> Size2D {
+        // Shadow extends beyond content bounds
+        let radius = style.radius.resolve(container_size.width)
+        let offset_x = abs(style.x.resolve(container_size.width))
+        let offset_y = abs(style.y.resolve(container_size.height))
+
+        Size2D(
+            width: child_size.width + radius * 2.0 + offset_x,
+            height: child_size.height + radius * 2.0 + offset_y
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Render shadow behind content.
+    fn render(self, uv: vec2, size: vec2, child_alpha: f32, shadow_params: vec4) -> Color4 {
+        // shadow_params: (offset_x, offset_y, radius, shadow_alpha)
+        let offset = vec2(shadow_params.x, shadow_params.y)
+        let radius = shadow_params.z
+
+        // Calculate shadow contribution at this UV
+        // Shadow is blurred version of child at offset position
+        let shadow_uv = uv - offset / size
+
+        // Gaussian falloff from child boundary
+        let shadow_dist = 0.0  // Would be computed from child SDF
+        let shadow_alpha = smoothstep(radius, 0.0, shadow_dist) * shadow_params.w
+
+        let shadow_color = self.style.color.to_color4()
+
+        // Composite: shadow behind content
+        let shadow = Color4(
+            r: shadow_color.r,
+            g: shadow_color.g,
+            b: shadow_color.b,
+            a: shadow_alpha * (1.0 - child_alpha)
+        )
+
+        shadow
+    }
+}
+
+// =============================================================================
+// COLOR FILTERS
+// =============================================================================
+
+/// Apply grayscale filter.
+pub struct Grayscale: View {
+    amount: f32 = 1.0,
+    mount body: View
+}
+
+impl Grayscale {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Convert to grayscale using luminance.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        // Luminance coefficients (ITU-R BT.709)
+        let luminance = child_color.r * 0.2126 +
+                       child_color.g * 0.7152 +
+                       child_color.b * 0.0722
+
+        let gray = Color4(r: luminance, g: luminance, b: luminance, a: child_color.a)
+
+        // Interpolate between original and grayscale
+        Color4::lerp(child_color, gray, self.amount)
+    }
+}
+
+/// Apply saturation filter.
+pub struct Saturation: View {
+    amount: f32 = 1.0,
+    mount body: View
+}
+
+impl Saturation {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Adjust saturation.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        let luminance = child_color.r * 0.2126 +
+                       child_color.g * 0.7152 +
+                       child_color.b * 0.0722
+
+        Color4(
+            r: mix(luminance, child_color.r, self.amount),
+            g: mix(luminance, child_color.g, self.amount),
+            b: mix(luminance, child_color.b, self.amount),
+            a: child_color.a
+        )
+    }
+}
+
+/// Apply brightness filter.
+pub struct Brightness: View {
+    amount: f32 = 1.0,
+    mount body: View
+}
+
+impl Brightness {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Adjust brightness.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        Color4(
+            r: clamp(child_color.r * self.amount, 0.0, 1.0),
+            g: clamp(child_color.g * self.amount, 0.0, 1.0),
+            b: clamp(child_color.b * self.amount, 0.0, 1.0),
+            a: child_color.a
+        )
+    }
+}
+
+/// Apply contrast filter.
+pub struct Contrast: View {
+    amount: f32 = 1.0,
+    mount body: View
+}
+
+impl Contrast {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Adjust contrast.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        Color4(
+            r: clamp((child_color.r - 0.5) * self.amount + 0.5, 0.0, 1.0),
+            g: clamp((child_color.g - 0.5) * self.amount + 0.5, 0.0, 1.0),
+            b: clamp((child_color.b - 0.5) * self.amount + 0.5, 0.0, 1.0),
+            a: child_color.a
+        )
+    }
+}
+
+/// Apply hue rotation filter.
+pub struct HueRotation: View {
+    angle: f32 = 0.0,
+    mount body: View
+}
+
+impl HueRotation {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Rotate hue in HSL space.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        // Convert RGB to HSL, rotate hue, convert back
+        let angle_rad = self.angle * 3.14159265359 / 180.0
+
+        // Simplified hue rotation using YIQ color space
+        let cos_a = cos(angle_rad)
+        let sin_a = sin(angle_rad)
+
+        let r = child_color.r
+        let g = child_color.g
+        let b = child_color.b
+
+        // YIQ rotation matrix
+        let new_r = r * (0.299 + 0.701 * cos_a + 0.168 * sin_a) +
+                   g * (0.587 - 0.587 * cos_a + 0.330 * sin_a) +
+                   b * (0.114 - 0.114 * cos_a - 0.497 * sin_a)
+
+        let new_g = r * (0.299 - 0.299 * cos_a - 0.328 * sin_a) +
+                   g * (0.587 + 0.413 * cos_a + 0.035 * sin_a) +
+                   b * (0.114 - 0.114 * cos_a + 0.292 * sin_a)
+
+        let new_b = r * (0.299 - 0.300 * cos_a + 1.250 * sin_a) +
+                   g * (0.587 - 0.588 * cos_a - 1.050 * sin_a) +
+                   b * (0.114 + 0.886 * cos_a - 0.203 * sin_a)
+
+        Color4(
+            r: clamp(new_r, 0.0, 1.0),
+            g: clamp(new_g, 0.0, 1.0),
+            b: clamp(new_b, 0.0, 1.0),
+            a: child_color.a
+        )
+    }
+}
+
+// =============================================================================
+// BLEND MODES
+// =============================================================================
+
+/// Blend mode for compositing.
+pub enum BlendMode {
+    normal,
+    multiply,
+    screen,
+    overlay,
+    darken,
+    lighten,
+    colorDodge,
+    colorBurn,
+    softLight,
+    hardLight,
+    difference,
+    exclusion
+}
+
+/// Apply blend mode to content.
+pub struct Blended: View {
+    mode: BlendMode = .normal,
+    mount body: View
+}
+
+impl Blended {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Apply blend mode between source and destination.
+    fn blend(self, src: Color4, dst: Color4) -> Color4 {
+        let result = match self.mode {
+            .normal: src,
+            .multiply: Color4(
+                r: src.r * dst.r,
+                g: src.g * dst.g,
+                b: src.b * dst.b,
+                a: src.a
+            ),
+            .screen: Color4(
+                r: 1.0 - (1.0 - src.r) * (1.0 - dst.r),
+                g: 1.0 - (1.0 - src.g) * (1.0 - dst.g),
+                b: 1.0 - (1.0 - src.b) * (1.0 - dst.b),
+                a: src.a
+            ),
+            .overlay: {
+                let blend_channel = |s: f32, d: f32| -> f32 {
+                    if d < 0.5 {
+                        2.0 * s * d
+                    } else {
+                        1.0 - 2.0 * (1.0 - s) * (1.0 - d)
+                    }
+                }
+                Color4(
+                    r: blend_channel(src.r, dst.r),
+                    g: blend_channel(src.g, dst.g),
+                    b: blend_channel(src.b, dst.b),
+                    a: src.a
+                )
+            },
+            .darken: Color4(
+                r: min(src.r, dst.r),
+                g: min(src.g, dst.g),
+                b: min(src.b, dst.b),
+                a: src.a
+            ),
+            .lighten: Color4(
+                r: max(src.r, dst.r),
+                g: max(src.g, dst.g),
+                b: max(src.b, dst.b),
+                a: src.a
+            ),
+            .difference: Color4(
+                r: abs(src.r - dst.r),
+                g: abs(src.g - dst.g),
+                b: abs(src.b - dst.b),
+                a: src.a
+            ),
+            .exclusion: Color4(
+                r: src.r + dst.r - 2.0 * src.r * dst.r,
+                g: src.g + dst.g - 2.0 * src.g * dst.g,
+                b: src.b + dst.b - 2.0 * src.b * dst.b,
+                a: src.a
+            ),
+            _: src  // Fallback for complex modes
+        }
+
+        // Alpha compositing
+        blend_over(result, dst)
+    }
+
+    fn render(self, uv: vec2, child_color: Color4, backdrop_color: Color4) -> Color4 {
+        self.blend(child_color, backdrop_color)
+    }
+}
+
+// =============================================================================
+// MASK
+// =============================================================================
+
+/// Apply a mask to content.
+pub struct Mask: View {
+    mount mask: View,
+    mount body: View
+}
+
+impl Mask {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Apply mask alpha to content.
+    fn render(self, uv: vec2, child_color: Color4, mask_color: Color4) -> Color4 {
+        // Use mask luminance or alpha as mask value
+        let mask_value = mask_color.a
+
+        Color4(
+            r: child_color.r,
+            g: child_color.g,
+            b: child_color.b,
+            a: child_color.a * mask_value
+        )
+    }
+}
+
+// =============================================================================
+// CLIPPING
+// =============================================================================
+
+/// Clip content to bounds.
+pub struct Clipped: View {
+    mount body: View
+}
+
+impl Clipped {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Clip renders transparent outside bounds.
+    fn render(self, uv: vec2, child_color: Color4) -> Color4 {
+        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+            Color4::transparent()
+        } else {
+            child_color
+        }
+    }
+}
+
+/// Clip content to a shape.
+pub struct ClipShape: View {
+    mount shape: Shape,
+    mount body: View
+}
+
+impl ClipShape {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, child_size: Size2D) -> Size2D {
+        child_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) -> Bounds2D {
+        bounds
+    }
+
+    /// Clip using shape SDF.
+    fn render(self, uv: vec2, child_color: Color4, shape_sdf: f32) -> Color4 {
+        // Inside shape = negative SDF
+        let aa_width = 0.01
+        let clip_alpha = 1.0 - smoothstep(-aa_width, aa_width, shape_sdf)
+
+        Color4(
+            r: child_color.r,
+            g: child_color.g,
+            b: child_color.b,
+            a: child_color.a * clip_alpha
+        )
+    }
+}

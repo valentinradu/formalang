@@ -145,6 +145,88 @@ impl BuiltinRegistry {
             .filter(move |f| f.category == category)
     }
 
+    /// Resolve the return type of a builtin function given argument types.
+    /// Returns the type name as a string, or None if the function doesn't exist
+    /// or argument types don't match any signature.
+    pub fn resolve_return_type(&self, name: &str, arg_types: &[String]) -> Option<String> {
+        let func = self.get(name)?;
+
+        // Use the first signature as the primary one
+        if let Some(sig) = func.signatures.first() {
+            match &sig.return_type {
+                ReturnType::Primitive(prim) => Some(self.primitive_to_string(prim)),
+                ReturnType::SameAsParam(n) => {
+                    // Return same type as the nth argument
+                    arg_types
+                        .get(*n)
+                        .cloned()
+                        .or_else(|| Some("Number".to_string()))
+                }
+                ReturnType::ScalarOf(n) => {
+                    // Extract scalar type from vector argument
+                    arg_types
+                        .get(*n)
+                        .map(|ty| self.scalar_of_type(ty))
+                        .or_else(|| Some("Number".to_string()))
+                }
+                ReturnType::Bool => Some("Boolean".to_string()),
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Extract the scalar component type from a vector type
+    fn scalar_of_type(&self, ty: &str) -> String {
+        match ty {
+            "vec2" | "vec3" | "vec4" => "Number".to_string(),
+            "ivec2" | "ivec3" | "ivec4" => "Number".to_string(), // i32 maps to Number
+            "uvec2" | "uvec3" | "uvec4" => "Number".to_string(), // u32 maps to Number
+            _ => "Number".to_string(),                           // Default fallback
+        }
+    }
+
+    /// Convert a primitive type to its FormaLang type name
+    fn primitive_to_string(&self, prim: &PrimitiveType) -> String {
+        match prim {
+            // GPU scalar types
+            PrimitiveType::F32 => "Number".to_string(),
+            PrimitiveType::I32 => "Number".to_string(),
+            PrimitiveType::U32 => "Number".to_string(),
+            PrimitiveType::Bool => "Boolean".to_string(),
+            // GPU vector types (float)
+            PrimitiveType::Vec2 => "vec2".to_string(),
+            PrimitiveType::Vec3 => "vec3".to_string(),
+            PrimitiveType::Vec4 => "vec4".to_string(),
+            // GPU vector types (signed int)
+            PrimitiveType::IVec2 => "ivec2".to_string(),
+            PrimitiveType::IVec3 => "ivec3".to_string(),
+            PrimitiveType::IVec4 => "ivec4".to_string(),
+            // GPU vector types (unsigned int)
+            PrimitiveType::UVec2 => "uvec2".to_string(),
+            PrimitiveType::UVec3 => "uvec3".to_string(),
+            PrimitiveType::UVec4 => "uvec4".to_string(),
+            // GPU matrix types
+            PrimitiveType::Mat2 => "mat2".to_string(),
+            PrimitiveType::Mat3 => "mat3".to_string(),
+            PrimitiveType::Mat4 => "mat4".to_string(),
+            // FormaLang-specific types
+            PrimitiveType::String => "String".to_string(),
+            PrimitiveType::Number => "Number".to_string(),
+            PrimitiveType::Boolean => "Boolean".to_string(),
+            PrimitiveType::Path => "Path".to_string(),
+            PrimitiveType::Regex => "Regex".to_string(),
+            PrimitiveType::Never => "Never".to_string(),
+        }
+    }
+
+    /// Get the global singleton registry instance
+    pub fn global() -> &'static Self {
+        use std::sync::OnceLock;
+        static INSTANCE: OnceLock<BuiltinRegistry> = OnceLock::new();
+        INSTANCE.get_or_init(BuiltinRegistry::new)
+    }
+
     fn register(&mut self, func: BuiltinFunction) {
         self.functions.insert(func.name, func);
     }

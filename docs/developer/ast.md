@@ -1,10 +1,10 @@
 # AST Reference
 
-**Last Updated**: 2025-11-23
+**Last Updated**: 2025-01-08
 
 This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
 
-> **Note**: For code generation, use the [IR (Intermediate Representation)](ir.md) instead. The IR provides resolved types, linked references, and is optimized for generating TypeScript, Swift, and Kotlin code.
+> **Note**: For code generation, use the [IR (Intermediate Representation)](ir.md) instead. The IR provides resolved types, linked references, and is optimized for generating WGSL shader code.
 
 ## Overview
 
@@ -18,10 +18,10 @@ Use the `compile` function for a fully validated AST:
 use formalang::compile;
 
 let source = r#"
-pub struct User(
+pub struct User {
     name: String,
     age: Number
-)
+}
 "#;
 
 match compile(source) {
@@ -87,7 +87,7 @@ pub struct Ident {
 
 #### File
 
-The root node representing a complete `.forma` source file.
+The root node representing a complete `.fv` source file.
 
 ```rust
 pub struct File {
@@ -103,8 +103,8 @@ Top-level statements in a file.
 ```rust
 pub enum Statement {
     Use(UseStmt),
-    Let(LetBinding),
-    Definition(Definition),
+    Let(Box<LetBinding>),
+    Definition(Box<Definition>),
 }
 ```
 
@@ -119,6 +119,7 @@ pub enum Definition {
     Impl(ImplDef),
     Enum(EnumDef),
     Module(ModuleDef),
+    Function(Box<FunctionDef>),
 }
 ```
 
@@ -137,8 +138,9 @@ pub enum Visibility {
 
 ```rust
 pub struct UseStmt {
-    pub path: Vec<Ident>,   // Module path segments
-    pub items: UseItems,    // What to import
+    pub visibility: Visibility, // pub use for re-exports
+    pub path: Vec<Ident>,       // Module path segments
+    pub items: UseItems,        // What to import
     pub span: Span,
 }
 ```
@@ -224,13 +226,52 @@ pub struct FieldDef {
 
 ### Impl Blocks
 
-Implementation body for structs.
+Implementation body for structs. Supports both inherent implementations and trait implementations.
 
 ```rust
 pub struct ImplDef {
-    pub name: Ident,                  // Struct being implemented
+    pub trait_name: Option<Ident>,    // None for inherent impl, Some for trait impl
+    pub name: Ident,                  // Struct/enum being implemented
     pub generics: Vec<GenericParam>,
-    pub body: Vec<Expr>,
+    pub functions: Vec<FnDef>,        // Method definitions
+    pub span: Span,
+}
+```
+
+#### FnDef
+
+Function definition inside an impl block.
+
+```rust
+pub struct FnDef {
+    pub name: Ident,
+    pub params: Vec<FnParam>,
+    pub return_type: Option<Type>,
+    pub body: Expr,
+    pub span: Span,
+}
+```
+
+#### FnParam
+
+```rust
+pub struct FnParam {
+    pub name: Ident,
+    pub ty: Option<Type>,      // None for `self` parameter
+    pub default: Option<Expr>, // Default value expression
+    pub span: Span,
+}
+```
+
+### Standalone Functions
+
+```rust
+pub struct FunctionDef {
+    pub visibility: Visibility,
+    pub name: Ident,
+    pub params: Vec<FnParam>,
+    pub return_type: Option<Type>,
+    pub body: Expr,
     pub span: Span,
 }
 ```
@@ -308,6 +349,15 @@ pub enum Type {
     Array(Box<Type>),                // [T]
     Optional(Box<Type>),             // T?
     Tuple(Vec<TupleField>),          // (name1: T1, name2: T2)
+    Dictionary {                     // [K: V]
+        key: Box<Type>,
+        value: Box<Type>,
+    },
+    Closure {                        // (T1, T2) -> R
+        params: Vec<Type>,
+        return_type: Box<Type>,
+    },
+    Never,                           // Never type (!)
     TypeParameter(Ident),            // Reference to type parameter
 }
 ```
@@ -316,11 +366,21 @@ pub enum Type {
 
 ```rust
 pub enum PrimitiveType {
+    // CPU types
     String,
     Number,
     Boolean,
     Path,
     Regex,
+    // GPU types
+    F32,
+    I32,
+    U32,
+    Bool,
+    Vec2, Vec3, Vec4,
+    IVec2, IVec3, IVec4,
+    UVec2, UVec3, UVec4,
+    Mat2, Mat3, Mat4,
 }
 ```
 
@@ -342,11 +402,13 @@ pub struct TupleField {
 pub enum Expr {
     Literal(Literal),
 
-    StructInstantiation {
-        name: Ident,
-        type_args: Vec<Type>,
-        args: Vec<(Ident, Expr)>,
-        mounts: Vec<(Ident, Expr)>,
+    /// Unified invocation: struct instantiation or function call
+    /// Semantic analysis determines which based on the name
+    Invocation {
+        path: Vec<Ident>,              // Name/path being invoked
+        type_args: Vec<Type>,          // Generic type arguments
+        args: Vec<(Option<Ident>, Expr)>, // Named or positional args
+        mounts: Vec<(Ident, Expr)>,    // Mount field arguments
         span: Span,
     },
 
@@ -385,6 +447,12 @@ pub enum Expr {
         span: Span,
     },
 
+    UnaryOp {
+        op: UnaryOperator,
+        operand: Box<Expr>,
+        span: Span,
+    },
+
     ForExpr {
         var: Ident,
         collection: Box<Expr>,
@@ -410,23 +478,74 @@ pub enum Expr {
         span: Span,
     },
 
-    ContextExpr {
-        items: Vec<ContextItem>,
+    DictLiteral {
+        entries: Vec<(Expr, Expr)>,  // Key-value pairs
+        span: Span,
+    },
+
+    DictAccess {
+        dict: Box<Expr>,
+        key: Box<Expr>,
+        span: Span,
+    },
+
+    ClosureExpr {
+        params: Vec<ClosureParam>,
         body: Box<Expr>,
         span: Span,
     },
 
-    ProvidesExpr {
-        items: Vec<ProvideItem>,
+    LetExpr {
+        mutable: bool,
+        pattern: BindingPattern,
+        ty: Option<Type>,
+        value: Box<Expr>,
         body: Box<Expr>,
         span: Span,
     },
 
-    ConsumesExpr {
-        names: Vec<Ident>,
-        body: Box<Expr>,
+    MethodCall {
+        receiver: Box<Expr>,
+        method: Ident,
+        args: Vec<Expr>,
         span: Span,
     },
+
+    Block {
+        statements: Vec<BlockStatement>,
+        result: Box<Expr>,
+        span: Span,
+    },
+}
+```
+
+#### BlockStatement
+
+```rust
+pub enum BlockStatement {
+    Let {
+        mutable: bool,
+        pattern: BindingPattern,
+        ty: Option<Type>,
+        value: Expr,
+        span: Span,
+    },
+    Assign {
+        target: Expr,
+        value: Expr,
+        span: Span,
+    },
+    Expr(Expr),
+}
+```
+
+#### ClosureParam
+
+```rust
+pub struct ClosureParam {
+    pub name: Ident,
+    pub ty: Option<Type>,
+    pub span: Span,
 }
 ```
 
@@ -465,19 +584,32 @@ pub enum BinaryOperator {
     // Logical
     And,    // &&
     Or,     // ||
+
+    // Range
+    Range,  // ..
 }
 ```
 
 Operator precedence (higher binds tighter):
 
-| Precedence | Operators           |
-|------------|---------------------|
-| 6          | `*`, `/`, `%`       |
-| 5          | `+`, `-`            |
-| 4          | `<`, `>`, `<=`, `>=`|
-| 3          | `==`, `!=`          |
-| 2          | `&&`                |
-| 1          | `\|\|`              |
+| Precedence | Operators            |
+|------------|----------------------|
+| 6          | `*`, `/`, `%`        |
+| 5          | `+`, `-`             |
+| 4          | `<`, `>`, `<=`, `>=` |
+| 3          | `==`, `!=`           |
+| 2          | `&&`                 |
+| 1          | `\|\|`               |
+| 0          | `..`                 |
+
+#### UnaryOperator
+
+```rust
+pub enum UnaryOperator {
+    Neg,  // -x
+    Not,  // !x
+}
+```
 
 ### Pattern Matching
 
@@ -499,28 +631,50 @@ pub enum Pattern {
         name: Ident,
         bindings: Vec<Ident>,
     },
+    Wildcard,  // _
 }
 ```
 
-### Context Expressions
+### Binding Patterns
 
-#### ContextItem
+For destructuring in let bindings.
+
+#### BindingPattern
 
 ```rust
-pub struct ContextItem {
-    pub mutable: bool,
-    pub expr: Box<Expr>,
-    pub alias: Option<Ident>,
-    pub span: Span,
+pub enum BindingPattern {
+    Simple(Ident),
+    Array {
+        elements: Vec<ArrayPatternElement>,
+        span: Span,
+    },
+    Struct {
+        fields: Vec<StructPatternField>,
+        span: Span,
+    },
+    Tuple {
+        elements: Vec<BindingPattern>,
+        span: Span,
+    },
 }
 ```
 
-#### ProvideItem
+#### ArrayPatternElement
 
 ```rust
-pub struct ProvideItem {
-    pub expr: Box<Expr>,
-    pub alias: Option<Ident>,
+pub enum ArrayPatternElement {
+    Binding(BindingPattern),
+    Rest(Option<Ident>),  // ...rest or just ...
+    Wildcard,             // _
+}
+```
+
+#### StructPatternField
+
+```rust
+pub struct StructPatternField {
+    pub name: Ident,
+    pub alias: Option<Ident>,  // field: alias
     pub span: Span,
 }
 ```
@@ -532,10 +686,10 @@ pub struct ProvideItem {
 **FormaLang source:**
 
 ```formalang
-pub struct User(
+pub struct User {
     name: String,
     age: Number
-)
+}
 ```
 
 **AST structure:**
@@ -609,10 +763,10 @@ pub trait Container {
     items: [String]
 }
 
-pub struct Box<T: Container>(
+pub struct Box<T: Container> {
     content: T,
     label: String?
-)
+}
 ```
 
 **AST structure:**
@@ -653,20 +807,26 @@ File
         └── mount_fields: []
 ```
 
-### Impl Block with Expressions
+### Impl Block with Functions
 
 **FormaLang source:**
 
 ```formalang
-pub struct Counter(
+pub struct Counter {
     count: Number
-)
+}
 
 impl Counter {
-    if count > 10 {
-        Label(text: "High")
-    } else {
-        Label(text: "Low")
+    fn increment(self) -> Number {
+        self.count + 1
+    }
+
+    fn display(self) -> String {
+        if self.count > 10 {
+            "High"
+        } else {
+            "Low"
+        }
     }
 }
 ```
@@ -680,23 +840,56 @@ File
 │
 └── statements[1]: Statement::Definition
     └── Definition::Impl
+        ├── trait_name: None
         ├── name: "Counter"
         ├── generics: []
-        └── body:
-            └── [0] Expr::IfExpr
-                ├── condition: Expr::BinaryOp
-                │   ├── left: Expr::Reference { path: ["count"] }
-                │   ├── op: Gt
-                │   └── right: Expr::Literal(Number(10.0))
-                ├── then_branch: Expr::StructInstantiation
-                │   ├── name: "Label"
-                │   └── args: [("text", Literal::String("High"))]
-                └── else_branch: Expr::StructInstantiation
-                    ├── name: "Label"
-                    └── args: [("text", Literal::String("Low"))]
+        └── functions:
+            ├── [0] FnDef
+            │   ├── name: "increment"
+            │   ├── params: [FnParam { name: "self", ty: None }]
+            │   ├── return_type: Some(Type::Primitive(Number))
+            │   └── body: Expr::BinaryOp { ... }
+            └── [1] FnDef
+                ├── name: "display"
+                ├── params: [FnParam { name: "self", ty: None }]
+                ├── return_type: Some(Type::Primitive(String))
+                └── body: Expr::IfExpr { ... }
 ```
 
-### Match Expression
+### Trait Implementation
+
+**FormaLang source:**
+
+```formalang
+pub trait Drawable {
+    fn draw(self) -> String
+}
+
+impl Drawable for Counter {
+    fn draw(self) -> String {
+        "Counter: " + self.count
+    }
+}
+```
+
+**AST structure:**
+
+```text
+File
+└── statements[1]: Statement::Definition
+    └── Definition::Impl
+        ├── trait_name: Some("Drawable")
+        ├── name: "Counter"
+        ├── generics: []
+        └── functions:
+            └── [0] FnDef
+                ├── name: "draw"
+                ├── params: [FnParam { name: "self", ty: None }]
+                ├── return_type: Some(Type::Primitive(String))
+                └── body: Expr::BinaryOp { ... }
+```
+
+### Match Expression with Wildcard
 
 **FormaLang source:**
 
@@ -704,7 +897,7 @@ File
 match status {
     Active => Label(text: "Online"),
     Inactive => Label(text: "Offline"),
-    Pending(reason) => Label(text: reason)
+    _ => Label(text: "Unknown")
 }
 ```
 
@@ -716,13 +909,41 @@ Expr::MatchExpr
 └── arms:
     ├── [0] MatchArm
     │   ├── pattern: Pattern::Variant { name: "Active", bindings: [] }
-    │   └── body: Expr::StructInstantiation { name: "Label", ... }
+    │   └── body: Expr::Invocation { path: ["Label"], ... }
     ├── [1] MatchArm
     │   ├── pattern: Pattern::Variant { name: "Inactive", bindings: [] }
-    │   └── body: Expr::StructInstantiation { name: "Label", ... }
+    │   └── body: Expr::Invocation { path: ["Label"], ... }
     └── [2] MatchArm
-        ├── pattern: Pattern::Variant { name: "Pending", bindings: ["reason"] }
-        └── body: Expr::StructInstantiation { name: "Label", ... }
+        ├── pattern: Pattern::Wildcard
+        └── body: Expr::Invocation { path: ["Label"], ... }
+```
+
+### Block Expression
+
+**FormaLang source:**
+
+```formalang
+{
+    let x = compute_value()
+    let y = x * 2
+    Result(value: y)
+}
+```
+
+**AST structure:**
+
+```text
+Expr::Block
+├── statements:
+│   ├── [0] BlockStatement::Let
+│   │   ├── mutable: false
+│   │   ├── pattern: BindingPattern::Simple("x")
+│   │   └── value: Expr::Invocation { path: ["compute_value"], ... }
+│   └── [1] BlockStatement::Let
+│       ├── mutable: false
+│       ├── pattern: BindingPattern::Simple("y")
+│       └── value: Expr::BinaryOp { left: "x", op: Mul, right: 2 }
+└── result: Expr::Invocation { path: ["Result"], args: [("value", "y")] }
 ```
 
 ### For Expression
@@ -741,7 +962,30 @@ for item in items {
 Expr::ForExpr
 ├── var: "item"
 ├── collection: Expr::Reference { path: ["items"] }
-└── body: Expr::StructInstantiation
-    ├── name: "ListItem"
-    └── args: [("text", Expr::Reference { path: ["item"] })]
+└── body: Expr::Invocation
+    ├── path: ["ListItem"]
+    └── args: [(Some("text"), Expr::Reference { path: ["item"] })]
+```
+
+### Closure Expression
+
+**FormaLang source:**
+
+```formalang
+let add = |x: Number, y: Number| x + y
+```
+
+**AST structure:**
+
+```text
+Statement::Let
+├── pattern: BindingPattern::Simple("add")
+└── value: Expr::ClosureExpr
+    ├── params:
+    │   ├── [0] ClosureParam { name: "x", ty: Some(Number) }
+    │   └── [1] ClosureParam { name: "y", ty: Some(Number) }
+    └── body: Expr::BinaryOp
+        ├── left: Expr::Reference { path: ["x"] }
+        ├── op: Add
+        └── right: Expr::Reference { path: ["y"] }
 ```

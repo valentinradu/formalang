@@ -1,0 +1,404 @@
+/// Fill Types for Shapes and Text
+///
+/// This module provides fill styles including solid colors, gradients, and patterns.
+/// Each fill type implements a `sample(uv: vec2) -> Color4` function for GPU rendering.
+
+use stdlib::gpu::*
+use stdlib::traits::Fill
+use stdlib::color::Color
+use stdlib::dimension::*
+
+// =============================================================================
+// FILL MODULE
+// =============================================================================
+
+/// Fill types module.
+///
+/// Contains solid colors, gradients, and patterns. Use `fill::relative::`
+/// for variants that work in 0-1 coordinate space.
+pub mod fill {
+
+    // =========================================================================
+    // SOLID FILL
+    // =========================================================================
+
+    /// Solid color fill.
+    ///
+    /// Returns the same color for every UV coordinate.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Rect(fill: fill::Solid(color: .hex(value: "#FF0000")))
+    /// ```
+    pub struct Solid: Fill {
+        color: Color = .rgb(r: 0, g: 0, b: 0)
+    }
+
+    impl Solid {
+        /// Sample the fill at the given UV coordinate.
+        /// For solid fills, this always returns the same color.
+        fn sample(self, uv: vec2) -> Color4 {
+            self.color.to_color4()
+        }
+    }
+
+    // =========================================================================
+    // LINEAR GRADIENT
+    // =========================================================================
+
+    /// Linear gradient fill.
+    ///
+    /// Interpolates between two colors along a line at the specified angle.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Rect(fill: fill::Linear(
+    ///     from: .hex(value: "#FF0000"),
+    ///     to: .hex(value: "#0000FF"),
+    ///     angle: 45.0
+    /// ))
+    /// ```
+    pub struct Linear: Fill {
+        from: Color = .rgb(r: 0, g: 0, b: 0),
+        to: Color = .rgb(r: 255, g: 255, b: 255),
+        angle: f32 = 0.0
+    }
+
+    impl Linear {
+        /// Sample the linear gradient at the given UV coordinate.
+        ///
+        /// The gradient direction is determined by the angle:
+        /// - 0 degrees: left to right
+        /// - 90 degrees: bottom to top
+        /// - 45 degrees: diagonal
+        fn sample(self, uv: vec2) -> Color4 {
+            // Convert angle to radians
+            let angle_rad = self.angle * 3.14159265359 / 180.0
+
+            // Calculate gradient direction vector
+            let dir = vec2(cos(angle_rad), sin(angle_rad))
+
+            // Center UV at (0.5, 0.5) for rotation around center
+            let centered = uv - vec2(0.5, 0.5)
+
+            // Project onto gradient direction
+            let t = dot(centered, dir) + 0.5
+
+            // Clamp to 0-1 range
+            let t_clamped = clamp(t, 0.0, 1.0)
+
+            // Interpolate between colors
+            let from_color = self.from.to_color4()
+            let to_color = self.to.to_color4()
+
+            Color4::lerp(from_color, to_color, t_clamped)
+        }
+    }
+
+    // =========================================================================
+    // RADIAL GRADIENT
+    // =========================================================================
+
+    /// Radial gradient fill.
+    ///
+    /// Interpolates between two colors from a center point outward.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Circle(fill: fill::Radial(
+    ///     from: .hex(value: "#FFFFFF"),
+    ///     to: .hex(value: "#000000"),
+    ///     centerX: 0.5,
+    ///     centerY: 0.5
+    /// ))
+    /// ```
+    pub struct Radial: Fill {
+        from: Color = .rgb(r: 255, g: 255, b: 255),
+        to: Color = .rgb(r: 0, g: 0, b: 0),
+        centerX: f32 = 0.5,
+        centerY: f32 = 0.5
+    }
+
+    impl Radial {
+        /// Sample the radial gradient at the given UV coordinate.
+        ///
+        /// Color is interpolated based on distance from center point.
+        fn sample(self, uv: vec2) -> Color4 {
+            let center = vec2(self.centerX, self.centerY)
+
+            // Calculate distance from center (normalized to 0-1)
+            let diff = uv - center
+            let dist = length(diff) * 2.0  // Scale so edge is at 1.0
+
+            // Clamp distance
+            let t = clamp(dist, 0.0, 1.0)
+
+            // Interpolate between colors
+            let from_color = self.from.to_color4()
+            let to_color = self.to.to_color4()
+
+            Color4::lerp(from_color, to_color, t)
+        }
+    }
+
+    // =========================================================================
+    // ANGULAR (CONIC) GRADIENT
+    // =========================================================================
+
+    /// Angular/conic gradient fill.
+    ///
+    /// Interpolates between colors around a center point by angle.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Circle(fill: fill::Angular(
+    ///     from: .hex(value: "#FF0000"),
+    ///     to: .hex(value: "#0000FF"),
+    ///     angle: 0.0
+    /// ))
+    /// ```
+    pub struct Angular: Fill {
+        from: Color = .rgb(r: 255, g: 0, b: 0),
+        to: Color = .rgb(r: 0, g: 0, b: 255),
+        angle: f32 = 0.0
+    }
+
+    impl Angular {
+        /// Sample the angular gradient at the given UV coordinate.
+        ///
+        /// Color is interpolated based on angle from center.
+        fn sample(self, uv: vec2) -> Color4 {
+            // Center at (0.5, 0.5)
+            let centered = uv - vec2(0.5, 0.5)
+
+            // Calculate angle (atan2 returns -PI to PI)
+            let point_angle = atan2(centered.y, centered.x)
+
+            // Convert to 0-1 range
+            let angle_rad = self.angle * 3.14159265359 / 180.0
+            let adjusted = point_angle - angle_rad
+            let t = (adjusted + 3.14159265359) / (2.0 * 3.14159265359)
+
+            // Wrap to 0-1
+            let t_wrapped = fract(t)
+
+            // Interpolate between colors
+            let from_color = self.from.to_color4()
+            let to_color = self.to.to_color4()
+
+            Color4::lerp(from_color, to_color, t_wrapped)
+        }
+    }
+
+    // =========================================================================
+    // PATTERN FILL
+    // =========================================================================
+
+    /// Pattern repeat modes for pattern fills.
+    pub enum PatternRepeat {
+        repeat,
+        repeatX,
+        repeatY,
+        noRepeat
+    }
+
+    /// Pattern fill using another fill as source.
+    ///
+    /// Tiles a fill pattern within the shape bounds.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Rect(fill: fill::Pattern(
+    ///     source: fill::Linear(from: .red(), to: .blue(), angle: 45.0),
+    ///     width: 20.0,
+    ///     height: 20.0,
+    ///     repeat: .repeat
+    /// ))
+    /// ```
+    pub struct Pattern: Fill {
+        source: Fill,
+        width: f32 = 10.0,
+        height: f32 = 10.0,
+        repeat: PatternRepeat = .repeat
+    }
+
+    impl Pattern {
+        /// Sample the pattern fill at the given UV coordinate.
+        fn sample(self, uv: vec2) -> Color4 {
+            // Convert UV to pattern space
+            let pattern_uv = match self.repeat {
+                .repeat: vec2(fract(uv.x * self.width), fract(uv.y * self.height)),
+                .repeatX: vec2(fract(uv.x * self.width), uv.y),
+                .repeatY: vec2(uv.x, fract(uv.y * self.height)),
+                .noRepeat: {
+                    // Return transparent if outside pattern bounds
+                    if uv.x > 1.0 / self.width || uv.y > 1.0 / self.height {
+                        return Color4::transparent()
+                    }
+                    vec2(uv.x * self.width, uv.y * self.height)
+                }
+            }
+
+            // Sample the source fill
+            self.source.sample(pattern_uv)
+        }
+    }
+
+    // =========================================================================
+    // MULTI-STOP GRADIENT
+    // =========================================================================
+
+    /// Color stop for multi-stop gradients.
+    pub struct ColorStop {
+        color: Color,
+        position: f32 = 0.0
+    }
+
+    /// Multi-stop linear gradient.
+    ///
+    /// Supports arbitrary number of color stops.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// Rect(fill: fill::MultiLinear(
+    ///     stops: [
+    ///         ColorStop(color: .red(), position: 0.0),
+    ///         ColorStop(color: .yellow(), position: 0.5),
+    ///         ColorStop(color: .green(), position: 1.0)
+    ///     ],
+    ///     angle: 90.0
+    /// ))
+    /// ```
+    pub struct MultiLinear: Fill {
+        stops: [ColorStop] = [],
+        angle: f32 = 0.0
+    }
+
+    impl MultiLinear {
+        /// Sample multi-stop linear gradient.
+        fn sample(self, uv: vec2) -> Color4 {
+            // Calculate position along gradient
+            let angle_rad = self.angle * 3.14159265359 / 180.0
+            let dir = vec2(cos(angle_rad), sin(angle_rad))
+            let centered = uv - vec2(0.5, 0.5)
+            let t = clamp(dot(centered, dir) + 0.5, 0.0, 1.0)
+
+            // Find the two stops to interpolate between
+            // For GPU, we need fixed-size iteration
+            // This is a simplified version - real implementation would use
+            // binary search or unrolled loop for performance
+            let stop_count = 8u  // Maximum stops
+            let prev_color = Color4::black()
+            let next_color = Color4::white()
+            let prev_pos = 0.0
+            let next_pos = 1.0
+
+            for i in 0u..stop_count {
+                if i < len(self.stops) {
+                    let stop = self.stops[i]
+                    if stop.position <= t {
+                        prev_color = stop.color.to_color4()
+                        prev_pos = stop.position
+                    }
+                    if stop.position >= t && next_pos > stop.position {
+                        next_color = stop.color.to_color4()
+                        next_pos = stop.position
+                    }
+                }
+            }
+
+            // Interpolate between stops
+            let range = next_pos - prev_pos
+            let local_t = if range > 0.0 { (t - prev_pos) / range } else { 0.0 }
+
+            Color4::lerp(prev_color, next_color, local_t)
+        }
+    }
+
+    // =========================================================================
+    // RELATIVE COORDINATE FILLS
+    // =========================================================================
+
+    /// Relative fill variants (0-1 coordinate space).
+    ///
+    /// These fills work in normalized coordinates relative to the shape bounds.
+    pub mod relative {
+
+        /// Solid color fill (relative coordinates).
+        pub struct Solid: Fill {
+            color: Color = .rgb(r: 0, g: 0, b: 0)
+        }
+
+        impl Solid {
+            fn sample(self, uv: vec2) -> Color4 {
+                self.color.to_color4()
+            }
+        }
+
+        /// Linear gradient fill (relative coordinates).
+        pub struct Linear: Fill {
+            from: Color = .rgb(r: 0, g: 0, b: 0),
+            to: Color = .rgb(r: 255, g: 255, b: 255),
+            angle: f32 = 0.0
+        }
+
+        impl Linear {
+            fn sample(self, uv: vec2) -> Color4 {
+                let angle_rad = self.angle * 3.14159265359 / 180.0
+                let dir = vec2(cos(angle_rad), sin(angle_rad))
+                let centered = uv - vec2(0.5, 0.5)
+                let t = clamp(dot(centered, dir) + 0.5, 0.0, 1.0)
+
+                let from_color = self.from.to_color4()
+                let to_color = self.to.to_color4()
+                Color4::lerp(from_color, to_color, t)
+            }
+        }
+
+        /// Radial gradient fill (relative coordinates).
+        pub struct Radial: Fill {
+            from: Color = .rgb(r: 255, g: 255, b: 255),
+            to: Color = .rgb(r: 0, g: 0, b: 0),
+            centerX: f32 = 0.5,
+            centerY: f32 = 0.5
+        }
+
+        impl Radial {
+            fn sample(self, uv: vec2) -> Color4 {
+                let center = vec2(self.centerX, self.centerY)
+                let dist = length(uv - center) * 2.0
+                let t = clamp(dist, 0.0, 1.0)
+
+                let from_color = self.from.to_color4()
+                let to_color = self.to.to_color4()
+                Color4::lerp(from_color, to_color, t)
+            }
+        }
+
+        /// Angular/conic gradient fill (relative coordinates).
+        pub struct Angular: Fill {
+            from: Color = .rgb(r: 255, g: 0, b: 0),
+            to: Color = .rgb(r: 0, g: 0, b: 255),
+            angle: f32 = 0.0
+        }
+
+        impl Angular {
+            fn sample(self, uv: vec2) -> Color4 {
+                let centered = uv - vec2(0.5, 0.5)
+                let point_angle = atan2(centered.y, centered.x)
+                let angle_rad = self.angle * 3.14159265359 / 180.0
+                let t = fract((point_angle - angle_rad + 3.14159265359) / (2.0 * 3.14159265359))
+
+                let from_color = self.from.to_color4()
+                let to_color = self.to.to_color4()
+                Color4::lerp(from_color, to_color, t)
+            }
+        }
+    }
+}

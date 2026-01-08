@@ -3,10 +3,10 @@
 //! Generates WebGPU Shading Language (WGSL) from the IR representation.
 //! WGSL is the shader language for WebGPU, supported natively in browsers.
 
-use crate::ast::{BinaryOperator, Literal, PrimitiveType};
+use crate::ast::{BinaryOperator, Literal, PrimitiveType, UnaryOperator};
 use crate::codegen::dispatch::DispatchGenerator;
 use crate::codegen::monomorph::{MonomorphKey, Monomorphizer};
-use crate::ir::{IrExpr, IrFunction, IrImpl, IrModule, IrStruct, ResolvedType};
+use crate::ir::{simple_type_name, IrExpr, IrFunction, IrImpl, IrModule, IrStruct, ResolvedType};
 use std::collections::HashMap;
 
 /// Default maximum array size for unknown-size arrays in for loops.
@@ -85,6 +85,10 @@ pub struct WgslGenerator<'a> {
     current_line: usize,
     /// Source map tracking WGSL lines to source
     source_map: super::sourcemap::SourceMap,
+    /// Counter for generating unique hoisted variable names.
+    /// Uses Cell for interior mutability since gen_unique_name is called from
+    /// recursive &self methods (gen_expr, gen_block_with_hoisting).
+    hoist_counter: std::cell::Cell<u32>,
 }
 
 impl<'a> WgslGenerator<'a> {
@@ -107,7 +111,15 @@ impl<'a> WgslGenerator<'a> {
             monomorph_names,
             current_line: 1,
             source_map: super::sourcemap::SourceMap::new(),
+            hoist_counter: std::cell::Cell::new(0),
         }
+    }
+
+    /// Generate a unique variable name for hoisted let bindings.
+    fn gen_unique_name(&self, base: &str) -> String {
+        let count = self.hoist_counter.get();
+        self.hoist_counter.set(count + 1);
+        format!("_hoist_{}_{}", base, count)
     }
 
     /// Get the source map after generation.
@@ -212,6 +224,61 @@ impl<'a> WgslGenerator<'a> {
             self.output
                 .push_str(&dispatch_gen.gen_all_load_functions(info));
         }
+
+        // Generate placeholder data structs for external traits
+        self.gen_external_trait_data_structs();
+    }
+
+    /// Generate placeholder data structs for external traits.
+    ///
+    /// When a struct field references an external trait (from an imported module),
+    /// we need to generate a data struct for it even though we don't have the
+    /// implementor information. This uses a default size for the data array.
+    fn gen_external_trait_data_structs(&mut self) {
+        use crate::codegen::dispatch::{DispatchGenerator, DEFAULT_EXTERNAL_TRAIT_DATA_SIZE};
+        use std::collections::HashSet;
+
+        // Collect all external trait names referenced in struct fields
+        let mut external_traits: HashSet<String> = HashSet::new();
+
+        for s in &self.module.structs {
+            for field in &s.fields {
+                Self::collect_external_traits(&field.ty, &mut external_traits);
+            }
+        }
+
+        // Generate data structs for each external trait using the dispatch generator
+        for trait_name in external_traits {
+            let simple_name = simple_type_name(&trait_name);
+            let struct_code = DispatchGenerator::gen_external_trait_data_struct(
+                simple_name,
+                DEFAULT_EXTERNAL_TRAIT_DATA_SIZE,
+            );
+            self.output.push_str(&struct_code);
+            self.write_blank_line();
+        }
+    }
+
+    /// Collect external trait type names from a resolved type.
+    fn collect_external_traits(ty: &ResolvedType, traits: &mut std::collections::HashSet<String>) {
+        use crate::ir::ExternalKind;
+
+        match ty {
+            ResolvedType::External {
+                name,
+                kind: ExternalKind::Trait,
+                ..
+            } => {
+                traits.insert(name.clone());
+            }
+            ResolvedType::Optional(inner) => {
+                Self::collect_external_traits(inner, traits);
+            }
+            ResolvedType::Array(inner) => {
+                Self::collect_external_traits(inner, traits);
+            }
+            _ => {}
+        }
     }
 
     /// Calculate field size in f32 units for dispatch data packing.
@@ -250,7 +317,8 @@ impl<'a> WgslGenerator<'a> {
 
             for field in &mono_struct.fields {
                 let ty = self.type_to_wgsl(&field.ty);
-                self.write_line(&format!("{}: {},", field.name, ty));
+                let field_name = Self::escape_wgsl_keyword(&field.name);
+                self.write_line(&format!("{}: {},", field_name, ty));
             }
 
             self.indent -= 1;
@@ -270,9 +338,15 @@ impl<'a> WgslGenerator<'a> {
         self.write_line_struct(&format!("struct {} {{", s.name), &s.name);
         self.indent += 1;
 
-        for field in &s.fields {
-            let ty = self.type_to_wgsl(&field.ty);
-            self.write_line(&format!("{}: {},", field.name, ty));
+        if s.fields.is_empty() {
+            // WGSL doesn't allow empty structs; add a placeholder field
+            self.write_line("_placeholder: u32,");
+        } else {
+            for field in &s.fields {
+                let ty = self.type_to_wgsl(&field.ty);
+                let field_name = Self::escape_wgsl_keyword(&field.name);
+                self.write_line(&format!("{}: {},", field_name, ty));
+            }
         }
 
         self.indent -= 1;
@@ -508,10 +582,13 @@ impl<'a> WgslGenerator<'a> {
         self.write_line(&format!("switch {} {{", scrutinee_str));
         self.indent += 1;
 
-        for (idx, arm) in arms.iter().enumerate() {
-            // Generate case for each variant
-            // The variant name maps to a tag constant
-            let tag = idx as u32; // Simplified: use index as tag
+        // Separate wildcard arm from variant arms
+        let (variant_arms, wildcard_arms): (Vec<_>, Vec<_>) =
+            arms.iter().partition(|arm| !arm.is_wildcard);
+
+        // Generate case for each variant arm
+        for (idx, arm) in variant_arms.iter().enumerate() {
+            let tag = idx as u32;
             self.write_line(&format!("case {}u: {{ // {}", tag, arm.variant));
             self.indent += 1;
 
@@ -532,8 +609,21 @@ impl<'a> WgslGenerator<'a> {
             self.write_line("}");
         }
 
-        // Default case
-        self.write_line("default: {}");
+        // Generate default case (either from wildcard arm or empty)
+        if let Some(wildcard_arm) = wildcard_arms.first() {
+            self.write_line("default: {");
+            self.indent += 1;
+            let body_str = self.gen_expr(&wildcard_arm.body);
+            if return_type.is_some() {
+                self.write_line(&format!("match_result = {};", body_str));
+            } else {
+                self.write_line(&format!("{};", body_str));
+            }
+            self.indent -= 1;
+            self.write_line("}");
+        } else {
+            self.write_line("default: {}");
+        }
 
         self.indent -= 1;
         self.write_line("}");
@@ -566,6 +656,12 @@ impl<'a> WgslGenerator<'a> {
                 format!("({} {} {})", left_str, op_str, right_str)
             }
 
+            IrExpr::UnaryOp { op, operand, .. } => {
+                let operand_str = self.gen_expr(operand);
+                let op_str = self.unary_op_to_wgsl(op);
+                format!("({}{})", op_str, operand_str)
+            }
+
             IrExpr::StructInst {
                 struct_id, fields, ..
             } => {
@@ -584,7 +680,9 @@ impl<'a> WgslGenerator<'a> {
             IrExpr::FunctionCall { path, args, .. } => {
                 let path_str = path.join("::");
                 let fn_name = self.map_builtin_function(&path_str);
-                let arg_strs: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
+                // Extract just the expression values from named args (WGSL uses positional)
+                let arg_strs: Vec<String> =
+                    args.iter().map(|(_, expr)| self.gen_expr(expr)).collect();
                 format!("{}({})", fn_name, arg_strs.join(", "))
             }
 
@@ -595,10 +693,11 @@ impl<'a> WgslGenerator<'a> {
                 ..
             } => {
                 let recv = self.gen_expr(receiver);
-                let arg_strs: Vec<String> = args.iter().map(|a| self.gen_expr(a)).collect();
+                // Extract just the expression values from named args (WGSL uses positional)
+                let arg_strs: Vec<String> =
+                    args.iter().map(|(_, expr)| self.gen_expr(expr)).collect();
 
-                // For now, generate as a function call with receiver as first arg
-                // This may need refinement based on receiver type
+                // Generate as a function call with receiver as first arg
                 let all_args = std::iter::once(recv)
                     .chain(arg_strs)
                     .collect::<Vec<_>>()
@@ -758,7 +857,240 @@ impl<'a> WgslGenerator<'a> {
                     result_type
                 )
             }
+
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                // WGSL doesn't have block expressions like Rust's { stmts; expr }
+                // We hoist let bindings to the enclosing scope and substitute references
+                let (hoisted, result_expr) = self.gen_block_with_hoisting(statements, result);
+
+                if hoisted.is_empty() {
+                    // No hoisting needed, just return the result
+                    result_expr
+                } else {
+                    // WGSL doesn't support statements inside expressions.
+                    // Block expressions with let bindings can only be properly compiled
+                    // when they appear at statement level, not nested inside other expressions.
+                    // For now, emit a clear error comment that will cause WGSL validation to fail.
+                    format!(
+                        "/* WGSL_ERROR: Block expression with {} statement(s) cannot be used in expression position. \
+                         Move block to statement level or simplify. Statements: [{}] */ {}",
+                        hoisted.len(),
+                        hoisted.join("; "),
+                        result_expr
+                    )
+                }
+            }
         }
+    }
+
+    /// Generate WGSL for a block expression with hoisting.
+    ///
+    /// Returns (hoisted_statements, result_expression).
+    /// The hoisted statements are let bindings that need to be emitted at statement level.
+    fn gen_block_with_hoisting(
+        &self,
+        statements: &[crate::ir::IrBlockStatement],
+        result: &IrExpr,
+    ) -> (Vec<String>, String) {
+        use crate::ir::IrBlockStatement;
+
+        let mut hoisted = Vec::new();
+        let mut var_renames: HashMap<String, String> = HashMap::new();
+
+        for stmt in statements {
+            match stmt {
+                IrBlockStatement::Let {
+                    name, value, ty, ..
+                } => {
+                    // Generate a unique name for this binding
+                    let unique_name = self.gen_unique_name(name);
+                    var_renames.insert(name.clone(), unique_name.clone());
+
+                    // Generate the hoisted let statement
+                    let type_str = ty
+                        .as_ref()
+                        .map(|t| format!(": {}", self.type_to_wgsl(t)))
+                        .unwrap_or_default();
+                    let value_expr = self.gen_expr_with_renames(value, &var_renames);
+                    hoisted.push(format!("let {}{} = {}", unique_name, type_str, value_expr));
+                }
+                IrBlockStatement::Assign { target, value } => {
+                    // Assignments become statements too
+                    let target_expr = self.gen_expr_with_renames(target, &var_renames);
+                    let value_expr = self.gen_expr_with_renames(value, &var_renames);
+                    hoisted.push(format!("{} = {}", target_expr, value_expr));
+                }
+                IrBlockStatement::Expr(expr) => {
+                    // Expression statements are side effects, generate them
+                    let expr_str = self.gen_expr_with_renames(expr, &var_renames);
+                    hoisted.push(format!("_ = {}", expr_str));
+                }
+            }
+        }
+
+        // Generate the result expression with variable renames applied
+        let result_expr = self.gen_expr_with_renames(result, &var_renames);
+
+        (hoisted, result_expr)
+    }
+
+    /// Generate WGSL for an expression with variable renames applied.
+    ///
+    /// This is used during block hoisting to substitute renamed variables.
+    /// Recursively processes all sub-expressions to ensure renames are applied throughout.
+    fn gen_expr_with_renames(&self, expr: &IrExpr, renames: &HashMap<String, String>) -> String {
+        match expr {
+            IrExpr::Reference { path, ty } => {
+                // Check if the first path component needs renaming
+                if let Some(first) = path.first() {
+                    if let Some(new_name) = renames.get(first) {
+                        if path.len() == 1 {
+                            return new_name.clone();
+                        } else {
+                            let rest: Vec<&str> = path.iter().skip(1).map(|s| s.as_str()).collect();
+                            return format!("{}.{}", new_name, rest.join("."));
+                        }
+                    }
+                }
+                self.gen_expr(&IrExpr::Reference {
+                    path: path.clone(),
+                    ty: ty.clone(),
+                })
+            }
+
+            // Recursively handle expressions with sub-expressions
+            IrExpr::BinaryOp {
+                left, op, right, ..
+            } => {
+                let left_str = self.gen_expr_with_renames(left, renames);
+                let right_str = self.gen_expr_with_renames(right, renames);
+                let op_str = self.binary_op_to_wgsl(op);
+                format!("({} {} {})", left_str, op_str, right_str)
+            }
+
+            IrExpr::UnaryOp { op, operand, .. } => {
+                let operand_str = self.gen_expr_with_renames(operand, renames);
+                let op_str = self.unary_op_to_wgsl(op);
+                format!("({}{})", op_str, operand_str)
+            }
+
+            IrExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let cond = self.gen_expr_with_renames(condition, renames);
+                let then_val = self.gen_expr_with_renames(then_branch, renames);
+                if let Some(else_expr) = else_branch {
+                    let else_val = self.gen_expr_with_renames(else_expr, renames);
+                    format!("select({}, {}, {})", else_val, then_val, cond)
+                } else {
+                    format!("select(0, {}, {})", then_val, cond)
+                }
+            }
+
+            IrExpr::FunctionCall { path, args, .. } => {
+                let path_str = path.join("::");
+                let fn_name = self.map_builtin_function(&path_str);
+                let arg_strs: Vec<String> = args
+                    .iter()
+                    .map(|(_, e)| self.gen_expr_with_renames(e, renames))
+                    .collect();
+                format!("{}({})", fn_name, arg_strs.join(", "))
+            }
+
+            IrExpr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => {
+                let recv = self.gen_expr_with_renames(receiver, renames);
+                let arg_strs: Vec<String> = args
+                    .iter()
+                    .map(|(_, e)| self.gen_expr_with_renames(e, renames))
+                    .collect();
+                let all_args = std::iter::once(recv)
+                    .chain(arg_strs)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}({})", method, all_args)
+            }
+
+            IrExpr::Array { elements, .. } => {
+                let elem_strs: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.gen_expr_with_renames(e, renames))
+                    .collect();
+                format!("array({})", elem_strs.join(", "))
+            }
+
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                // Nested block - merge renames and recurse
+                let (inner_hoisted, inner_result) =
+                    self.gen_block_with_hoisting_and_renames(statements, result, renames);
+                if inner_hoisted.is_empty() {
+                    inner_result
+                } else {
+                    format!(
+                        "(/* hoisted: {} */ {})",
+                        inner_hoisted.join("; "),
+                        inner_result
+                    )
+                }
+            }
+
+            // For expressions without sub-expressions or complex ones, use gen_expr
+            _ => self.gen_expr(expr),
+        }
+    }
+
+    /// Generate WGSL for a block with hoisting, using existing renames.
+    fn gen_block_with_hoisting_and_renames(
+        &self,
+        statements: &[crate::ir::IrBlockStatement],
+        result: &IrExpr,
+        parent_renames: &HashMap<String, String>,
+    ) -> (Vec<String>, String) {
+        use crate::ir::IrBlockStatement;
+
+        let mut hoisted = Vec::new();
+        let mut var_renames = parent_renames.clone();
+
+        for stmt in statements {
+            match stmt {
+                IrBlockStatement::Let {
+                    name, value, ty, ..
+                } => {
+                    let unique_name = self.gen_unique_name(name);
+                    var_renames.insert(name.clone(), unique_name.clone());
+
+                    let type_str = ty
+                        .as_ref()
+                        .map(|t| format!(": {}", self.type_to_wgsl(t)))
+                        .unwrap_or_default();
+                    let value_expr = self.gen_expr_with_renames(value, &var_renames);
+                    hoisted.push(format!("let {}{} = {}", unique_name, type_str, value_expr));
+                }
+                IrBlockStatement::Assign { target, value } => {
+                    let target_expr = self.gen_expr_with_renames(target, &var_renames);
+                    let value_expr = self.gen_expr_with_renames(value, &var_renames);
+                    hoisted.push(format!("{} = {}", target_expr, value_expr));
+                }
+                IrBlockStatement::Expr(expr) => {
+                    let expr_str = self.gen_expr_with_renames(expr, &var_renames);
+                    hoisted.push(format!("_ = {}", expr_str));
+                }
+            }
+        }
+
+        let result_expr = self.gen_expr_with_renames(result, &var_renames);
+        (hoisted, result_expr)
     }
 
     /// Generate WGSL code for a literal value.
@@ -799,7 +1131,14 @@ impl<'a> WgslGenerator<'a> {
             ResolvedType::Struct(id) => self.module.get_struct(*id).name.clone(),
 
             ResolvedType::Array(inner) => {
-                format!("array<{}>", self.type_to_wgsl(inner))
+                // WGSL doesn't support runtime-sized arrays in struct fields.
+                // Use a fixed-size array with a reasonable max size.
+                // The runtime can use a separate length field to track actual size.
+                format!(
+                    "array<{}, {}>",
+                    self.type_to_wgsl(inner),
+                    DEFAULT_MAX_ARRAY_SIZE
+                )
             }
 
             ResolvedType::Optional(inner) => {
@@ -827,16 +1166,41 @@ impl<'a> WgslGenerator<'a> {
                 }
             }
 
-            ResolvedType::TypeParam(name) => name.clone(),
+            ResolvedType::TypeParam(name) => {
+                // Type parameters with module paths (e.g., "alignment::Horizontal")
+                // typically represent external enum types that couldn't be resolved.
+                // In WGSL, enums are represented as u32.
+                if name.contains("::") {
+                    // Module-qualified types are likely external enums
+                    "u32".to_string()
+                } else {
+                    // Simple type parameters keep their name
+                    name.clone()
+                }
+            }
 
             ResolvedType::Enum(_) => {
                 // Enums are represented as u32 in WGSL
                 "u32".to_string()
             }
 
-            ResolvedType::Trait(_) | ResolvedType::External { .. } => {
-                // These need special handling
-                "/* unsupported type */".to_string()
+            ResolvedType::Trait(id) => {
+                // Map trait types to their dispatch data struct (e.g., Fill -> FillData)
+                let trait_def = self.module.get_trait(*id);
+                format!("{}Data", trait_def.name)
+            }
+
+            ResolvedType::External { name, kind, .. } => {
+                use crate::ir::ExternalKind;
+                let simple_name = simple_type_name(name);
+                match kind {
+                    // External structs use their name directly
+                    ExternalKind::Struct => simple_name.to_string(),
+                    // External traits use the trait data struct pattern
+                    ExternalKind::Trait => format!("{}Data", simple_name),
+                    // External enums are represented as u32 in WGSL
+                    ExternalKind::Enum => "u32".to_string(),
+                }
             }
 
             ResolvedType::EventMapping { .. } => {
@@ -883,13 +1247,73 @@ impl<'a> WgslGenerator<'a> {
             PrimitiveType::Mat3 => "mat3x3<f32>".to_string(),
             PrimitiveType::Mat4 => "mat4x4<f32>".to_string(),
 
-            // Non-GPU types - map to closest WGSL equivalent
+            // Non-GPU types - map to WGSL placeholders
+            // These use u32 as handles/indices since WGSL can't represent them directly
             PrimitiveType::Number => "f32".to_string(),
-            PrimitiveType::String => "/* string */".to_string(),
+            PrimitiveType::String => "u32".to_string(), // Handle to string table
             PrimitiveType::Boolean => "bool".to_string(),
-            PrimitiveType::Path => "/* path */".to_string(),
-            PrimitiveType::Regex => "/* regex */".to_string(),
-            PrimitiveType::Never => "/* never */".to_string(),
+            PrimitiveType::Path => "u32".to_string(), // Handle to path data
+            PrimitiveType::Regex => "u32".to_string(), // Handle to regex data
+            PrimitiveType::Never => "u32".to_string(), // Placeholder for uninhabited type
+        }
+    }
+
+    /// Escape WGSL reserved keywords by prefixing with underscore.
+    ///
+    /// WGSL has reserved keywords that cannot be used as identifiers.
+    /// This function prefixes them with `_` to make them valid.
+    fn escape_wgsl_keyword(name: &str) -> String {
+        // WGSL reserved keywords that might conflict with field names
+        const WGSL_KEYWORDS: &[&str] = &[
+            "alias",
+            "break",
+            "case",
+            "const",
+            "const_assert",
+            "continue",
+            "continuing",
+            "default",
+            "diagnostic",
+            "discard",
+            "else",
+            "enable",
+            "false",
+            "fn",
+            "for",
+            "if",
+            "let",
+            "loop",
+            "override",
+            "return",
+            "struct",
+            "switch",
+            "true",
+            "var",
+            "while",
+            // Additional reserved words
+            "from",
+            "to",
+            "in",
+            "out",
+            "inout",
+            "uniform",
+            "storage",
+            "read",
+            "write",
+            "read_write",
+            "function",
+            "private",
+            "workgroup",
+            "push_constant",
+            "vertex",
+            "fragment",
+            "compute",
+        ];
+
+        if WGSL_KEYWORDS.contains(&name) {
+            format!("_{}", name)
+        } else {
+            name.to_string()
         }
     }
 
@@ -911,6 +1335,22 @@ impl<'a> WgslGenerator<'a> {
             BinaryOperator::Ge => ">=",
             BinaryOperator::And => "&&",
             BinaryOperator::Or => "||",
+            BinaryOperator::Range => {
+                // Range expressions (0..10) should only appear in for-loop contexts.
+                // The for-loop codegen handles ranges specially to emit WGSL loop bounds.
+                // If we reach here, it means a range operator appeared outside a for-loop,
+                // which is a semantic error that should have been caught earlier.
+                // WGSL has no native range type. Emit invalid WGSL that will fail validation
+                // with a clear error message rather than panicking.
+                "/* INVALID: range operator outside for-loop */"
+            }
+        }
+    }
+
+    fn unary_op_to_wgsl(&self, op: &UnaryOperator) -> &'static str {
+        match op {
+            UnaryOperator::Neg => "-",
+            UnaryOperator::Not => "!",
         }
     }
 
@@ -1111,8 +1551,7 @@ mod tests {
     fn test_monomorphized_generic_struct() {
         let source = r#"
             struct Box<T> { value: T }
-            struct Container { box: Box<f32> }
-            impl Container { box: Box<f32>(value: 1.0) }
+            struct Container { box: Box<f32> = Box<f32>(value: 1.0) }
         "#;
         let ir = compile_to_ir(source).unwrap();
         let wgsl = generate_wgsl(&ir);
@@ -1144,10 +1583,8 @@ mod tests {
     fn test_multiple_monomorphizations() {
         let source = r#"
             struct Pair<T> { first: T, second: T }
-            struct HolderA { a: Pair<f32> }
-            struct HolderB { b: Pair<i32> }
-            impl HolderA { a: Pair<f32>(first: 1.0, second: 2.0) }
-            impl HolderB { b: Pair<i32>(first: 1, second: 2) }
+            struct HolderA { a: Pair<f32> = Pair<f32>(first: 1.0, second: 2.0) }
+            struct HolderB { b: Pair<i32> = Pair<i32>(first: 1, second: 2) }
         "#;
         let ir = compile_to_ir(source).unwrap();
         let wgsl = generate_wgsl(&ir);
@@ -1177,18 +1614,18 @@ mod tests {
             "Should have Rectangle type tag"
         );
 
-        // Should have ElementData struct
+        // Should have trait-specific data struct (ShapeData, not generic ElementData)
         assert!(
-            wgsl.contains("struct ElementData"),
-            "Should have ElementData struct"
+            wgsl.contains("struct ShapeData"),
+            "Should have ShapeData struct"
         );
         assert!(
             wgsl.contains("type_tag: u32"),
-            "ElementData should have type_tag"
+            "ShapeData should have type_tag"
         );
         assert!(
             wgsl.contains("data: array<f32"),
-            "ElementData should have data array"
+            "ShapeData should have data array"
         );
 
         // Should have load functions

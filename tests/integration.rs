@@ -345,11 +345,7 @@ fn test_optional_closure_type() {
 fn test_impl_block_with_literal() {
     let source = r#"
         struct Greeting {
-            message: String
-        }
-
-        impl Greeting {
-            message: "Hello, World!"
+            message: String = "Hello, World!"
         }
     "#;
     let result = compile(source);
@@ -364,11 +360,7 @@ fn test_impl_block_with_struct_instantiation() {
         }
 
         struct Outer {
-            inner: Inner
-        }
-
-        impl Outer {
-            inner: Inner(value: 42)
+            inner: Inner = Inner(value: 42)
         }
     "#;
     let result = compile(source);
@@ -515,11 +507,7 @@ fn test_binary_logical() {
 fn test_if_expression() {
     let source = r#"
         struct Widget {
-            content: String
-        }
-
-        impl Widget {
-            content: if true { "yes" } else { "no" }
+            content: String = if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -534,11 +522,7 @@ fn test_for_expression() {
         }
 
         struct List {
-            items: [Item]
-        }
-
-        impl List {
-            items: for item in ["a", "b", "c"] { Item(value: item) }
+            items: [Item] = for item in ["a", "b", "c"] { Item(value: item) }
         }
     "#;
     let result = compile(source);
@@ -554,14 +538,15 @@ fn test_match_expression() {
         }
 
         struct Display {
-            status: Status,
-            text: String
+            status: Status
         }
 
         impl Display {
-            text: match status {
-                active: "Active",
-                inactive: "Inactive"
+            fn text() -> String {
+                match self.status {
+                    active: "Active",
+                    inactive: "Inactive"
+                }
             }
         }
     "#;
@@ -617,11 +602,7 @@ fn test_closure_with_type_annotation() {
 fn test_let_expression_in_impl() {
     let source = r#"
         struct Result {
-            value: Number
-        }
-
-        impl Result {
-            value: (let x = 10
+            value: Number = (let x = 10
             x)
         }
     "#;
@@ -633,11 +614,7 @@ fn test_let_expression_in_impl() {
 fn test_let_with_type_annotation() {
     let source = r#"
         struct Result {
-            value: Number
-        }
-
-        impl Result {
-            value: (let x: Number = 10
+            value: Number = (let x: Number = 10
             x)
         }
     "#;
@@ -649,11 +626,7 @@ fn test_let_with_type_annotation() {
 fn test_let_mut() {
     let source = r#"
         struct Counter {
-            value: Number
-        }
-
-        impl Counter {
-            value: (let mut count = 0
+            value: Number = (let mut count = 0
             count)
         }
     "#;
@@ -665,11 +638,7 @@ fn test_let_mut() {
 fn test_nested_let_expressions() {
     let source = r#"
         struct Computation {
-            result: Number
-        }
-
-        impl Computation {
-            result: (let a = 1
+            result: Number = (let a = 1
             let b = 2
             let c = 3
             a)
@@ -677,66 +646,6 @@ fn test_nested_let_expressions() {
     "#;
     let result = compile(source);
     assert!(result.is_ok(), "Failed: {:?}", result.err());
-}
-
-// =============================================================================
-// Provides/Consumes Tests
-// =============================================================================
-
-#[test]
-fn test_provides_expression() {
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-
-        struct App {
-            content: String
-        }
-
-        impl App {
-            content: provides Theme(color: "blue") {
-                "themed content"
-            }
-        }
-    "#;
-    let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
-}
-
-#[test]
-fn test_consumes_expression() {
-    // Consumes requires context to be provided - this tests the parsing
-    // The semantic check expects theme to be provided by an ancestor
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-
-        struct App {
-            content: String
-        }
-
-        struct Button {
-            label: String, display: String
-        }
-
-        impl App {
-            content: provides Theme(color: "blue") {
-                Button(label: "Click me")
-            }
-        }
-
-        impl Button {
-            display: consumes theme {
-                "button with " + theme.color
-            }
-        }
-    "#;
-    let result = compile(source);
-    // This may still fail if semantic analyzer doesn't track provides/consumes correctly
-    // For now, we just verify it parses
-    assert!(result.is_ok() || result.is_err());
 }
 
 // =============================================================================
@@ -859,12 +768,8 @@ fn test_complex_ui_component() {
 
         struct Card {
             title: String,
-            content: String,
+            content: String = "Card component",
             actions: [Button]?
-        }
-
-        impl Card {
-            content: "Card component"
         }
     "#;
     let result = compile(source);
@@ -989,14 +894,16 @@ fn test_mutable_field() {
 
 #[test]
 fn test_field_reference() {
+    // Field references (self.field) are only valid in impl functions
     let source = r#"
         struct User {
-            name: String,
-            displayName: String
+            name: String
         }
 
         impl User {
-            displayName: name
+            fn displayName() -> String {
+                self.name
+            }
         }
     "#;
     let result = compile(source);
@@ -1005,7 +912,7 @@ fn test_field_reference() {
 
 #[test]
 fn test_enum_variant_reference() {
-    // Inferred enum instantiation in a let binding
+    // Inferred enum instantiation in struct field default
     let source = r#"
         enum Color {
             red,
@@ -1013,11 +920,7 @@ fn test_enum_variant_reference() {
         }
 
         struct Widget {
-            color: Color
-        }
-
-        impl Widget {
-            color: .red
+            color: Color = .red
         }
     "#;
     let result = compile(source);
@@ -1037,13 +940,8 @@ fn test_inferred_enum_in_struct_instantiation_args() {
         }
 
         struct Pattern {
-            size: Size,
-            repeat: RepeatMode
-        }
-
-        impl Pattern {
-            size: Size(width: .auto, height: .auto),
-            repeat: .both
+            size: Size = Size(width: .auto, height: .auto),
+            repeat: RepeatMode = .both
         }
     "#;
     let result = compile(source);

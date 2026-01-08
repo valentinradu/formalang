@@ -159,10 +159,7 @@ fn test_trait_inheritance() {
 fn test_if_expression_with_literal() {
     let source = r#"
         struct Data {
-            status: Boolean
-        }
-        impl Data {
-            status: if true { true } else { false }
+            status: Boolean = if true { true } else { false }
         }
     "#;
     let result = compile(source);
@@ -173,10 +170,7 @@ fn test_if_expression_with_literal() {
 fn test_for_expression_with_literal() {
     let source = r#"
         struct List {
-            items: [String]
-        }
-        impl List {
-            items: for item in ["a", "b"] { item }
+            items: [String] = for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
@@ -187,10 +181,7 @@ fn test_for_expression_with_literal() {
 fn test_let_expression_simple() {
     let source = r#"
         struct Calculator {
-            a: Number
-        }
-        impl Calculator {
-            a: (let x = 10
+            a: Number = (let x = 10
             x)
         }
     "#;
@@ -202,10 +193,7 @@ fn test_let_expression_simple() {
 fn test_nested_let_expressions() {
     let source = r#"
         struct Logic {
-            a: Boolean
-        }
-        impl Logic {
-            a: (let x = true
+            a: Boolean = (let x = true
             let y = false
             x)
         }
@@ -218,10 +206,7 @@ fn test_nested_let_expressions() {
 fn test_binary_operators_with_literals() {
     let source = r#"
         struct Math {
-            a: Number
-        }
-        impl Math {
-            a: 1 + 2
+            a: Number = 1 + 2
         }
     "#;
     let result = compile(source);
@@ -232,10 +217,7 @@ fn test_binary_operators_with_literals() {
 fn test_comparison_operators_with_literals() {
     let source = r#"
         struct Compare {
-            a: Number
-        }
-        impl Compare {
-            a: if 1 < 2 { 1 } else { 0 }
+            a: Number = if 1 < 2 { 1 } else { 0 }
         }
     "#;
     let result = compile(source);
@@ -246,10 +228,7 @@ fn test_comparison_operators_with_literals() {
 fn test_logical_operators_with_literals() {
     let source = r#"
         struct Logic {
-            a: Boolean
-        }
-        impl Logic {
-            a: true && false
+            a: Boolean = true && false
         }
     "#;
     let result = compile(source);
@@ -394,45 +373,6 @@ fn test_view_trait_with_mount() {
 }
 
 // =============================================================================
-// Provides/Consumes Tests
-// =============================================================================
-
-#[test]
-fn test_provides_expression() {
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-        struct Provider {
-            value: String
-        }
-        impl Provider {
-            value: provides Theme(color: "blue") { "content" }
-        }
-    "#;
-    let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
-}
-
-#[test]
-fn test_consumes_expression_without_provider() {
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-        struct Consumer {
-            value: String
-        }
-        impl Consumer {
-            value: consumes theme { "value" }
-        }
-    "#;
-    let result = compile(source);
-    // consumes without a provider should fail
-    assert!(result.is_err());
-}
-
-// =============================================================================
 // Use Statement Tests
 // =============================================================================
 
@@ -559,10 +499,7 @@ fn test_dictionary_with_struct_value() {
 fn test_dictionary_literal_in_impl() {
     let source = r#"
         struct Config {
-            data: [String: Number]
-        }
-        impl Config {
-            data: ["a": 1, "b": 2, "c": 3]
+            data: [String: Number] = ["a": 1, "b": 2, "c": 3]
         }
     "#;
     let result = compile(source);
@@ -599,10 +536,7 @@ fn test_closure_multi_param() {
 fn test_closure_expression_in_impl() {
     let source = r#"
         struct Mapper {
-            data: [String]
-        }
-        impl Mapper {
-            data: for item in ["a", "b"] { item }
+            data: [String] = for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
@@ -617,10 +551,7 @@ fn test_closure_expression_in_impl() {
 fn test_let_with_type_annotation() {
     let source = r#"
         struct Test {
-            value: Number
-        }
-        impl Test {
-            value: (let x: Number = 10
+            value: Number = (let x: Number = 10
             x)
         }
     "#;
@@ -632,10 +563,7 @@ fn test_let_with_type_annotation() {
 fn test_let_mutable() {
     let source = r#"
         struct Counter {
-            initial: Number
-        }
-        impl Counter {
-            initial: (let mut count = 0
+            initial: Number = (let mut count = 0
             count)
         }
     "#;
@@ -647,10 +575,7 @@ fn test_let_mutable() {
 fn test_let_simple_value() {
     let source = r#"
         struct Test {
-            value: Number
-        }
-        impl Test {
-            value: (let x = 2
+            value: Number = (let x = 2
             x)
         }
     "#;
@@ -685,10 +610,7 @@ fn test_module_with_trait_and_impl() {
                 name: String
             }
             struct User: Named {
-                name: String
-            }
-            impl User {
-                name: "default"
+                name: String = "default"
             }
         }
     "#;
@@ -702,120 +624,87 @@ fn test_module_with_trait_and_impl() {
 
 #[test]
 fn test_impl_block_defaults_applied_on_instantiation() {
-    // Impl block defaults should make fields optional during instantiation
+    // Struct field defaults should make fields optional during instantiation
     let source = r##"
         struct MyBox {
-            color: String,
-            size: Number
-        }
-        impl MyBox {
-            color: "#FF0000",
-            size: 10
+            color: String = "#FF0000",
+            size: Number = 10
         }
         struct Container {
-            box: MyBox
-        }
-        impl Container {
-            box: MyBox()
+            box: MyBox = MyBox()
         }
     "##;
     let result = compile(source);
     assert!(
         result.is_ok(),
-        "Impl block defaults should make fields optional: {:?}",
+        "Struct field defaults should make fields optional: {:?}",
         result.err()
     );
 }
 
 #[test]
 fn test_impl_block_defaults_with_mount_fields() {
-    // Mount fields with impl block defaults should be optional
+    // Mount fields with struct field defaults should be optional
     let source = r##"
         trait Shape {}
         struct Rect: Shape {}
-        impl Rect {}
 
         struct MyBox: Shape {
-            color: String,
-            mount body: Shape
-        }
-        impl MyBox {
-            color: "#FF0000",
-            body: Rect()
+            color: String = "#FF0000",
+            mount body: Shape = Rect()
         }
         struct Container: Shape {
-            mount content: Shape
-        }
-        impl Container {
-            content: MyBox()
+            mount content: Shape = MyBox()
         }
     "##;
     let result = compile(source);
     assert!(
         result.is_ok(),
-        "Mount fields with impl defaults should be optional: {:?}",
+        "Mount fields with defaults should be optional: {:?}",
         result.err()
     );
 }
 
 #[test]
 fn test_impl_block_defaults_partial_override() {
-    // Can provide some fields while using impl defaults for others
+    // Can provide some fields while using struct field defaults for others
     let source = r#"
         struct Config {
-            name: String,
-            value: Number,
-            enabled: Boolean
-        }
-        impl Config {
-            name: "default",
-            value: 0,
-            enabled: true
+            name: String = "default",
+            value: Number = 0,
+            enabled: Boolean = true
         }
         struct App {
-            config: Config
-        }
-        impl App {
-            config: Config(name: "custom")
+            config: Config = Config(name: "custom")
         }
     "#;
     let result = compile(source);
     assert!(
         result.is_ok(),
-        "Should allow partial override of impl defaults: {:?}",
+        "Should allow partial override of struct field defaults: {:?}",
         result.err()
     );
 }
 
 #[test]
 fn test_impl_block_defaults_nested_instantiation() {
-    // Nested struct instantiation should respect impl defaults
+    // Nested struct instantiation should respect struct field defaults
     let source = r#"
         struct Inner {
-            value: String
-        }
-        impl Inner {
-            value: "inner default"
+            value: String = "inner default"
         }
         struct Outer {
-            inner: Inner,
-            name: String
-        }
-        impl Outer {
-            inner: Inner(),
-            name: "outer default"
+            inner: Inner = Inner(),
+            name: String = "outer default"
         }
         struct Container {
-            outer: Outer
-        }
-        impl Container {
-            outer: Outer()
+            outer: Outer = Outer()
         }
     "#;
     let result = compile(source);
     assert!(
         result.is_ok(),
-        "Nested instantiation should use impl defaults: {:?}",
+        "Nested instantiation should use struct field defaults: {:?}",
         result.err()
     );
 }
@@ -928,6 +817,122 @@ fn test_function_no_return_type_valid() {
     assert!(
         result.is_ok(),
         "Function without return type should compile: {:?}",
+        result.err()
+    );
+}
+
+// =============================================================================
+// Assignment to Immutable Tests
+// =============================================================================
+
+#[test]
+fn test_assignment_to_immutable_fails() {
+    let source = r#"
+        struct Counter { value: Number }
+        impl Counter {
+            fn get_value(self) -> Number {
+                let x = 10
+                x = 20
+                x
+            }
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_err(),
+        "Assignment to immutable binding should fail"
+    );
+    let errors = result.err().unwrap();
+    let error_strings: Vec<String> = errors.iter().map(|e| format!("{:?}", e)).collect();
+    assert!(
+        error_strings
+            .iter()
+            .any(|e| e.contains("immutable") || e.contains("Immutable")),
+        "Error should mention immutable: {:?}",
+        error_strings
+    );
+}
+
+#[test]
+fn test_assignment_to_mutable_succeeds() {
+    let source = r#"
+        struct Counter { value: Number }
+        impl Counter {
+            fn get_value(self) -> Number {
+                let mut x = 10
+                x = 20
+                x
+            }
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Assignment to mutable binding should succeed: {:?}",
+        result.err()
+    );
+}
+
+// =============================================================================
+// Block Expression Tests
+// =============================================================================
+
+#[test]
+fn test_block_expr_with_let_bindings() {
+    let source = r#"
+        struct Test {
+            value: Number = {
+                let a = 1
+                let b = 2
+                a + b
+            }
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Block expression with let bindings should compile: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_block_expr_with_assignment() {
+    let source = r#"
+        struct Test { value: Number }
+        impl Test {
+            fn compute(self) -> Number {
+                let mut sum = 0
+                sum = sum + 10
+                sum
+            }
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Block expression with assignment should compile: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_nested_block_expressions() {
+    let source = r#"
+        struct Test {
+            value: Number = {
+                let outer = {
+                    let inner = 5
+                    inner * 2
+                }
+                outer + 1
+            }
+        }
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Nested block expressions should compile: {:?}",
         result.err()
     );
 }

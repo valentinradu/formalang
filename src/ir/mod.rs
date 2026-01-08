@@ -32,7 +32,7 @@ mod types;
 mod visitor;
 
 pub use dce::{eliminate_dead_code, DeadCodeEliminator};
-pub use expr::{EventBindingSource, EventFieldBinding, IrExpr, IrMatchArm};
+pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm};
 pub use fold::{fold_constants, ConstantFolder};
 pub use lower::lower_to_ir;
 pub use types::{
@@ -89,6 +89,21 @@ pub struct TraitId(pub u32);
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
+
+/// ID for referencing standalone function definitions.
+///
+/// Use this to look up functions in [`IrModule::functions`]:
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = "pub fn add(a: f32, b: f32) -> f32 { a + b }";
+/// let module = compile_to_ir(source).unwrap();
+/// let id = formalang::FunctionId(0);
+/// let func_def = &module.functions[id.0 as usize];
+/// assert_eq!(func_def.name, "add");
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct FunctionId(pub u32);
 
 /// Kind of external type reference.
 ///
@@ -260,6 +275,11 @@ pub struct IrModule {
     /// theme colors, fonts, and shared configuration values.
     pub lets: Vec<IrLet>,
 
+    /// Standalone function definitions
+    ///
+    /// Contains all standalone function definitions (outside of impl blocks).
+    pub functions: Vec<IrFunction>,
+
     /// Imports from other modules
     ///
     /// Contains information about all types imported from external modules,
@@ -274,6 +294,9 @@ pub struct IrModule {
 
     /// Mapping from enum names to IDs for lookup during lowering
     enum_names: std::collections::HashMap<String, EnumId>,
+
+    /// Mapping from function names to IDs for lookup during lowering
+    function_names: HashMap<String, FunctionId>,
 
     /// Mapping from let binding names to their index in the lets vector
     let_names: HashMap<String, usize>,
@@ -372,6 +395,28 @@ impl IrModule {
         self.let_names.insert(l.name.clone(), idx);
         self.lets.push(l);
     }
+
+    /// Look up a function by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ID is out of bounds.
+    pub fn get_function(&self, id: FunctionId) -> &IrFunction {
+        &self.functions[id.0 as usize]
+    }
+
+    /// Look up a function ID by name.
+    pub fn function_id(&self, name: &str) -> Option<FunctionId> {
+        self.function_names.get(name).copied()
+    }
+
+    /// Add a standalone function and return its ID.
+    pub(crate) fn add_function(&mut self, name: String, f: IrFunction) -> FunctionId {
+        let id = FunctionId(self.functions.len() as u32);
+        self.function_names.insert(name, id);
+        self.functions.push(f);
+        id
+    }
 }
 
 impl ResolvedType {
@@ -465,4 +510,21 @@ impl Visibility {
     pub fn is_public(&self) -> bool {
         matches!(self, Visibility::Public)
     }
+}
+
+/// Extract the simple type name from a potentially module-qualified path.
+///
+/// Given a path like `alignment::Horizontal`, returns `Horizontal`.
+/// For simple names like `Button`, returns the name unchanged.
+///
+/// # Example
+///
+/// ```
+/// use formalang::ir::simple_type_name;
+///
+/// assert_eq!(simple_type_name("alignment::Horizontal"), "Horizontal");
+/// assert_eq!(simple_type_name("Button"), "Button");
+/// ```
+pub fn simple_type_name(name: &str) -> &str {
+    name.rsplit("::").next().unwrap_or(name)
 }

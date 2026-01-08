@@ -1,0 +1,212 @@
+/// Alignment and Distribution Types
+///
+/// This module provides enums for positioning content within containers.
+
+// =============================================================================
+// ALIGNMENT MODULE
+// =============================================================================
+
+/// Alignment options for positioning content within containers.
+///
+/// This module provides enums for horizontal, vertical, and center-point
+/// alignment used by stack layouts, frames, and other containers.
+pub mod alignment {
+    /// Horizontal alignment for VStack children.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// VStack(alignment: .center, spacing: .px(value: 10)) { ... }
+    /// ```
+    pub enum Horizontal {
+        leading,
+        center,
+        trailing
+    }
+
+    impl Horizontal {
+        /// Calculate x offset for a child of given width within container width.
+        fn offset(self, child_width: f32, container_width: f32) -> f32 {
+            match self {
+                .leading: 0.0,
+                .center: (container_width - child_width) * 0.5,
+                .trailing: container_width - child_width
+            }
+        }
+    }
+
+    /// Vertical alignment for HStack children.
+    ///
+    /// # Example
+    ///
+    /// ```formalang
+    /// HStack(alignment: .center, spacing: .px(value: 10)) { ... }
+    /// ```
+    pub enum Vertical {
+        top,
+        center,
+        bottom
+    }
+
+    impl Vertical {
+        /// Calculate y offset for a child of given height within container height.
+        fn offset(self, child_height: f32, container_height: f32) -> f32 {
+            match self {
+                .top: 0.0,
+                .center: (container_height - child_height) * 0.5,
+                .bottom: container_height - child_height
+            }
+        }
+    }
+
+    /// Nine-point alignment for ZStack and Frame.
+    ///
+    /// Provides alignment to any of the nine anchor points:
+    /// ```text
+    /// topLeading    top       topTrailing
+    /// leading       center    trailing
+    /// bottomLeading bottom    bottomTrailing
+    /// ```
+    pub enum Center {
+        topLeading,
+        top,
+        topTrailing,
+        leading,
+        center,
+        trailing,
+        bottomLeading,
+        bottom,
+        bottomTrailing
+    }
+
+    impl Center {
+        /// Calculate offset for a child within container.
+        fn offset(self, child_width: f32, child_height: f32, container_width: f32, container_height: f32) -> vec2 {
+            let x = match self {
+                .topLeading: 0.0,
+                .leading: 0.0,
+                .bottomLeading: 0.0,
+                .top: (container_width - child_width) * 0.5,
+                .center: (container_width - child_width) * 0.5,
+                .bottom: (container_width - child_width) * 0.5,
+                .topTrailing: container_width - child_width,
+                .trailing: container_width - child_width,
+                .bottomTrailing: container_width - child_width
+            }
+            let y = match self {
+                .topLeading: 0.0,
+                .top: 0.0,
+                .topTrailing: 0.0,
+                .leading: (container_height - child_height) * 0.5,
+                .center: (container_height - child_height) * 0.5,
+                .trailing: (container_height - child_height) * 0.5,
+                .bottomLeading: container_height - child_height,
+                .bottom: container_height - child_height,
+                .bottomTrailing: container_height - child_height
+            }
+            vec2(x, y)
+        }
+    }
+}
+
+// =============================================================================
+// DISTRIBUTION MODULE
+// =============================================================================
+
+/// Distribution options for spacing children within containers.
+///
+/// Distribution controls how extra space is allocated among children
+/// in stack layouts.
+pub mod distribution {
+    /// Vertical distribution for VStack.
+    ///
+    /// # Variants
+    ///
+    /// - `top`, `center`, `bottom` - Pack children at position
+    /// - `spaceBetween` - Equal space between children
+    /// - `spaceAround` - Equal space around each child
+    /// - `spaceEvenly` - Equal space including edges
+    pub enum Vertical {
+        top,
+        center,
+        bottom,
+        spaceBetween,
+        spaceAround,
+        spaceEvenly
+    }
+
+    impl Vertical {
+        /// Calculate starting y and spacing for children.
+        /// Returns (start_y, spacing_between_children).
+        fn calculate(self, total_children_height: f32, container_height: f32, child_count: u32, base_spacing: f32) -> vec2 {
+            let extra_space = container_height - total_children_height
+            match self {
+                .top: vec2(0.0, base_spacing),
+                .center: vec2(extra_space * 0.5, base_spacing),
+                .bottom: vec2(extra_space, base_spacing),
+                .spaceBetween: {
+                    if child_count <= 1u {
+                        vec2(0.0, 0.0)
+                    } else {
+                        let spacing = extra_space / f32(child_count - 1u)
+                        vec2(0.0, spacing)
+                    }
+                },
+                .spaceAround: {
+                    let spacing = extra_space / f32(child_count)
+                    vec2(spacing * 0.5, spacing)
+                },
+                .spaceEvenly: {
+                    let spacing = extra_space / f32(child_count + 1u)
+                    vec2(spacing, spacing)
+                }
+            }
+        }
+    }
+
+    /// Horizontal distribution for HStack.
+    ///
+    /// # Variants
+    ///
+    /// - `leading`, `center`, `trailing` - Pack children at position
+    /// - `spaceBetween` - Equal space between children
+    /// - `spaceAround` - Equal space around each child
+    /// - `spaceEvenly` - Equal space including edges
+    pub enum Horizontal {
+        leading,
+        center,
+        trailing,
+        spaceBetween,
+        spaceAround,
+        spaceEvenly
+    }
+
+    impl Horizontal {
+        /// Calculate starting x and spacing for children.
+        /// Returns (start_x, spacing_between_children).
+        fn calculate(self, total_children_width: f32, container_width: f32, child_count: u32, base_spacing: f32) -> vec2 {
+            let extra_space = container_width - total_children_width
+            match self {
+                .leading: vec2(0.0, base_spacing),
+                .center: vec2(extra_space * 0.5, base_spacing),
+                .trailing: vec2(extra_space, base_spacing),
+                .spaceBetween: {
+                    if child_count <= 1u {
+                        vec2(0.0, 0.0)
+                    } else {
+                        let spacing = extra_space / f32(child_count - 1u)
+                        vec2(0.0, spacing)
+                    }
+                },
+                .spaceAround: {
+                    let spacing = extra_space / f32(child_count)
+                    vec2(spacing * 0.5, spacing)
+                },
+                .spaceEvenly: {
+                    let spacing = extra_space / f32(child_count + 1u)
+                    vec2(spacing, spacing)
+                }
+            }
+        }
+    }
+}

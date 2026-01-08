@@ -249,6 +249,7 @@ impl<'a> TreeFlattener<'a> {
         match expr {
             IrExpr::Literal { .. } => "Literal",
             IrExpr::BinaryOp { .. } => "BinaryOp",
+            IrExpr::UnaryOp { .. } => "UnaryOp",
             IrExpr::If { .. } => "If",
             IrExpr::Match { .. } => "Match",
             IrExpr::Reference { .. } => "Reference",
@@ -264,6 +265,7 @@ impl<'a> TreeFlattener<'a> {
             IrExpr::EventMapping { .. } => "EventMapping",
             IrExpr::DictLiteral { .. } => "DictLiteral",
             IrExpr::DictAccess { .. } => "DictAccess",
+            IrExpr::Block { .. } => "Block",
         }
     }
 
@@ -319,8 +321,7 @@ mod tests {
     #[test]
     fn test_flatten_simple_struct() {
         let source = r#"
-            struct Box { width: f32 }
-            impl Box { width: 100.0 }
+            struct Box { width: f32 = 100.0 }
             let root: Box = Box()
         "#;
 
@@ -337,8 +338,7 @@ mod tests {
     #[test]
     fn test_flatten_array_of_structs() {
         let source = r#"
-            struct Item { value: f32 }
-            impl Item { value: 10.0 }
+            struct Item { value: f32 = 10.0 }
             let items: [Item] = [Item(), Item(), Item()]
         "#;
 
@@ -358,10 +358,8 @@ mod tests {
     fn test_flatten_struct_with_nested_field() {
         // Test nested structs through regular fields (not mount)
         let source = r#"
-            struct Inner { value: f32 }
-            struct Outer { inner: Inner }
-            impl Inner { value: 1.0 }
-            impl Outer { inner: Inner() }
+            struct Inner { value: f32 = 1.0 }
+            struct Outer { inner: Inner = Inner() }
             let root: Outer = Outer()
         "#;
 
@@ -378,10 +376,8 @@ mod tests {
     #[test]
     fn test_type_tags_assigned() {
         let source = r#"
-            struct TypeA { x: f32 }
-            struct TypeB { y: f32 }
-            impl TypeA { x: 1.0 }
-            impl TypeB { y: 2.0 }
+            struct TypeA { x: f32 = 1.0 }
+            struct TypeB { y: f32 = 2.0 }
             let a: TypeA = TypeA()
         "#;
 
@@ -396,8 +392,7 @@ mod tests {
     #[test]
     fn test_elements_at_depth() {
         let source = r#"
-            struct Item { value: f32 }
-            impl Item { value: 10.0 }
+            struct Item { value: f32 = 10.0 }
             let items: [Item] = [Item(), Item(), Item()]
         "#;
 

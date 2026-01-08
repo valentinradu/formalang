@@ -1,0 +1,450 @@
+/// Interactive Control Components
+///
+/// This module provides interactive UI controls like buttons, inputs, and toggles.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+
+// =============================================================================
+// BUTTON
+// =============================================================================
+
+/// Clickable button control.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { submit, cancel }
+///
+/// Button<Event>(
+///   disabled: false,
+///   action: () -> .submit
+/// ) {
+///   background: Rect(width: .auto, height: .auto, fill: fill::Solid(color: .hex(value: "#007AFF")))
+///   label: Label(content: "Click Me")
+/// }
+/// ```
+pub struct Button<E>: Control {
+    padding: Padding = .uniform(value: .px(value: 12.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    action: (() -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount label: View,
+    mount foreground: View
+}
+
+impl Button {
+    /// Button layout wraps its label with padding.
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        Size2D(
+            width: proposed.width - insets.horizontal(),
+            height: proposed.height - insets.vertical()
+        )
+    }
+
+    fn layout_report(self, label_size: Size2D, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        Size2D(
+            width: label_size.width + insets.horizontal(),
+            height: label_size.height + insets.vertical()
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D, label_size: Size2D) -> Bounds2D {
+        let insets = self.padding.resolve(bounds.width, bounds.height)
+        let content_bounds = insets.inset_bounds(bounds)
+
+        // Center label in content area
+        Bounds2D(
+            x: content_bounds.x + (content_bounds.width - label_size.width) * 0.5,
+            y: content_bounds.y + (content_bounds.height - label_size.height) * 0.5,
+            width: label_size.width,
+            height: label_size.height
+        )
+    }
+
+    /// Button renders background; label renders itself.
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    /// Hit test for button interaction.
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}
+
+// =============================================================================
+// INPUT
+// =============================================================================
+
+/// Text input field.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { textChanged(value: String), submitted }
+///
+/// Input<Event>(
+///   disabled: false,
+///   onChange: x -> .textChanged(value: x),
+///   onSubmit: () -> .submitted
+/// ) {
+///   placeholder: Label(content: "Enter text...")
+///   value: Label(content: inputValue)
+///   label: Label(content: "Username")
+/// }
+/// ```
+pub struct Input<E>: Control {
+    padding: Padding = .uniform(value: .px(value: 8.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    onChange: (String -> E)? = nil,
+    onSubmit: (() -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount caret: View,
+    mount placeholder: View,
+    mount value: View,
+    mount label: View,
+    mount foreground: View
+}
+
+impl Input {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        Size2D(
+            width: proposed.width - insets.horizontal(),
+            height: proposed.height - insets.vertical()
+        )
+    }
+
+    fn layout_report(self, content_size: Size2D, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        Size2D(
+            width: max(content_size.width + insets.horizontal(), proposed.width),
+            height: content_size.height + insets.vertical()
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}
+
+// =============================================================================
+// CHECKBOX
+// =============================================================================
+
+/// Checkbox control.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { termsChanged(checked: bool) }
+///
+/// Checkbox<Event>(
+///   checked: isSelected,
+///   onChange: x -> .termsChanged(checked: x)
+/// ) {
+///   checkmark: Image(source: /checkmark.svg)
+///   label: Label(content: "Accept terms")
+/// }
+/// ```
+pub struct Checkbox<E>: Control {
+    padding: Padding = .uniform(value: .px(value: 4.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    checked: bool = false,
+    onChange: (bool -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount checkmark: View,
+    mount label: View,
+    mount foreground: View
+}
+
+impl Checkbox {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, checkmark_size: Size2D, label_size: Size2D) -> Size2D {
+        // Horizontal layout: checkmark + spacing + label
+        let spacing = 8.0
+        Size2D(
+            width: checkmark_size.width + spacing + label_size.width,
+            height: max(checkmark_size.height, label_size.height)
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}
+
+// =============================================================================
+// TOGGLE
+// =============================================================================
+
+/// Toggle switch control.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { darkModeChanged(enabled: bool) }
+///
+/// Toggle<Event>(
+///   checked: darkMode,
+///   onChange: x -> .darkModeChanged(enabled: x)
+/// ) {
+///   thumb: Circle(radius: .px(value: 12), fill: fill::Solid(color: .white()))
+///   label: Label(content: "Dark Mode")
+/// }
+/// ```
+pub struct Toggle<E>: Control {
+    padding: Padding = .uniform(value: .px(value: 2.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    checked: bool = false,
+    onChange: (bool -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount thumb: View,
+    mount label: View,
+    mount foreground: View
+}
+
+impl Toggle {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, thumb_size: Size2D, label_size: Size2D) -> Size2D {
+        // Toggle track is typically 2x thumb width
+        let track_width = thumb_size.width * 2.0
+        let spacing = 8.0
+        Size2D(
+            width: track_width + spacing + label_size.width,
+            height: max(thumb_size.height, label_size.height)
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D, thumb_size: Size2D) -> Bounds2D {
+        // Position thumb based on checked state
+        let track_width = thumb_size.width * 2.0
+        let x_offset = if self.checked {
+            track_width - thumb_size.width
+        } else {
+            0.0
+        }
+
+        Bounds2D(
+            x: bounds.x + x_offset,
+            y: bounds.y + (bounds.height - thumb_size.height) * 0.5,
+            width: thumb_size.width,
+            height: thumb_size.height
+        )
+    }
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}
+
+// =============================================================================
+// SLIDER
+// =============================================================================
+
+/// Slider control for numeric values.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { volumeChanged(level: f32) }
+///
+/// Slider<Event>(
+///   value: volume,
+///   min: 0.0,
+///   max: 100.0,
+///   step: 1.0,
+///   onChange: x -> .volumeChanged(level: x)
+/// ) {
+///   track: Rect(width: .auto, height: .px(value: 4))
+///   thumb: Circle(radius: .px(value: 10))
+/// }
+/// ```
+pub struct Slider<E>: View + Layerable {
+    padding: Padding = .uniform(value: .px(value: 0.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    value: f32 = 0.0,
+    min: f32 = 0.0,
+    max: f32 = 100.0,
+    step: f32 = 1.0,
+    onChange: (f32 -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount track: View,
+    mount thumb: View,
+    mount foreground: View
+}
+
+impl Slider {
+    /// Normalized value (0-1).
+    fn normalized_value(self) -> f32 {
+        clamp((self.value - self.min) / (self.max - self.min), 0.0, 1.0)
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self, track_size: Size2D, thumb_size: Size2D) -> Size2D {
+        Size2D(
+            width: track_size.width,
+            height: max(track_size.height, thumb_size.height)
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D, thumb_size: Size2D) -> Bounds2D {
+        let t = self.normalized_value()
+        let travel = bounds.width - thumb_size.width
+        let x_offset = travel * t
+
+        Bounds2D(
+            x: bounds.x + x_offset,
+            y: bounds.y + (bounds.height - thumb_size.height) * 0.5,
+            width: thumb_size.width,
+            height: thumb_size.height
+        )
+    }
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}
+
+// =============================================================================
+// DROPDOWN
+// =============================================================================
+
+/// Dropdown/select control.
+///
+/// # Example
+///
+/// ```formalang
+/// pub enum Event { countrySelected(index: u32) }
+///
+/// Dropdown<Event>(
+///   onChange: x -> .countrySelected(index: x)
+/// ) {
+///   input: Label(content: selectedItem)
+///   placeholder: Label(content: "Select...")
+///   indicator: Image(source: /chevron-down.svg)
+///   options: for option in options {
+///     Label(content: option)
+///   }
+///   label: Label(content: "Country")
+/// }
+/// ```
+pub struct Dropdown<E>: Control {
+    padding: Padding = .uniform(value: .px(value: 8.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    disabled: bool = false,
+    selectedIndex: u32? = nil,
+    onChange: (u32 -> E)? = nil,
+    mount background: View,
+    mount body: Never,
+    mount input: View,
+    mount placeholder: View,
+    mount indicator: View,
+    mount panel: View,
+    mount options: View,
+    mount label: View,
+    mount foreground: View
+}
+
+impl Dropdown {
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        Size2D(
+            width: proposed.width - insets.horizontal(),
+            height: proposed.height - insets.vertical()
+        )
+    }
+
+    fn layout_report(self, input_size: Size2D, indicator_size: Size2D, proposed: Size2D) -> Size2D {
+        let insets = self.padding.resolve(proposed.width, proposed.height)
+        let spacing = 8.0
+        Size2D(
+            width: input_size.width + spacing + indicator_size.width + insets.horizontal(),
+            height: max(input_size.height, indicator_size.height) + insets.vertical()
+        )
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        Color4::transparent()
+    }
+
+    fn hit_test(self, point: vec2, bounds: Bounds2D) -> bool {
+        if self.disabled {
+            false
+        } else {
+            bounds.contains(point)
+        }
+    }
+}

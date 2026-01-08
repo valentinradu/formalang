@@ -425,9 +425,8 @@ fn test_generic_with_multiple_params() {
 #[test]
 fn test_impl_complex_expression() {
     let source = r#"
-        struct A { x: Number }
-        impl A {
-            x: if true {
+        struct A {
+            x: Number = if true {
                 for i in [1, 2, 3] {
                     i
                 }
@@ -438,22 +437,20 @@ fn test_impl_complex_expression() {
     "#;
     assert!(
         compile(source).is_ok(),
-        "Impl complex expression: {:?}",
+        "Complex expression in struct field default: {:?}",
         compile(source).err()
     );
 }
 
 #[test]
-fn test_multiple_impls() {
+fn test_multiple_structs_with_defaults() {
     let source = r#"
-        struct A { x: String }
-        struct B { y: Number }
-        impl A { x: "a value" }
-        impl B { y: 42 }
+        struct A { x: String = "a value" }
+        struct B { y: Number = 42 }
     "#;
     assert!(
         compile(source).is_ok(),
-        "Multiple impls: {:?}",
+        "Multiple structs with defaults: {:?}",
         compile(source).err()
     );
 }
@@ -571,27 +568,20 @@ fn test_ui_component_model() {
         struct Text {
             value: String,
             color: String = "black",
-            size: Number = 14,
-            display: String
+            size: Number = 14
         }
 
         struct Button {
             label: String,
             disabled: Boolean = false,
-            @mount onClick: String,
-            display: String
+            @mount onClick: String
         }
 
         struct Card: Renderable {
             title: String,
             @mount content: String,
-            @mount footer: String?,
-            display: String
+            @mount footer: String?
         }
-
-        impl Text { display: value }
-        impl Button { display: label }
-        impl Card { display: title }
     "#;
     assert!(
         compile(source).is_ok(),

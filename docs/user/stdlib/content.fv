@@ -1,0 +1,311 @@
+/// Content Components
+///
+/// This module provides content display components for text and images.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+use stdlib::fill::fill
+
+// =============================================================================
+// TYPOGRAPHY TYPES
+// =============================================================================
+
+/// Font weight values.
+pub enum Weight {
+    thin,
+    light,
+    regular,
+    medium,
+    semibold,
+    bold,
+    heavy,
+    black
+}
+
+impl Weight {
+    /// Convert to numeric weight (100-900).
+    fn to_numeric(self) -> f32 {
+        match self {
+            .thin: 100.0,
+            .light: 300.0,
+            .regular: 400.0,
+            .medium: 500.0,
+            .semibold: 600.0,
+            .bold: 700.0,
+            .heavy: 800.0,
+            .black: 900.0
+        }
+    }
+}
+
+/// Font style (normal, italic, oblique).
+pub enum FontStyle {
+    normal,
+    italic,
+    oblique
+}
+
+/// Font stretch/width values.
+pub enum FontStretch {
+    ultraCondensed,
+    extraCondensed,
+    condensed,
+    semiCondensed,
+    normal,
+    semiExpanded,
+    expanded,
+    extraExpanded,
+    ultraExpanded
+}
+
+/// Text truncation mode.
+pub enum TruncationMode {
+    head,
+    middle,
+    tail
+}
+
+/// Image rendering mode.
+pub enum RenderingMode {
+    original,
+    template
+}
+
+/// Complete font specification.
+pub struct Font {
+    family: String = "system",
+    weight: Weight = .regular,
+    style: FontStyle = .normal,
+    stretch: FontStretch = .normal
+}
+
+impl Font {}
+
+/// Text styling for Label component.
+pub struct LabelStyle {
+    font: Font = Font(family: "system", weight: .regular, style: .normal, stretch: .normal),
+    size: Dimension = .px(value: 14.0),
+    letterSpacing: Dimension = .px(value: 0.0),
+    lineHeight: Dimension = .px(value: 1.2)
+}
+
+impl LabelStyle {}
+
+// =============================================================================
+// LABEL
+// =============================================================================
+
+/// Single-line text display.
+///
+/// # Example
+///
+/// ```formalang
+/// Label(
+///   content: "Hello, World!",
+///   style: LabelStyle(
+///     font: Font(family: "Inter", weight: .bold, style: .normal, stretch: .normal),
+///     size: .px(value: 16)
+///   )
+/// )
+/// ```
+pub struct Label: Content {
+    padding: Padding = .uniform(value: .px(value: 0.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    content: String = "",
+    style: LabelStyle? = nil,
+    truncationMode: TruncationMode = .tail,
+    fill: Fill? = nil,
+    mount background: View,
+    mount body: Never,
+    mount foreground: View
+}
+
+impl Label {
+    /// Layout: propose size based on text measurement.
+    ///
+    /// Text measurement happens at compile time, providing
+    /// glyph positions and bounding box to the GPU.
+    fn layout_propose(self, proposed: Size2D, text_size: Size2D) -> Size2D {
+        let insets_h = 0.0  // Will be resolved from padding
+        let insets_v = 0.0
+
+        // Return measured text size (from font shaping)
+        Size2D(
+            width: min(text_size.width + insets_h, proposed.width),
+            height: min(text_size.height + insets_v, proposed.height)
+        )
+    }
+
+    fn layout_report(self, text_size: Size2D) -> Size2D {
+        text_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    /// Render text at UV coordinate.
+    ///
+    /// Text rendering samples a signed distance field (SDF) atlas
+    /// for each glyph, enabling high-quality anti-aliased text
+    /// at any scale.
+    fn render(self, uv: vec2, size: vec2, glyph_sdf: f32) -> Color4 {
+        // SDF-based text rendering
+        // glyph_sdf is the distance to the glyph edge at this UV
+        // Negative = inside, Positive = outside
+
+        let aa_width = 1.0 / min(size.x, size.y)
+
+        // Smooth alpha based on SDF
+        let alpha = 1.0 - smoothstep(-aa_width * 2.0, aa_width * 2.0, glyph_sdf)
+
+        if alpha <= 0.0 {
+            return Color4::transparent()
+        }
+
+        // Sample fill color
+        let color = if self.fill != nil {
+            self.fill.sample(uv)
+        } else if self.tint != nil {
+            self.tint.to_color4()
+        } else {
+            Color4::black()
+        }
+
+        Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+    }
+}
+
+// =============================================================================
+// PARAGRAPH
+// =============================================================================
+
+/// Multi-line text display.
+///
+/// # Example
+///
+/// ```formalang
+/// Paragraph(
+///   source: "Long text content that spans multiple lines...",
+///   lineLimit: 3
+/// )
+/// ```
+pub struct Paragraph: Content {
+    padding: Padding = .uniform(value: .px(value: 0.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    source: String = "",
+    lineLimit: u32? = nil,
+    truncationMode: TruncationMode = .tail,
+    fill: Fill? = nil,
+    mount background: View,
+    mount body: Never,
+    mount foreground: View
+}
+
+impl Paragraph {
+    /// Paragraph layout wraps text to fit proposed width.
+    fn layout_propose(self, proposed: Size2D, text_size: Size2D, line_count: u32) -> Size2D {
+        let effective_lines = if self.lineLimit != nil {
+            min(line_count, self.lineLimit)
+        } else {
+            line_count
+        }
+
+        // text_size includes wrapped dimensions
+        Size2D(
+            width: min(text_size.width, proposed.width),
+            height: min(text_size.height, proposed.height)
+        )
+    }
+
+    fn layout_report(self, text_size: Size2D) -> Size2D {
+        text_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    fn render(self, uv: vec2, size: vec2, glyph_sdf: f32) -> Color4 {
+        let aa_width = 1.0 / min(size.x, size.y)
+        let alpha = 1.0 - smoothstep(-aa_width * 2.0, aa_width * 2.0, glyph_sdf)
+
+        if alpha <= 0.0 {
+            return Color4::transparent()
+        }
+
+        let color = if self.fill != nil {
+            self.fill.sample(uv)
+        } else if self.tint != nil {
+            self.tint.to_color4()
+        } else {
+            Color4::black()
+        }
+
+        Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+    }
+}
+
+// =============================================================================
+// IMAGE
+// =============================================================================
+
+/// Image display component.
+///
+/// # Example
+///
+/// ```formalang
+/// Image(source: /assets/logo.svg, renderingMode: .template)
+/// ```
+pub struct Image: Content {
+    padding: Padding = .uniform(value: .px(value: 0.0)),
+    margin: Margin = .uniform(value: .px(value: 0.0)),
+    tint: Color? = nil,
+    source: Path,
+    renderingMode: RenderingMode = .original,
+    mount background: View,
+    mount body: Never,
+    mount foreground: View
+}
+
+impl Image {
+    /// Image proposes its intrinsic size, constrained to proposed.
+    fn layout_propose(self, proposed: Size2D, intrinsic_size: Size2D) -> Size2D {
+        // Maintain aspect ratio while fitting in proposed bounds
+        let scale_x = proposed.width / intrinsic_size.width
+        let scale_y = proposed.height / intrinsic_size.height
+        let scale = min(scale_x, scale_y)
+
+        Size2D(
+            width: intrinsic_size.width * scale,
+            height: intrinsic_size.height * scale
+        )
+    }
+
+    fn layout_report(self, displayed_size: Size2D) -> Size2D {
+        displayed_size
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+
+    /// Render image by sampling texture.
+    fn render(self, uv: vec2, texture_color: Color4) -> Color4 {
+        match self.renderingMode {
+            .original: texture_color,
+            .template: {
+                // Template mode: use tint color with texture alpha
+                let tint_color = if self.tint != nil {
+                    self.tint.to_color4()
+                } else {
+                    Color4::black()
+                }
+                Color4(
+                    r: tint_color.r,
+                    g: tint_color.g,
+                    b: tint_color.b,
+                    a: texture_color.a * tint_color.a
+                )
+            }
+        }
+    }
+}
