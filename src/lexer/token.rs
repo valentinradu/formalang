@@ -13,10 +13,6 @@ pub enum Token {
     Struct,
     #[token("impl")]
     Impl,
-    #[token("model")]
-    Model,
-    #[token("view")]
-    View,
     #[token("enum")]
     Enum,
     #[token("mod")]
@@ -47,14 +43,12 @@ pub enum Token {
     False,
     #[token("nil")]
     Nil,
-    #[token("provides")]
-    Provides,
-    #[token("consumes")]
-    Consumes,
     #[token("as")]
     As,
     #[token("self")]
     SelfKeyword,
+    #[token("fn")]
+    Fn,
 
     // Primitive type keywords
     #[token("String")]
@@ -70,10 +64,62 @@ pub enum Token {
     #[token("Never")]
     NeverType,
 
+    // GPU primitive types
+    #[token("f32")]
+    F32Type,
+    #[token("i32")]
+    I32Type,
+    #[token("u32")]
+    U32Type,
+    #[token("bool")]
+    BoolType,
+
+    // Vector types
+    #[token("vec2")]
+    Vec2Type,
+    #[token("vec3")]
+    Vec3Type,
+    #[token("vec4")]
+    Vec4Type,
+    #[token("ivec2")]
+    IVec2Type,
+    #[token("ivec3")]
+    IVec3Type,
+    #[token("ivec4")]
+    IVec4Type,
+    #[token("uvec2")]
+    UVec2Type,
+    #[token("uvec3")]
+    UVec3Type,
+    #[token("uvec4")]
+    UVec4Type,
+
+    // Matrix types
+    #[token("mat2")]
+    Mat2Type,
+    #[token("mat3")]
+    Mat3Type,
+    #[token("mat4")]
+    Mat4Type,
+
     // Literals
     #[regex(r#""([^"\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
     #[regex(r#""""([^\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#, |lex| parse_multiline_string(lex.slice()))]
     String(String),
+
+    // Unsigned integer literal with 'u' suffix: 1u, 42u
+    #[regex(r"[0-9]+u", |lex| {
+        let s = lex.slice();
+        s[..s.len()-1].parse::<u32>().ok()
+    })]
+    UnsignedInt(u32),
+
+    // Signed integer literal with 'i' suffix: 1i, -42i
+    #[regex(r"-?[0-9]+i", |lex| {
+        let s = lex.slice();
+        s[..s.len()-1].parse::<i32>().ok()
+    })]
+    SignedInt(i32),
 
     #[regex(r"-?[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
     Number(f64),
@@ -126,12 +172,18 @@ pub enum Token {
     And,
     #[token("||")]
     Or,
+    #[token("|")]
+    Pipe,
+    #[token("!")]
+    Bang,
     #[token("?")]
     Question,
     #[token("->")]
     Arrow,
     #[token("_")]
     Underscore,
+    #[token("..")]
+    DotDot,
     #[token("...")]
     DotDotDot,
 
@@ -222,8 +274,6 @@ impl Token {
             Token::Trait
                 | Token::Struct
                 | Token::Impl
-                | Token::Model
-                | Token::View
                 | Token::Enum
                 | Token::Module
                 | Token::Use
@@ -239,9 +289,8 @@ impl Token {
                 | Token::True
                 | Token::False
                 | Token::Nil
-                | Token::Provides
-                | Token::Consumes
                 | Token::As
+                | Token::Fn
         )
     }
 
@@ -254,6 +303,22 @@ impl Token {
                 | Token::PathType
                 | Token::RegexType
                 | Token::NeverType
+                | Token::F32Type
+                | Token::I32Type
+                | Token::U32Type
+                | Token::BoolType
+                | Token::Vec2Type
+                | Token::Vec3Type
+                | Token::Vec4Type
+                | Token::IVec2Type
+                | Token::IVec3Type
+                | Token::IVec4Type
+                | Token::UVec2Type
+                | Token::UVec3Type
+                | Token::UVec4Type
+                | Token::Mat2Type
+                | Token::Mat3Type
+                | Token::Mat4Type
         )
     }
 
@@ -262,8 +327,6 @@ impl Token {
             Token::Trait => "trait",
             Token::Struct => "struct",
             Token::Impl => "impl",
-            Token::Model => "model",
-            Token::View => "view",
             Token::Enum => "enum",
             Token::Module => "mod",
             Token::Use => "use",
@@ -279,15 +342,31 @@ impl Token {
             Token::True => "true",
             Token::False => "false",
             Token::Nil => "nil",
-            Token::Provides => "provides",
-            Token::Consumes => "consumes",
             Token::As => "as",
+            Token::SelfKeyword => "self",
+            Token::Fn => "fn",
             Token::StringType => "String",
             Token::NumberType => "Number",
             Token::BooleanType => "Boolean",
             Token::PathType => "Path",
             Token::RegexType => "Regex",
             Token::NeverType => "Never",
+            Token::F32Type => "f32",
+            Token::I32Type => "i32",
+            Token::U32Type => "u32",
+            Token::BoolType => "bool",
+            Token::Vec2Type => "vec2",
+            Token::Vec3Type => "vec3",
+            Token::Vec4Type => "vec4",
+            Token::IVec2Type => "ivec2",
+            Token::IVec3Type => "ivec3",
+            Token::IVec4Type => "ivec4",
+            Token::UVec2Type => "uvec2",
+            Token::UVec3Type => "uvec3",
+            Token::UVec4Type => "uvec4",
+            Token::Mat2Type => "mat2",
+            Token::Mat3Type => "mat3",
+            Token::Mat4Type => "mat4",
             Token::Dot => ".",
             Token::Colon => ":",
             Token::DoubleColon => "::",
@@ -306,9 +385,12 @@ impl Token {
             Token::Ge => ">=",
             Token::And => "&&",
             Token::Or => "||",
+            Token::Pipe => "|",
+            Token::Bang => "!",
             Token::Question => "?",
             Token::Arrow => "->",
             Token::Underscore => "_",
+            Token::DotDot => "..",
             Token::DotDotDot => "...",
             Token::LParen => "(",
             Token::RParen => ")",
@@ -328,6 +410,8 @@ impl std::fmt::Display for Token {
             // For literal tokens, show descriptive names
             Token::String(_) => write!(f, "string"),
             Token::Number(_) => write!(f, "number"),
+            Token::UnsignedInt(_) => write!(f, "unsigned int"),
+            Token::SignedInt(_) => write!(f, "signed int"),
             Token::Regex(_) => write!(f, "regex"),
             Token::Path(_) => write!(f, "path"),
             Token::Ident(_) => write!(f, "identifier"),

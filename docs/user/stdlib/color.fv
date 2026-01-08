@@ -1,0 +1,153 @@
+/// Color Types
+///
+/// This module provides color representation and conversion utilities.
+
+use stdlib::gpu::*
+
+// =============================================================================
+// COLOR ENUM
+// =============================================================================
+
+/// Color representation in various formats.
+///
+/// # Variants
+///
+/// - `rgb` - Red, green, blue (0-255)
+/// - `hsla` - Hue (0-360), saturation (0-100), lightness (0-100), alpha (0-1)
+/// - `hex` - Hexadecimal string (e.g., "#FF0000")
+///
+/// # Example
+///
+/// ```formalang
+/// let red: Color = .rgb(r: 255, g: 0, b: 0)
+/// let blue: Color = .hex(value: "#0000FF")
+/// let transparent: Color = .hsla(h: 0, s: 0, l: 100, a: 0.5)
+/// ```
+pub enum Color {
+    rgb(r: f32, g: f32, b: f32),
+    rgba(r: f32, g: f32, b: f32, a: f32),
+    hsla(h: f32, s: f32, l: f32, a: f32),
+    hex(value: String)
+}
+
+impl Color {
+    /// Convert to GPU-friendly Color4 (normalized 0-1 range).
+    ///
+    /// This is called at compile time to convert declarative colors
+    /// to GPU-ready format.
+    fn to_color4(self) -> Color4 {
+        match self {
+            .rgb(r, g, b): Color4(r: r / 255.0, g: g / 255.0, b: b / 255.0, a: 1.0),
+            .rgba(r, g, b, a): Color4(r: r / 255.0, g: g / 255.0, b: b / 255.0, a: a),
+            .hsla(h, s, l, a): Color::hsl_to_rgb(h, s, l, a),
+            .hex(value): Color::parse_hex(value)
+        }
+    }
+
+    /// Convert HSL to RGB Color4.
+    fn hsl_to_rgb(h: f32, s: f32, l: f32, a: f32) -> Color4 {
+        // Normalize inputs
+        let h_norm = h / 360.0
+        let s_norm = s / 100.0
+        let l_norm = l / 100.0
+
+        if s_norm == 0.0 {
+            // Achromatic (gray)
+            Color4(r: l_norm, g: l_norm, b: l_norm, a: a)
+        } else {
+            let q = if l_norm < 0.5 {
+                l_norm * (1.0 + s_norm)
+            } else {
+                l_norm + s_norm - l_norm * s_norm
+            }
+            let p = 2.0 * l_norm - q
+
+            let r = Color::hue_to_rgb(p, q, h_norm + 1.0 / 3.0)
+            let g = Color::hue_to_rgb(p, q, h_norm)
+            let b = Color::hue_to_rgb(p, q, h_norm - 1.0 / 3.0)
+
+            Color4(r: r, g: g, b: b, a: a)
+        }
+    }
+
+    /// Helper for HSL to RGB conversion.
+    fn hue_to_rgb(p: f32, q: f32, t: f32) -> f32 {
+        let t_adj = if t < 0.0 { t + 1.0 } else if t > 1.0 { t - 1.0 } else { t }
+
+        if t_adj < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t_adj
+        } else if t_adj < 1.0 / 2.0 {
+            q
+        } else if t_adj < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t_adj) * 6.0
+        } else {
+            p
+        }
+    }
+
+    /// Parse hex color string to Color4.
+    /// Handles #RGB, #RGBA, #RRGGBB, #RRGGBBAA formats.
+    fn parse_hex(hex: String) -> Color4 {
+        // This is a compile-time operation
+        // The runtime receives pre-computed Color4 values
+        // For now, return a placeholder - actual parsing happens in compiler
+        Color4(r: 0.0, g: 0.0, b: 0.0, a: 1.0)
+    }
+
+    /// Predefined colors for convenience.
+    fn transparent() -> Color {
+        .rgba(r: 0, g: 0, b: 0, a: 0.0)
+    }
+
+    fn black() -> Color {
+        .rgb(r: 0, g: 0, b: 0)
+    }
+
+    fn white() -> Color {
+        .rgb(r: 255, g: 255, b: 255)
+    }
+
+    fn red() -> Color {
+        .rgb(r: 255, g: 0, b: 0)
+    }
+
+    fn green() -> Color {
+        .rgb(r: 0, g: 255, b: 0)
+    }
+
+    fn blue() -> Color {
+        .rgb(r: 0, g: 0, b: 255)
+    }
+}
+
+// =============================================================================
+// COLOR UTILITIES
+// =============================================================================
+
+/// Blend two colors using alpha compositing.
+fn blend_over(foreground: Color4, background: Color4) -> Color4 {
+    let fg = foreground.premultiply()
+    let bg = background.premultiply()
+
+    let out_a = fg.a + bg.a * (1.0 - fg.a)
+
+    if out_a == 0.0 {
+        Color4::transparent()
+    } else {
+        Color4(
+            r: (fg.r + bg.r * (1.0 - fg.a)) / out_a,
+            g: (fg.g + bg.g * (1.0 - fg.a)) / out_a,
+            b: (fg.b + bg.b * (1.0 - fg.a)) / out_a,
+            a: out_a
+        )
+    }
+}
+
+/// Blend multiple colors in order (first is bottom, last is top).
+fn blend_layers(colors: [Color4]) -> Color4 {
+    let result = Color4::transparent()
+    for color in colors {
+        result = blend_over(color, result)
+    }
+    result
+}

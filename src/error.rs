@@ -263,6 +263,18 @@ pub enum CompilerError {
         span: Span,
     },
 
+    #[error("Cannot assign to immutable binding")]
+    AssignmentToImmutable { span: Span },
+
+    #[error(
+        "Struct '{struct_name}' requires named arguments (field: value), but argument {position} is positional"
+    )]
+    PositionalArgInStruct {
+        struct_name: String,
+        position: usize,
+        span: Span,
+    },
+
     #[error("Enum variant '{variant}' has no data, cannot instantiate with parentheses")]
     EnumVariantWithoutData {
         variant: String,
@@ -319,6 +331,15 @@ pub enum CompilerError {
     // Enum type inference errors
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
     CannotInferEnumType { variant: String, span: Span },
+
+    // Function validation errors
+    #[error("Function '{function}' has return type {expected} but body has type {actual}")]
+    FunctionReturnTypeMismatch {
+        function: String,
+        expected: String,
+        actual: String,
+        span: Span,
+    },
 }
 
 impl CompilerError {
@@ -374,6 +395,7 @@ impl CompilerError {
             | Self::VariantArityMismatch { span, .. }
             | Self::MissingField { span, .. }
             | Self::UnknownField { span, .. }
+            | Self::PositionalArgInStruct { span, .. }
             | Self::EnumVariantWithoutData { span, .. }
             | Self::EnumVariantRequiresData { span, .. }
             | Self::MutabilityMismatch { span, .. }
@@ -383,7 +405,9 @@ impl CompilerError {
             | Self::MissingGenericArguments { span, .. }
             | Self::DuplicateGenericParam { span, .. }
             | Self::UnknownMount { span, .. }
-            | Self::CannotInferEnumType { span, .. } => *span,
+            | Self::CannotInferEnumType { span, .. }
+            | Self::FunctionReturnTypeMismatch { span, .. }
+            | Self::AssignmentToImmutable { span, .. } => *span,
         }
     }
 }

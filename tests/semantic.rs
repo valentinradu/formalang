@@ -12,10 +12,7 @@ use formalang::{compile, compile_and_report};
 fn test_type_validation_primitive_string() {
     let source = r#"
         struct Test {
-            value: String
-        }
-        impl Test {
-            value: "hello"
+            value: String = "hello"
         }
     "#;
     let result = compile(source);
@@ -26,10 +23,7 @@ fn test_type_validation_primitive_string() {
 fn test_type_validation_primitive_number() {
     let source = r#"
         struct Test {
-            value: Number
-        }
-        impl Test {
-            value: 42.5
+            value: Number = 42.5
         }
     "#;
     let result = compile(source);
@@ -40,10 +34,7 @@ fn test_type_validation_primitive_number() {
 fn test_type_validation_primitive_boolean() {
     let source = r#"
         struct Test {
-            value: Boolean
-        }
-        impl Test {
-            value: true
+            value: Boolean = true
         }
     "#;
     let result = compile(source);
@@ -54,10 +45,7 @@ fn test_type_validation_primitive_boolean() {
 fn test_type_validation_array() {
     let source = r#"
         struct Test {
-            items: [String]
-        }
-        impl Test {
-            items: ["a", "b", "c"]
+            items: [String] = ["a", "b", "c"]
         }
     "#;
     let result = compile(source);
@@ -71,10 +59,7 @@ fn test_type_validation_nested_struct() {
             id: Number
         }
         struct Outer {
-            inner: Inner
-        }
-        impl Outer {
-            inner: Inner(id: 1)
+            inner: Inner = Inner(id: 1)
         }
     "#;
     let result = compile(source);
@@ -270,10 +255,7 @@ fn test_binary_op_logical() {
 fn test_if_simple() {
     let source = r#"
         struct Result {
-            value: String
-        }
-        impl Result {
-            value: if true { "yes" } else { "no" }
+            value: String = if true { "yes" } else { "no" }
         }
     "#;
     let result = compile(source);
@@ -284,10 +266,7 @@ fn test_if_simple() {
 fn test_if_with_comparison() {
     let source = r#"
         struct Result {
-            value: String
-        }
-        impl Result {
-            value: if 1 < 2 { "less" } else { "not less" }
+            value: String = if 1 < 2 { "less" } else { "not less" }
         }
     "#;
     let result = compile(source);
@@ -298,10 +277,7 @@ fn test_if_with_comparison() {
 fn test_if_nested() {
     let source = r#"
         struct Result {
-            value: String
-        }
-        impl Result {
-            value: if true {
+            value: String = if true {
                 if false { "a" } else { "b" }
             } else {
                 "c"
@@ -323,10 +299,7 @@ fn test_for_array_literal() {
             name: String
         }
         struct List {
-            items: [Item]
-        }
-        impl List {
-            items: for name in ["a", "b"] { Item(name: name) }
+            items: [Item] = for name in ["a", "b"] { Item(name: name) }
         }
     "#;
     let result = compile(source);
@@ -340,10 +313,7 @@ fn test_for_with_let() {
             text: String
         }
         struct List {
-            items: [Item]
-        }
-        impl List {
-            items: for x in ["a", "b"] {
+            items: [Item] = for x in ["a", "b"] {
                 let y = "item"
                 Item(text: y)
             }
@@ -429,18 +399,14 @@ fn test_error_undefined_field_reference() {
 fn test_error_type_mismatch_in_field() {
     let source = r#"
         struct Wrapper {
-            count: Number
-        }
-        impl Wrapper {
-            count: "not a number"
+            count: Number = 42
         }
     "#;
     let result = compile(source);
-    // Impl body is a string, which is valid - impl can have any expression
-    // This test verifies the impl compiles without panic
+    // This test verifies the struct with default compiles without panic
     assert!(
         result.is_ok(),
-        "Impl with expression should compile: {:?}",
+        "Struct with default should compile: {:?}",
         result.err()
     );
 }
@@ -487,11 +453,7 @@ fn test_complex_form() {
 
         struct Form {
             title: String,
-            mount fields: [Validatable]
-        }
-
-        impl Form {
-            fields: for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
+            mount fields: [Validatable] = for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
         }
     "#;
     let result = compile(source);
@@ -616,10 +578,7 @@ fn test_closure_binary() {
 fn test_let_chain() {
     let source = r#"
         struct Calc {
-            result: Number
-        }
-        impl Calc {
-            result: (let a = 1
+            result: Number = (let a = 1
             let b = 2
             let c = 3
             c)
@@ -637,56 +596,8 @@ fn test_let_with_struct() {
             y: Number
         }
         struct Container {
-            point: Point
-        }
-        impl Container {
-            point: (let p = Point(x: 1, y: 2)
+            point: Point = (let p = Point(x: 1, y: 2)
             p)
-        }
-    "#;
-    let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
-}
-
-// =============================================================================
-// Provides/Consumes Tests
-// =============================================================================
-
-#[test]
-fn test_provides_simple() {
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-        struct App {
-            content: String
-        }
-        impl App {
-            content: provides Theme(color: "blue") {
-                "content"
-            }
-        }
-    "#;
-    let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
-}
-
-#[test]
-fn test_provides_multiple() {
-    let source = r#"
-        struct Theme {
-            color: String
-        }
-        struct Config {
-            debug: Boolean
-        }
-        struct App {
-            content: String
-        }
-        impl App {
-            content: provides Theme(color: "red"), Config(debug: true) {
-                "content"
-            }
         }
     "#;
     let result = compile(source);

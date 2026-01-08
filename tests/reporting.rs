@@ -556,12 +556,8 @@ fn test_valid_complex_source() {
         }
 
         struct User: Named {
-            name: String,
+            name: String = "default user",
             age: Number
-        }
-
-        impl User {
-            name: "default user"
         }
 
         enum Status {

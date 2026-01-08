@@ -24,14 +24,21 @@
 //! assert_eq!(module.structs[0].name, "User");
 //! ```
 
+mod dce;
 mod expr;
+mod fold;
 mod lower;
 mod types;
 mod visitor;
 
-pub use expr::{IrExpr, IrMatchArm};
+pub use dce::{eliminate_dead_code, DeadCodeEliminator};
+pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm};
+pub use fold::{fold_constants, ConstantFolder};
 pub use lower::lower_to_ir;
-pub use types::{IrEnum, IrEnumVariant, IrField, IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait};
+pub use types::{
+    IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam, IrImpl, IrLet,
+    IrStruct, IrTrait,
+};
 pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
 use std::collections::HashMap;
@@ -83,11 +90,26 @@ pub struct TraitId(pub u32);
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
 
+/// ID for referencing standalone function definitions.
+///
+/// Use this to look up functions in [`IrModule::functions`]:
+/// ```
+/// use formalang::compile_to_ir;
+///
+/// let source = "pub fn add(a: f32, b: f32) -> f32 { a + b }";
+/// let module = compile_to_ir(source).unwrap();
+/// let id = formalang::FunctionId(0);
+/// let func_def = &module.functions[id.0 as usize];
+/// assert_eq!(func_def.name, "add");
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct FunctionId(pub u32);
+
 /// Kind of external type reference.
 ///
 /// Used to distinguish between different definition types when referencing
 /// types from other modules.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExternalKind {
     /// External struct type
     Struct,
@@ -123,7 +145,7 @@ pub struct IrImportItem {
 /// Unlike AST types which use string names, resolved types use IDs that
 /// directly reference definitions. This eliminates the need for symbol
 /// table lookups during code generation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
     Primitive(PrimitiveType),
@@ -188,6 +210,27 @@ pub enum ResolvedType {
         /// Type arguments for generic types (empty for non-generic)
         type_args: Vec<ResolvedType>,
     },
+
+    /// Event mapping type: `() -> E` or `T -> E`
+    ///
+    /// Represents a restricted closure that maps input to an enum variant.
+    /// Used for event handlers like `onChange: x -> .valueChanged(value: x)`.
+    EventMapping {
+        /// Parameter type (None for `() -> E`)
+        param_ty: Option<Box<ResolvedType>>,
+        /// Return type (the event enum type)
+        return_ty: Box<ResolvedType>,
+    },
+
+    /// Dictionary type: `[K: V]`
+    ///
+    /// Maps keys of type K to values of type V.
+    Dictionary {
+        /// Key type
+        key_ty: Box<ResolvedType>,
+        /// Value type
+        value_ty: Box<ResolvedType>,
+    },
 }
 
 /// The root IR node containing all definitions.
@@ -232,6 +275,11 @@ pub struct IrModule {
     /// theme colors, fonts, and shared configuration values.
     pub lets: Vec<IrLet>,
 
+    /// Standalone function definitions
+    ///
+    /// Contains all standalone function definitions (outside of impl blocks).
+    pub functions: Vec<IrFunction>,
+
     /// Imports from other modules
     ///
     /// Contains information about all types imported from external modules,
@@ -246,6 +294,9 @@ pub struct IrModule {
 
     /// Mapping from enum names to IDs for lookup during lowering
     enum_names: std::collections::HashMap<String, EnumId>,
+
+    /// Mapping from function names to IDs for lookup during lowering
+    function_names: HashMap<String, FunctionId>,
 
     /// Mapping from let binding names to their index in the lets vector
     let_names: HashMap<String, usize>,
@@ -344,6 +395,28 @@ impl IrModule {
         self.let_names.insert(l.name.clone(), idx);
         self.lets.push(l);
     }
+
+    /// Look up a function by ID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ID is out of bounds.
+    pub fn get_function(&self, id: FunctionId) -> &IrFunction {
+        &self.functions[id.0 as usize]
+    }
+
+    /// Look up a function ID by name.
+    pub fn function_id(&self, name: &str) -> Option<FunctionId> {
+        self.function_names.get(name).copied()
+    }
+
+    /// Add a standalone function and return its ID.
+    pub(crate) fn add_function(&mut self, name: String, f: IrFunction) -> FunctionId {
+        let id = FunctionId(self.functions.len() as u32);
+        self.function_names.insert(name, id);
+        self.functions.push(f);
+        id
+    }
 }
 
 impl ResolvedType {
@@ -360,6 +433,27 @@ impl ResolvedType {
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
+                // GPU scalar types
+                PrimitiveType::F32 => "f32".to_string(),
+                PrimitiveType::I32 => "i32".to_string(),
+                PrimitiveType::U32 => "u32".to_string(),
+                PrimitiveType::Bool => "bool".to_string(),
+                // GPU vector types (float)
+                PrimitiveType::Vec2 => "vec2".to_string(),
+                PrimitiveType::Vec3 => "vec3".to_string(),
+                PrimitiveType::Vec4 => "vec4".to_string(),
+                // GPU vector types (signed int)
+                PrimitiveType::IVec2 => "ivec2".to_string(),
+                PrimitiveType::IVec3 => "ivec3".to_string(),
+                PrimitiveType::IVec4 => "ivec4".to_string(),
+                // GPU vector types (unsigned int)
+                PrimitiveType::UVec2 => "uvec2".to_string(),
+                PrimitiveType::UVec3 => "uvec3".to_string(),
+                PrimitiveType::UVec4 => "uvec4".to_string(),
+                // GPU matrix types
+                PrimitiveType::Mat2 => "mat2".to_string(),
+                PrimitiveType::Mat3 => "mat3".to_string(),
+                PrimitiveType::Mat4 => "mat4".to_string(),
             },
             ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
             ResolvedType::Trait(id) => module.get_trait(*id).name.clone(),
@@ -390,6 +484,23 @@ impl ResolvedType {
                     format!("{}<{}>", name, args_str.join(", "))
                 }
             }
+            ResolvedType::EventMapping {
+                param_ty,
+                return_ty,
+            } => {
+                let param_str = match param_ty {
+                    Some(ty) => ty.display_name(module),
+                    None => "()".to_string(),
+                };
+                format!("{} -> {}", param_str, return_ty.display_name(module))
+            }
+            ResolvedType::Dictionary { key_ty, value_ty } => {
+                format!(
+                    "[{}: {}]",
+                    key_ty.display_name(module),
+                    value_ty.display_name(module)
+                )
+            }
         }
     }
 }
@@ -399,4 +510,21 @@ impl Visibility {
     pub fn is_public(&self) -> bool {
         matches!(self, Visibility::Public)
     }
+}
+
+/// Extract the simple type name from a potentially module-qualified path.
+///
+/// Given a path like `alignment::Horizontal`, returns `Horizontal`.
+/// For simple names like `Button`, returns the name unchanged.
+///
+/// # Example
+///
+/// ```
+/// use formalang::ir::simple_type_name;
+///
+/// assert_eq!(simple_type_name("alignment::Horizontal"), "Horizontal");
+/// assert_eq!(simple_type_name("Button"), "Button");
+/// ```
+pub fn simple_type_name(name: &str) -> &str {
+    name.rsplit("::").next().unwrap_or(name)
 }

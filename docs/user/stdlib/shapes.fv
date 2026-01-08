@@ -1,0 +1,551 @@
+/// Shape Primitives
+///
+/// This module provides geometric shape primitives with GPU-accelerated rendering.
+/// Each shape implements SDF (Signed Distance Function) for anti-aliased rendering.
+
+use stdlib::gpu::*
+use stdlib::traits::*
+use stdlib::dimension::*
+use stdlib::color::*
+use stdlib::fill::fill
+
+// =============================================================================
+// RECTANGLE
+// =============================================================================
+
+/// Rectangle shape.
+///
+/// A rectangle with optional corner radius for rounded corners.
+///
+/// # Example
+///
+/// ```formalang
+/// Rect(
+///   width: .px(value: 200),
+///   height: .px(value: 100),
+///   cornerRadius: 8.0,
+///   fill: fill::Solid(color: .hex(value: "#FF6B6B"))
+/// )
+/// ```
+pub struct Rect: Shape {
+    tint: Color? = nil,
+    width: Dimension = .auto,
+    height: Dimension = .auto,
+    cornerRadius: f32 = 0.0,
+    fill: Fill? = nil,
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never
+}
+
+impl Rect {
+    /// Compute the signed distance from a point to this rectangle.
+    ///
+    /// Negative values are inside, positive are outside.
+    /// The corner radius creates smooth rounded corners.
+    fn sdf(self, point: vec2, size: vec2) -> f32 {
+        // Transform point to rectangle-local coordinates (centered at origin)
+        let half_size = size * 0.5
+        let p = abs(point - half_size) - half_size + vec2(self.cornerRadius, self.cornerRadius)
+
+        // SDF for rounded rectangle
+        let d_outside = length(max(p, vec2(0.0, 0.0)))
+        let d_inside = min(max(p.x, p.y), 0.0)
+
+        d_outside + d_inside - self.cornerRadius
+    }
+
+    /// Render the rectangle at the given UV coordinate.
+    ///
+    /// Returns the color at that point, using the fill if inside
+    /// the shape bounds, with anti-aliased edges.
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        // Calculate SDF distance
+        let point = uv * size
+        let dist = self.sdf(point, size)
+
+        // Anti-aliasing: smooth edge over ~1 pixel
+        let aa_width = 1.0 / min(size.x, size.y)
+
+        // Fill
+        let fill_alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        let fill_color = if self.fill != nil {
+            let sampled = self.fill.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * fill_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        // Stroke
+        let stroke_color = if self.stroke != nil {
+            let stroke_dist = abs(dist) - self.strokeWidth * 0.5
+            let stroke_alpha = 1.0 - smoothstep(-aa_width, aa_width, stroke_dist)
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * stroke_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        // Composite stroke over fill
+        blend_over(stroke_color, fill_color)
+    }
+
+    /// Layout: propose size based on dimensions.
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        Size2D(
+            width: self.width.resolve(proposed.width),
+            height: self.height.resolve(proposed.height)
+        )
+    }
+
+    /// Layout: report actual size (same as proposed for shapes).
+    fn layout_report(self) -> Size2D {
+        // Shapes report their proposed size
+        // This is set during layout_propose
+        Size2D(width: 0.0, height: 0.0)  // Placeholder - actual value from layout state
+    }
+
+    /// Layout: position within bounds.
+    fn layout_position(self, bounds: Bounds2D) {
+        // Shapes position themselves at the bounds origin
+        // No-op for terminal shapes
+    }
+}
+
+// =============================================================================
+// CIRCLE
+// =============================================================================
+
+/// Circle shape.
+///
+/// A circle defined by its radius.
+///
+/// # Example
+///
+/// ```formalang
+/// Circle(
+///   radius: 50.0,
+///   fill: fill::Radial(
+///     from: .hex(value: "#FFFFFF"),
+///     to: .hex(value: "#000000"),
+///     centerX: 0.5,
+///     centerY: 0.5
+///   )
+/// )
+/// ```
+pub struct Circle: Shape {
+    tint: Color? = nil,
+    radius: Dimension = .auto,
+    fill: Fill? = nil,
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never
+}
+
+impl Circle {
+    /// Compute the signed distance from a point to this circle.
+    fn sdf(self, point: vec2, radius: f32) -> f32 {
+        length(point) - radius
+    }
+
+    /// Render the circle at the given UV coordinate.
+    fn render(self, uv: vec2, resolved_radius: f32) -> Color4 {
+        // Circle is centered in a square of side 2*radius
+        let size = resolved_radius * 2.0
+        let center = vec2(0.5, 0.5)
+        let point = (uv - center) * size
+
+        let dist = self.sdf(point, resolved_radius)
+
+        // Anti-aliasing
+        let aa_width = 1.0 / size
+
+        // Fill
+        let fill_alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        let fill_color = if self.fill != nil {
+            let sampled = self.fill.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * fill_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        // Stroke
+        let stroke_color = if self.stroke != nil {
+            let stroke_dist = abs(dist) - self.strokeWidth * 0.5
+            let stroke_alpha = 1.0 - smoothstep(-aa_width, aa_width, stroke_dist)
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * stroke_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        blend_over(stroke_color, fill_color)
+    }
+
+    /// Layout: propose size (square bounding box).
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let r = self.radius.resolve(min(proposed.width, proposed.height) * 0.5)
+        let diameter = r * 2.0
+        Size2D(width: diameter, height: diameter)
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+// =============================================================================
+// ELLIPSE
+// =============================================================================
+
+/// Ellipse shape.
+///
+/// An ellipse defined by width and height.
+///
+/// # Example
+///
+/// ```formalang
+/// Ellipse(
+///   width: .px(value: 200),
+///   height: .px(value: 100),
+///   fill: fill::Solid(color: .hex(value: "#4ECDC4"))
+/// )
+/// ```
+pub struct Ellipse: Shape {
+    tint: Color? = nil,
+    width: Dimension = .auto,
+    height: Dimension = .auto,
+    fill: Fill? = nil,
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never
+}
+
+impl Ellipse {
+    /// Compute the signed distance from a point to this ellipse.
+    ///
+    /// Uses an approximation that works well for most aspect ratios.
+    fn sdf(self, point: vec2, size: vec2) -> f32 {
+        // Normalize point to unit circle space
+        let p = point / size
+        let r = length(p)
+
+        // Approximate SDF
+        (r - 1.0) * min(size.x, size.y)
+    }
+
+    /// Render the ellipse at the given UV coordinate.
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        let center = vec2(0.5, 0.5)
+        let point = (uv - center) * size
+
+        let dist = self.sdf(point, size * 0.5)
+
+        // Anti-aliasing
+        let aa_width = 1.0 / min(size.x, size.y)
+
+        // Fill
+        let fill_alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        let fill_color = if self.fill != nil {
+            let sampled = self.fill.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * fill_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        // Stroke
+        let stroke_color = if self.stroke != nil {
+            let stroke_dist = abs(dist) - self.strokeWidth * 0.5
+            let stroke_alpha = 1.0 - smoothstep(-aa_width, aa_width, stroke_dist)
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * stroke_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        blend_over(stroke_color, fill_color)
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        Size2D(
+            width: self.width.resolve(proposed.width),
+            height: self.height.resolve(proposed.height)
+        )
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+// =============================================================================
+// POLYGON (REGULAR)
+// =============================================================================
+
+/// Regular polygon shape.
+///
+/// A regular polygon with n sides.
+///
+/// # Example
+///
+/// ```formalang
+/// Polygon(
+///   sides: 6,
+///   radius: 50.0,
+///   fill: fill::Solid(color: .hex(value: "#FFD93D"))
+/// )
+/// ```
+pub struct Polygon: Shape {
+    tint: Color? = nil,
+    sides: u32 = 6u,
+    radius: Dimension = .auto,
+    rotation: f32 = 0.0,
+    fill: Fill? = nil,
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never
+}
+
+impl Polygon {
+    /// Compute the signed distance from a point to this regular polygon.
+    fn sdf(self, point: vec2, radius: f32) -> f32 {
+        let pi = 3.14159265359
+        let n = f32(self.sides)
+
+        // Rotate point by rotation angle
+        let angle = self.rotation * pi / 180.0
+        let c = cos(-angle)
+        let s = sin(-angle)
+        let p = vec2(point.x * c - point.y * s, point.x * s + point.y * c)
+
+        // Angle per segment
+        let segment_angle = 2.0 * pi / n
+
+        // Find which segment we're in
+        let point_angle = atan2(p.y, p.x)
+        let adjusted_angle = point_angle + pi  // Shift to 0..2pi
+
+        // Fold point into first segment
+        let segment = floor(adjusted_angle / segment_angle)
+        let local_angle = adjusted_angle - segment * segment_angle - segment_angle * 0.5
+
+        // Distance to edge in local segment
+        let dist_to_center = length(p)
+        let edge_angle = segment_angle * 0.5
+        let edge_dist = radius * cos(edge_angle)
+
+        // Project onto edge direction
+        let edge_normal = vec2(cos(edge_angle), 0.0)
+        let local_p = vec2(dist_to_center * cos(local_angle), dist_to_center * sin(local_angle))
+
+        dot(local_p, edge_normal) - edge_dist
+    }
+
+    fn render(self, uv: vec2, resolved_radius: f32) -> Color4 {
+        let size = resolved_radius * 2.0
+        let center = vec2(0.5, 0.5)
+        let point = (uv - center) * size
+
+        let dist = self.sdf(point, resolved_radius)
+
+        let aa_width = 1.0 / size
+
+        let fill_alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        let fill_color = if self.fill != nil {
+            let sampled = self.fill.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * fill_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        let stroke_color = if self.stroke != nil {
+            let stroke_dist = abs(dist) - self.strokeWidth * 0.5
+            let stroke_alpha = 1.0 - smoothstep(-aa_width, aa_width, stroke_dist)
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * stroke_alpha)
+        } else {
+            Color4::transparent()
+        }
+
+        blend_over(stroke_color, fill_color)
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let r = self.radius.resolve(min(proposed.width, proposed.height) * 0.5)
+        let diameter = r * 2.0
+        Size2D(width: diameter, height: diameter)
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+// =============================================================================
+// LINE
+// =============================================================================
+
+/// Line shape.
+///
+/// A line from start to end point with optional stroke.
+///
+/// # Example
+///
+/// ```formalang
+/// Line(
+///   from: Point(x: 0.0, y: 0.0),
+///   to: Point(x: 100.0, y: 100.0),
+///   stroke: fill::Solid(color: .black()),
+///   strokeWidth: 2.0
+/// )
+/// ```
+pub struct Line: Shape {
+    tint: Color? = nil,
+    from: Point = Point(x: 0.0, y: 0.0),
+    to: Point = Point(x: 1.0, y: 1.0),
+    stroke: Fill? = nil,
+    strokeWidth: f32 = 1.0,
+    mount body: Never
+}
+
+impl Line {
+    /// Compute the signed distance from a point to this line segment.
+    fn sdf(self, point: vec2) -> f32 {
+        let a = self.from.to_vec2()
+        let b = self.to.to_vec2()
+        let p = point
+
+        let pa = p - a
+        let ba = b - a
+
+        let t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)
+
+        length(pa - ba * t) - self.strokeWidth * 0.5
+    }
+
+    fn render(self, uv: vec2, size: vec2) -> Color4 {
+        let point = uv * size
+        let dist = self.sdf(point)
+
+        let aa_width = 1.0 / min(size.x, size.y)
+        let alpha = 1.0 - smoothstep(-aa_width, aa_width, dist)
+
+        if self.stroke != nil {
+            let sampled = self.stroke.sample(uv)
+            Color4(r: sampled.r, g: sampled.g, b: sampled.b, a: sampled.a * alpha)
+        } else {
+            Color4::transparent()
+        }
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        let dx = abs(self.to.x - self.from.x)
+        let dy = abs(self.to.y - self.from.y)
+        Size2D(width: dx + self.strokeWidth, height: dy + self.strokeWidth)
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+// =============================================================================
+// SHAPE BOOLEAN OPERATIONS
+// =============================================================================
+
+/// Union of multiple shapes.
+///
+/// Combines shapes using boolean union (OR).
+pub struct ShapeUnion: Shape {
+    tint: Color? = nil,
+    mount body: Shape
+}
+
+impl ShapeUnion {
+    /// Union SDF: minimum of all child SDFs.
+    fn sdf_combine(self, distances: [f32]) -> f32 {
+        let result = distances[0]
+        for i in 1u..len(distances) {
+            result = min(result, distances[i])
+        }
+        result
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+/// Intersection of multiple shapes.
+///
+/// Combines shapes using boolean intersection (AND).
+pub struct ShapeIntersection: Shape {
+    tint: Color? = nil,
+    mount body: Shape
+}
+
+impl ShapeIntersection {
+    /// Intersection SDF: maximum of all child SDFs.
+    fn sdf_combine(self, distances: [f32]) -> f32 {
+        let result = distances[0]
+        for i in 1u..len(distances) {
+            result = max(result, distances[i])
+        }
+        result
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}
+
+/// Subtract shapes from a base shape.
+///
+/// Boolean subtraction (base - subtract).
+pub struct ShapeSubtraction: Shape {
+    tint: Color? = nil,
+    mount body: Never,
+    mount base: Shape,
+    mount subtract: Shape
+}
+
+impl ShapeSubtraction {
+    /// Subtraction SDF: max(base, -subtract).
+    fn sdf_combine(self, base_dist: f32, subtract_dist: f32) -> f32 {
+        max(base_dist, -subtract_dist)
+    }
+
+    fn layout_propose(self, proposed: Size2D) -> Size2D {
+        proposed
+    }
+
+    fn layout_report(self) -> Size2D {
+        Size2D(width: 0.0, height: 0.0)
+    }
+
+    fn layout_position(self, bounds: Bounds2D) {}
+}

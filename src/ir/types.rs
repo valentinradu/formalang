@@ -112,14 +112,56 @@ pub struct IrEnumVariant {
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide field defaults for a struct.
+/// Impl blocks provide methods for a struct.
 #[derive(Clone, Debug)]
 pub struct IrImpl {
     /// The struct this impl is for
     pub struct_id: StructId,
 
-    /// Field defaults: (field_name, default_value)
-    pub defaults: Vec<(String, IrExpr)>,
+    /// Methods defined in this impl block
+    pub functions: Vec<IrFunction>,
+}
+
+/// A function definition in the IR.
+///
+/// Functions are methods defined in impl blocks. They operate on `self`
+/// and can take additional parameters.
+///
+/// # Example
+///
+/// ```formalang
+/// impl Vec2 {
+///     fn length(self) -> f32 {
+///         sqrt(self.x * self.x + self.y * self.y)
+///     }
+/// }
+/// ```
+#[derive(Clone, Debug)]
+pub struct IrFunction {
+    /// Function name
+    pub name: String,
+
+    /// Parameters (first is typically `self`)
+    pub params: Vec<IrFunctionParam>,
+
+    /// Return type (None = unit/void)
+    pub return_type: Option<ResolvedType>,
+
+    /// Function body expression
+    pub body: IrExpr,
+}
+
+/// A function parameter in the IR.
+#[derive(Clone, Debug)]
+pub struct IrFunctionParam {
+    /// Parameter name
+    pub name: String,
+
+    /// Parameter type (None for `self` parameter - type is inferred from impl block)
+    pub ty: Option<ResolvedType>,
+
+    /// Default value expression (if provided)
+    pub default: Option<IrExpr>,
 }
 
 /// A field definition.

@@ -1,4 +1,6 @@
 pub mod ast;
+pub mod builtins;
+pub mod codegen;
 pub mod error;
 pub mod ir;
 pub mod lexer;
@@ -11,7 +13,8 @@ pub mod semantic;
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
 pub use ir::{
-    EnumId, ExternalKind, IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
+    simple_type_name, EnumId, ExternalKind, FunctionId, IrFunction, IrFunctionParam, IrImport,
+    IrImportItem, IrModule, ResolvedType, StructId, TraitId,
 };
 pub use lexer::{Lexer, Token};
 pub use location::{Location, Span};
@@ -294,5 +297,27 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
 /// ```
 pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
     let (ast, analyzer) = compile_with_analyzer(source)?;
+    ir::lower_to_ir(&ast, analyzer.symbols())
+}
+
+/// Compile FormaLang source code to IR with a custom module resolver
+///
+/// # Arguments
+///
+/// * `source` - The FormaLang source code to compile
+/// * `resolver` - A module resolver implementing the ModuleResolver trait
+///
+/// # Returns
+///
+/// * `Ok(IrModule)` - The IR module if compilation succeeds
+/// * `Err(Vec<CompilerError>)` - A list of compilation errors if compilation fails
+pub fn compile_to_ir_with_resolver<R>(
+    source: &str,
+    resolver: R,
+) -> Result<IrModule, Vec<CompilerError>>
+where
+    R: semantic::module_resolver::ModuleResolver,
+{
+    let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
     ir::lower_to_ir(&ast, analyzer.symbols())
 }

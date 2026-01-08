@@ -29,8 +29,6 @@ fn test_token_is_keyword_true() {
         Token::True,
         Token::False,
         Token::Nil,
-        Token::Provides,
-        Token::Consumes,
         Token::As,
     ];
 
@@ -131,8 +129,6 @@ fn test_token_as_str_keywords() {
     assert_eq!(Token::True.as_str(), "true");
     assert_eq!(Token::False.as_str(), "false");
     assert_eq!(Token::Nil.as_str(), "nil");
-    assert_eq!(Token::Provides.as_str(), "provides");
-    assert_eq!(Token::Consumes.as_str(), "consumes");
     assert_eq!(Token::As.as_str(), "as");
 }
 
