@@ -32,3 +32,8 @@ naga = { version = "22.0", features = ["wgsl-in", "wgsl-out", "msl-out", "spv-ou
 rstest = "0.23"
 pretty_assertions = "1.4"
 tempfile = "3.8"
+
+# Shader snapshot testing
+wgpu = "23.0"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }

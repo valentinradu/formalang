@@ -53,12 +53,14 @@ struct IrLowerer<'a> {
     module: IrModule,
     symbols: &'a SymbolTable,
     errors: Vec<CompilerError>,
-    /// Track imports by module path for aggregation
-    imports_by_module: HashMap<Vec<String>, Vec<IrImportItem>>,
+    /// Track imports by module path for aggregation: (module_path, source_file) -> items
+    imports_by_module: HashMap<Vec<String>, (Vec<IrImportItem>, std::path::PathBuf)>,
     /// Current struct being processed in an impl block (for self references)
     current_impl_struct: Option<String>,
     /// Current module prefix for nested definitions (e.g., "outer::inner")
     current_module_prefix: String,
+    /// Current function's return type for inferring enum types
+    current_function_return_type: Option<String>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -70,6 +72,7 @@ impl<'a> IrLowerer<'a> {
             imports_by_module: HashMap::new(),
             current_impl_struct: None,
             current_module_prefix: String::new(),
+            current_function_return_type: None,
         }
     }
 
@@ -102,7 +105,11 @@ impl<'a> IrLowerer<'a> {
         self.module.imports = self
             .imports_by_module
             .drain()
-            .map(|(module_path, items)| IrImport { module_path, items })
+            .map(|(module_path, (items, source_file))| IrImport {
+                module_path,
+                items,
+                source_file,
+            })
             .collect();
 
         if self.errors.is_empty() {
@@ -272,6 +279,21 @@ impl<'a> IrLowerer<'a> {
         ResolvedType::TypeParam(format!("self.{}", field_name))
     }
 
+    /// Resolve the type of `self` in an impl block context.
+    /// Returns the ResolvedType for the struct or enum being implemented.
+    fn resolve_impl_self_type(&self, impl_name: &str) -> ResolvedType {
+        // First try as a struct
+        if let Some(id) = self.module.struct_id(impl_name) {
+            return ResolvedType::Struct(id);
+        }
+        // Then try as an enum
+        if let Some(id) = self.module.enum_id(impl_name) {
+            return ResolvedType::Enum(id);
+        }
+        // Fall back to TypeParam if not found
+        ResolvedType::TypeParam("self".to_string())
+    }
+
     /// Register imported structs and enums from the symbol table.
     /// This ensures that imported types have struct/enum IDs in the IR module,
     /// so when we instantiate them, struct_id is populated correctly.
@@ -281,6 +303,8 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_struct(name, struct_info);
+                // Track this import for WGSL codegen (to find impl blocks)
+                self.try_track_external_import(name, ExternalKind::Struct);
             }
         }
 
@@ -289,6 +313,8 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_enum(name, enum_info);
+                // Track this import for WGSL codegen (to find impl blocks)
+                self.try_track_external_import(name, ExternalKind::Enum);
             }
         }
 
@@ -725,12 +751,29 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_impl(&mut self, i: &ImplDef) {
-        let struct_id = match self.module.struct_id(&i.name.name) {
-            Some(id) => id,
-            None => return, // Error would have been caught in semantic analysis
+        use super::ImplTarget;
+
+        // Build qualified name if we're inside a module
+        let qualified_name = if self.current_module_prefix.is_empty() {
+            i.name.name.clone()
+        } else {
+            format!("{}::{}", self.current_module_prefix, i.name.name)
         };
 
-        // Set current impl struct for self reference resolution
+        // Try to find struct first (qualified then unqualified), then enum
+        let target = if let Some(id) = self.module.struct_id(&qualified_name) {
+            ImplTarget::Struct(id)
+        } else if let Some(id) = self.module.struct_id(&i.name.name) {
+            ImplTarget::Struct(id)
+        } else if let Some(id) = self.module.enum_id(&qualified_name) {
+            ImplTarget::Enum(id)
+        } else if let Some(id) = self.module.enum_id(&i.name.name) {
+            ImplTarget::Enum(id)
+        } else {
+            return; // Error would have been caught in semantic analysis
+        };
+
+        // Set current impl struct/enum for self reference resolution
         self.current_impl_struct = Some(i.name.name.clone());
 
         let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
@@ -738,10 +781,7 @@ impl<'a> IrLowerer<'a> {
         // Clear the context
         self.current_impl_struct = None;
 
-        self.module.add_impl(IrImpl {
-            struct_id,
-            functions,
-        });
+        self.module.add_impl(IrImpl { target, functions });
     }
 
     fn lower_function(&mut self, f: &FunctionDef) {
@@ -756,7 +796,15 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
+
+        // Set return type context for inferred enum resolution
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = f.return_type.as_ref().map(|t| self.type_name(t));
+
         let body = self.lower_expr(&f.body);
+
+        // Restore previous return type context
+        self.current_function_return_type = saved_return_type;
 
         self.module.add_function(
             f.name.name.clone(),
@@ -781,13 +829,36 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
+
+        // Set return type context for inferred enum resolution
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = f.return_type.as_ref().map(|t| self.type_name(t));
+
         let body = self.lower_expr(&f.body);
+
+        // Restore previous return type context
+        self.current_function_return_type = saved_return_type;
 
         IrFunction {
             name: f.name.name.clone(),
             params,
             return_type,
             body,
+        }
+    }
+
+    /// Extract the type name from an AST type (for return type context)
+    fn type_name(&self, ty: &ast::Type) -> String {
+        match ty {
+            ast::Type::Ident(name) => name.name.clone(),
+            ast::Type::Primitive(prim) => format!("{:?}", prim),
+            ast::Type::Optional(inner) => self.type_name(inner),
+            ast::Type::Generic { name, .. } => name.name.clone(),
+            ast::Type::Array(_) => "Array".to_string(),
+            ast::Type::Tuple(_) => "Tuple".to_string(),
+            ast::Type::Dictionary { .. } => "Dictionary".to_string(),
+            ast::Type::Closure { .. } => "Closure".to_string(),
+            ast::Type::TypeParameter(name) => name.name.clone(),
         }
     }
 
@@ -909,9 +980,17 @@ impl<'a> IrLowerer<'a> {
                 kind: expected_kind,
             };
 
+            // Get source file path for IR lookup during codegen
+            let source_file = self
+                .symbols
+                .get_module_origin(name)
+                .cloned()
+                .unwrap_or_default();
+
             self.imports_by_module
                 .entry(module_path.clone())
-                .or_default()
+                .or_insert_with(|| (Vec::new(), source_file))
+                .0
                 .push(import_item);
         }
     }
@@ -941,9 +1020,17 @@ impl<'a> IrLowerer<'a> {
             kind: external_kind.clone(),
         };
 
+        // Get source file path for IR lookup during codegen
+        let source_file = self
+            .symbols
+            .get_module_origin(name)
+            .cloned()
+            .unwrap_or_default();
+
         self.imports_by_module
             .entry(module_path.clone())
-            .or_default()
+            .or_insert_with(|| (Vec::new(), source_file))
+            .0
             .push(import_item);
 
         Some(ResolvedType::External {
@@ -1084,16 +1171,33 @@ impl<'a> IrLowerer<'a> {
             }
 
             Expr::InferredEnumInstantiation { variant, data, .. } => {
-                // For inferred enums, we'd need context to resolve the enum type
-                // For now, use a placeholder
+                // Try to resolve the enum type from the current function's return type context
+                let (enum_id, ty) =
+                    if let Some(return_type_name) = self.current_function_return_type.clone() {
+                        // Check if the return type is an enum
+                        if let Some(id) = self.module.enum_id(&return_type_name) {
+                            (Some(id), ResolvedType::Enum(id))
+                        } else if let Some(external_ty) =
+                            self.try_external_type(&return_type_name, vec![])
+                        {
+                            (None, external_ty)
+                        } else {
+                            // Return type is not an enum we can resolve
+                            (None, ResolvedType::TypeParam("InferredEnum".to_string()))
+                        }
+                    } else {
+                        // No return type context available
+                        (None, ResolvedType::TypeParam("InferredEnum".to_string()))
+                    };
+
                 IrExpr::EnumInst {
-                    enum_id: None,
+                    enum_id,
                     variant: variant.name.clone(),
                     fields: data
                         .iter()
                         .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
                         .collect(),
-                    ty: ResolvedType::TypeParam("InferredEnum".to_string()),
+                    ty,
                 }
             }
 
@@ -1138,6 +1242,17 @@ impl<'a> IrLowerer<'a> {
                         field: field_name.clone(),
                         ty,
                     };
+                }
+
+                // Check for bare "self" in impl context
+                if path_strs.len() == 1 && path_strs[0] == "self" {
+                    if let Some(ref impl_name) = self.current_impl_struct {
+                        let ty = self.resolve_impl_self_type(impl_name);
+                        return IrExpr::Reference {
+                            path: path_strs,
+                            ty,
+                        };
+                    }
                 }
 
                 // Check for module-level let binding reference
@@ -1481,10 +1596,26 @@ impl<'a> IrLowerer<'a> {
         // Try to find method in impl blocks for struct types
         if let ResolvedType::Struct(struct_id) = receiver_ty {
             for impl_block in &self.module.impls {
-                if impl_block.struct_id == *struct_id {
+                if impl_block.struct_id() == Some(*struct_id) {
                     for func in &impl_block.functions {
                         if func.name == method_name {
                             // Return the function's return type, or the body type if unspecified
+                            return func
+                                .return_type
+                                .clone()
+                                .unwrap_or_else(|| func.body.ty().clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try to find method in impl blocks for enum types
+        if let ResolvedType::Enum(enum_id) = receiver_ty {
+            for impl_block in &self.module.impls {
+                if impl_block.enum_id() == Some(*enum_id) {
+                    for func in &impl_block.functions {
+                        if func.name == method_name {
                             return func
                                 .return_type
                                 .clone()
@@ -1804,10 +1935,26 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn get_variant_fields(&self, enum_ty: &ResolvedType, variant_name: &str) -> Vec<ResolvedType> {
+        // Handle direct enum type
         if let ResolvedType::Enum(id) = enum_ty {
             let enum_def = self.module.get_enum(*id);
             if let Some(variant) = enum_def.variants.iter().find(|v| v.name == variant_name) {
                 return variant.fields.iter().map(|f| f.ty.clone()).collect();
+            }
+        }
+        // Handle TypeParam("self") in impl context - resolve to actual enum type
+        if let ResolvedType::TypeParam(name) = enum_ty {
+            if name == "self" {
+                if let Some(ref impl_name) = self.current_impl_struct {
+                    if let Some(id) = self.module.enum_id(impl_name) {
+                        let enum_def = self.module.get_enum(id);
+                        if let Some(variant) =
+                            enum_def.variants.iter().find(|v| v.name == variant_name)
+                        {
+                            return variant.fields.iter().map(|f| f.ty.clone()).collect();
+                        }
+                    }
+                }
             }
         }
         Vec::new()

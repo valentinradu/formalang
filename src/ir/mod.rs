@@ -36,8 +36,8 @@ pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, 
 pub use fold::{fold_constants, ConstantFolder};
 pub use lower::lower_to_ir;
 pub use types::{
-    IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam, IrImpl, IrLet,
-    IrStruct, IrTrait,
+    ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam,
+    IrImpl, IrLet, IrStruct, IrTrait,
 };
 pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
 
@@ -129,6 +129,12 @@ pub struct IrImport {
     pub module_path: Vec<String>,
     /// Items imported from this module
     pub items: Vec<IrImportItem>,
+    /// Filesystem path to the source module file.
+    ///
+    /// Used by WGSL codegen to look up the cached IrModule for generating
+    /// impl blocks from imported types. Populated from symbol table's
+    /// `module_origins` during IR lowering.
+    pub source_file: std::path::PathBuf,
 }
 
 /// A single imported item from a module.

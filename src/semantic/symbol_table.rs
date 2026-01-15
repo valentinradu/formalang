@@ -671,10 +671,22 @@ impl SymbolTable {
         }
 
         // Track the module origin
+        // If the symbol was itself imported into the source module (re-export chain),
+        // preserve the original origin rather than using the intermediate module.
+        let actual_origin = module_table
+            .get_module_origin(name)
+            .cloned()
+            .unwrap_or(module_path);
         self.module_origins
-            .insert(name.to_string(), Some(module_path));
+            .insert(name.to_string(), Some(actual_origin));
+
+        // Same for logical path - preserve original if this is a re-export
+        let actual_logical_path = module_table
+            .get_module_logical_path(name)
+            .map(|p| p.to_vec())
+            .unwrap_or(logical_path);
         self.module_logical_paths
-            .insert(name.to_string(), logical_path);
+            .insert(name.to_string(), actual_logical_path);
 
         Ok(())
     }

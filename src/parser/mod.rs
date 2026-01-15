@@ -1623,12 +1623,32 @@ where
         // Note: Uses ident_no_self_parser to prevent 'self.field' from being parsed as enum instantiation
         // IMPORTANT: If there are parens, they MUST contain named args (ident: value).
         // This prevents foo.bar(1) from being parsed as enum instantiation.
+        // IMPORTANT: The type name (last path element) must start with uppercase to distinguish
+        // from field access (e.g., `Status.active` vs `point.x`).
         let enum_base = ident_no_self_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
             .then_ignore(just(Token::Dot))
-            .then(ident_parser());
+            .then(ident_parser())
+            // Filter: only match if the type name (last path element) starts with uppercase
+            // This distinguishes `Status.active` (enum) from `point.x` (field access)
+            .try_map(|(path, variant), span| {
+                let type_name = path.last().map(|id| id.name.as_str()).unwrap_or("");
+                if type_name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
+                    Ok((path, variant))
+                } else {
+                    Err(Rich::custom(
+                        span,
+                        "enum type names must start with uppercase",
+                    ))
+                }
+            });
         // With named args: Type.variant(name: value, ...)
         let enum_with_args = enum_base
             .clone()

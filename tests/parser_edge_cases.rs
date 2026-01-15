@@ -2,7 +2,7 @@
 //!
 //! Tests for parser edge cases and AST node coverage
 
-use formalang::compile;
+use formalang::{compile, parse_only};
 
 // =============================================================================
 // Parse Function Tests
@@ -296,6 +296,65 @@ fn test_field_access_simple() {
         compile(source).is_ok(),
         "Field access simple: {:?}",
         compile(source).err()
+    );
+}
+
+// =============================================================================
+// Field Access vs Enum Instantiation Tests
+// =============================================================================
+
+/// Regression test: field access on function parameters should NOT be parsed as enum instantiation.
+/// Before the fix, `point.x` was being parsed as `EnumInstantiation { enum_name: "point", variant: "x" }`
+/// instead of field access, causing WGSL codegen to output `Unknown_x` instead of `point.x`.
+#[test]
+fn test_field_access_on_parameter_parses() {
+    // This tests that lowercase.identifier parses correctly (not as enum instantiation)
+    // We use parse_only to test just parsing, not semantic analysis
+    let source = r#"
+        struct Point { x: Number, y: Number }
+        impl Point {
+            fn get_x(p: Point) -> Number { p.x }
+        }
+    "#;
+    let result = parse_only(source);
+    assert!(
+        result.is_ok(),
+        "Field access on parameter should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Enum instantiation requires uppercase type name
+#[test]
+fn test_enum_instantiation_requires_uppercase() {
+    // Status.active should parse as enum instantiation (uppercase S)
+    let source = r#"
+        enum Status { active, inactive }
+        let s: Status = Status.active
+    "#;
+    let result = compile(source);
+    assert!(
+        result.is_ok(),
+        "Enum instantiation with uppercase type should compile: {:?}",
+        result.err()
+    );
+}
+
+/// Field access chain on parameters parses correctly
+#[test]
+fn test_field_access_chain_on_parameter_parses() {
+    let source = r#"
+        struct Inner { value: Number }
+        struct Outer { inner: Inner }
+        impl Outer {
+            fn get_value(o: Outer) -> Number { o.inner.value }
+        }
+    "#;
+    let result = parse_only(source);
+    assert!(
+        result.is_ok(),
+        "Field access chain on parameter should parse: {:?}",
+        result.err()
     );
 }
 

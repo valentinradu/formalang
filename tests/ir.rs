@@ -2193,7 +2193,7 @@ struct Container { p: Point = Point(x: 1, y: 2) }
 
 /// Helper to compile with stdlib access
 fn compile_with_stdlib(source: &str) -> Result<formalang::IrModule, Vec<formalang::CompilerError>> {
-    let root_dir = std::path::PathBuf::from("docs/user");
+    let root_dir = std::path::PathBuf::from(".");
     let resolver = formalang::FileSystemResolver::new(root_dir);
     let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)?;
     formalang::ir::lower_to_ir(&ast, analyzer.symbols())
@@ -2589,14 +2589,16 @@ fn test_wgsl_trait_type_generates_data_structs() {
     let module = compile_to_ir(source).expect("should compile");
     let wgsl = generate_wgsl(&module);
 
-    // Trait types should be mapped to trait-specific data structs
+    // Optional trait types should be wrapped in Optional structs
+    // fill: Fill? = nil -> fill: Optional_FillData
+    // shape: Shape? = nil -> shape: Optional_ShapeData
     assert!(
-        wgsl.contains("fill: FillData"),
-        "Trait field should use FillData type"
+        wgsl.contains("fill: Optional_FillData"),
+        "Optional trait field should use Optional_FillData type"
     );
     assert!(
-        wgsl.contains("shape: ShapeData"),
-        "Trait field should use ShapeData type"
+        wgsl.contains("shape: Optional_ShapeData"),
+        "Optional trait field should use Optional_ShapeData type"
     );
 
     // Each trait should have its own data struct
@@ -2659,7 +2661,7 @@ fn test_stdlib_wgsl_validation() {
         }
     "#;
 
-    let resolver = formalang::FileSystemResolver::new(PathBuf::from("docs/user"));
+    let resolver = formalang::FileSystemResolver::new(PathBuf::from("."));
     let module = formalang::compile_to_ir_with_resolver(source, resolver)
         .expect("should compile with stdlib");
 
@@ -2667,4 +2669,161 @@ fn test_stdlib_wgsl_validation() {
 
     // Validate the WGSL with naga
     validate_wgsl(&wgsl).expect("WGSL should be valid");
+}
+
+#[test]
+fn test_stdlib_wgsl_with_imports() {
+    use formalang::codegen::{generate_wgsl_with_imports, validate_wgsl};
+    use formalang::ir::lower_to_ir;
+    use std::path::PathBuf;
+
+    let source = r#"
+        use stdlib::gpu::*
+
+        struct Test {
+            size: Size2D = Size2D(width: 100.0, height: 100.0)
+        }
+    "#;
+
+    let resolver = formalang::FileSystemResolver::new(PathBuf::from("."));
+    let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)
+        .expect("should compile with stdlib");
+
+    let module = lower_to_ir(&ast, analyzer.symbols()).expect("should lower to IR");
+    let wgsl = generate_wgsl_with_imports(&module, analyzer.imported_ir_modules());
+
+    println!("=== Generated WGSL ===");
+    println!("{}", wgsl);
+    println!("=== End WGSL ===");
+
+    // Verify impl functions from imports are generated
+    assert!(
+        wgsl.contains("fn Size2D_"),
+        "Should have Size2D functions from imported impl"
+    );
+
+    // Validate the WGSL
+    validate_wgsl(&wgsl).expect("WGSL should be valid");
+
+    // Regression test: field access on parameters should generate proper WGSL (e.g., "_from.r")
+    // not "Unknown_r" which happens when field access is incorrectly parsed as enum instantiation
+    assert!(
+        !wgsl.contains("Unknown_"),
+        "Field access should not generate 'Unknown_' prefix - parser may be incorrectly treating field access as enum instantiation"
+    );
+
+    // Verify Color4_lerp generates proper field access
+    assert!(
+        wgsl.contains("_from.r") || wgsl.contains("from.r"),
+        "Color4_lerp should have field access on 'from' parameter"
+    );
+}
+
+#[test]
+fn test_nested_module_impl_blocks_captured() {
+    // Test that impl blocks inside nested modules are properly lowered to IR
+    let source = r#"
+pub mod fill {
+    pub struct Solid {
+        color: f32 = 0.0
+    }
+
+    impl Solid {
+        fn sample(self, uv: f32) -> f32 {
+            self.color + uv
+        }
+    }
+}
+"#;
+
+    let module = compile_to_ir(source).unwrap();
+
+    // Struct should be named with module prefix
+    let solid = module
+        .structs
+        .iter()
+        .find(|s| s.name == "fill::Solid")
+        .expect("Should have fill::Solid struct");
+    assert_eq!(solid.fields.len(), 1);
+    assert_eq!(solid.fields[0].name, "color");
+
+    // Impl block should be captured
+    assert!(
+        !module.impls.is_empty(),
+        "Should have at least one impl block (fill::Solid impl)"
+    );
+
+    // Find the impl for fill::Solid
+    let solid_id = module
+        .structs
+        .iter()
+        .position(|s| s.name == "fill::Solid")
+        .expect("fill::Solid should exist");
+
+    let solid_impl = module
+        .impls
+        .iter()
+        .find(|i| i.struct_id() == Some(StructId(solid_id as u32)))
+        .expect("Should have impl for fill::Solid");
+
+    // Verify the sample function is captured
+    assert_eq!(solid_impl.functions.len(), 1);
+    assert_eq!(solid_impl.functions[0].name, "sample");
+}
+
+#[test]
+fn test_inferred_enum_type_resolved_from_return_type() {
+    // Test that InferredEnumInstantiation (e.g., `.rgba(...)`) is resolved
+    // to the correct enum type based on the function's return type context.
+    let source = r#"
+pub enum Color {
+    rgb(r: f32, g: f32, b: f32),
+    rgba(r: f32, g: f32, b: f32, a: f32)
+}
+
+impl Color {
+    fn transparent() -> Color {
+        .rgba(r: 0.0, g: 0.0, b: 0.0, a: 0.0)
+    }
+
+    fn red() -> Color {
+        .rgb(r: 255.0, g: 0.0, b: 0.0)
+    }
+}
+"#;
+
+    let module = compile_to_ir(source).unwrap();
+
+    // Find the Color impl
+    let color_id = module
+        .enums
+        .iter()
+        .position(|e| e.name == "Color")
+        .expect("Color enum should exist");
+
+    let color_impl = module
+        .impls
+        .iter()
+        .find(|i| i.enum_id() == Some(EnumId(color_id as u32)))
+        .expect("Should have impl for Color");
+
+    assert_eq!(color_impl.functions.len(), 2);
+
+    // Verify the transparent function body is correctly typed
+    let transparent_fn = color_impl
+        .functions
+        .iter()
+        .find(|f| f.name == "transparent")
+        .expect("transparent function should exist");
+
+    // The body should be an EnumInst with the correct enum type
+    if let IrExpr::EnumInst { enum_id, ty, .. } = &transparent_fn.body {
+        assert!(enum_id.is_some(), "EnumInst should have resolved enum_id");
+        assert!(
+            matches!(ty, ResolvedType::Enum(_)),
+            "EnumInst type should be Enum, not TypeParam"
+        );
+    } else {
+        panic!("Expected EnumInst, got {:?}", transparent_fn.body);
+    }
 }

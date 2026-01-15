@@ -2,7 +2,7 @@
 
 use crate::ast::Visibility;
 
-use super::{IrExpr, ResolvedType, StructId, TraitId};
+use super::{EnumId, IrExpr, ResolvedType, StructId, TraitId};
 
 /// A module-level let binding in the IR.
 ///
@@ -110,16 +110,43 @@ pub struct IrEnumVariant {
     pub fields: Vec<IrField>,
 }
 
+/// Target of an impl block - either a struct or enum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImplTarget {
+    /// Impl for a struct
+    Struct(StructId),
+    /// Impl for an enum
+    Enum(EnumId),
+}
+
 /// An impl block in the IR.
 ///
-/// Impl blocks provide methods for a struct.
+/// Impl blocks provide methods for a struct or enum.
 #[derive(Clone, Debug)]
 pub struct IrImpl {
-    /// The struct this impl is for
-    pub struct_id: StructId,
+    /// The struct or enum this impl is for
+    pub target: ImplTarget,
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
+}
+
+impl IrImpl {
+    /// Get the struct ID if this impl is for a struct.
+    pub fn struct_id(&self) -> Option<StructId> {
+        match self.target {
+            ImplTarget::Struct(id) => Some(id),
+            ImplTarget::Enum(_) => None,
+        }
+    }
+
+    /// Get the enum ID if this impl is for an enum.
+    pub fn enum_id(&self) -> Option<EnumId> {
+        match self.target {
+            ImplTarget::Struct(_) => None,
+            ImplTarget::Enum(id) => Some(id),
+        }
+    }
 }
 
 /// A function definition in the IR.
