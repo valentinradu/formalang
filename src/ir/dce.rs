@@ -34,9 +34,12 @@ impl<'a> DeadCodeEliminator<'a> {
 
     /// Analyze the module to find all used definitions.
     pub fn analyze(&mut self) {
-        // Mark structs used in impl blocks
+        // Mark structs/enums used in impl blocks
         for impl_block in &self.module.impls {
-            self.used_structs.insert(impl_block.struct_id);
+            if let Some(struct_id) = impl_block.struct_id() {
+                self.used_structs.insert(struct_id);
+            }
+            // Note: enum impls don't affect struct DCE
 
             // Check expressions in functions
             for func in &impl_block.functions {

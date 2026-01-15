@@ -100,6 +100,11 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     import_graph: ImportGraph,
     /// Cache of parsed modules (path -> (AST, SymbolTable))
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
+    /// Cache of IR modules for imported modules (keyed by file path)
+    ///
+    /// Populated during `parse_and_analyze_module()` to enable WGSL codegen
+    /// to generate impl blocks from imported types.
+    module_ir_cache: HashMap<PathBuf, crate::ir::IrModule>,
     /// Current file path being analyzed
     current_file: Option<PathBuf>,
     /// Stack of generic scopes (for tracking type parameters)
@@ -124,6 +129,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             resolver,
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
+            module_ir_cache: HashMap::new(),
             current_file: None,
             generic_scopes: Vec::new(),
             current_impl_struct: None,
@@ -142,6 +148,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             resolver,
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
+            module_ir_cache: HashMap::new(),
             current_file: Some(file_path),
             generic_scopes: Vec::new(),
             current_impl_struct: None,
@@ -395,12 +402,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         // Update the cache with the final symbol table (including re-exports)
-        self.module_cache
-            .insert(module_path.to_path_buf(), (file, module_symbols.clone()));
+        self.module_cache.insert(
+            module_path.to_path_buf(),
+            (file.clone(), module_symbols.clone()),
+        );
 
         if !module_errors.is_empty() {
             return Err(module_errors);
         }
+
+        // Lower the module to IR and cache it for WGSL codegen
+        // This enables generating impl blocks from imported types
+        if let Ok(ir_module) = crate::ir::lower_to_ir(&file, &module_symbols) {
+            self.module_ir_cache
+                .insert(module_path.to_path_buf(), ir_module);
+        }
+        // Note: If IR lowering fails, we still return the symbol table successfully
+        // since semantic analysis passed. IR errors would be caught during main file lowering.
 
         Ok(module_symbols)
     }
@@ -3040,6 +3058,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate function return type matches the body expression type
     fn validate_function_return_type(&mut self, func: &crate::ast::FnDef, file: &File) {
+        // Clear local let bindings for this function
+        self.local_let_bindings.clear();
+
+        // Register function parameters as local bindings
+        // Function parameters are mutable by default (can be assigned to)
+        for param in &func.params {
+            let ty_str = if let Some(ty) = &param.ty {
+                self.validate_type(ty);
+                self.type_to_string(ty)
+            } else {
+                "Unknown".to_string()
+            };
+            // Register parameter as a local binding with its type (mutable=true for params)
+            self.local_let_bindings
+                .insert(param.name.name.clone(), (ty_str, true));
+        }
+
         // Validate the function body expression
         self.validate_expr(&func.body, file);
 
@@ -3058,6 +3093,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         }
+
+        // Clear local let bindings after function
+        self.local_let_bindings.clear();
     }
 
     /// Validate a standalone function definition (outside of impl blocks)
@@ -3113,6 +3151,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// - Exact matches
     /// - Number/f32/i32/u32 compatibility
     /// - Unknown/placeholder type params
+    /// - InferredEnum matching enum types
     fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
         // Exact match
         if expected == actual {
@@ -3122,6 +3161,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Allow placeholder types to match anything (incomplete type inference)
         if actual == "Unknown" || actual.ends_with("Result") || actual.starts_with("FunctionResult")
         {
+            return true;
+        }
+
+        // InferredEnum is compatible with any declared enum type
+        // This handles `.variant(...)` syntax where the enum type is inferred from context
+        if actual == "InferredEnum" && self.symbols.enums.contains_key(expected) {
             return true;
         }
 
@@ -4145,6 +4190,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// This is primarily used by LSP features for completion, hover, etc.
     pub fn symbols(&self) -> &SymbolTable {
         &self.symbols
+    }
+
+    /// Get all cached IR modules from imports.
+    ///
+    /// Returns a map from file path to IrModule for all modules that were
+    /// analyzed during import resolution. Used by WGSL codegen to generate
+    /// impl blocks from imported types.
+    ///
+    /// # Returns
+    ///
+    /// Reference to the cached IR modules. Empty if no imports were processed.
+    pub fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
+        // TODO: Implement - currently returns empty cache
+        // Will be populated during parse_and_analyze_module()
+        &self.module_ir_cache
     }
 }
 

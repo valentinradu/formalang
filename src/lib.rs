@@ -321,3 +321,54 @@ where
     let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
     ir::lower_to_ir(&ast, analyzer.symbols())
 }
+
+/// Compile FormaLang source code directly to WGSL shader code.
+///
+/// This is a convenience function that performs the full compilation pipeline:
+/// parse -> analyze -> lower to IR -> generate WGSL.
+///
+/// The generated WGSL includes functions from impl blocks of imported types,
+/// making it suitable for generating complete shaders that use stdlib types.
+///
+/// # Arguments
+///
+/// * `source` - The FormaLang source code to compile
+///
+/// # Returns
+///
+/// * `Ok(String)` - The generated WGSL code if compilation succeeds
+/// * `Err(Vec<CompilerError>)` - A list of compilation errors if compilation fails
+///
+/// # Example
+///
+/// ```ignore
+/// use formalang::compile_to_wgsl;
+///
+/// let source = r#"
+/// use stdlib::shapes::Rect
+///
+/// let r = Rect()
+/// "#;
+///
+/// match compile_to_wgsl(source) {
+///     Ok(wgsl) => {
+///         // wgsl contains Rect struct and Rect_sdf, Rect_render, etc.
+///         println!("{}", wgsl);
+///     }
+///     Err(errors) => {
+///         for error in errors {
+///             eprintln!("Error: {}", error);
+///         }
+///     }
+/// }
+/// ```
+pub fn compile_to_wgsl(source: &str) -> Result<String, Vec<CompilerError>> {
+    // TODO: Implement full pipeline with imported impl blocks
+    // Currently just compiles to IR and generates basic WGSL
+    let (ast, analyzer) = compile_with_analyzer(source)?;
+    let ir_module = ir::lower_to_ir(&ast, analyzer.symbols())?;
+    Ok(codegen::generate_wgsl_with_imports(
+        &ir_module,
+        analyzer.imported_ir_modules(),
+    ))
+}

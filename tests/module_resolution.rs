@@ -821,9 +821,9 @@ struct Main {
 fn test_stdlib_compiles_alone() {
     // Load stdlib from filesystem
     let stdlib_source =
-        std::fs::read_to_string("docs/user/stdlib.fv").expect("Failed to read docs/user/stdlib.fv");
+        std::fs::read_to_string("stdlib.fv").expect("Failed to read docs/user/stdlib.fv");
 
-    let root_dir = PathBuf::from("docs/user");
+    let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(&stdlib_source, root_dir);
     assert!(result.is_ok(), "Stdlib should compile: {:?}", result.err());
 }
@@ -871,7 +871,7 @@ impl Modal {
 }
 "##;
 
-    let root_dir = PathBuf::from("docs/user");
+    let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(simple_source, root_dir);
     assert!(
         result.is_ok(),
@@ -898,7 +898,7 @@ impl Modal {
 }
 "#;
 
-    let root_dir = PathBuf::from("docs/user");
+    let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(minimal_source, root_dir);
     assert!(
         result.is_ok(),

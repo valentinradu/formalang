@@ -362,7 +362,8 @@ impl<'a> DispatchGenerator<'a> {
 }
 
 /// Default data size for external trait placeholders (in f32 units).
-pub const DEFAULT_EXTERNAL_TRAIT_DATA_SIZE: usize = 16;
+/// Must match DEFAULT_MAX_DISPATCH_DATA_SIZE in wgsl.rs for consistency.
+pub const DEFAULT_EXTERNAL_TRAIT_DATA_SIZE: usize = 128;
 
 impl<'a> DispatchGenerator<'a> {
     /// Generate a placeholder data struct for an external trait.

@@ -52,4 +52,6 @@ pub use transpile::{
     transpile_wgsl, transpile_wgsl_multi, validate_wgsl, ShaderOutput, ShaderTarget,
     TranspileError, TranspileResult,
 };
-pub use wgsl::{generate_wgsl, generate_wgsl_with_sourcemap, WgslGenerator};
+pub use wgsl::{
+    generate_wgsl, generate_wgsl_with_imports, generate_wgsl_with_sourcemap, WgslGenerator,
+};
