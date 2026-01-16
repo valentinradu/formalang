@@ -152,3 +152,219 @@ fn test_ellipse_solid_red() {
     let spec = ShapeRenderSpec::ellipse(120.0, 80.0, RED);
     run_snapshot_test(&spec, "ellipse_solid_red");
 }
+
+// =============================================================================
+// STROKE TESTS (STUBS)
+// =============================================================================
+
+/// Test: Rectangle with stroke only, no fill.
+///
+/// Expected: Outlined rectangle with 2px stroke.
+#[test]
+fn rect_stroke_only() {
+    let spec = ShapeRenderSpec::rect_stroke(100.0, 100.0, BLUE, 0.0, 2.0);
+    run_snapshot_test(&spec, "rect_stroke_only");
+}
+
+/// Test: Rectangle with both fill and stroke.
+///
+/// Expected: Filled rectangle with outline.
+#[test]
+fn rect_stroke_and_fill() {
+    let spec = ShapeRenderSpec::rect_with_stroke(100.0, 100.0, RED, BLUE, 0.0, 2.0);
+    run_snapshot_test(&spec, "rect_stroke_and_fill");
+}
+
+/// Test: Circle with stroke only, no fill.
+///
+/// Expected: Outlined circle with 2px stroke.
+#[test]
+fn circle_stroke_only() {
+    let spec = ShapeRenderSpec::circle_stroke(100.0, GREEN, 2.0);
+    run_snapshot_test(&spec, "circle_stroke_only");
+}
+
+/// Test: Ellipse with thick stroke.
+///
+/// Expected: Outlined ellipse with 4px stroke.
+#[test]
+fn ellipse_stroke_thick() {
+    let spec = ShapeRenderSpec::ellipse_stroke(120.0, 80.0, RED, 4.0);
+    run_snapshot_test(&spec, "ellipse_stroke_thick");
+}
+
+// =============================================================================
+// POLYGON TESTS (STUBS)
+// =============================================================================
+
+/// Test: Triangle (3-sided polygon), no rotation.
+///
+/// Expected: Equilateral triangle pointing up.
+#[test]
+fn polygon_triangle_solid() {
+    let spec = ShapeRenderSpec::polygon((100.0, 100.0), Some(RED), 3, 0.0);
+    run_snapshot_test(&spec, "polygon_triangle_solid");
+}
+
+/// Test: Hexagon (6-sided polygon), no rotation.
+///
+/// Expected: Regular hexagon.
+#[test]
+fn polygon_hexagon_solid() {
+    let spec = ShapeRenderSpec::polygon((100.0, 100.0), Some(BLUE), 6, 0.0);
+    run_snapshot_test(&spec, "polygon_hexagon_solid");
+}
+
+/// Test: Pentagon with 36 degree rotation.
+///
+/// Expected: Pentagon rotated 36 degrees.
+#[test]
+fn polygon_pentagon_rotated() {
+    let spec = ShapeRenderSpec::polygon((100.0, 100.0), Some(GREEN), 5, 36.0);
+    run_snapshot_test(&spec, "polygon_pentagon_rotated");
+}
+
+/// Test: Hexagon with stroke, no fill.
+///
+/// Expected: Outlined hexagon.
+#[test]
+fn polygon_with_stroke() {
+    let spec = ShapeRenderSpec::polygon_with_stroke(
+        (100.0, 100.0),
+        None,
+        Some(BLUE),
+        6,
+        0.0,
+        2.0,
+    );
+    run_snapshot_test(&spec, "polygon_with_stroke");
+}
+
+// =============================================================================
+// LINE TESTS (STUBS)
+// =============================================================================
+
+/// Test: Horizontal line.
+///
+/// Expected: Line from left to right, 2px stroke.
+#[test]
+fn line_horizontal() {
+    let spec = ShapeRenderSpec::line((10.0, 50.0), (90.0, 50.0), RED, 2.0);
+    run_snapshot_test(&spec, "line_horizontal");
+}
+
+/// Test: Vertical line.
+///
+/// Expected: Line from top to bottom, 2px stroke.
+#[test]
+fn line_vertical() {
+    let spec = ShapeRenderSpec::line((50.0, 10.0), (50.0, 90.0), GREEN, 2.0);
+    run_snapshot_test(&spec, "line_vertical");
+}
+
+/// Test: Diagonal line.
+///
+/// Expected: Line from top-left to bottom-right, 2px stroke.
+#[test]
+fn line_diagonal() {
+    let spec = ShapeRenderSpec::line((10.0, 10.0), (90.0, 90.0), BLUE, 2.0);
+    run_snapshot_test(&spec, "line_diagonal");
+}
+
+/// Test: Thick line.
+///
+/// Expected: Line with 4px stroke width.
+#[test]
+fn line_thick() {
+    let spec = ShapeRenderSpec::line((10.0, 50.0), (90.0, 50.0), RED, 4.0);
+    run_snapshot_test(&spec, "line_thick");
+}
+
+// =============================================================================
+// BOOLEAN OPERATION TESTS (STUBS)
+// =============================================================================
+
+/// Test: Union of two overlapping circles.
+///
+/// Expected: Combined shape where either circle exists.
+/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
+/// Requires special test infrastructure for composite rendering.
+#[test]
+#[ignore = "Boolean shapes require composite render infrastructure"]
+fn union_two_circles() {
+    let spec = ShapeRenderSpec::shape_union_circles((100.0, 100.0), RED);
+    run_snapshot_test(&spec, "union_two_circles");
+}
+
+/// Test: Intersection of rectangle and circle.
+///
+/// Expected: Only visible where both shapes overlap.
+/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
+/// Requires special test infrastructure for composite rendering.
+#[test]
+#[ignore = "Boolean shapes require composite render infrastructure"]
+fn intersection_rect_circle() {
+    let spec = ShapeRenderSpec::shape_intersection_rect_circle((100.0, 100.0), GREEN);
+    run_snapshot_test(&spec, "intersection_rect_circle");
+}
+
+/// Test: Rectangle with circle subtracted.
+///
+/// Expected: Rectangle with circular hole.
+/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
+/// Requires special test infrastructure for composite rendering.
+#[test]
+#[ignore = "Boolean shapes require composite render infrastructure"]
+fn subtraction_rect_minus_circle() {
+    let spec = ShapeRenderSpec::shape_subtraction_rect_minus_circle((100.0, 100.0), BLUE);
+    run_snapshot_test(&spec, "subtraction_rect_minus_circle");
+}
+
+// =============================================================================
+// CONTOUR/PATH TESTS (STUBS)
+// =============================================================================
+
+/// Test: Triangle path using LineTo segments.
+///
+/// Expected: Closed triangular path.
+#[test]
+fn contour_triangle() {
+    let spec = ShapeRenderSpec::contour_triangle((100.0, 100.0), RED);
+    run_snapshot_test(&spec, "contour_triangle");
+}
+
+/// Test: Open path with stroke only.
+///
+/// Expected: Unclosed stroked path.
+#[test]
+fn contour_open_path() {
+    let spec = ShapeRenderSpec::contour_open_stroke((100.0, 100.0), GREEN, 2.0);
+    run_snapshot_test(&spec, "contour_open_path");
+}
+
+/// Test: Path with quadratic Bezier curve.
+///
+/// Expected: Smooth curved path.
+#[test]
+fn contour_quad_bezier() {
+    let spec = ShapeRenderSpec::contour_quad_bezier((100.0, 100.0), BLUE);
+    run_snapshot_test(&spec, "contour_quad_bezier");
+}
+
+/// Test: Path with cubic Bezier curve.
+///
+/// Expected: S-curve or similar complex curve.
+#[test]
+fn contour_cubic_bezier() {
+    let spec = ShapeRenderSpec::contour_cubic_bezier((100.0, 100.0), RED);
+    run_snapshot_test(&spec, "contour_cubic_bezier");
+}
+
+/// Test: Path with arc segment.
+///
+/// Expected: Path containing circular arc.
+#[test]
+fn contour_arc() {
+    let spec = ShapeRenderSpec::contour_arc((100.0, 100.0), GREEN);
+    run_snapshot_test(&spec, "contour_arc");
+}

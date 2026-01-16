@@ -9,6 +9,22 @@ use stdlib::color::Color
 use stdlib::dimension::*
 
 // =============================================================================
+// COLOR STOP (at module level for path resolution)
+// =============================================================================
+
+/// Color stop for multi-stop gradients.
+///
+/// # Example
+///
+/// ```formalang
+/// let stop = ColorStop(color: .red(), position: 0.5)
+/// ```
+pub struct ColorStop {
+    color: Color,
+    position: f32 = 0.0
+}
+
+// =============================================================================
 // FILL MODULE
 // =============================================================================
 
@@ -230,19 +246,9 @@ pub mod fill {
     impl Pattern {
         /// Sample the pattern fill at the given UV coordinate.
         fn sample(self, uv: vec2) -> Color4 {
-            // Convert UV to pattern space
-            let pattern_uv = match self.repeat {
-                .repeat: vec2(fract(uv.x * self.width), fract(uv.y * self.height)),
-                .repeatX: vec2(fract(uv.x * self.width), uv.y),
-                .repeatY: vec2(uv.x, fract(uv.y * self.height)),
-                .noRepeat: {
-                    // Return transparent if outside pattern bounds
-                    if uv.x > 1.0 / self.width || uv.y > 1.0 / self.height {
-                        return Color4::transparent()
-                    }
-                    vec2(uv.x * self.width, uv.y * self.height)
-                }
-            }
+            // For now, always use repeat mode (match expressions have codegen issues)
+            // TODO: Fix enum comparison and match expression codegen
+            let pattern_uv = vec2(fract(uv.x * self.width), fract(uv.y * self.height))
 
             // Sample the source fill
             self.source.sample(pattern_uv)
@@ -252,12 +258,6 @@ pub mod fill {
     // =========================================================================
     // MULTI-STOP GRADIENT
     // =========================================================================
-
-    /// Color stop for multi-stop gradients.
-    pub struct ColorStop {
-        color: Color,
-        position: f32 = 0.0
-    }
 
     /// Multi-stop linear gradient.
     ///

@@ -418,6 +418,14 @@ pub enum Expr {
         span: Span,
     },
 
+    // Field access on arbitrary expressions: expr.field
+    // Used when the base is not a simple reference (e.g., (-chord).y, (a + b).len)
+    FieldAccess {
+        object: Box<Expr>,
+        field: Ident,
+        span: Span,
+    },
+
     // Closure expression: x -> expr, x, y -> expr, () -> expr, x: T -> expr
     ClosureExpr {
         params: Vec<ClosureParam>, // Parameters (empty for () -> expr)
@@ -494,6 +502,8 @@ pub struct ClosureParam {
 pub enum Literal {
     String(String),
     Number(f64), // Also used for Factor values (validated in semantic analysis)
+    UnsignedInt(u32), // GPU u32 literal with 'u' suffix
+    SignedInt(i32),   // GPU i32 literal with 'i' suffix
     Boolean(bool),
     Regex { pattern: String, flags: String },
     Path(String),
@@ -631,6 +641,7 @@ impl Expr {
             Expr::Group { span, .. } => *span,
             Expr::DictLiteral { span, .. } => *span,
             Expr::DictAccess { span, .. } => *span,
+            Expr::FieldAccess { span, .. } => *span,
             Expr::ClosureExpr { span, .. } => *span,
             Expr::LetExpr { span, .. } => *span,
             Expr::MethodCall { span, .. } => *span,

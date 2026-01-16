@@ -259,6 +259,7 @@ impl<'a> TreeFlattener<'a> {
             IrExpr::Tuple { .. } => "Tuple",
             IrExpr::For { .. } => "For",
             IrExpr::SelfFieldRef { .. } => "SelfFieldRef",
+            IrExpr::FieldAccess { .. } => "FieldAccess",
             IrExpr::LetRef { .. } => "LetRef",
             IrExpr::FunctionCall { .. } => "FunctionCall",
             IrExpr::MethodCall { .. } => "MethodCall",

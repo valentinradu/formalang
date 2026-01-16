@@ -229,6 +229,11 @@ impl<'a> DeadCodeEliminator<'a> {
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. }
             | IrExpr::EventMapping { .. } => {}
+
+            // FieldAccess needs to traverse into the object
+            IrExpr::FieldAccess { object, .. } => {
+                self.mark_used_in_expr(object);
+            }
         }
     }
 

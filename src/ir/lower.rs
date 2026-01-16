@@ -1445,6 +1445,19 @@ impl<'a> IrLowerer<'a> {
 
             Expr::ClosureExpr { params, body, .. } => self.lower_event_mapping(params, body),
 
+            Expr::FieldAccess { object, field, .. } => {
+                let object_ir = self.lower_expr(object);
+
+                // Resolve the field type based on the object's type
+                let ty = self.resolve_field_type(object_ir.ty(), &field.name);
+
+                IrExpr::FieldAccess {
+                    object: Box::new(object_ir),
+                    field: field.name.clone(),
+                    ty,
+                }
+            }
+
             Expr::MethodCall {
                 receiver,
                 method,
@@ -1569,10 +1582,61 @@ impl<'a> IrLowerer<'a> {
         match lit {
             Literal::String(_) => ResolvedType::Primitive(PrimitiveType::String),
             Literal::Number(_) => ResolvedType::Primitive(PrimitiveType::Number),
+            Literal::UnsignedInt(_) => ResolvedType::Primitive(PrimitiveType::U32),
+            Literal::SignedInt(_) => ResolvedType::Primitive(PrimitiveType::I32),
             Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
             Literal::Path(_) => ResolvedType::Primitive(PrimitiveType::Path),
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),
             Literal::Nil => ResolvedType::TypeParam("Nil".to_string()),
+        }
+    }
+
+    /// Resolve the type of a field access on an expression.
+    ///
+    /// Handles:
+    /// 1. Vector component access (vec2.x, vec3.y, etc.) -> f32/i32/u32
+    /// 2. Struct field access -> field type
+    fn resolve_field_type(&self, object_ty: &ResolvedType, field_name: &str) -> ResolvedType {
+        match object_ty {
+            // Vector component access
+            ResolvedType::Primitive(PrimitiveType::Vec2)
+            | ResolvedType::Primitive(PrimitiveType::Vec3)
+            | ResolvedType::Primitive(PrimitiveType::Vec4) => {
+                match field_name {
+                    "x" | "y" | "z" | "w" | "r" | "g" | "b" | "a" => {
+                        ResolvedType::Primitive(PrimitiveType::F32)
+                    }
+                    _ => ResolvedType::TypeParam(field_name.to_string()),
+                }
+            }
+            ResolvedType::Primitive(PrimitiveType::IVec2)
+            | ResolvedType::Primitive(PrimitiveType::IVec3)
+            | ResolvedType::Primitive(PrimitiveType::IVec4) => {
+                match field_name {
+                    "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::I32),
+                    _ => ResolvedType::TypeParam(field_name.to_string()),
+                }
+            }
+            ResolvedType::Primitive(PrimitiveType::UVec2)
+            | ResolvedType::Primitive(PrimitiveType::UVec3)
+            | ResolvedType::Primitive(PrimitiveType::UVec4) => {
+                match field_name {
+                    "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::U32),
+                    _ => ResolvedType::TypeParam(field_name.to_string()),
+                }
+            }
+            // Struct field access
+            ResolvedType::Struct(struct_id) => {
+                let struct_def = self.module.get_struct(*struct_id);
+                for field in &struct_def.fields {
+                    if field.name == field_name {
+                        return field.ty.clone();
+                    }
+                }
+                ResolvedType::TypeParam(field_name.to_string())
+            }
+            // Default: return a placeholder type
+            _ => ResolvedType::TypeParam(field_name.to_string()),
         }
     }
 
