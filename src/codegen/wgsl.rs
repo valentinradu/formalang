@@ -156,6 +156,8 @@ pub struct WgslGenerator<'a> {
     optional_types: std::collections::HashSet<String>,
     /// Track which enum names have been generated to prevent duplicates.
     generated_enums: std::collections::HashSet<String>,
+    /// Track which struct names have been generated to prevent duplicates.
+    generated_structs: std::collections::HashSet<String>,
     /// Local binding types from match arm pattern bindings.
     /// Used to resolve types for method calls on pattern-bound variables.
     local_binding_types: HashMap<String, ResolvedType>,
@@ -214,6 +216,7 @@ impl<'a> WgslGenerator<'a> {
             current_impl_type: None,
             optional_types: std::collections::HashSet::new(),
             generated_enums: std::collections::HashSet::new(),
+            generated_structs: std::collections::HashSet::new(),
             local_binding_types: HashMap::new(),
             current_function_params: HashMap::new(),
         }
@@ -1016,6 +1019,84 @@ impl<'a> WgslGenerator<'a> {
         }
     }
 
+    /// Collect variable names that are assigned to in an expression tree.
+    /// Used to determine which variables need `var` instead of `let`.
+    fn collect_assigned_vars(expr: &IrExpr, vars: &mut std::collections::HashSet<String>) {
+        use crate::ir::IrBlockStatement;
+
+        match expr {
+            IrExpr::Block { statements, result, .. } => {
+                for stmt in statements {
+                    match stmt {
+                        IrBlockStatement::Assign { target, value } => {
+                            // Add the root variable of the assignment target
+                            if let IrExpr::Reference { path, .. } = target {
+                                if !path.is_empty() {
+                                    vars.insert(path[0].clone());
+                                }
+                            }
+                            Self::collect_assigned_vars(value, vars);
+                        }
+                        IrBlockStatement::Let { value, .. } => {
+                            Self::collect_assigned_vars(value, vars);
+                        }
+                        IrBlockStatement::Expr(e) => {
+                            Self::collect_assigned_vars(e, vars);
+                        }
+                    }
+                }
+                Self::collect_assigned_vars(result, vars);
+            }
+            IrExpr::If { condition, then_branch, else_branch, .. } => {
+                Self::collect_assigned_vars(condition, vars);
+                Self::collect_assigned_vars(then_branch, vars);
+                if let Some(e) = else_branch {
+                    Self::collect_assigned_vars(e, vars);
+                }
+            }
+            IrExpr::For { collection, body, .. } => {
+                Self::collect_assigned_vars(collection, vars);
+                Self::collect_assigned_vars(body, vars);
+            }
+            IrExpr::Match { scrutinee, arms, .. } => {
+                Self::collect_assigned_vars(scrutinee, vars);
+                for arm in arms {
+                    Self::collect_assigned_vars(&arm.body, vars);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Collect assigned variables from a slice of block statements.
+    fn collect_assigned_vars_from_statements(
+        statements: &[crate::ir::IrBlockStatement],
+        result: &IrExpr,
+        vars: &mut std::collections::HashSet<String>,
+    ) {
+        use crate::ir::IrBlockStatement;
+
+        for stmt in statements {
+            match stmt {
+                IrBlockStatement::Assign { target, value } => {
+                    if let IrExpr::Reference { path, .. } = target {
+                        if !path.is_empty() {
+                            vars.insert(path[0].clone());
+                        }
+                    }
+                    Self::collect_assigned_vars(value, vars);
+                }
+                IrBlockStatement::Let { value, .. } => {
+                    Self::collect_assigned_vars(value, vars);
+                }
+                IrBlockStatement::Expr(e) => {
+                    Self::collect_assigned_vars(e, vars);
+                }
+            }
+        }
+        Self::collect_assigned_vars(result, vars);
+    }
+
     /// Generate block body from a foreign module.
     fn gen_block_body_from_foreign(
         &mut self,
@@ -1025,6 +1106,10 @@ impl<'a> WgslGenerator<'a> {
         source_module: &IrModule,
     ) {
         use crate::ir::IrBlockStatement;
+
+        // First, collect all variables that are assigned to later
+        let mut assigned_vars = std::collections::HashSet::new();
+        Self::collect_assigned_vars_from_statements(statements, result, &mut assigned_vars);
 
         // Generate each statement
         for stmt in statements {
@@ -1076,7 +1161,9 @@ impl<'a> WgslGenerator<'a> {
                             );
                         } else {
                             let value_str = self.gen_expr_from_foreign(value, source_module);
-                            self.write_line(&format!("let {} = {};", name, value_str));
+                            // Use var if variable is assigned to later, let otherwise
+                            let binding_kw = if assigned_vars.contains(name) { "var" } else { "let" };
+                            self.write_line(&format!("{} {} = {};", binding_kw, name, value_str));
                         }
                     }
                     // Check if value is a match that needs statement-level handling
@@ -1097,7 +1184,9 @@ impl<'a> WgslGenerator<'a> {
                         self.gen_let_match_from_foreign(name, scrutinee, arms, source_module);
                     } else {
                         let value_str = self.gen_expr_from_foreign(value, source_module);
-                        self.write_line(&format!("let {} = {};", name, value_str));
+                        // Use var if variable is assigned to later, let otherwise
+                        let binding_kw = if assigned_vars.contains(name) { "var" } else { "let" };
+                        self.write_line(&format!("{} {} = {};", binding_kw, name, value_str));
                     }
                 }
                 IrBlockStatement::Assign { target, value } => {
@@ -1106,14 +1195,376 @@ impl<'a> WgslGenerator<'a> {
                     self.write_line(&format!("{} = {};", target_str, value_str));
                 }
                 IrBlockStatement::Expr(expr) => {
-                    let expr_str = self.gen_expr_from_foreign(expr, source_module);
-                    self.write_line(&format!("{};", expr_str));
+                    // Handle for-loops specially since they need statement-level generation
+                    if let IrExpr::For {
+                        var,
+                        var_ty,
+                        collection,
+                        body,
+                        ..
+                    } = expr
+                    {
+                        self.gen_imperative_for_from_foreign(
+                            var,
+                            var_ty,
+                            collection,
+                            body,
+                            source_module,
+                        );
+                    } else {
+                        let expr_str = self.gen_expr_from_foreign(expr, source_module);
+                        self.write_line(&format!("{};", expr_str));
+                    }
                 }
             }
         }
 
         // Generate the result expression
         self.gen_function_body_from_foreign(result, return_type, source_module);
+    }
+
+    /// Generate an imperative for-loop (one that executes for side effects, not producing a result).
+    ///
+    /// This handles loops like:
+    /// ```formalang
+    /// for i in 0u..samples {
+    ///     min_dist = min(min_dist, dist)
+    /// }
+    /// ```
+    fn gen_imperative_for_from_foreign(
+        &mut self,
+        var: &str,
+        var_ty: &ResolvedType,
+        collection: &IrExpr,
+        body: &IrExpr,
+        source_module: &IrModule,
+    ) {
+        let var_ty_str = self.type_to_wgsl_from(var_ty, source_module);
+
+        // Check if collection is a range expression (e.g., 0u..samples)
+        // Range is represented as BinaryOp with Range operator
+        if let IrExpr::BinaryOp {
+            op: BinaryOperator::Range,
+            left,
+            right,
+            ..
+        } = collection
+        {
+            let start_str = self.gen_expr_from_foreign(left.as_ref(), source_module);
+            let end_str = self.gen_expr_from_foreign(right.as_ref(), source_module);
+
+            // For range expressions, the element type is the type of the range bounds
+            // Override var_ty_str if it's UnknownElement
+            let actual_var_ty_str = if var_ty_str == "UnknownElement" {
+                self.type_to_wgsl_from(left.ty(), source_module)
+            } else {
+                var_ty_str.clone()
+            };
+
+            // Generate C-style for loop for range iteration
+            self.write_line(&format!(
+                "for (var {}: {} = {}; {} < {}; {} = {} + 1{}) {{",
+                var,
+                actual_var_ty_str,
+                start_str,
+                var,
+                end_str,
+                var,
+                var,
+                if actual_var_ty_str == "u32" { "u" } else { "" }
+            ));
+        } else {
+            // For array iteration, use indexed access
+            let coll_str = self.gen_expr_from_foreign(collection, source_module);
+            let array_size = self.infer_array_size_from_foreign(collection, source_module);
+
+            // For array iteration, infer element type from collection if var_ty is UnknownElement
+            let actual_var_ty_str = if var_ty_str == "UnknownElement" {
+                // Try to get element type from collection's type
+                let inferred_type = match collection.ty() {
+                    ResolvedType::Array(inner) => {
+                        Some(self.type_to_wgsl_from(inner, source_module))
+                    }
+                    ResolvedType::TypeParam(name) => {
+                        // TypeParam might be a reference to a parameter - look it up
+                        if let Some(param_ty) = self.current_function_params.get(name) {
+                            if let ResolvedType::Array(inner) = param_ty {
+                                Some(self.type_to_wgsl_from(inner, source_module))
+                            } else {
+                                None
+                            }
+                        } else if name.starts_with('[') && name.ends_with(']') {
+                            // Extract element type from "[Type]" format
+                            let inner_type = &name[1..name.len() - 1];
+                            Some(inner_type.to_string())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+
+                // If collection is a Reference to a parameter, look up its type
+                let inferred_type = inferred_type.or_else(|| {
+                    if let IrExpr::Reference { path, .. } = collection {
+                        if path.len() == 1 {
+                            if let Some(param_ty) = self.current_function_params.get(&path[0]) {
+                                if let ResolvedType::Array(inner) = param_ty {
+                                    return Some(self.type_to_wgsl_from(inner, source_module));
+                                }
+                            }
+                        }
+                    }
+                    None
+                });
+
+                inferred_type.unwrap_or_else(|| "f32".to_string())
+            } else {
+                var_ty_str.clone()
+            };
+
+            if let Some(size) = array_size {
+                self.write_line(&format!("let _loop_arr = {};", coll_str));
+                self.write_line(&format!(
+                    "for (var _i: u32 = 0u; _i < {}u; _i = _i + 1u) {{",
+                    size
+                ));
+                self.indent += 1;
+                self.write_line(&format!("let {}: {} = _loop_arr[_i];", var, actual_var_ty_str));
+                self.indent -= 1;
+            } else {
+                // Unknown size - use max bound
+                self.write_line(&format!("let _loop_arr = {};", coll_str));
+                self.write_line(&format!(
+                    "for (var _i: u32 = 0u; _i < {}u; _i = _i + 1u) {{",
+                    DEFAULT_MAX_ARRAY_SIZE
+                ));
+                self.indent += 1;
+                self.write_line(&format!("let {}: {} = _loop_arr[_i];", var, actual_var_ty_str));
+                self.indent -= 1;
+            }
+        }
+
+        self.indent += 1;
+
+        // Generate loop body - handle block expressions properly
+        if let IrExpr::Block {
+            statements, result, ..
+        } = body
+        {
+            // Generate each statement in the loop body
+            for stmt in statements {
+                match stmt {
+                    crate::ir::IrBlockStatement::Let { name, value, ty, .. } => {
+                        let value_str = self.gen_expr_from_foreign(value, source_module);
+                        self.write_line(&format!("let {} = {};", name, value_str));
+                        // Register the binding type for method call resolution
+                        let binding_ty = ty.as_ref().cloned().unwrap_or_else(|| value.ty().clone());
+                        self.local_binding_types.insert(name.clone(), binding_ty);
+                    }
+                    crate::ir::IrBlockStatement::Assign { target, value } => {
+                        let target_str = self.gen_expr_from_foreign(target, source_module);
+                        let value_str = self.gen_expr_from_foreign(value, source_module);
+                        self.write_line(&format!("{} = {};", target_str, value_str));
+                    }
+                    crate::ir::IrBlockStatement::Expr(expr) => {
+                        // Handle If expressions with statement bodies specially
+                        // to generate if-statements instead of select() expressions
+                        if let IrExpr::If {
+                            condition,
+                            then_branch,
+                            else_branch,
+                            ..
+                        } = expr
+                        {
+                            // Generate if-statement for imperative control flow
+                            self.gen_if_statement_from_foreign(
+                                condition,
+                                then_branch,
+                                else_branch.as_deref(),
+                                source_module,
+                            );
+                        } else {
+                            let expr_str = self.gen_expr_from_foreign(expr, source_module);
+                            self.write_line(&format!("{};", expr_str));
+                        }
+                    }
+                }
+            }
+            // The result of the loop body is typically unit/void for imperative loops
+            // Don't generate a return statement for it
+            if !matches!(
+                result.as_ref(),
+                IrExpr::Literal {
+                    value: Literal::Nil,
+                    ..
+                }
+            ) {
+                let result_str = self.gen_expr_from_foreign(result.as_ref(), source_module);
+                if !result_str.is_empty() && result_str != "()" {
+                    self.write_line(&format!("{};", result_str));
+                }
+            }
+        } else if let IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } = body
+        {
+            // If expression body - generate as if-statement
+            self.gen_if_statement_from_foreign(
+                condition,
+                then_branch,
+                else_branch.as_deref(),
+                source_module,
+            );
+        } else {
+            // Simple expression body
+            let body_str = self.gen_expr_from_foreign(body, source_module);
+            self.write_line(&format!("{};", body_str));
+        }
+
+        self.indent -= 1;
+        self.write_line("}");
+    }
+
+    /// Generate an if-statement (not select expression) from a foreign module.
+    ///
+    /// This is used for imperative control flow where branches have side effects.
+    fn gen_if_statement_from_foreign(
+        &mut self,
+        condition: &IrExpr,
+        then_branch: &IrExpr,
+        else_branch: Option<&IrExpr>,
+        source_module: &IrModule,
+    ) {
+        let cond_str = self.gen_expr_from_foreign(condition, source_module);
+        self.write_line(&format!("if ({}) {{", cond_str));
+        self.indent += 1;
+
+        // Generate then branch body
+        self.gen_statement_body_from_foreign(then_branch, source_module);
+
+        self.indent -= 1;
+
+        if let Some(else_expr) = else_branch {
+            self.write_line("} else {");
+            self.indent += 1;
+
+            // Generate else branch body
+            self.gen_statement_body_from_foreign(else_expr, source_module);
+
+            self.indent -= 1;
+        }
+        self.write_line("}");
+    }
+
+    /// Generate statement body from a foreign module expression.
+    ///
+    /// Handles Block expressions by generating each statement, and other expressions
+    /// as simple statements.
+    fn gen_statement_body_from_foreign(&mut self, expr: &IrExpr, source_module: &IrModule) {
+        match expr {
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                for stmt in statements {
+                    match stmt {
+                        crate::ir::IrBlockStatement::Let { name, value, ty, .. } => {
+                            let value_str = self.gen_expr_from_foreign(value, source_module);
+                            self.write_line(&format!("let {} = {};", name, value_str));
+                            // Register the binding type for method call resolution
+                            let binding_ty = ty.as_ref().cloned().unwrap_or_else(|| value.ty().clone());
+                            self.local_binding_types.insert(name.clone(), binding_ty);
+                        }
+                        crate::ir::IrBlockStatement::Assign { target, value } => {
+                            let target_str = self.gen_expr_from_foreign(target, source_module);
+                            let value_str = self.gen_expr_from_foreign(value, source_module);
+                            self.write_line(&format!("{} = {};", target_str, value_str));
+                        }
+                        crate::ir::IrBlockStatement::Expr(e) => {
+                            // Recursively handle nested If statements
+                            if let IrExpr::If {
+                                condition,
+                                then_branch,
+                                else_branch,
+                                ..
+                            } = e
+                            {
+                                self.gen_if_statement_from_foreign(
+                                    condition,
+                                    then_branch,
+                                    else_branch.as_deref(),
+                                    source_module,
+                                );
+                            } else {
+                                let e_str = self.gen_expr_from_foreign(e, source_module);
+                                if !e_str.is_empty() && e_str != "/* nil */" {
+                                    self.write_line(&format!("{};", e_str));
+                                }
+                            }
+                        }
+                    }
+                }
+                // Handle result if not nil
+                match result.as_ref() {
+                    IrExpr::Literal {
+                        value: Literal::Nil,
+                        ..
+                    } => {
+                        // Nil result - no code needed
+                    }
+                    IrExpr::If {
+                        condition,
+                        then_branch,
+                        else_branch,
+                        ..
+                    } => {
+                        // If as result - generate as statement
+                        self.gen_if_statement_from_foreign(
+                            condition,
+                            then_branch,
+                            else_branch.as_deref(),
+                            source_module,
+                        );
+                    }
+                    _ => {
+                        let result_str = self.gen_expr_from_foreign(result.as_ref(), source_module);
+                        if !result_str.is_empty() && result_str != "()" && result_str != "/* nil */" {
+                            self.write_line(&format!("{};", result_str));
+                        }
+                    }
+                }
+            }
+            IrExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                // Nested if - generate as statement
+                self.gen_if_statement_from_foreign(
+                    condition,
+                    then_branch,
+                    else_branch.as_deref(),
+                    source_module,
+                );
+            }
+            IrExpr::Literal {
+                value: Literal::Nil,
+                ..
+            } => {
+                // Nil - no code needed
+            }
+            _ => {
+                // Simple expression
+                let expr_str = self.gen_expr_from_foreign(expr, source_module);
+                if !expr_str.is_empty() && expr_str != "/* nil */" {
+                    self.write_line(&format!("{};", expr_str));
+                }
+            }
+        }
     }
 
     /// Generate for loop body from a foreign module.
@@ -1947,6 +2398,105 @@ impl<'a> WgslGenerator<'a> {
     ///
     /// Used to determine the prefix for mangled method names (e.g., Struct_method).
     /// Returns None if the type doesn't have a meaningful name for mangling.
+    /// Resolve the type of a field access chain.
+    ///
+    /// Given a base type and a chain of field names, traverse the struct fields to find
+    /// the final type. For example, for `stop.color` where stop is ColorStop, this would
+    /// return the type of the `color` field.
+    fn resolve_field_chain_type(
+        &self,
+        base_type: &ResolvedType,
+        field_chain: &[String],
+        source_module: &IrModule,
+    ) -> Option<ResolvedType> {
+        if field_chain.is_empty() {
+            return Some(base_type.clone());
+        }
+
+        let field_name = &field_chain[0];
+        let remaining = &field_chain[1..];
+
+        // Look up the field type from the struct
+        let field_type = match base_type {
+            ResolvedType::Struct(id) => {
+                let s = source_module.get_struct(*id);
+                s.fields
+                    .iter()
+                    .find(|f| &f.name == field_name)
+                    .map(|f| f.ty.clone())
+            }
+            ResolvedType::External { name, .. } => {
+                // Look up external struct in imported modules
+                let simple = simple_type_name(name);
+                self.imported_modules
+                    .values()
+                    .flat_map(|m| m.structs.iter())
+                    .find(|s| s.name == simple)
+                    .and_then(|s| {
+                        s.fields
+                            .iter()
+                            .find(|f| &f.name == field_name)
+                            .map(|f| f.ty.clone())
+                    })
+            }
+            _ => None,
+        };
+
+        // Continue resolving if there are more fields in the chain
+        if let Some(ft) = field_type {
+            if remaining.is_empty() {
+                Some(ft)
+            } else {
+                self.resolve_field_chain_type(&ft, remaining, source_module)
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Find the type that defines a method with the given name by searching all imported modules.
+    /// This is a fallback when the receiver type can't be resolved from bindings.
+    fn find_method_owner_type(&self, method_name: &str, source_module: &IrModule) -> Option<String> {
+        use crate::ir::ImplTarget;
+
+        // Search in source module first
+        for impl_block in &source_module.impls {
+            for func in &impl_block.functions {
+                if func.name == method_name {
+                    // Found the method - get the type name from the impl target
+                    match &impl_block.target {
+                        ImplTarget::Struct(id) => {
+                            return Some(source_module.get_struct(*id).name.clone());
+                        }
+                        ImplTarget::Enum(id) => {
+                            return Some(source_module.get_enum(*id).name.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Search in imported modules
+        for module in self.imported_modules.values() {
+            for impl_block in &module.impls {
+                for func in &impl_block.functions {
+                    if func.name == method_name {
+                        match &impl_block.target {
+                            ImplTarget::Struct(id) => {
+                                return Some(module.get_struct(*id).name.clone());
+                            }
+                            ImplTarget::Enum(id) => {
+                                return Some(module.get_enum(*id).name.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     fn get_method_type_name(ty: &ResolvedType, source_module: &IrModule) -> Option<String> {
         match ty {
             ResolvedType::Struct(id) => Some(source_module.get_struct(*id).name.clone()),
@@ -1974,7 +2524,7 @@ impl<'a> WgslGenerator<'a> {
     /// difference is which module is used for ID-to-name lookups (struct_id -> name, etc).
     fn gen_expr_from_foreign(&self, expr: &IrExpr, source_module: &IrModule) -> String {
         match expr {
-            IrExpr::Literal { value, .. } => self.gen_literal(value),
+            IrExpr::Literal { value, ty } => self.gen_literal(value, ty),
 
             IrExpr::Reference { path, ty: _ } => {
                 // Handle bare "self" reference - convert to "self_" for WGSL
@@ -2003,6 +2553,11 @@ impl<'a> WgslGenerator<'a> {
 
             IrExpr::SelfFieldRef { field, .. } => {
                 format!("self_.{}", Self::escape_wgsl_keyword(field))
+            }
+
+            IrExpr::FieldAccess { object, field, .. } => {
+                let object_str = self.gen_expr_from_foreign(object, source_module);
+                format!("{}.{}", object_str, Self::escape_wgsl_keyword(field))
             }
 
             IrExpr::LetRef { name, .. } => name.clone(),
@@ -2082,6 +2637,20 @@ impl<'a> WgslGenerator<'a> {
             }
 
             IrExpr::FunctionCall { path, args, .. } => {
+                // Special handling for len() on arrays
+                // In WGSL, fixed-size arrays don't have a runtime length, so we extract
+                // the size from the type or use a default
+                if path.len() == 1 && path[0] == "len" && !args.is_empty() {
+                    let arg_ty = args[0].1.ty();
+                    // For arrays, return the fixed size (8u for color stop arrays)
+                    // TODO: Extract actual array size from struct field definition
+                    match arg_ty {
+                        ResolvedType::Array(_) => return "8u".to_string(),
+                        ResolvedType::TypeParam(_) => return "8u".to_string(),
+                        _ => {}
+                    }
+                }
+
                 // For multi-segment paths like Color4::transparent, mangle to Color4_transparent
                 let fn_name = if path.len() > 1 {
                     // Static method call: Type::method -> Type_method
@@ -2133,6 +2702,19 @@ impl<'a> WgslGenerator<'a> {
                                 .get(&path[0])
                                 .or_else(|| self.current_function_params.get(&path[0]))
                                 .cloned()
+                        } else if path.len() >= 2 {
+                            // Multi-part path like ["stop", "color"] - this is a field access chain
+                            // Try to look up the base binding's type and traverse fields
+                            let base_type = self
+                                .local_binding_types
+                                .get(&path[0])
+                                .or_else(|| self.current_function_params.get(&path[0]));
+                            if let Some(base_ty) = base_type {
+                                // Try to resolve the field chain type
+                                self.resolve_field_chain_type(base_ty, &path[1..], source_module)
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
@@ -2172,12 +2754,25 @@ impl<'a> WgslGenerator<'a> {
                         receiver_ty
                     };
 
-                    Self::get_method_type_name(actual_receiver_ty, source_module)
-                        .map(|type_name| format!("{}_{}", type_name, method))
-                        .unwrap_or_else(|| method.clone())
+                    // Try to get type name from the resolved receiver type
+                    let type_name_from_ty = Self::get_method_type_name(actual_receiver_ty, source_module);
+
+                    // Check if the resolved type name is invalid (e.g., contains dots from TypeParam path)
+                    let is_valid_type_name = type_name_from_ty.as_ref()
+                        .map(|name| !name.contains('.'))
+                        .unwrap_or(false);
+
+                    if is_valid_type_name {
+                        format!("{}_{}", type_name_from_ty.unwrap(), method)
+                    } else {
+                        // Fallback: search for which type defines this method
+                        self.find_method_owner_type(method, source_module)
+                            .map(|type_name| format!("{}_{}", type_name, method))
+                            .unwrap_or_else(|| method.clone())
+                    }
                 };
 
-                let all_args = std::iter::once(recv_str)
+                let all_args = std::iter::once(recv_str.clone())
                     .chain(arg_strs)
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -2214,7 +2809,7 @@ impl<'a> WgslGenerator<'a> {
                         }
 
                         // Check if this is a Fill trait implementor variant
-                        let fill_variants = ["solid", "linear", "radial", "angular", "pattern"];
+                        let fill_variants = ["solid", "linear", "radial", "angular", "pattern", "multilinear"];
                         if fill_variants.contains(&variant.as_str()) {
                             // Generate FillData instantiation
                             // Map variant name to struct name (capitalize first letter)
@@ -2473,30 +3068,7 @@ impl<'a> WgslGenerator<'a> {
                     }
                 }
             }
-            ResolvedType::External { name, kind, .. } => {
-                use crate::ir::ExternalKind;
-                let simple_name = simple_type_name(name);
-                let safe_name = to_wgsl_identifier(simple_name);
-                match kind {
-                    ExternalKind::Struct => safe_name,
-                    ExternalKind::Trait => format!("{}Data", safe_name),
-                    ExternalKind::Enum => {
-                        // Check if the enum has data variants - look in imported modules
-                        let has_data = self
-                            .imported_modules
-                            .values()
-                            .flat_map(|m| m.enums.iter())
-                            .find(|e| e.name == simple_name)
-                            .map(|e| e.variants.iter().any(|v| !v.fields.is_empty()))
-                            .unwrap_or(false);
-                        if has_data {
-                            safe_name
-                        } else {
-                            "u32".to_string()
-                        }
-                    }
-                }
-            }
+            ResolvedType::External { name, kind, .. } => self.external_type_to_wgsl(name, kind),
             _ => "f32".to_string(), // Fallback for unsupported types
         }
     }
@@ -2964,6 +3536,13 @@ impl<'a> WgslGenerator<'a> {
     /// Generate a struct definition from an imported module.
     fn gen_struct_from_imported(&mut self, s: &IrStruct, source_module: &IrModule) {
         let safe_name = to_wgsl_identifier(&s.name);
+
+        // Skip if already generated (prevents duplicates)
+        if self.generated_structs.contains(&safe_name) {
+            return;
+        }
+        self.generated_structs.insert(safe_name.clone());
+
         self.output.push_str(&format!("struct {} {{\n", safe_name));
 
         for field in &s.fields {
@@ -3072,10 +3651,23 @@ impl<'a> WgslGenerator<'a> {
             let mut type_tag = 0u32;
 
             // Search imported modules for implementors
-            for (_module_path, imported_ir) in self.imported_modules.iter() {
+            // Sort module paths to ensure deterministic tag assignment order
+            // Use string comparison for stable ordering across runs
+            let mut sorted_module_paths: Vec<_> = self.imported_modules.keys().collect();
+            sorted_module_paths.sort_by_key(|p| p.to_string_lossy().to_string());
+
+            for module_path in sorted_module_paths {
+                let imported_ir = &self.imported_modules[module_path];
                 // Find structs that implement the trait
                 // We check if the struct has a `sample` method for Fill trait (workaround for IR bug)
-                for (struct_idx, s) in imported_ir.structs.iter().enumerate() {
+
+                // Sort structs by name within module for deterministic ordering
+                // (IR lowering produces non-deterministic struct order due to HashMap usage)
+                let mut sorted_struct_indices: Vec<usize> = (0..imported_ir.structs.len()).collect();
+                sorted_struct_indices.sort_by_key(|&idx| &imported_ir.structs[idx].name);
+
+                for struct_idx in sorted_struct_indices {
+                    let s = &imported_ir.structs[struct_idx];
                     // For Fill trait, check if struct has a sample method
                     let implements_trait = if simple_trait_name == "Fill" {
                         // Check if this struct has an impl with a sample method
@@ -4098,9 +4690,10 @@ impl<'a> WgslGenerator<'a> {
                 }
             }
             IrExpr::EnumInst { variant, fields, ty, .. } => {
-                // Handle InferredEnum Color variants
+                // Handle InferredEnum variants
                 if let ResolvedType::TypeParam(param_name) = ty {
                     if param_name == "InferredEnum" {
+                        // Color variants
                         let color_variants = ["rgba", "rgb", "hsla", "hex"];
                         if color_variants.contains(&variant.as_str()) {
                             // Map variant to tag value as float - will be converted with u32() on load
@@ -4126,10 +4719,126 @@ impl<'a> WgslGenerator<'a> {
 
                             return result;
                         }
+
+                        // Fill variants (InferredEnum with fill-like variant names)
+                        let fill_variants = [
+                            "solid", "linear", "radial", "angular", "pattern", "multilinear",
+                        ];
+                        if fill_variants.contains(&variant.as_str()) {
+                            // Capitalize first letter to get struct name
+                            let struct_name = {
+                                let mut chars = variant.chars();
+                                match chars.next() {
+                                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                                    None => variant.clone(),
+                                }
+                            };
+
+                            // Generate: type_tag (as f32(TAG)), element_index (0.0), field data
+                            let tag_name = format!("FILL_TAG_FILL_{}", struct_name.to_uppercase());
+                            let mut result = vec![
+                                format!("f32({})", tag_name),
+                                "0.0".to_string(), // element_index
+                            ];
+
+                            // Add field values
+                            for (_, field_expr) in fields {
+                                result.extend(self.flatten_expr_to_f32s(field_expr));
+                            }
+
+                            return result;
+                        }
                     }
                 }
                 // For other enums, just return the variant tag
                 vec!["0.0".to_string()]
+            }
+            IrExpr::StructInst {
+                fields,
+                ty,
+                ..
+            } => {
+                // Check if this is a trait implementor (Fill type)
+                // If so, we need to serialize: type_tag, element_index, nested data
+                let struct_name = match ty {
+                    ResolvedType::TypeParam(name) => name.clone(),
+                    ResolvedType::Struct(id) => {
+                        // Look up struct name from local module first
+                        if (id.0 as usize) < self.module.structs.len() {
+                            self.module.get_struct(*id).name.clone()
+                        } else {
+                            // Search in imported modules
+                            let mut found_name = None;
+                            for imported in self.imported_modules.values() {
+                                if (id.0 as usize) < imported.structs.len() {
+                                    found_name = Some(imported.get_struct(*id).name.clone());
+                                    break;
+                                }
+                            }
+                            match found_name {
+                                Some(name) => name,
+                                None => return vec![self.gen_expr(expr)],
+                            }
+                        }
+                    }
+                    _ => return vec![self.gen_expr(expr)],
+                };
+                let simple_name = simple_type_name(&struct_name);
+
+                // Look for this struct in imported modules to check if it implements Fill
+                // Fill implementors are identified by having a `sample` method in their impl block
+                let is_fill_implementor = self.imported_modules.values().any(|m| {
+                    m.structs.iter().enumerate().any(|(struct_idx, s)| {
+                        simple_type_name(&s.name) == simple_name && {
+                            let struct_id = crate::ir::StructId(struct_idx as u32);
+                            m.impls.iter().any(|imp| {
+                                imp.struct_id() == Some(struct_id)
+                                    && imp.functions.iter().any(|f| f.name == "sample")
+                            })
+                        }
+                    })
+                });
+
+                if is_fill_implementor {
+                    // Generate FillData-compatible serialization:
+                    // First: type_tag as f32
+                    // Second: element_index (0)
+                    // Then: nested field values
+                    let tag_name = format!("FILL_TAG_FILL_{}", simple_name.to_uppercase());
+
+                    // Check if this tag constant exists, else use a numeric fallback
+                    let tag_value = format!("f32({})", tag_name);
+
+                    let mut result = vec![tag_value, "0.0".to_string()]; // type_tag, element_index
+
+                    // Flatten all fields
+                    for (_, field_expr) in fields {
+                        result.extend(self.flatten_expr_to_f32s(field_expr));
+                    }
+
+                    result
+                } else {
+                    // Not a Fill implementor - but might still need to flatten fields
+                    // This handles structs like ColorStop that are used in Fill data arrays
+                    let mut result = Vec::new();
+                    for (_, field_expr) in fields {
+                        result.extend(self.flatten_expr_to_f32s(field_expr));
+                    }
+                    if result.is_empty() {
+                        // If no fields flattened, fall back to gen_expr
+                        vec![self.gen_expr(expr)]
+                    } else {
+                        result
+                    }
+                }
+            }
+            IrExpr::Array { elements, .. } => {
+                // Flatten all array elements
+                let mut result = Vec::new();
+                for elem in elements {
+                    result.extend(self.flatten_expr_to_f32s(elem));
+                }
+                result
             }
             _ => {
                 // For other expressions, generate normally (might not be correct for complex types)
@@ -4211,6 +4920,13 @@ impl<'a> WgslGenerator<'a> {
     fn gen_struct(&mut self, s: &IrStruct) {
         // Track struct start in source map
         let safe_name = to_wgsl_identifier(&s.name);
+
+        // Skip if already generated (prevents duplicates from imports)
+        if self.generated_structs.contains(&safe_name) {
+            return;
+        }
+        self.generated_structs.insert(safe_name.clone());
+
         self.write_line_struct(&format!("struct {} {{", safe_name), &s.name);
         self.indent += 1;
 
@@ -4701,7 +5417,7 @@ impl<'a> WgslGenerator<'a> {
     /// types and converts them to WGSL syntax. Returns the generated code as a string.
     fn gen_expr(&self, expr: &IrExpr) -> String {
         match expr {
-            IrExpr::Literal { value, .. } => self.gen_literal(value),
+            IrExpr::Literal { value, ty } => self.gen_literal(value, ty),
 
             IrExpr::Reference { path, .. } => {
                 // Escape reserved keywords in reference paths
@@ -4712,6 +5428,11 @@ impl<'a> WgslGenerator<'a> {
 
             IrExpr::SelfFieldRef { field, .. } => {
                 format!("self_.{}", Self::escape_wgsl_keyword(field))
+            }
+
+            IrExpr::FieldAccess { object, field, .. } => {
+                let object_str = self.gen_expr(object);
+                format!("{}.{}", object_str, Self::escape_wgsl_keyword(field))
             }
 
             IrExpr::LetRef { name, .. } => name.clone(),
@@ -4741,7 +5462,7 @@ impl<'a> WgslGenerator<'a> {
                 struct_id, fields, ..
             } => {
                 let name = struct_id
-                    .map(|id| self.module.get_struct(id).name.clone())
+                    .map(|id| to_wgsl_identifier(&self.module.get_struct(id).name))
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 // WGSL struct constructors use positional arguments.
@@ -4941,7 +5662,7 @@ impl<'a> WgslGenerator<'a> {
                         }
 
                         // Check if this is a Fill trait implementor variant
-                        let fill_variants = ["solid", "linear", "radial", "angular", "pattern"];
+                        let fill_variants = ["solid", "linear", "radial", "angular", "pattern", "multilinear"];
                         if fill_variants.contains(&variant.as_str()) {
                             // Generate FillData instantiation
                             // Map variant name to struct name (capitalize first letter)
@@ -5316,16 +6037,41 @@ impl<'a> WgslGenerator<'a> {
     /// Generate WGSL code for a literal value.
     ///
     /// Converts FormaLang literals to WGSL syntax with appropriate type suffixes.
-    fn gen_literal(&self, lit: &Literal) -> String {
+    /// The `ty` parameter is used to determine the correct WGSL suffix for numeric literals.
+    fn gen_literal(&self, lit: &Literal, ty: &ResolvedType) -> String {
         match lit {
             Literal::Number(n) => {
-                // Ensure f32 suffix for WGSL
-                if n.fract() == 0.0 {
-                    format!("{}.0", n)
-                } else {
-                    format!("{}", n)
+                // Use type information to generate correct WGSL suffix
+                match ty {
+                    ResolvedType::Primitive(PrimitiveType::U32) => {
+                        // Unsigned integer: 3u
+                        format!("{}u", *n as u32)
+                    }
+                    ResolvedType::Primitive(PrimitiveType::I32) => {
+                        // Signed integer: 3i
+                        format!("{}i", *n as i32)
+                    }
+                    ResolvedType::Primitive(PrimitiveType::F32)
+                    | ResolvedType::Primitive(PrimitiveType::Number) => {
+                        // Float: 3.0
+                        if n.fract() == 0.0 {
+                            format!("{}.0", n)
+                        } else {
+                            format!("{}", n)
+                        }
+                    }
+                    _ => {
+                        // Default to float format for unknown types
+                        if n.fract() == 0.0 {
+                            format!("{}.0", n)
+                        } else {
+                            format!("{}", n)
+                        }
+                    }
                 }
             }
+            Literal::UnsignedInt(n) => format!("{}u", n),
+            Literal::SignedInt(n) => format!("{}i", n),
             Literal::Boolean(b) => b.to_string(),
             Literal::String(s) => format!("\"{}\"", s),
             Literal::Path(p) => format!("/* path: {} */", p),
@@ -5439,32 +6185,7 @@ impl<'a> WgslGenerator<'a> {
                 format!("{}Data", to_wgsl_identifier(&trait_def.name))
             }
 
-            ResolvedType::External { name, kind, .. } => {
-                use crate::ir::ExternalKind;
-                let simple_name = simple_type_name(name);
-                let safe_name = to_wgsl_identifier(simple_name);
-                match kind {
-                    // External structs use their name directly
-                    ExternalKind::Struct => safe_name,
-                    // External traits use the trait data struct pattern
-                    ExternalKind::Trait => format!("{}Data", safe_name),
-                    // External enums: check if they have data variants
-                    ExternalKind::Enum => {
-                        let has_data = self
-                            .imported_modules
-                            .values()
-                            .flat_map(|m| m.enums.iter())
-                            .find(|e| e.name == simple_name)
-                            .map(|e| e.variants.iter().any(|v| !v.fields.is_empty()))
-                            .unwrap_or(false);
-                        if has_data {
-                            safe_name
-                        } else {
-                            "u32".to_string()
-                        }
-                    }
-                }
-            }
+            ResolvedType::External { name, kind, .. } => self.external_type_to_wgsl(name, kind),
 
             ResolvedType::EventMapping { .. } => {
                 // Event mappings are runtime metadata, not WGSL types
@@ -5479,6 +6200,40 @@ impl<'a> WgslGenerator<'a> {
                     self.type_to_wgsl(key_ty),
                     self.type_to_wgsl(value_ty)
                 )
+            }
+        }
+    }
+
+    /// Convert an external type to its WGSL representation.
+    ///
+    /// Handles External struct, trait, and enum types consistently.
+    /// This is the single source of truth for external type conversion.
+    fn external_type_to_wgsl(
+        &self,
+        name: &str,
+        kind: &crate::ir::ExternalKind,
+    ) -> String {
+        use crate::ir::ExternalKind;
+        let simple_name = simple_type_name(name);
+        let safe_name = to_wgsl_identifier(simple_name);
+        match kind {
+            ExternalKind::Struct => safe_name,
+            ExternalKind::Trait => format!("{}Data", safe_name),
+            ExternalKind::Enum => {
+                // Check if the enum has data variants - look in imported modules
+                // Compare simple names since enum.name may be qualified (e.g., "fill::PatternRepeat")
+                let has_data = self
+                    .imported_modules
+                    .values()
+                    .flat_map(|m| m.enums.iter())
+                    .find(|e| simple_type_name(&e.name) == simple_name)
+                    .map(|e| e.variants.iter().any(|v| !v.fields.is_empty()))
+                    .unwrap_or(false);
+                if has_data {
+                    safe_name
+                } else {
+                    "u32".to_string()
+                }
             }
         }
     }

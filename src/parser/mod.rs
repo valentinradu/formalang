@@ -430,6 +430,11 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(key, source);
             fill_span(span, source);
         }
+        Expr::FieldAccess { object, field, span } => {
+            fill_expr_span(object, source);
+            fill_span(&mut field.span, source);
+            fill_span(span, source);
+        }
         Expr::ClosureExpr { params, body, span } => {
             for param in params {
                 fill_span(&mut param.name.span, source);
@@ -1552,8 +1557,8 @@ where
         let literal = choice((
             select! { Token::String(s) => Expr::Literal(Literal::String(s)) },
             select! { Token::Number(n) => Expr::Literal(Literal::Number(n)) },
-            select! { Token::UnsignedInt(n) => Expr::Literal(Literal::Number(n as f64)) },
-            select! { Token::SignedInt(n) => Expr::Literal(Literal::Number(n as f64)) },
+            select! { Token::UnsignedInt(n) => Expr::Literal(Literal::UnsignedInt(n)) },
+            select! { Token::SignedInt(n) => Expr::Literal(Literal::SignedInt(n)) },
             select! { Token::Regex(s) => {
                 // Parse regex at parse time
                 if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
@@ -2162,12 +2167,11 @@ where
                             }
                         }
                         _ => {
-                            // For non-reference expressions, we'll need FieldAccess in the AST
-                            // For now, treat this as an error case by creating a simple reference
-                            // This is a limitation - proper field access on complex expressions
-                            // would need a new AST node
-                            Expr::Reference {
-                                path: vec![field],
+                            // For non-reference expressions (e.g., -chord, (a+b)),
+                            // use FieldAccess to preserve the base expression
+                            Expr::FieldAccess {
+                                object: Box::new(object),
+                                field,
                                 span: span_from_simple(e.span()),
                             }
                         }

@@ -211,7 +211,7 @@ impl QuadBezier {
 
         // Sample curve at multiple points and find minimum distance
         let min_dist = 1000000.0
-        let samples = 16u
+        let samples = 64u
 
         for i in 0u..samples {
             let t = f32(i) / f32(samples - 1u)
@@ -247,7 +247,7 @@ impl CubicBezier {
         let p3 = self.to.to_vec2()
 
         let min_dist = 1000000.0
-        let samples = 20u
+        let samples = 64u
 
         for i in 0u..samples {
             let t = f32(i) / f32(samples - 1u)

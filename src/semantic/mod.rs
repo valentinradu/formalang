@@ -1925,7 +1925,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
 
                 // Determine if this is a struct instantiation or function call
-                let is_struct = self.symbols.is_struct(&name);
+                // Use get_struct_qualified to handle nested module paths like "fill::relative::Linear"
+                let is_struct = self.symbols.get_struct_qualified(&name).is_some();
 
                 if is_struct {
                     // Validate as struct instantiation
@@ -2133,6 +2134,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Validate dictionary and key expressions
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
+            }
+            Expr::FieldAccess { object, .. } => {
+                // Validate the object expression
+                self.validate_expr(object, file);
             }
             Expr::ClosureExpr { params, body, .. } => {
                 // Validate parameter type annotations if present
@@ -3455,6 +3460,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 references.extend(self.extract_let_references(dict));
                 references.extend(self.extract_let_references(key));
             }
+            Expr::FieldAccess { object, .. } => {
+                // Extract from object expression
+                references.extend(self.extract_let_references(object));
+            }
             Expr::ClosureExpr { body, .. } => {
                 // Extract from closure body
                 references.extend(self.extract_let_references(body));
@@ -3556,6 +3565,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Literal(lit) => match lit {
                 Literal::String(_) => "String".to_string(),
                 Literal::Number(_) => "Number".to_string(),
+                Literal::UnsignedInt(_) => "u32".to_string(),
+                Literal::SignedInt(_) => "i32".to_string(),
                 Literal::Boolean(_) => "Boolean".to_string(),
                 Literal::Regex { .. } => "Regex".to_string(),
                 Literal::Path(_) => "Path".to_string(),
@@ -3745,6 +3756,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Dictionary access returns the value type - simplified
                 "Unknown".to_string()
             }
+            Expr::FieldAccess { .. } => {
+                // Field access returns the field type - simplified
+                "Unknown".to_string()
+            }
             Expr::ClosureExpr { .. } => {
                 // Closures are function types
                 "Closure".to_string()
@@ -3826,6 +3841,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Dictionary expressions are not mutable
             Expr::DictLiteral { .. } => false,
             Expr::DictAccess { .. } => false,
+
+            // Field access depends on the object
+            Expr::FieldAccess { object, .. } => self.is_expr_mutable(object, file),
 
             // Closure expressions are not mutable
             Expr::ClosureExpr { .. } => false,

@@ -100,6 +100,20 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
+    /// Field access on arbitrary expressions: `(-chord).y`, `(a + b).len`
+    ///
+    /// Unlike `Reference` which handles compile-time known paths like `user.name`,
+    /// this handles field access on computed expressions where the base is not
+    /// a simple identifier path.
+    FieldAccess {
+        /// The base expression to access a field on
+        object: Box<IrExpr>,
+        /// The field name to access
+        field: String,
+        /// Resolved type of the field
+        ty: ResolvedType,
+    },
+
     /// Reference to a module-level let binding: `primaryColor`, `headingFont`
     ///
     /// This is a specialized form of reference for accessing module-level
@@ -350,6 +364,7 @@ impl IrExpr {
             IrExpr::Tuple { ty, .. } => ty,
             IrExpr::Reference { ty, .. } => ty,
             IrExpr::SelfFieldRef { ty, .. } => ty,
+            IrExpr::FieldAccess { ty, .. } => ty,
             IrExpr::LetRef { ty, .. } => ty,
             IrExpr::BinaryOp { ty, .. } => ty,
             IrExpr::UnaryOp { ty, .. } => ty,

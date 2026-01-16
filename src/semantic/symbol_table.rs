@@ -740,6 +740,11 @@ impl SymbolTable {
                 symbols.push(name.clone());
             }
         }
+        for (name, info) in &self.modules {
+            if info.visibility == Visibility::Public {
+                symbols.push(name.clone());
+            }
+        }
 
         symbols.sort();
         symbols

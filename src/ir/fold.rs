@@ -182,6 +182,13 @@ impl<'a> ConstantFolder<'a> {
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. } => expr,
 
+            // FieldAccess - fold the object expression
+            IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
+                object: Box::new(self.fold_expr(*object)),
+                field,
+                ty,
+            },
+
             // Expressions with nested folding needed
             IrExpr::For {
                 var,

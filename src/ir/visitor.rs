@@ -197,6 +197,10 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
 
         IrExpr::SelfFieldRef { .. } => {}
 
+        IrExpr::FieldAccess { object, .. } => {
+            walk_expr(visitor, object);
+        }
+
         IrExpr::LetRef { .. } => {}
 
         IrExpr::BinaryOp { left, right, .. } => {
