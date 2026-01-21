@@ -285,6 +285,10 @@ fn mangle_type(ty: &ResolvedType, module: &IrModule) -> String {
             )
         }
         ResolvedType::EventMapping { .. } => "event".to_string(),
+        ResolvedType::Closure { param_tys, return_ty } => {
+            let params: Vec<String> = param_tys.iter().map(|t| mangle_type(t, module)).collect();
+            format!("closure_{}_{}", params.join("_"), mangle_type(return_ty, module))
+        }
     }
 }
 

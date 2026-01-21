@@ -237,6 +237,18 @@ pub enum ResolvedType {
         /// Value type
         value_ty: Box<ResolvedType>,
     },
+
+    /// Closure/function type: `(T1, T2) -> R`
+    ///
+    /// Represents a general closure type with multiple parameters.
+    /// Unlike EventMapping which is restricted to enum variant returns,
+    /// this represents arbitrary pure functions.
+    Closure {
+        /// Parameter types
+        param_tys: Vec<ResolvedType>,
+        /// Return type
+        return_ty: Box<ResolvedType>,
+    },
 }
 
 /// The root IR node containing all definitions.
@@ -506,6 +518,10 @@ impl ResolvedType {
                     key_ty.display_name(module),
                     value_ty.display_name(module)
                 )
+            }
+            ResolvedType::Closure { param_tys, return_ty } => {
+                let params_str: Vec<_> = param_tys.iter().map(|t| t.display_name(module)).collect();
+                format!("({}) -> {}", params_str.join(", "), return_ty.display_name(module))
             }
         }
     }

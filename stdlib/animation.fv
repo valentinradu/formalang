@@ -126,32 +126,32 @@ impl Animation {
         // Account for delay
         let adjusted_time = time - self.delay
         if adjusted_time < 0.0 {
-            return 0.0
-        }
-
-        // Calculate which iteration we're in
-        let cycle_duration = if self.autoreverse {
-            self.duration * 2.0
+            0.0
         } else {
-            self.duration
-        }
+            // Calculate which iteration we're in
+            let cycle_duration = if self.autoreverse {
+                self.duration * 2.0
+            } else {
+                self.duration
+            }
 
-        let total_duration = cycle_duration * self.repeatCount
-        if adjusted_time >= total_duration {
-            return 1.0
-        }
+            let total_duration = cycle_duration * self.repeatCount
+            if adjusted_time >= total_duration {
+                1.0
+            } else {
+                // Progress within current cycle
+                let cycle_progress = fract(adjusted_time / cycle_duration)
+                let t = if self.autoreverse && cycle_progress > 0.5 {
+                    1.0 - (cycle_progress - 0.5) * 2.0
+                } else if self.autoreverse {
+                    cycle_progress * 2.0
+                } else {
+                    cycle_progress
+                }
 
-        // Progress within current cycle
-        let cycle_progress = fract(adjusted_time / cycle_duration)
-        let t = if self.autoreverse && cycle_progress > 0.5 {
-            1.0 - (cycle_progress - 0.5) * 2.0
-        } else if self.autoreverse {
-            cycle_progress * 2.0
-        } else {
-            cycle_progress
+                self.easing.evaluate(t)
+            }
         }
-
-        self.easing.evaluate(t)
     }
 
     /// Interpolate between two values.

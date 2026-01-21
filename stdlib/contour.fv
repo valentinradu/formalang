@@ -159,39 +159,39 @@ impl Arc {
         let chord_len = length(chord)
 
         if chord_len < 0.001 {
-            return length(point - mid)
-        }
-
-        // Perpendicular direction
-        let perp = vec2(-chord.y, chord.x) / chord_len
-
-        // Distance from mid to center
-        let half_chord = chord_len * 0.5
-        let r = self.radius
-
-        if r < half_chord {
-            // Radius too small, treat as line
-            return LineTo(to: self.to).sdf(point, from)
-        }
-
-        let d = sqrt(r * r - half_chord * half_chord)
-        let center = if self.largeArc != self.clockwise {
-            mid + perp * d
+            length(point - mid)
         } else {
-            mid - perp * d
+            // Perpendicular direction
+            let perp = vec2(-chord.y, chord.x) / chord_len
+
+            // Distance from mid to center
+            let half_chord = chord_len * 0.5
+            let r = self.radius
+
+            if r < half_chord {
+                // Radius too small, treat as line
+                LineTo(to: self.to).sdf(point: point, from: from)
+            } else {
+                let d = sqrt(r * r - half_chord * half_chord)
+                let center = if self.largeArc != self.clockwise {
+                    mid + perp * d
+                } else {
+                    mid - perp * d
+                }
+
+                // Distance to circle
+                let dist_to_center = length(point - center)
+                let dist_to_circle = abs(dist_to_center - r)
+
+                // Check if point is within arc angle range
+                let angle_a = atan2(a.y - center.y, a.x - center.x)
+                let angle_b = atan2(b.y - center.y, b.x - center.x)
+                let angle_p = atan2(point.y - center.y, point.x - center.x)
+
+                // Simplified: return distance to circle
+                dist_to_circle
+            }
         }
-
-        // Distance to circle
-        let dist_to_center = length(point - center)
-        let dist_to_circle = abs(dist_to_center - r)
-
-        // Check if point is within arc angle range
-        let angle_a = atan2(a.y - center.y, a.x - center.x)
-        let angle_b = atan2(b.y - center.y, b.x - center.x)
-        let angle_p = atan2(point.y - center.y, point.x - center.x)
-
-        // Simplified: return distance to circle
-        dist_to_circle
     }
 }
 

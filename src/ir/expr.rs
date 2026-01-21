@@ -230,6 +230,19 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
+    /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
+    ///
+    /// Pure closures that can be inlined or converted to named functions.
+    /// Unlike EventMapping, these can have arbitrary bodies and multiple parameters.
+    Closure {
+        /// Parameter names and types
+        params: Vec<(String, ResolvedType)>,
+        /// Closure body
+        body: Box<IrExpr>,
+        /// Resolved type: `Closure { param_tys, return_ty }`
+        ty: ResolvedType,
+    },
+
     /// Dictionary literal: `["key": value, "key2": value2]`
     DictLiteral {
         /// Key-value entries
@@ -374,6 +387,7 @@ impl IrExpr {
             IrExpr::FunctionCall { ty, .. } => ty,
             IrExpr::MethodCall { ty, .. } => ty,
             IrExpr::EventMapping { ty, .. } => ty,
+            IrExpr::Closure { ty, .. } => ty,
             IrExpr::DictLiteral { ty, .. } => ty,
             IrExpr::DictAccess { ty, .. } => ty,
             IrExpr::Block { ty, .. } => ty,

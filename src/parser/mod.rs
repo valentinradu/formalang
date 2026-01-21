@@ -2121,9 +2121,9 @@ where
                 right: Box::new(r),
                 span: span_from_simple(e.span()),
             }),
-            // Dictionary/array access: expr[key] (highest precedence: 7)
+            // Dictionary/array access: expr[key] (precedence: 10, higher than unary)
             postfix(
-                7,
+                10,
                 expr.clone()
                     .delimited_by(just(Token::LBracket), just(Token::RBracket)),
                 |dict, key, e| Expr::DictAccess {
@@ -2132,11 +2132,11 @@ where
                     span: span_from_simple(e.span()),
                 },
             ),
-            // Method call: expr.method(arg1, arg2, ...) (precedence: 8, higher than field access)
+            // Method call: expr.method(arg1, arg2, ...) (precedence: 11, highest)
             // Must come before field access since it's more specific
             // Uses invocation_args to handle both named and positional arguments
             postfix(
-                8,
+                11,
                 just(Token::Dot)
                     .ignore_then(ident_parser())
                     .then(invocation_args.clone()),
@@ -2149,11 +2149,11 @@ where
                     }
                 },
             ),
-            // Field access: expr.field (precedence: 7, same as array access)
+            // Field access: expr.field (precedence: 10, higher than unary)
             // Note: This handles general field access like foo.bar.baz or self.field
             // Enum instantiation Type.variant(args) is parsed as an atom, so won't conflict
             postfix(
-                7,
+                10,
                 just(Token::Dot).ignore_then(ident_parser()),
                 |object, field, e| {
                     // Convert object to a reference path and extend it with the field
