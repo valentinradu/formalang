@@ -74,35 +74,35 @@ impl Blur {
     /// For GPU, we sample nearby texels and weight by Gaussian distribution.
     fn render(self, uv: vec2, size: vec2, radius_px: f32, sample_colors: [Color4]) -> Color4 {
         if radius_px < 0.5 {
-            // No blur
-            return sample_colors[0]  // Center sample
-        }
+            // No blur - return center sample
+            sample_colors[0]
+        } else {
+            // Gaussian weights for 9-tap kernel
+            let sigma = radius_px / 3.0
+            let sum = Color4(r: 0.0, g: 0.0, b: 0.0, a: 0.0)
+            let total_weight = 0.0
 
-        // Gaussian weights for 9-tap kernel
-        let sigma = radius_px / 3.0
-        let sum = Color4(r: 0.0, g: 0.0, b: 0.0, a: 0.0)
-        let total_weight = 0.0
+            for i in 0u..len(sample_colors) {
+                // Calculate weight based on distance from center
+                let offset = f32(i) - f32(len(sample_colors) / 2u)
+                let weight = exp(-(offset * offset) / (2.0 * sigma * sigma))
 
-        for i in 0u..len(sample_colors) {
-            // Calculate weight based on distance from center
-            let offset = f32(i) - f32(len(sample_colors) / 2u)
-            let weight = exp(-(offset * offset) / (2.0 * sigma * sigma))
+                sum = Color4(
+                    r: sum.r + sample_colors[i].r * weight,
+                    g: sum.g + sample_colors[i].g * weight,
+                    b: sum.b + sample_colors[i].b * weight,
+                    a: sum.a + sample_colors[i].a * weight
+                )
+                total_weight = total_weight + weight
+            }
 
-            sum = Color4(
-                r: sum.r + sample_colors[i].r * weight,
-                g: sum.g + sample_colors[i].g * weight,
-                b: sum.b + sample_colors[i].b * weight,
-                a: sum.a + sample_colors[i].a * weight
+            Color4(
+                r: sum.r / total_weight,
+                g: sum.g / total_weight,
+                b: sum.b / total_weight,
+                a: sum.a / total_weight
             )
-            total_weight = total_weight + weight
         }
-
-        Color4(
-            r: sum.r / total_weight,
-            g: sum.g / total_weight,
-            b: sum.b / total_weight,
-            a: sum.a / total_weight
-        )
     }
 }
 

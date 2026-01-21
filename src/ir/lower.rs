@@ -1443,7 +1443,7 @@ impl<'a> IrLowerer<'a> {
                 }
             }
 
-            Expr::ClosureExpr { params, body, .. } => self.lower_event_mapping(params, body),
+            Expr::ClosureExpr { params, body, .. } => self.lower_closure(params, body),
 
             Expr::FieldAccess { object, field, .. } => {
                 let object_ir = self.lower_expr(object);
@@ -1812,6 +1812,51 @@ impl<'a> IrLowerer<'a> {
         }
 
         None
+    }
+
+    /// Lower a closure expression.
+    ///
+    /// Closures are classified into two types:
+    /// 1. Event mappings: 0-1 params, body is enum instantiation → `EventMapping`
+    /// 2. General closures: arbitrary params/body → `Closure`
+    fn lower_closure(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
+        // Check if this is an event mapping (enum body with 0-1 params)
+        let is_event_mapping = params.len() <= 1
+            && matches!(
+                body,
+                Expr::EnumInstantiation { .. } | Expr::InferredEnumInstantiation { .. }
+            );
+
+        if is_event_mapping {
+            return self.lower_event_mapping(params, body);
+        }
+
+        // General closure: lower params and body
+        let lowered_params: Vec<(String, ResolvedType)> = params
+            .iter()
+            .map(|p| {
+                let ty = p
+                    .ty
+                    .as_ref()
+                    .map(|t| self.lower_type(t))
+                    .unwrap_or(ResolvedType::TypeParam("Unknown".to_string()));
+                (p.name.name.clone(), ty)
+            })
+            .collect();
+
+        let body_ir = self.lower_expr(body);
+        let return_ty = body_ir.ty().clone();
+
+        let ty = ResolvedType::Closure {
+            param_tys: lowered_params.iter().map(|(_, t)| t.clone()).collect(),
+            return_ty: Box::new(return_ty),
+        };
+
+        IrExpr::Closure {
+            params: lowered_params,
+            body: Box::new(body_ir),
+            ty,
+        }
     }
 
     /// Lower a closure expression to an event mapping.

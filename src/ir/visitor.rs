@@ -279,6 +279,10 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             }
             walk_expr(visitor, result);
         }
+
+        IrExpr::Closure { body, .. } => {
+            walk_expr(visitor, body);
+        }
     }
 }
 

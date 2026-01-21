@@ -267,6 +267,7 @@ impl<'a> TreeFlattener<'a> {
             IrExpr::DictLiteral { .. } => "DictLiteral",
             IrExpr::DictAccess { .. } => "DictAccess",
             IrExpr::Block { .. } => "Block",
+            IrExpr::Closure { .. } => "Closure",
         }
     }
 

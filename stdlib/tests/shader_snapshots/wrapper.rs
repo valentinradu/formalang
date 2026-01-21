@@ -516,12 +516,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 // SHAPE RENDER SPEC
 // =============================================================================
 
+/// Transform specification for shapes.
+#[derive(Debug, Clone)]
+pub enum Transform {
+    /// Translate by (x, y) pixels
+    Translate { x: f32, y: f32 },
+    /// Rotate by angle degrees
+    Rotate { angle: f32 },
+    /// Scale by (x, y) factors
+    Scale { x: f32, y: f32 },
+}
+
 /// Specification for rendering a shape.
 #[derive(Debug, Clone)]
 pub struct ShapeRenderSpec {
     pub struct_name: String,
     pub size: (f32, f32),
     pub fields: ShapeFields,
+    pub transforms: Vec<Transform>,
 }
 
 impl ShapeRenderSpec {
@@ -536,6 +548,7 @@ impl ShapeRenderSpec {
                 corner_radius,
                 stroke_width: 1.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -556,6 +569,7 @@ impl ShapeRenderSpec {
                 corner_radius,
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -577,6 +591,7 @@ impl ShapeRenderSpec {
                 corner_radius,
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -590,6 +605,7 @@ impl ShapeRenderSpec {
                 stroke_rgba: None,
                 stroke_width: 1.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -603,6 +619,7 @@ impl ShapeRenderSpec {
                 stroke_rgba: Some(stroke_rgba),
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -616,6 +633,7 @@ impl ShapeRenderSpec {
                 stroke_rgba: None,
                 stroke_width: 1.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -629,6 +647,7 @@ impl ShapeRenderSpec {
                 stroke_rgba: Some(stroke_rgba),
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -649,6 +668,7 @@ impl ShapeRenderSpec {
                 rotation,
                 stroke_width: 1.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -671,6 +691,7 @@ impl ShapeRenderSpec {
                 rotation,
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -692,6 +713,7 @@ impl ShapeRenderSpec {
                 to,
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -710,6 +732,7 @@ impl ShapeRenderSpec {
                 closed: true,
                 stroke_width: 3.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -729,6 +752,7 @@ impl ShapeRenderSpec {
                 closed: false,
                 stroke_width,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -750,6 +774,7 @@ impl ShapeRenderSpec {
                 closed: true,
                 stroke_width: 3.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -772,6 +797,7 @@ impl ShapeRenderSpec {
                 closed: true,
                 stroke_width: 3.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -796,6 +822,7 @@ impl ShapeRenderSpec {
                 closed: true,
                 stroke_width: 3.0,
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -819,6 +846,7 @@ impl ShapeRenderSpec {
                 ],
                 fill_rgba: Some(fill_rgba),
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -843,6 +871,7 @@ impl ShapeRenderSpec {
                 ],
                 fill_rgba: Some(fill_rgba),
             },
+            transforms: Vec::new(),
         }
     }
 
@@ -865,7 +894,20 @@ impl ShapeRenderSpec {
                 }),
                 fill_rgba: Some(fill_rgba),
             },
+            transforms: Vec::new(),
         }
+    }
+
+    /// Add a transform to this shape spec.
+    pub fn with_transform(mut self, transform: Transform) -> Self {
+        self.transforms.push(transform);
+        self
+    }
+
+    /// Add multiple transforms to this shape spec.
+    pub fn with_transforms(mut self, transforms: Vec<Transform>) -> Self {
+        self.transforms.extend(transforms);
+        self
     }
 
     /// Format an RGBA color for FormaLang source.
@@ -1120,16 +1162,86 @@ let test_shape = Contour(
                     stroke_width = stroke_width
                 )
             }
-            ShapeFields::ShapeUnion { fill_rgba, .. }
-            | ShapeFields::ShapeIntersection { fill_rgba, .. }
-            | ShapeFields::ShapeSubtraction { fill_rgba, .. } => {
-                // Boolean shapes not yet implemented
-                let _fill = Self::format_optional_fill(fill_rgba.as_ref());
+            ShapeFields::ShapeUnion { shapes, fill_rgba } => {
+                // Generate individual shapes that will be combined
+                let fill = match fill_rgba {
+                    Some(c) => format!(".solid(color: {})", Self::format_color(c)),
+                    None => ".solid(color: .rgba(r: 128.0, g: 128.0, b: 128.0, a: 1.0))".to_string(),
+                };
+                // For boolean union, we generate a simple rect with the fill -
+                // the entry points will handle the SDF combination
+                let shapes_source: Vec<String> = shapes.iter().enumerate().map(|(i, s)| {
+                    match s {
+                        ShapeFields::Circle { .. } => format!(
+                            "let shape_{} = Circle(fill: {})", i, fill
+                        ),
+                        ShapeFields::Rect { corner_radius, .. } => format!(
+                            "let shape_{} = Rect(cornerRadius: {:.1}, fill: {})", i, corner_radius, fill
+                        ),
+                        _ => format!("let shape_{} = Rect(cornerRadius: 0.0, fill: {})", i, fill),
+                    }
+                }).collect();
                 format!(
                     r#"{common_imports}
-let test_shape = Rect(cornerRadius: 0.0, fill: .solid(color: .rgba(r: 128.0, g: 128.0, b: 128.0, a: 1.0)))
+{shapes}
 "#,
-                    common_imports = common_imports
+                    common_imports = common_imports,
+                    shapes = shapes_source.join("\n")
+                )
+            }
+            ShapeFields::ShapeIntersection { shapes, fill_rgba } => {
+                let fill = match fill_rgba {
+                    Some(c) => format!(".solid(color: {})", Self::format_color(c)),
+                    None => ".solid(color: .rgba(r: 128.0, g: 128.0, b: 128.0, a: 1.0))".to_string(),
+                };
+                let shapes_source: Vec<String> = shapes.iter().enumerate().map(|(i, s)| {
+                    match s {
+                        ShapeFields::Circle { .. } => format!(
+                            "let shape_{} = Circle(fill: {})", i, fill
+                        ),
+                        ShapeFields::Rect { corner_radius, .. } => format!(
+                            "let shape_{} = Rect(cornerRadius: {:.1}, fill: {})", i, corner_radius, fill
+                        ),
+                        _ => format!("let shape_{} = Rect(cornerRadius: 0.0, fill: {})", i, fill),
+                    }
+                }).collect();
+                format!(
+                    r#"{common_imports}
+{shapes}
+"#,
+                    common_imports = common_imports,
+                    shapes = shapes_source.join("\n")
+                )
+            }
+            ShapeFields::ShapeSubtraction { base, subtract, fill_rgba } => {
+                let fill = match fill_rgba {
+                    Some(c) => format!(".solid(color: {})", Self::format_color(c)),
+                    None => ".solid(color: .rgba(r: 128.0, g: 128.0, b: 128.0, a: 1.0))".to_string(),
+                };
+                let base_source = match base.as_ref() {
+                    ShapeFields::Circle { .. } => format!(
+                        "let base_shape = Circle(fill: {})", fill
+                    ),
+                    ShapeFields::Rect { corner_radius, .. } => format!(
+                        "let base_shape = Rect(cornerRadius: {:.1}, fill: {})", corner_radius, fill
+                    ),
+                    _ => format!("let base_shape = Rect(cornerRadius: 0.0, fill: {})", fill),
+                };
+                let subtract_source = match subtract.as_ref() {
+                    ShapeFields::Circle { .. } => "let subtract_shape = Circle(fill: .solid(color: .rgba(r: 0.0, g: 0.0, b: 0.0, a: 0.0)))".to_string(),
+                    ShapeFields::Rect { corner_radius, .. } => format!(
+                        "let subtract_shape = Rect(cornerRadius: {:.1}, fill: .solid(color: .rgba(r: 0.0, g: 0.0, b: 0.0, a: 0.0)))", corner_radius
+                    ),
+                    _ => "let subtract_shape = Rect(cornerRadius: 0.0, fill: .solid(color: .rgba(r: 0.0, g: 0.0, b: 0.0, a: 0.0)))".to_string(),
+                };
+                format!(
+                    r#"{common_imports}
+{base}
+{subtract}
+"#,
+                    common_imports = common_imports,
+                    base = base_source,
+                    subtract = subtract_source
                 )
             }
         }
@@ -1554,8 +1666,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
                     radius
                 )
             }
-            _ => {
-                // Default: Rect, Ellipse
+            ShapeFields::ShapeUnion { shapes, fill_rgba } => {
+                // Generate entry points that compute combined SDF and render
+                let fill = fill_rgba.as_ref().unwrap_or(&[0.5, 0.5, 0.5, 1.0]);
+                let mut sdf_calls = Vec::new();
+                for (i, s) in shapes.iter().enumerate() {
+                    match s {
+                        ShapeFields::Circle { .. } => {
+                            let radius = width.min(height) / 4.0;
+                            // Offset circles for visible union
+                            let offset_x = if i == 0 { -radius / 2.0 } else { radius / 2.0 };
+                            sdf_calls.push(format!(
+                                "Circle_sdf(shape_{}, (uv - vec2<f32>(0.5, 0.5) - vec2<f32>({:.1}, 0.0) / size) * size, {:.1})",
+                                i, offset_x, radius
+                            ));
+                        }
+                        ShapeFields::Rect { .. } => {
+                            sdf_calls.push(format!(
+                                "Rect_sdf(shape_{}, uv * size, size)",
+                                i
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                let sdf_combine = if sdf_calls.len() >= 2 {
+                    format!("min({}, {})", sdf_calls[0], sdf_calls[1])
+                } else if sdf_calls.len() == 1 {
+                    sdf_calls[0].clone()
+                } else {
+                    "0.0".to_string()
+                };
                 format!(
                     r#"
 struct VertexOutput {{
@@ -1580,14 +1721,232 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {{
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     let uv = in.uv;
-    let color = {}_render(test_shape, uv, vec2<f32>({:.1}, {:.1}));
+    let size = vec2<f32>({:.1}, {:.1});
+    let dist = {sdf_combine};
+    let aa = smoothstep(1.0, -1.0, dist);
+    let fill_color = vec4<f32>({:.3}, {:.3}, {:.3}, {:.3});
+    return mix(vec4<f32>(0.0, 0.0, 0.0, 0.0), fill_color, aa);
+}}
+"#,
+                    width, height,
+                    fill[0], fill[1], fill[2], fill[3],
+                    sdf_combine = sdf_combine
+                )
+            }
+            ShapeFields::ShapeIntersection { shapes, fill_rgba } => {
+                let fill = fill_rgba.as_ref().unwrap_or(&[0.5, 0.5, 0.5, 1.0]);
+                let mut sdf_calls = Vec::new();
+                for (i, s) in shapes.iter().enumerate() {
+                    match s {
+                        ShapeFields::Circle { .. } => {
+                            let radius = width.min(height) / 2.0;
+                            sdf_calls.push(format!(
+                                "Circle_sdf(shape_{}, (uv - vec2<f32>(0.5, 0.5)) * size, {:.1})",
+                                i, radius
+                            ));
+                        }
+                        ShapeFields::Rect { .. } => {
+                            sdf_calls.push(format!(
+                                "Rect_sdf(shape_{}, uv * size, size)",
+                                i
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                let sdf_combine = if sdf_calls.len() >= 2 {
+                    format!("max({}, {})", sdf_calls[0], sdf_calls[1])
+                } else if sdf_calls.len() == 1 {
+                    sdf_calls[0].clone()
+                } else {
+                    "0.0".to_string()
+                };
+                format!(
+                    r#"
+struct VertexOutput {{
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {{
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    var out: VertexOutput;
+    out.position = vec4<f32>(pos[idx], 0.0, 1.0);
+    out.uv = (pos[idx] + 1.0) * 0.5;
+    out.uv.y = 1.0 - out.uv.y;
+    return out;
+}}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    let uv = in.uv;
+    let size = vec2<f32>({:.1}, {:.1});
+    let dist = {sdf_combine};
+    let aa = smoothstep(1.0, -1.0, dist);
+    let fill_color = vec4<f32>({:.3}, {:.3}, {:.3}, {:.3});
+    return mix(vec4<f32>(0.0, 0.0, 0.0, 0.0), fill_color, aa);
+}}
+"#,
+                    width, height,
+                    fill[0], fill[1], fill[2], fill[3],
+                    sdf_combine = sdf_combine
+                )
+            }
+            ShapeFields::ShapeSubtraction { base, subtract, fill_rgba } => {
+                let fill = fill_rgba.as_ref().unwrap_or(&[0.5, 0.5, 0.5, 1.0]);
+                let base_sdf = match base.as_ref() {
+                    ShapeFields::Circle { .. } => {
+                        let radius = width.min(height) / 2.0;
+                        format!(
+                            "Circle_sdf(base_shape, (uv - vec2<f32>(0.5, 0.5)) * size, {:.1})",
+                            radius
+                        )
+                    }
+                    ShapeFields::Rect { .. } => {
+                        "Rect_sdf(base_shape, uv * size, size)".to_string()
+                    }
+                    _ => "0.0".to_string()
+                };
+                let subtract_sdf = match subtract.as_ref() {
+                    ShapeFields::Circle { .. } => {
+                        let radius = width.min(height) / 4.0;
+                        format!(
+                            "Circle_sdf(subtract_shape, (uv - vec2<f32>(0.5, 0.5)) * size, {:.1})",
+                            radius
+                        )
+                    }
+                    ShapeFields::Rect { .. } => {
+                        "Rect_sdf(subtract_shape, uv * size, size * 0.5)".to_string()
+                    }
+                    _ => "0.0".to_string()
+                };
+                format!(
+                    r#"
+struct VertexOutput {{
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {{
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    var out: VertexOutput;
+    out.position = vec4<f32>(pos[idx], 0.0, 1.0);
+    out.uv = (pos[idx] + 1.0) * 0.5;
+    out.uv.y = 1.0 - out.uv.y;
+    return out;
+}}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    let uv = in.uv;
+    let size = vec2<f32>({:.1}, {:.1});
+    let base_dist = {base_sdf};
+    let subtract_dist = {subtract_sdf};
+    let dist = max(base_dist, -subtract_dist);
+    let aa = smoothstep(1.0, -1.0, dist);
+    let fill_color = vec4<f32>({:.3}, {:.3}, {:.3}, {:.3});
+    return mix(vec4<f32>(0.0, 0.0, 0.0, 0.0), fill_color, aa);
+}}
+"#,
+                    width, height,
+                    fill[0], fill[1], fill[2], fill[3],
+                    base_sdf = base_sdf,
+                    subtract_sdf = subtract_sdf
+                )
+            }
+            _ => {
+                // Default: Rect, Ellipse - with optional transforms
+                let transform_code = self.generate_uv_transform_code();
+                format!(
+                    r#"
+struct VertexOutput {{
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {{
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0)
+    );
+    var out: VertexOutput;
+    out.position = vec4<f32>(pos[idx], 0.0, 1.0);
+    out.uv = (pos[idx] + 1.0) * 0.5;
+    out.uv.y = 1.0 - out.uv.y;
+    return out;
+}}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    var uv = in.uv;
+{transform_code}
+    let color = {shape_name}_render(test_shape, uv, vec2<f32>({width:.1}, {height:.1}));
     return Color4_to_vec4(color);
 }}
 "#,
-                    shape_name, width, height
+                    transform_code = transform_code,
+                    shape_name = shape_name,
+                    width = width,
+                    height = height
                 )
             }
         }
+    }
+
+    /// Generate WGSL code to transform UV coordinates.
+    fn generate_uv_transform_code(&self) -> String {
+        if self.transforms.is_empty() {
+            return String::new();
+        }
+
+        let (width, height) = self.size;
+        let mut code = String::new();
+
+        // Apply transforms in order (transforms are applied to UV which means inverse order visually)
+        for transform in &self.transforms {
+            match transform {
+                Transform::Translate { x, y } => {
+                    // Translate UV: moving UV opposite direction moves shape in that direction
+                    code.push_str(&format!(
+                        "    uv = uv - vec2<f32>({:.4}, {:.4}) / vec2<f32>({:.1}, {:.1});\n",
+                        x, y, width, height
+                    ));
+                }
+                Transform::Rotate { angle } => {
+                    // Rotate UV around center
+                    let angle_rad = angle * std::f32::consts::PI / 180.0;
+                    code.push_str(&format!(
+                        "    {{ let center = vec2<f32>(0.5, 0.5); \
+                        let angle = {:.6}; \
+                        let cos_a = cos(angle); let sin_a = sin(angle); \
+                        let p = uv - center; \
+                        uv = vec2<f32>(p.x * cos_a + p.y * sin_a, -p.x * sin_a + p.y * cos_a) + center; }}\n",
+                        angle_rad
+                    ));
+                }
+                Transform::Scale { x, y } => {
+                    // Scale UV: dividing UV by scale factor scales the shape up
+                    code.push_str(&format!(
+                        "    uv = (uv - vec2<f32>(0.5, 0.5)) / vec2<f32>({:.4}, {:.4}) + vec2<f32>(0.5, 0.5);\n",
+                        x, y
+                    ));
+                }
+            }
+        }
+
+        code
     }
 }
 

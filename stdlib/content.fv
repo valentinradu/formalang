@@ -161,19 +161,19 @@ impl Label {
         let alpha = 1.0 - smoothstep(-aa_width * 2.0, aa_width * 2.0, glyph_sdf)
 
         if alpha <= 0.0 {
-            return Color4::transparent()
-        }
-
-        // Sample fill color
-        let color = if self.fill != nil {
-            self.fill.sample(uv)
-        } else if self.tint != nil {
-            self.tint.to_color4()
+            Color4::transparent()
         } else {
-            Color4::black()
-        }
+            // Sample fill color
+            let color = if self.fill != nil {
+                self.fill.sample(uv)
+            } else if self.tint != nil {
+                self.tint.to_color4()
+            } else {
+                Color4::black()
+            }
 
-        Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+            Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+        }
     }
 }
 
@@ -231,18 +231,18 @@ impl Paragraph {
         let alpha = 1.0 - smoothstep(-aa_width * 2.0, aa_width * 2.0, glyph_sdf)
 
         if alpha <= 0.0 {
-            return Color4::transparent()
-        }
-
-        let color = if self.fill != nil {
-            self.fill.sample(uv)
-        } else if self.tint != nil {
-            self.tint.to_color4()
+            Color4::transparent()
         } else {
-            Color4::black()
-        }
+            let color = if self.fill != nil {
+                self.fill.sample(uv)
+            } else if self.tint != nil {
+                self.tint.to_color4()
+            } else {
+                Color4::black()
+            }
 
-        Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+            Color4(r: color.r, g: color.g, b: color.b, a: color.a * alpha)
+        }
     }
 }
 

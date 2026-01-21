@@ -576,23 +576,23 @@ impl Grid {
 
         let col_count = u32(len(self.columns))
         if col_count == 0u {
-            return Size2D(width: 0.0, height: 0.0)
+            Size2D(width: 0.0, height: 0.0)
+        } else {
+            let spacing_px = self.spacing.resolve(content_width)
+
+            // Calculate column widths
+            let total_spacing = spacing_px * f32(col_count - 1u)
+            let available_width = content_width - total_spacing
+            let col_width = available_width / f32(col_count)
+
+            // Calculate row count
+            let row_count = (child_count + col_count - 1u) / col_count
+            let row_spacing = spacing_px * f32(max(0u, row_count - 1u))
+            let available_height = content_height - row_spacing
+            let row_height = available_height / f32(max(1u, row_count))
+
+            Size2D(width: col_width, height: row_height)
         }
-
-        let spacing_px = self.spacing.resolve(content_width)
-
-        // Calculate column widths
-        let total_spacing = spacing_px * f32(col_count - 1u)
-        let available_width = content_width - total_spacing
-        let col_width = available_width / f32(col_count)
-
-        // Calculate row count
-        let row_count = (child_count + col_count - 1u) / col_count
-        let row_spacing = spacing_px * f32(max(0u, row_count - 1u))
-        let available_height = content_height - row_spacing
-        let row_height = available_height / f32(max(1u, row_count))
-
-        Size2D(width: col_width, height: row_height)
     }
 
     fn layout_report(self, child_sizes: [Size2D], proposed: Size2D) -> Size2D {
@@ -601,27 +601,27 @@ impl Grid {
 
         let col_count = u32(len(self.columns))
         if col_count == 0u {
-            return Size2D(width: insets.horizontal(), height: insets.vertical())
+            Size2D(width: insets.horizontal(), height: insets.vertical())
+        } else {
+            let row_count = (u32(len(child_sizes)) + col_count - 1u) / col_count
+
+            // Find max width per column and max height per row
+            let max_col_width = 0.0
+            let max_row_height = 0.0
+
+            for size in child_sizes {
+                max_col_width = max(max_col_width, size.width)
+                max_row_height = max(max_row_height, size.height)
+            }
+
+            let total_width = max_col_width * f32(col_count) + spacing_px * f32(col_count - 1u)
+            let total_height = max_row_height * f32(row_count) + spacing_px * f32(max(0u, row_count - 1u))
+
+            Size2D(
+                width: total_width + insets.horizontal(),
+                height: total_height + insets.vertical()
+            )
         }
-
-        let row_count = (u32(len(child_sizes)) + col_count - 1u) / col_count
-
-        // Find max width per column and max height per row
-        let max_col_width = 0.0
-        let max_row_height = 0.0
-
-        for size in child_sizes {
-            max_col_width = max(max_col_width, size.width)
-            max_row_height = max(max_row_height, size.height)
-        }
-
-        let total_width = max_col_width * f32(col_count) + spacing_px * f32(col_count - 1u)
-        let total_height = max_row_height * f32(row_count) + spacing_px * f32(max(0u, row_count - 1u))
-
-        Size2D(
-            width: total_width + insets.horizontal(),
-            height: total_height + insets.vertical()
-        )
     }
 
     fn layout_position(self, bounds: Bounds2D, child_sizes: [Size2D]) -> [Bounds2D] {
@@ -631,35 +631,35 @@ impl Grid {
 
         let col_count = u32(len(self.columns))
         if col_count == 0u {
-            return []
+            []
+        } else {
+            let cell_width = (content_bounds.width - spacing_px * f32(col_count - 1u)) / f32(col_count)
+
+            let result: [Bounds2D] = []
+
+            for i in 0u..len(child_sizes) {
+                let child_size = child_sizes[i]
+
+                let col = i % col_count
+                let row = i / col_count
+
+                let cell_x = content_bounds.x + f32(col) * (cell_width + spacing_px)
+                let cell_y = content_bounds.y + f32(row) * (child_size.height + spacing_px)
+
+                // Align within cell
+                let x_offset = self.alignmentH.offset(child_size.width, cell_width)
+                let y_offset = self.alignmentV.offset(child_size.height, child_size.height)
+
+                result[i] = Bounds2D(
+                    x: cell_x + x_offset,
+                    y: cell_y + y_offset,
+                    width: child_size.width,
+                    height: child_size.height
+                )
+            }
+
+            result
         }
-
-        let cell_width = (content_bounds.width - spacing_px * f32(col_count - 1u)) / f32(col_count)
-
-        let result: [Bounds2D] = []
-
-        for i in 0u..len(child_sizes) {
-            let child_size = child_sizes[i]
-
-            let col = i % col_count
-            let row = i / col_count
-
-            let cell_x = content_bounds.x + f32(col) * (cell_width + spacing_px)
-            let cell_y = content_bounds.y + f32(row) * (child_size.height + spacing_px)
-
-            // Align within cell
-            let x_offset = self.alignmentH.offset(child_size.width, cell_width)
-            let y_offset = self.alignmentV.offset(child_size.height, child_size.height)
-
-            result[i] = Bounds2D(
-                x: cell_x + x_offset,
-                y: cell_y + y_offset,
-                width: child_size.width,
-                height: child_size.height
-            )
-        }
-
-        result
     }
 
     fn render(self, uv: vec2, size: vec2) -> Color4 {

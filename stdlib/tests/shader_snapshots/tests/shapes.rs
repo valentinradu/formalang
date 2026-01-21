@@ -287,10 +287,7 @@ fn line_thick() {
 /// Test: Union of two overlapping circles.
 ///
 /// Expected: Combined shape where either circle exists.
-/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
-/// Requires special test infrastructure for composite rendering.
 #[test]
-#[ignore = "Boolean shapes require composite render infrastructure"]
 fn union_two_circles() {
     let spec = ShapeRenderSpec::shape_union_circles((100.0, 100.0), RED);
     run_snapshot_test(&spec, "union_two_circles");
@@ -299,10 +296,7 @@ fn union_two_circles() {
 /// Test: Intersection of rectangle and circle.
 ///
 /// Expected: Only visible where both shapes overlap.
-/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
-/// Requires special test infrastructure for composite rendering.
 #[test]
-#[ignore = "Boolean shapes require composite render infrastructure"]
 fn intersection_rect_circle() {
     let spec = ShapeRenderSpec::shape_intersection_rect_circle((100.0, 100.0), GREEN);
     run_snapshot_test(&spec, "intersection_rect_circle");
@@ -311,10 +305,7 @@ fn intersection_rect_circle() {
 /// Test: Rectangle with circle subtracted.
 ///
 /// Expected: Rectangle with circular hole.
-/// NOTE: Boolean shapes don't have render methods - they combine child SDFs.
-/// Requires special test infrastructure for composite rendering.
 #[test]
-#[ignore = "Boolean shapes require composite render infrastructure"]
 fn subtraction_rect_minus_circle() {
     let spec = ShapeRenderSpec::shape_subtraction_rect_minus_circle((100.0, 100.0), BLUE);
     run_snapshot_test(&spec, "subtraction_rect_minus_circle");

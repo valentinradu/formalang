@@ -234,6 +234,11 @@ impl<'a> DeadCodeEliminator<'a> {
             IrExpr::FieldAccess { object, .. } => {
                 self.mark_used_in_expr(object);
             }
+
+            // Closures have a body that may reference structs
+            IrExpr::Closure { body, .. } => {
+                self.mark_used_in_expr(body);
+            }
         }
     }
 

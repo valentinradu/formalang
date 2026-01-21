@@ -1231,6 +1231,9 @@ impl IrVisitor for ExprCounter {
             IrExpr::FieldAccess { .. } => {
                 // Field access - counted elsewhere or ignore
             }
+            IrExpr::Closure { .. } => {
+                // Closures - counted elsewhere or ignore
+            }
         }
         // Walk children
         formalang::ir::walk_expr_children(self, e);
@@ -2652,7 +2655,6 @@ fn test_wgsl_trait_with_no_implementors() {
 }
 
 #[test]
-#[ignore = "Blocked on blocks-in-expression-position codegen fix (see TODO.md)"]
 fn test_stdlib_wgsl_validation() {
     use formalang::codegen::{generate_wgsl_with_imports, validate_wgsl};
     use formalang::ir::lower_to_ir;
@@ -2670,8 +2672,88 @@ fn test_stdlib_wgsl_validation() {
     let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)
         .expect("should compile with stdlib");
 
+    // Debug: Print Color enum info from imported modules
+    println!("=== Imported modules with Color enum ===");
+    for (path, module) in analyzer.imported_ir_modules() {
+        for e in &module.enums {
+            if e.name.contains("Color") {
+                println!("Module: {:?}", path);
+                println!("  Enum: {} variants:", e.name);
+                for v in &e.variants {
+                    println!("    {} ({} fields)", v.name, v.fields.len());
+                }
+            }
+        }
+    }
+    println!("=== End Color enum info ===\n");
+
     let module = lower_to_ir(&ast, analyzer.symbols()).expect("should lower to IR");
+
+    // Debug: Print imported items with "Vertical" or "distribution"
+    println!("=== Imported items with distribution/Vertical or alignment ===");
+    for import in &module.imports {
+        println!("From {:?}:", import.source_file);
+        for item in &import.items {
+            if item.name.contains("Vertical") || item.name.contains("distribution")
+                || item.name.contains("alignment") || item.name.contains("Horizontal") {
+                println!("  {:?} ({:?})", item.name, item.kind);
+            }
+        }
+    }
+    // Also print first 20 items to see what's there
+    println!("=== First 20 import items ===");
+    let mut count = 0;
+    for import in &module.imports {
+        for item in &import.items {
+            if count < 20 {
+                println!("  {:?} ({:?})", item.name, item.kind);
+                count += 1;
+            }
+        }
+    }
+    // Print all file paths
+    println!("=== All import sources ===");
+    for import in &module.imports {
+        println!("  {:?}", import.source_file);
+    }
+    // Print all IR cache modules
+    println!("=== IR cache modules ===");
+    for path in analyzer.imported_ir_modules().keys() {
+        println!("  {:?}", path);
+    }
+    println!("=== End imports ===\n");
+
     let wgsl = generate_wgsl_with_imports(&module, analyzer.imported_ir_modules());
+
+    // Debug: Print around the _from issue
+    if let Some(idx) = wgsl.find("._from = Color(") {
+        let start = idx.saturating_sub(50);
+        let end = (idx + 150).min(wgsl.len());
+        println!("=== _from issue context ===");
+        println!("{}", &wgsl[start..end]);
+        println!("=== End context ===\n");
+    }
+
+    // Debug: Print Color struct
+    if let Some(idx) = wgsl.find("struct Color {") {
+        let end = wgsl[idx..].find("};").map(|i| idx + i + 2).unwrap_or(idx + 100);
+        println!("=== Color struct ===");
+        println!("{}", &wgsl[idx..end]);
+        println!("=== End struct ===\n");
+    }
+
+    // Debug: Search for distribution functions
+    println!("=== Functions containing 'distribution' or 'Vertical' ===");
+    for line in wgsl.lines() {
+        if line.starts_with("fn ") && (line.contains("distribution") || line.contains("Vertical")) {
+            println!("{}", line);
+        }
+    }
+    println!("=== End functions ===\n");
+
+    // Write WGSL to file for inspection
+    std::fs::write("/tmp/stdlib_test.wgsl", &wgsl).ok();
+    println!("WGSL written to /tmp/stdlib_test.wgsl");
 
     // Validate the WGSL with naga
     validate_wgsl(&wgsl).expect("WGSL should be valid");
