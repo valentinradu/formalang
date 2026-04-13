@@ -44,7 +44,7 @@ use crate::ir::IrModule;
 /// Passes take ownership of an [`IrModule`], transform it, and return a new one.
 /// Fields that are not modified can be moved through at zero cost:
 ///
-/// ```rust,ignore
+/// ```text
 /// module.structs.retain(|s| keep(s));
 /// module.rebuild_indices();
 /// Ok(module)
