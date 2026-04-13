@@ -409,6 +409,37 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
     result
 }
 
+/// An [`IrPass`] that evaluates constant expressions at compile time.
+///
+/// Wraps [`fold_constants`] for use in a [`Pipeline`].
+///
+/// [`IrPass`]: crate::pipeline::IrPass
+/// [`Pipeline`]: crate::pipeline::Pipeline
+pub struct ConstantFoldingPass;
+
+impl ConstantFoldingPass {
+    /// Create a new constant folding pass.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ConstantFoldingPass {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::pipeline::IrPass for ConstantFoldingPass {
+    fn name(&self) -> &str {
+        "constant-folding"
+    }
+
+    fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<crate::error::CompilerError>> {
+        Ok(fold_constants(&module))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

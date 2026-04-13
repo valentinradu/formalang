@@ -430,7 +430,11 @@ fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(key, source);
             fill_span(span, source);
         }
-        Expr::FieldAccess { object, field, span } => {
+        Expr::FieldAccess {
+            object,
+            field,
+            span,
+        } => {
             fill_expr_span(object, source);
             fill_span(&mut field.span, source);
             fill_span(span, source);

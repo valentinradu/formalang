@@ -501,7 +501,7 @@ pub struct ClosureParam {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     String(String),
-    Number(f64), // Also used for Factor values (validated in semantic analysis)
+    Number(f64),      // Also used for Factor values (validated in semantic analysis)
     UnsignedInt(u32), // GPU u32 literal with 'u' suffix
     SignedInt(i32),   // GPU i32 literal with 'i' suffix
     Boolean(bool),

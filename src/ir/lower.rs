@@ -1601,30 +1601,24 @@ impl<'a> IrLowerer<'a> {
             // Vector component access
             ResolvedType::Primitive(PrimitiveType::Vec2)
             | ResolvedType::Primitive(PrimitiveType::Vec3)
-            | ResolvedType::Primitive(PrimitiveType::Vec4) => {
-                match field_name {
-                    "x" | "y" | "z" | "w" | "r" | "g" | "b" | "a" => {
-                        ResolvedType::Primitive(PrimitiveType::F32)
-                    }
-                    _ => ResolvedType::TypeParam(field_name.to_string()),
+            | ResolvedType::Primitive(PrimitiveType::Vec4) => match field_name {
+                "x" | "y" | "z" | "w" | "r" | "g" | "b" | "a" => {
+                    ResolvedType::Primitive(PrimitiveType::F32)
                 }
-            }
+                _ => ResolvedType::TypeParam(field_name.to_string()),
+            },
             ResolvedType::Primitive(PrimitiveType::IVec2)
             | ResolvedType::Primitive(PrimitiveType::IVec3)
-            | ResolvedType::Primitive(PrimitiveType::IVec4) => {
-                match field_name {
-                    "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::I32),
-                    _ => ResolvedType::TypeParam(field_name.to_string()),
-                }
-            }
+            | ResolvedType::Primitive(PrimitiveType::IVec4) => match field_name {
+                "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::I32),
+                _ => ResolvedType::TypeParam(field_name.to_string()),
+            },
             ResolvedType::Primitive(PrimitiveType::UVec2)
             | ResolvedType::Primitive(PrimitiveType::UVec3)
-            | ResolvedType::Primitive(PrimitiveType::UVec4) => {
-                match field_name {
-                    "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::U32),
-                    _ => ResolvedType::TypeParam(field_name.to_string()),
-                }
-            }
+            | ResolvedType::Primitive(PrimitiveType::UVec4) => match field_name {
+                "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::U32),
+                _ => ResolvedType::TypeParam(field_name.to_string()),
+            },
             // Struct field access
             ResolvedType::Struct(struct_id) => {
                 let struct_def = self.module.get_struct(*struct_id);
@@ -1835,11 +1829,10 @@ impl<'a> IrLowerer<'a> {
         let lowered_params: Vec<(String, ResolvedType)> = params
             .iter()
             .map(|p| {
-                let ty = p
-                    .ty
-                    .as_ref()
-                    .map(|t| self.lower_type(t))
-                    .unwrap_or(ResolvedType::TypeParam("Unknown".to_string()));
+                let ty =
+                    p.ty.as_ref()
+                        .map(|t| self.lower_type(t))
+                        .unwrap_or(ResolvedType::TypeParam("Unknown".to_string()));
                 (p.name.name.clone(), ty)
             })
             .collect();

@@ -31,9 +31,9 @@ mod lower;
 mod types;
 mod visitor;
 
-pub use dce::{eliminate_dead_code, DeadCodeEliminator};
+pub use dce::{eliminate_dead_code, DeadCodeEliminationPass, DeadCodeEliminator};
 pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm};
-pub use fold::{fold_constants, ConstantFolder};
+pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam,
@@ -435,6 +435,43 @@ impl IrModule {
         self.functions.push(f);
         id
     }
+
+    /// Rebuild the name-to-ID index maps from the current definition lists.
+    ///
+    /// Call this after any [`IrPass`] that adds, removes, or reorders
+    /// definitions in `structs`, `traits`, `enums`, `functions`, or `lets`.
+    /// Passes that only mutate fields within existing definitions do not need
+    /// to call this.
+    ///
+    /// [`IrPass`]: crate::pipeline::IrPass
+    pub fn rebuild_indices(&mut self) {
+        self.struct_names.clear();
+        for (idx, s) in self.structs.iter().enumerate() {
+            self.struct_names
+                .insert(s.name.clone(), StructId(idx as u32));
+        }
+
+        self.trait_names.clear();
+        for (idx, t) in self.traits.iter().enumerate() {
+            self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
+        }
+
+        self.enum_names.clear();
+        for (idx, e) in self.enums.iter().enumerate() {
+            self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
+        }
+
+        self.function_names.clear();
+        for (idx, f) in self.functions.iter().enumerate() {
+            self.function_names
+                .insert(f.name.clone(), FunctionId(idx as u32));
+        }
+
+        self.let_names.clear();
+        for (idx, l) in self.lets.iter().enumerate() {
+            self.let_names.insert(l.name.clone(), idx);
+        }
+    }
 }
 
 impl ResolvedType {
@@ -519,9 +556,16 @@ impl ResolvedType {
                     value_ty.display_name(module)
                 )
             }
-            ResolvedType::Closure { param_tys, return_ty } => {
+            ResolvedType::Closure {
+                param_tys,
+                return_ty,
+            } => {
                 let params_str: Vec<_> = param_tys.iter().map(|t| t.display_name(module)).collect();
-                format!("({}) -> {}", params_str.join(", "), return_ty.display_name(module))
+                format!(
+                    "({}) -> {}",
+                    params_str.join(", "),
+                    return_ty.display_name(module)
+                )
             }
         }
     }

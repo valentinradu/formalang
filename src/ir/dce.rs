@@ -491,6 +491,42 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
     result
 }
 
+/// An [`IrPass`] that removes dead code from the module.
+///
+/// Wraps [`eliminate_dead_code`] for use in a [`Pipeline`].
+///
+/// [`IrPass`]: crate::pipeline::IrPass
+/// [`Pipeline`]: crate::pipeline::Pipeline
+pub struct DeadCodeEliminationPass {
+    /// When `true`, structs that are never referenced are removed.
+    pub remove_unused_structs: bool,
+}
+
+impl DeadCodeEliminationPass {
+    /// Create a pass with `remove_unused_structs` enabled.
+    pub fn new() -> Self {
+        Self {
+            remove_unused_structs: true,
+        }
+    }
+}
+
+impl Default for DeadCodeEliminationPass {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::pipeline::IrPass for DeadCodeEliminationPass {
+    fn name(&self) -> &str {
+        "dead-code-elimination"
+    }
+
+    fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<crate::error::CompilerError>> {
+        Ok(eliminate_dead_code(&module, self.remove_unused_structs))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
