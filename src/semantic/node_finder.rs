@@ -863,7 +863,18 @@ impl<'ast> NodeFinder<'ast> {
                             }
                         }
                     }
-                    _ => {
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => {
                         // For other expression types, just mark that we found an expression
                     }
                 }

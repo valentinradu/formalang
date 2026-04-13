@@ -120,6 +120,10 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Lower a module-level let binding
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
+    )]
     fn lower_let_binding(&mut self, let_binding: &LetBinding) {
         match &let_binding.pattern {
             BindingPattern::Simple(ident) => {
@@ -148,7 +152,20 @@ impl<'a> IrLowerer<'a> {
                 let value_expr = self.lower_expr(&let_binding.value);
                 let elem_ty = match value_expr.ty() {
                     ResolvedType::Array(inner) => (**inner).clone(),
-                    _ => ResolvedType::TypeParam("Unknown".to_string()),
+                    ResolvedType::Primitive(_)
+                    | ResolvedType::Struct(_)
+                    | ResolvedType::Trait(_)
+                    | ResolvedType::Enum(_)
+                    | ResolvedType::Optional(_)
+                    | ResolvedType::Tuple(_)
+                    | ResolvedType::Generic { .. }
+                    | ResolvedType::TypeParam(_)
+                    | ResolvedType::External { .. }
+                    | ResolvedType::EventMapping { .. }
+                    | ResolvedType::Dictionary { .. }
+                    | ResolvedType::Closure { .. } => {
+                        ResolvedType::TypeParam("Unknown".to_string())
+                    }
                 };
 
                 for (i, element) in elements.iter().enumerate() {
@@ -201,7 +218,18 @@ impl<'a> IrLowerer<'a> {
                 let value_expr = self.lower_expr(&let_binding.value);
                 let tuple_types = match value_expr.ty() {
                     ResolvedType::Tuple(fields) => fields.clone(),
-                    _ => Vec::new(),
+                    ResolvedType::Primitive(_)
+                    | ResolvedType::Struct(_)
+                    | ResolvedType::Trait(_)
+                    | ResolvedType::Enum(_)
+                    | ResolvedType::Array(_)
+                    | ResolvedType::Optional(_)
+                    | ResolvedType::Generic { .. }
+                    | ResolvedType::TypeParam(_)
+                    | ResolvedType::External { .. }
+                    | ResolvedType::EventMapping { .. }
+                    | ResolvedType::Dictionary { .. }
+                    | ResolvedType::Closure { .. } => Vec::new(),
                 };
 
                 for (i, element) in elements.iter().enumerate() {
@@ -240,7 +268,9 @@ impl<'a> IrLowerer<'a> {
     fn extract_simple_binding_name(&self, pattern: &BindingPattern) -> Option<String> {
         match pattern {
             BindingPattern::Simple(ident) => Some(ident.name.clone()),
-            _ => None,
+            BindingPattern::Array { .. }
+            | BindingPattern::Struct { .. }
+            | BindingPattern::Tuple { .. } => None,
         }
     }
 
@@ -361,7 +391,7 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        self.module.add_enum(
+        if let Err(e) = self.module.add_enum(
             name.to_string(),
             IrEnum {
                 name: name.to_string(),
@@ -369,7 +399,9 @@ impl<'a> IrLowerer<'a> {
                 variants,
                 generic_params,
             },
-        );
+        ) {
+            self.errors.push(e);
+        }
     }
 
     /// Helper method to register a struct with full field information
@@ -415,7 +447,7 @@ impl<'a> IrLowerer<'a> {
         // Convert generic params
         let generic_params = self.lower_generic_params(&struct_info.generics);
 
-        self.module.add_struct(
+        if let Err(e) = self.module.add_struct(
             name.to_string(),
             IrStruct {
                 name: name.to_string(),
@@ -425,7 +457,9 @@ impl<'a> IrLowerer<'a> {
                 mount_fields,
                 generic_params,
             },
-        );
+        ) {
+            self.errors.push(e);
+        }
     }
 
     /// First pass: register definitions to allocate IDs
@@ -434,7 +468,7 @@ impl<'a> IrLowerer<'a> {
             Definition::Trait(t) => {
                 let name = t.name.name.clone();
                 // Create placeholder, will be filled in second pass
-                self.module.add_trait(
+                if let Err(e) = self.module.add_trait(
                     name,
                     IrTrait {
                         name: t.name.name.clone(),
@@ -444,11 +478,13 @@ impl<'a> IrLowerer<'a> {
                         mount_fields: Vec::new(),
                         generic_params: Vec::new(),
                     },
-                );
+                ) {
+                    self.errors.push(e);
+                }
             }
             Definition::Struct(s) => {
                 let name = s.name.name.clone();
-                self.module.add_struct(
+                if let Err(e) = self.module.add_struct(
                     name,
                     IrStruct {
                         name: s.name.name.clone(),
@@ -458,11 +494,13 @@ impl<'a> IrLowerer<'a> {
                         mount_fields: Vec::new(),
                         generic_params: Vec::new(),
                     },
-                );
+                ) {
+                    self.errors.push(e);
+                }
             }
             Definition::Enum(e) => {
                 let name = e.name.name.clone();
-                self.module.add_enum(
+                if let Err(e) = self.module.add_enum(
                     name,
                     IrEnum {
                         name: e.name.name.clone(),
@@ -470,7 +508,9 @@ impl<'a> IrLowerer<'a> {
                         variants: Vec::new(),
                         generic_params: Vec::new(),
                     },
-                );
+                ) {
+                    self.errors.push(e);
+                }
             }
             Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {
                 // Impls are processed after structs
@@ -659,10 +699,13 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_trait(&mut self, t: &TraitDef) {
-        let id = self
-            .module
-            .trait_id(&t.name.name)
-            .expect("trait should be registered");
+        let Some(id) = self.module.trait_id(&t.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: t.name.name.clone(),
+                span: t.span,
+            });
+            return;
+        };
 
         let composed_traits: Vec<TraitId> = t
             .traits
@@ -689,10 +732,13 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_struct(&mut self, s: &StructDef) {
-        let id = self
-            .module
-            .struct_id(&s.name.name)
-            .expect("struct should be registered");
+        let Some(id) = self.module.struct_id(&s.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: s.name.name.clone(),
+                span: s.span,
+            });
+            return;
+        };
 
         // Get all traits from both inline definition and impl blocks
         let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
@@ -728,10 +774,13 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_enum(&mut self, e: &EnumDef) {
-        let id = self
-            .module
-            .enum_id(&e.name.name)
-            .expect("enum should be registered");
+        let Some(id) = self.module.enum_id(&e.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: e.name.name.clone(),
+                span: e.span,
+            });
+            return;
+        };
 
         let generic_params = self.lower_generic_params(&e.generics);
 
@@ -806,7 +855,7 @@ impl<'a> IrLowerer<'a> {
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
 
-        self.module.add_function(
+        if let Err(e) = self.module.add_function(
             f.name.name.clone(),
             IrFunction {
                 name: f.name.name.clone(),
@@ -814,7 +863,9 @@ impl<'a> IrLowerer<'a> {
                 return_type,
                 body,
             },
-        );
+        ) {
+            self.errors.push(e);
+        }
     }
 
     fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
@@ -1011,7 +1062,9 @@ impl<'a> IrLowerer<'a> {
             SymbolKind::Trait => ExternalKind::Trait,
             SymbolKind::Enum => ExternalKind::Enum,
             // Other kinds can't be used as types
-            _ => return None,
+            SymbolKind::Impl | SymbolKind::Let | SymbolKind::Module | SymbolKind::Function => {
+                return None
+            }
         };
 
         // Track this import
@@ -1295,7 +1348,12 @@ impl<'a> IrLowerer<'a> {
                     | BinaryOperator::Ge
                     | BinaryOperator::And
                     | BinaryOperator::Or => ResolvedType::Primitive(PrimitiveType::Boolean),
-                    _ => left_ir.ty().clone(),
+                    BinaryOperator::Add
+                    | BinaryOperator::Sub
+                    | BinaryOperator::Mul
+                    | BinaryOperator::Div
+                    | BinaryOperator::Mod
+                    | BinaryOperator::Range => left_ir.ty().clone(),
                 };
 
                 IrExpr::BinaryOp {
@@ -1350,7 +1408,20 @@ impl<'a> IrLowerer<'a> {
                 // Extract element type from collection
                 let var_ty = match collection_ir.ty() {
                     ResolvedType::Array(inner) => (**inner).clone(),
-                    _ => ResolvedType::TypeParam("UnknownElement".to_string()),
+                    ResolvedType::Primitive(_)
+                    | ResolvedType::Struct(_)
+                    | ResolvedType::Trait(_)
+                    | ResolvedType::Enum(_)
+                    | ResolvedType::Optional(_)
+                    | ResolvedType::Tuple(_)
+                    | ResolvedType::Generic { .. }
+                    | ResolvedType::TypeParam(_)
+                    | ResolvedType::External { .. }
+                    | ResolvedType::EventMapping { .. }
+                    | ResolvedType::Dictionary { .. }
+                    | ResolvedType::Closure { .. } => {
+                        ResolvedType::TypeParam("UnknownElement".to_string())
+                    }
                 };
 
                 IrExpr::For {
@@ -1433,7 +1504,20 @@ impl<'a> IrLowerer<'a> {
                 // Extract value type from dictionary type
                 let ty = match dict_ir.ty() {
                     ResolvedType::Dictionary { value_ty, .. } => (**value_ty).clone(),
-                    _ => ResolvedType::TypeParam("DictValue".to_string()),
+                    ResolvedType::Primitive(_)
+                    | ResolvedType::Struct(_)
+                    | ResolvedType::Trait(_)
+                    | ResolvedType::Enum(_)
+                    | ResolvedType::Array(_)
+                    | ResolvedType::Optional(_)
+                    | ResolvedType::Tuple(_)
+                    | ResolvedType::Generic { .. }
+                    | ResolvedType::TypeParam(_)
+                    | ResolvedType::External { .. }
+                    | ResolvedType::EventMapping { .. }
+                    | ResolvedType::Closure { .. } => {
+                        ResolvedType::TypeParam("DictValue".to_string())
+                    }
                 };
 
                 IrExpr::DictAccess {
@@ -1528,7 +1612,9 @@ impl<'a> IrLowerer<'a> {
                             .iter()
                             .find_map(|p| match p {
                                 BindingPattern::Simple(ident) => Some(ident.name.clone()),
-                                _ => None,
+                                BindingPattern::Array { .. }
+                                | BindingPattern::Struct { .. }
+                                | BindingPattern::Tuple { .. } => None,
                             })
                             .unwrap_or_else(|| "_tuple".to_string())
                     }
@@ -1547,7 +1633,9 @@ impl<'a> IrLowerer<'a> {
                                 crate::ast::ArrayPatternElement::Binding(
                                     BindingPattern::Simple(ident),
                                 ) => Some(ident.name.clone()),
-                                _ => None,
+                                crate::ast::ArrayPatternElement::Binding(_)
+                                | crate::ast::ArrayPatternElement::Rest(_)
+                                | crate::ast::ArrayPatternElement::Wildcard => None,
                             })
                             .unwrap_or_else(|| "_array".to_string())
                     }
@@ -1630,7 +1718,18 @@ impl<'a> IrLowerer<'a> {
                 ResolvedType::TypeParam(field_name.to_string())
             }
             // Default: return a placeholder type
-            _ => ResolvedType::TypeParam(field_name.to_string()),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::EventMapping { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => ResolvedType::TypeParam(field_name.to_string()),
         }
     }
 
@@ -1926,7 +2025,24 @@ impl<'a> IrLowerer<'a> {
                     ty,
                 }
             }
-            _ => {
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
                 // Invalid: body is not an enum variant
                 IrExpr::Literal {
                     value: Literal::Nil,
@@ -1960,16 +2076,32 @@ impl<'a> IrLowerer<'a> {
                 let source = match value {
                     // Field references the parameter: `value: x`
                     Expr::Reference { path, .. }
-                        if path.len() == 1
-                            && param_name.is_some()
-                            && path[0].name == param_name.unwrap() =>
+                        if path.len() == 1 && param_name.is_some_and(|p| path[0].name == p) =>
                     {
                         EventBindingSource::Param(path[0].name.clone())
                     }
                     // Field has a literal value: `value: 42`
                     Expr::Literal(lit) => EventBindingSource::Literal(lit.clone()),
                     // For other expressions, treat as referencing param (best effort)
-                    _ => {
+                    Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Reference { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => {
                         if let Some(p) = param_name {
                             EventBindingSource::Param(p.to_string())
                         } else {

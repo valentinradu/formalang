@@ -625,7 +625,13 @@ impl Expr {
         match self {
             Expr::Literal(lit) => match lit {
                 Literal::Nil => Span::default(),
-                _ => Span::default(), // Will be set during parsing
+                Literal::String(_)
+                | Literal::Number(_)
+                | Literal::UnsignedInt(_)
+                | Literal::SignedInt(_)
+                | Literal::Boolean(_)
+                | Literal::Regex { .. }
+                | Literal::Path(_) => Span::default(), // Will be set during parsing
             },
             Expr::Invocation { span, .. } => *span,
             Expr::EnumInstantiation { span, .. } => *span,

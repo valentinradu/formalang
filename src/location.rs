@@ -98,9 +98,9 @@ impl Span {
 
 /// Convert a byte offset to a Location with line and column information
 pub fn offset_to_location(offset: usize, source: &str) -> Location {
-    let mut line = 1;
-    let mut column = 1;
-    let mut current_offset = 0;
+    let mut line: usize = 1;
+    let mut column: usize = 1;
+    let mut current_offset: usize = 0;
 
     for ch in source.chars() {
         if current_offset >= offset {
@@ -108,13 +108,13 @@ pub fn offset_to_location(offset: usize, source: &str) -> Location {
         }
 
         if ch == '\n' {
-            line += 1;
+            line = line.saturating_add(1);
             column = 1;
         } else {
-            column += 1;
+            column = column.saturating_add(1);
         }
 
-        current_offset += ch.len_utf8();
+        current_offset = current_offset.saturating_add(ch.len_utf8());
     }
 
     Location {

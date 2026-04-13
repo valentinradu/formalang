@@ -159,7 +159,10 @@ impl SymbolTable {
     }
 
     /// Define a trait (unified)
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "all parameters are distinct and required by the symbol table schema"
+    )]
     pub fn define_trait(
         &mut self,
         name: String,
@@ -190,7 +193,10 @@ impl SymbolTable {
     }
 
     /// Define a struct (unified)
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "all parameters are distinct and required by the symbol table schema"
+    )]
     pub fn define_struct(
         &mut self,
         name: String,
@@ -267,12 +273,7 @@ impl SymbolTable {
 
         // Check for duplicate implementation
         let existing_impls = self.trait_impls.entry(struct_name.clone()).or_default();
-        if existing_impls.iter().any(|i| i.trait_name == trait_name) {
-            // Already implemented
-            let existing = existing_impls
-                .iter()
-                .find(|i| i.trait_name == trait_name)
-                .unwrap();
+        if let Some(existing) = existing_impls.iter().find(|i| i.trait_name == trait_name) {
             return Err((SymbolKind::Impl, existing.span));
         }
 

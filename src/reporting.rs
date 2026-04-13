@@ -414,22 +414,61 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
 
         // Add more specific error formatting as needed
         // For errors without specific formatting, use a generic format
-        _ => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E999")
-            .with_message(error.to_string())
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(error.to_string())
-                    .with_color(Color::Red),
-            ),
+        CompilerError::InvalidCharacter { .. }
+        | CompilerError::UnterminatedString { .. }
+        | CompilerError::InvalidNumber { .. }
+        | CompilerError::MixedIndentation { .. }
+        | CompilerError::UnexpectedToken { .. }
+        | CompilerError::ExpectedComponentOrProperty { .. }
+        | CompilerError::InvalidIndentation { .. }
+        | CompilerError::UnexpectedEof { .. }
+        | CompilerError::UndefinedReference { .. }
+        | CompilerError::UnknownProperty { .. }
+        | CompilerError::MissingRequiredProperty { .. }
+        | CompilerError::InvalidPropertyValue { .. }
+        | CompilerError::UnknownMountingPoint { .. }
+        | CompilerError::InvalidMountingPointChild { .. }
+        | CompilerError::InvalidComponentPosition { .. }
+        | CompilerError::UndefinedComponent { .. }
+        | CompilerError::MountingPointOnSameLine { .. }
+        | CompilerError::PropertyAfterMountingPoint { .. }
+        | CompilerError::ModuleReadError { .. }
+        | CompilerError::PrimitiveRedefinition { .. }
+        | CompilerError::UndefinedTrait { .. }
+        | CompilerError::ModelTraitWithMountingPoints { .. }
+        | CompilerError::MissingField { .. }
+        | CompilerError::UnknownField { .. }
+        | CompilerError::AssignmentToImmutable { .. }
+        | CompilerError::PositionalArgInStruct { .. }
+        | CompilerError::EnumVariantWithoutData { .. }
+        | CompilerError::EnumVariantRequiresData { .. }
+        | CompilerError::MutabilityMismatch { .. }
+        | CompilerError::GenericArityMismatch { .. }
+        | CompilerError::GenericConstraintViolation { .. }
+        | CompilerError::OutOfScopeTypeParameter { .. }
+        | CompilerError::MissingGenericArguments { .. }
+        | CompilerError::DuplicateGenericParam { .. }
+        | CompilerError::UnknownMount { .. }
+        | CompilerError::CannotInferEnumType { .. }
+        | CompilerError::FunctionReturnTypeMismatch { .. }
+        | CompilerError::ExpressionDepthExceeded { .. }
+        | CompilerError::TooManyDefinitions { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E999")
+                .with_message(error.to_string())
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(error.to_string())
+                        .with_color(Color::Red),
+                )
+        }
     };
 
-    report
+    let _ = report
         .finish()
-        .write((filename, Source::from(source)), &mut output)
-        .expect("Failed to write report");
+        .write((filename, Source::from(source)), &mut output);
 
-    String::from_utf8(output).expect("Report output is not valid UTF-8")
+    String::from_utf8_lossy(&output).into_owned()
 }
 
 /// Report multiple compiler errors

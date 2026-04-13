@@ -1412,7 +1412,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         Vec::new(), // Enums don't support inline trait syntax yet
                     );
                 }
-                _ => {}
+                Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}
             }
         }
         symbols
@@ -1607,7 +1607,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Check if it looks like a type parameter (single uppercase letter)
                         // This is a heuristic to provide better error messages
                         if ident.name.len() == 1
-                            && ident.name.chars().next().unwrap().is_uppercase()
+                            && ident.name.chars().next().is_some_and(char::is_uppercase)
                         {
                             // Likely meant to be a type parameter
                             self.errors.push(CompilerError::OutOfScopeTypeParameter {
@@ -1738,9 +1738,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.current_impl_struct = None;
                         self.local_let_bindings.clear();
                     }
-                    _ => {}
+                    Definition::Trait(_)
+                    | Definition::Enum(_)
+                    | Definition::Module(_)
+                    | Definition::Function(_) => {}
                 },
-                _ => {}
+                Statement::Use(_) => {}
             }
         }
     }
@@ -1765,10 +1768,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn validate_expr(&mut self, expr: &Expr, file: &File) {
         // Check recursion depth to prevent stack overflow
         const MAX_EXPR_DEPTH: usize = 500;
-        self.validate_expr_depth += 1;
+        self.validate_expr_depth = self.validate_expr_depth.saturating_add(1);
         if self.validate_expr_depth > MAX_EXPR_DEPTH {
-            eprintln!("WARNING: Maximum expression depth ({}) exceeded, skipping validation to prevent stack overflow", MAX_EXPR_DEPTH);
-            self.validate_expr_depth -= 1;
+            self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
+            self.errors
+                .push(CompilerError::ExpressionDepthExceeded { span: expr.span() });
             return;
         }
 
@@ -1943,7 +1947,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         if name_opt.is_none() {
                             self.errors.push(CompilerError::PositionalArgInStruct {
                                 struct_name: name.clone(),
-                                position: i + 1, // 1-indexed for user-friendly message
+                                position: i.saturating_add(1), // 1-indexed for user-friendly message
                                 span: arg_expr.span(),
                             });
                         }
@@ -2259,7 +2263,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         // Decrement depth counter
-        self.validate_expr_depth -= 1;
+        self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
     }
 
     /// Validate that struct instantiation respects mutability requirements
@@ -2951,7 +2955,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check if two types match (structural equality)
-    #[allow(clippy::only_used_in_recursion)]
+    #[expect(
+        clippy::only_used_in_recursion,
+        reason = "self is required for recursive dispatch through the method"
+    )]
     fn types_match(&self, ty1: &Type, ty2: &Type) -> bool {
         match (ty1, ty2) {
             (Type::Primitive(p1), Type::Primitive(p2)) => p1 == p2,
@@ -2980,7 +2987,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Convert a type to a string for error messages
-    #[allow(clippy::only_used_in_recursion)]
+    #[expect(
+        clippy::only_used_in_recursion,
+        reason = "self is required for recursive dispatch through the method"
+    )]
     fn type_to_string(&self, ty: &Type) -> String {
         match ty {
             Type::Primitive(prim) => match prim {
@@ -3559,7 +3569,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Infer the type of an expression (simplified type inference)
-    #[allow(clippy::only_used_in_recursion)]
+    #[expect(
+        clippy::only_used_in_recursion,
+        reason = "self is required for recursive dispatch through the method"
+    )]
     fn infer_type(&self, expr: &Expr, file: &File) -> String {
         match expr {
             Expr::Literal(lit) => match lit {
@@ -4017,8 +4030,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         // The last part is the type name, the rest are module names
-        let type_name = parts[parts.len() - 1];
-        let module_parts = &parts[..parts.len() - 1];
+        let Some((type_name, module_parts)) = parts.split_last() else {
+            return Some("empty module path".to_string());
+        };
 
         // Traverse nested modules
         let mut current_symbols = &self.symbols;
@@ -4200,7 +4214,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Primitives don't implement user-defined traits
             Type::Primitive(_) => false,
             // Arrays, optionals, tuples, etc. don't implement user-defined traits
-            _ => false,
+            Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. } => false,
         }
     }
 

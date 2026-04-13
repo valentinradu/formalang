@@ -4,27 +4,27 @@ use std::collections::{HashMap, HashSet};
 ///
 /// Tracks which types reference which other types (e.g., model fields, trait fields).
 /// Uses depth-first search to detect cycles.
-pub struct TypeGraph {
+pub(crate) struct TypeGraph {
     /// Map from type name to the types it depends on
     edges: HashMap<String, HashSet<String>>,
 }
 
 impl TypeGraph {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             edges: HashMap::new(),
         }
     }
 
     /// Add a type dependency edge from `from` type to `to` type
-    pub fn add_dependency(&mut self, from: impl Into<String>, to: impl Into<String>) {
+    pub(crate) fn add_dependency(&mut self, from: impl Into<String>, to: impl Into<String>) {
         self.edges.entry(from.into()).or_default().insert(to.into());
     }
 
     /// Detect all cycles in the type dependency graph
     ///
     /// Returns a list of cycles found, where each cycle is a sequence of type names
-    pub fn find_cycles(&self) -> Vec<Vec<String>> {
+    pub(crate) fn find_cycles(&self) -> Vec<Vec<String>> {
         let mut cycles = Vec::new();
         let mut visited = HashSet::new();
         let mut rec_stack = HashSet::new();

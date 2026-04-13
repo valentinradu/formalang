@@ -109,7 +109,12 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.mark_used_in_type(return_ty);
             }
             // Other types don't reference structs
-            _ => {}
+            ResolvedType::Primitive(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Closure { .. } => {}
         }
     }
 
@@ -444,7 +449,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         },
 
         // Leaf expressions are unchanged
-        e => e,
+        e @ IrExpr::Literal { .. }
+        | e @ IrExpr::Reference { .. }
+        | e @ IrExpr::SelfFieldRef { .. }
+        | e @ IrExpr::FieldAccess { .. }
+        | e @ IrExpr::LetRef { .. }
+        | e @ IrExpr::UnaryOp { .. }
+        | e @ IrExpr::EventMapping { .. }
+        | e @ IrExpr::Closure { .. } => e,
     }
 }
 

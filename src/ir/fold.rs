@@ -297,13 +297,23 @@ impl<'a> ConstantFolder<'a> {
                     BinaryOperator::Ge => Some(Literal::Boolean(l >= r)),
                     BinaryOperator::Eq => Some(Literal::Boolean((l - r).abs() < f64::EPSILON)),
                     BinaryOperator::Ne => Some(Literal::Boolean((l - r).abs() >= f64::EPSILON)),
-                    _ => None,
+                    BinaryOperator::Div
+                    | BinaryOperator::Mod
+                    | BinaryOperator::And
+                    | BinaryOperator::Or
+                    | BinaryOperator::Range => None,
                 };
 
                 result.map(|value| {
                     let result_ty = match &value {
                         Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
-                        _ => ty.clone(),
+                        Literal::String(_)
+                        | Literal::Number(_)
+                        | Literal::UnsignedInt(_)
+                        | Literal::SignedInt(_)
+                        | Literal::Regex { .. }
+                        | Literal::Path(_)
+                        | Literal::Nil => ty.clone(),
                     };
                     IrExpr::Literal {
                         value,
@@ -319,7 +329,16 @@ impl<'a> ConstantFolder<'a> {
                     BinaryOperator::Or => Some(Literal::Boolean(*l || *r)),
                     BinaryOperator::Eq => Some(Literal::Boolean(l == r)),
                     BinaryOperator::Ne => Some(Literal::Boolean(l != r)),
-                    _ => None,
+                    BinaryOperator::Add
+                    | BinaryOperator::Sub
+                    | BinaryOperator::Mul
+                    | BinaryOperator::Div
+                    | BinaryOperator::Mod
+                    | BinaryOperator::Lt
+                    | BinaryOperator::Gt
+                    | BinaryOperator::Le
+                    | BinaryOperator::Ge
+                    | BinaryOperator::Range => None,
                 };
 
                 result.map(|value| IrExpr::Literal {
@@ -373,7 +392,12 @@ impl<'a> ConstantFolder<'a> {
                     None
                 }
             }
-            _ => None,
+            Literal::String(_)
+            | Literal::UnsignedInt(_)
+            | Literal::SignedInt(_)
+            | Literal::Regex { .. }
+            | Literal::Path(_)
+            | Literal::Nil => None,
         }
     }
 }

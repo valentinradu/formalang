@@ -34,12 +34,15 @@ impl LspPosition {
                 // Count characters from the start of this line
                 for (char_count, (char_idx, _)) in source[byte_offset..].char_indices().enumerate()
                 {
-                    if char_count as u32 == position.character {
-                        return byte_offset + char_idx;
+                    if char_count == usize::try_from(position.character).unwrap_or(usize::MAX) {
+                        return byte_offset.saturating_add(char_idx);
                     }
 
                     // Stop at newline
-                    if let Some('\n') = source[byte_offset + char_idx..].chars().next() {
+                    if let Some('\n') = source[byte_offset.saturating_add(char_idx)..]
+                        .chars()
+                        .next()
+                    {
                         break;
                     }
                 }
@@ -47,15 +50,15 @@ impl LspPosition {
                 // Character position is beyond the line length, return end of line
                 let line_end = source[byte_offset..]
                     .find('\n')
-                    .map(|n| byte_offset + n)
+                    .map(|n| byte_offset.saturating_add(n))
                     .unwrap_or(source.len());
                 return line_end;
             }
 
             // Move to next line on newline
             if ch == '\n' {
-                current_line += 1;
-                byte_offset = idx + ch.len_utf8();
+                current_line = current_line.saturating_add(1);
+                byte_offset = idx.saturating_add(ch.len_utf8());
             }
         }
 
@@ -68,8 +71,8 @@ impl From<Location> for LspPosition {
     /// Convert FormaLang Location (1-indexed) to LSP position (0-indexed)
     fn from(location: Location) -> Self {
         Self {
-            line: location.line.saturating_sub(1) as u32,
-            character: location.column.saturating_sub(1) as u32,
+            line: u32::try_from(location.line.saturating_sub(1)).unwrap_or(u32::MAX),
+            character: u32::try_from(location.column.saturating_sub(1)).unwrap_or(u32::MAX),
         }
     }
 }
@@ -107,12 +110,12 @@ pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize,
 
     let start = source[..offset]
         .rfind(|c: char| !is_word_char(c))
-        .map(|i| i + 1)
+        .map(|i| i.saturating_add(1))
         .unwrap_or(0);
 
     let end = source[offset..]
         .find(|c: char| !is_word_char(c))
-        .map(|i| offset + i)
+        .map(|i| offset.saturating_add(i))
         .unwrap_or(source.len());
 
     if start < end {

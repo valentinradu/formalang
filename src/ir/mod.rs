@@ -31,7 +31,9 @@ mod lower;
 mod types;
 mod visitor;
 
-pub use dce::{eliminate_dead_code, DeadCodeEliminationPass, DeadCodeEliminator};
+pub use dce::{
+    eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
+};
 pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
@@ -39,11 +41,16 @@ pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam,
     IrImpl, IrLet, IrStruct, IrTrait,
 };
-pub use visitor::{walk_expr, walk_expr_children, walk_module, IrVisitor};
+pub use visitor::{
+    walk_block_statement, walk_expr, walk_expr_children, walk_module, walk_module_children,
+    IrVisitor,
+};
 
 use std::collections::HashMap;
 
 use crate::ast::{PrimitiveType, Visibility};
+use crate::error::CompilerError;
+use crate::location::Span;
 
 /// ID for referencing struct definitions.
 ///
@@ -369,27 +376,58 @@ impl IrModule {
     }
 
     /// Add a struct and return its ID.
-    pub(crate) fn add_struct(&mut self, name: String, s: IrStruct) -> StructId {
-        let id = StructId(self.structs.len() as u32);
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_struct(
+        &mut self,
+        name: String,
+        s: IrStruct,
+    ) -> Result<StructId, CompilerError> {
+        let id = u32::try_from(self.structs.len())
+            .map(StructId)
+            .map_err(|_| CompilerError::TooManyDefinitions {
+                kind: "struct",
+                span: Span::default(),
+            })?;
         self.struct_names.insert(name, id);
         self.structs.push(s);
-        id
+        Ok(id)
     }
 
     /// Add a trait and return its ID.
-    pub(crate) fn add_trait(&mut self, name: String, t: IrTrait) -> TraitId {
-        let id = TraitId(self.traits.len() as u32);
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_trait(&mut self, name: String, t: IrTrait) -> Result<TraitId, CompilerError> {
+        let id = u32::try_from(self.traits.len()).map(TraitId).map_err(|_| {
+            CompilerError::TooManyDefinitions {
+                kind: "trait",
+                span: Span::default(),
+            }
+        })?;
         self.trait_names.insert(name, id);
         self.traits.push(t);
-        id
+        Ok(id)
     }
 
     /// Add an enum and return its ID.
-    pub(crate) fn add_enum(&mut self, name: String, e: IrEnum) -> EnumId {
-        let id = EnumId(self.enums.len() as u32);
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_enum(&mut self, name: String, e: IrEnum) -> Result<EnumId, CompilerError> {
+        let id = u32::try_from(self.enums.len()).map(EnumId).map_err(|_| {
+            CompilerError::TooManyDefinitions {
+                kind: "enum",
+                span: Span::default(),
+            }
+        })?;
         self.enum_names.insert(name, id);
         self.enums.push(e);
-        id
+        Ok(id)
     }
 
     /// Add an impl block.
@@ -429,11 +467,24 @@ impl IrModule {
     }
 
     /// Add a standalone function and return its ID.
-    pub(crate) fn add_function(&mut self, name: String, f: IrFunction) -> FunctionId {
-        let id = FunctionId(self.functions.len() as u32);
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_function(
+        &mut self,
+        name: String,
+        f: IrFunction,
+    ) -> Result<FunctionId, CompilerError> {
+        let id = u32::try_from(self.functions.len())
+            .map(FunctionId)
+            .map_err(|_| CompilerError::TooManyDefinitions {
+                kind: "function",
+                span: Span::default(),
+            })?;
         self.function_names.insert(name, id);
         self.functions.push(f);
-        id
+        Ok(id)
     }
 
     /// Rebuild the name-to-ID index maps from the current definition lists.
@@ -447,22 +498,38 @@ impl IrModule {
     pub fn rebuild_indices(&mut self) {
         self.struct_names.clear();
         for (idx, s) in self.structs.iter().enumerate() {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "checked by add_struct which errors before len reaches u32::MAX"
+            )]
             self.struct_names
                 .insert(s.name.clone(), StructId(idx as u32));
         }
 
         self.trait_names.clear();
         for (idx, t) in self.traits.iter().enumerate() {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "checked by add_trait which errors before len reaches u32::MAX"
+            )]
             self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
         }
 
         self.enum_names.clear();
         for (idx, e) in self.enums.iter().enumerate() {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "checked by add_enum which errors before len reaches u32::MAX"
+            )]
             self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
         }
 
         self.function_names.clear();
         for (idx, f) in self.functions.iter().enumerate() {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "checked by add_function which errors before len reaches u32::MAX"
+            )]
             self.function_names
                 .insert(f.name.clone(), FunctionId(idx as u32));
         }

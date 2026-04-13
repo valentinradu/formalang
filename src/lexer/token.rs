@@ -110,14 +110,14 @@ pub enum Token {
     // Unsigned integer literal with 'u' suffix: 1u, 42u
     #[regex(r"[0-9]+u", |lex| {
         let s = lex.slice();
-        s[..s.len()-1].parse::<u32>().ok()
+        s.strip_suffix('u').and_then(|n| n.parse::<u32>().ok())
     })]
     UnsignedInt(u32),
 
     // Signed integer literal with 'i' suffix: 1i, -42i
     #[regex(r"-?[0-9]+i", |lex| {
         let s = lex.slice();
-        s[..s.len()-1].parse::<i32>().ok()
+        s.strip_suffix('i').and_then(|n| n.parse::<i32>().ok())
     })]
     SignedInt(i32),
 
@@ -206,14 +206,22 @@ pub enum Token {
 }
 
 fn parse_string(s: &str) -> String {
-    // Remove quotes and process escape sequences
-    let content = &s[1..s.len() - 1];
+    // Remove surrounding double-quotes and process escape sequences.
+    // The lexer regex guarantees s starts and ends with `"`.
+    let content = s
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or_default();
     process_escapes(content)
 }
 
 fn parse_multiline_string(s: &str) -> String {
-    // Remove triple quotes and process escape sequences
-    let content = &s[3..s.len() - 3];
+    // Remove surrounding triple-quotes and process escape sequences.
+    // The lexer regex guarantees s starts and ends with `"""`.
+    let content = s
+        .strip_prefix("\"\"\"")
+        .and_then(|s| s.strip_suffix("\"\"\""))
+        .unwrap_or_default();
     process_escapes(content)
 }
 
@@ -254,17 +262,12 @@ fn process_escapes(s: &str) -> String {
 
 /// Helper to parse regex string into pattern and flags
 pub fn parse_regex(s: &str) -> Option<(String, String)> {
-    if !s.starts_with("r/") {
-        return None;
-    }
-
-    let content = &s[2..]; // Remove "r/"
+    let content = s.strip_prefix("r/")?;
     let last_slash = content.rfind('/')?;
+    let (pattern, rest) = content.split_at(last_slash);
+    let flags = rest.strip_prefix('/').unwrap_or_default();
 
-    let pattern = content[..last_slash].to_string();
-    let flags = content[last_slash + 1..].to_string();
-
-    Some((pattern, flags))
+    Some((pattern.to_string(), flags.to_string()))
 }
 
 impl Token {
@@ -399,7 +402,13 @@ impl Token {
             Token::LBracket => "[",
             Token::RBracket => "]",
             Token::Eof => "<eof>",
-            _ => "<complex token>",
+            Token::String(_)
+            | Token::UnsignedInt(_)
+            | Token::SignedInt(_)
+            | Token::Number(_)
+            | Token::Regex(_)
+            | Token::Path(_)
+            | Token::Ident(_) => "<complex token>",
         }
     }
 }
@@ -416,7 +425,81 @@ impl std::fmt::Display for Token {
             Token::Path(_) => write!(f, "path"),
             Token::Ident(_) => write!(f, "identifier"),
             // For all other tokens, use the as_str() representation
-            _ => write!(f, "'{}'", self.as_str()),
+            Token::Trait
+            | Token::Struct
+            | Token::Impl
+            | Token::Enum
+            | Token::Module
+            | Token::Use
+            | Token::Pub
+            | Token::Let
+            | Token::Mut
+            | Token::Mount
+            | Token::Match
+            | Token::For
+            | Token::In
+            | Token::If
+            | Token::Else
+            | Token::True
+            | Token::False
+            | Token::Nil
+            | Token::As
+            | Token::SelfKeyword
+            | Token::Fn
+            | Token::StringType
+            | Token::NumberType
+            | Token::BooleanType
+            | Token::PathType
+            | Token::RegexType
+            | Token::NeverType
+            | Token::F32Type
+            | Token::I32Type
+            | Token::U32Type
+            | Token::BoolType
+            | Token::Vec2Type
+            | Token::Vec3Type
+            | Token::Vec4Type
+            | Token::IVec2Type
+            | Token::IVec3Type
+            | Token::IVec4Type
+            | Token::UVec2Type
+            | Token::UVec3Type
+            | Token::UVec4Type
+            | Token::Mat2Type
+            | Token::Mat3Type
+            | Token::Mat4Type
+            | Token::Dot
+            | Token::Colon
+            | Token::DoubleColon
+            | Token::Comma
+            | Token::Equals
+            | Token::Plus
+            | Token::Minus
+            | Token::Star
+            | Token::Slash
+            | Token::Percent
+            | Token::EqEq
+            | Token::Ne
+            | Token::Lt
+            | Token::Gt
+            | Token::Le
+            | Token::Ge
+            | Token::And
+            | Token::Or
+            | Token::Pipe
+            | Token::Bang
+            | Token::Question
+            | Token::Arrow
+            | Token::Underscore
+            | Token::DotDot
+            | Token::DotDotDot
+            | Token::LParen
+            | Token::RParen
+            | Token::LBrace
+            | Token::RBrace
+            | Token::LBracket
+            | Token::RBracket
+            | Token::Eof => write!(f, "'{}'", self.as_str()),
         }
     }
 }

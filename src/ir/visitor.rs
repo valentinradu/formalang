@@ -99,6 +99,10 @@ pub fn walk_module<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrModule) {
 pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrModule) {
     // Visit structs
     for (idx, s) in module.structs.iter().enumerate() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "checked by add_struct which errors before len reaches u32::MAX"
+        )]
         visitor.visit_struct(StructId(idx as u32), s);
         for field in &s.fields {
             visitor.visit_field(field);
@@ -118,6 +122,10 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
 
     // Visit traits
     for (idx, t) in module.traits.iter().enumerate() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "checked by add_trait which errors before len reaches u32::MAX"
+        )]
         visitor.visit_trait(TraitId(idx as u32), t);
         for field in &t.fields {
             visitor.visit_field(field);
@@ -129,6 +137,10 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
 
     // Visit enums
     for (idx, e) in module.enums.iter().enumerate() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "checked by add_enum which errors before len reaches u32::MAX"
+        )]
         visitor.visit_enum(EnumId(idx as u32), e);
         for variant in &e.variants {
             visitor.visit_enum_variant(variant);

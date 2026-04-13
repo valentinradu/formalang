@@ -4,6 +4,12 @@
 //!   fvc check <file.fv> [--stdlib-path <path>]
 //!   fvc watch <file.fv> [--stdlib-path <path>]
 
+#![expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "CLI binary: printing to stdout/stderr is the intended output mechanism"
+)]
+
 use formalang::{compile_to_ir_with_resolver, report_errors, FileSystemResolver};
 use std::env;
 use std::fs;
@@ -68,9 +74,12 @@ fn print_usage() {
 }
 
 fn parse_stdlib_path(args: &[String]) -> Option<PathBuf> {
-    for i in 0..args.len() - 1 {
-        if args[i] == "--stdlib-path" {
-            return Some(PathBuf::from(&args[i + 1]));
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--stdlib-path" {
+            if let Some(path) = iter.next() {
+                return Some(PathBuf::from(path));
+            }
         }
     }
     None

@@ -11,6 +11,8 @@ use crate::ast::*;
 use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
 
+type MethodCallArgs = Vec<(Option<Ident>, Expr)>;
+
 /// Main entry point for parsing
 /// Returns the parsed AST or a vector of (error_message, span) tuples
 pub fn parse_file(tokens: &[(Token, CustomSpan)]) -> Result<File, Vec<(String, CustomSpan)>> {
@@ -570,6 +572,10 @@ fn fill_binding_pattern_span(pattern: &mut BindingPattern, source: &str) {
 }
 
 /// Format a parse error with lowercase keywords and readable token names
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "RichPattern is defined in the chumsky library and cannot be exhaustively enumerated"
+)]
 fn format_parse_error(error: &Rich<'_, Token>) -> String {
     use chumsky::error::RichPattern;
 
@@ -661,8 +667,14 @@ where
         .map_with(|((visibility, mut path), items), e| {
             let items = items.unwrap_or_else(|| {
                 // If no items specified, last segment is the item
-                let last = path.pop().expect("path must have at least 1 element");
-                UseItems::Single(last)
+                if let Some(last) = path.pop() {
+                    UseItems::Single(last)
+                } else {
+                    UseItems::Single(Ident {
+                        name: String::new(),
+                        span: CustomSpan::default(),
+                    })
+                }
             });
 
             UseStmt {
@@ -1148,7 +1160,9 @@ fn block_statements_to_expr(mut statements: Vec<BlockStatement>, span: crate::Sp
     }
 
     // Last item becomes the result expression
-    let last = statements.pop().expect("checked non-empty");
+    let Some(last) = statements.pop() else {
+        return Expr::Literal(Literal::Nil);
+    };
     let result = match last {
         BlockStatement::Expr(expr) => expr,
         // If last is a statement (not expr), push it back and use Nil as result
@@ -2144,13 +2158,11 @@ where
                 just(Token::Dot)
                     .ignore_then(ident_parser())
                     .then(invocation_args.clone()),
-                |receiver, (method, args): (Ident, Vec<(Option<Ident>, Expr)>), e| {
-                    Expr::MethodCall {
-                        receiver: Box::new(receiver),
-                        method,
-                        args: args.into_iter().map(|(_, v)| v).collect(),
-                        span: span_from_simple(e.span()),
-                    }
+                |receiver, (method, args): (Ident, MethodCallArgs), e| Expr::MethodCall {
+                    receiver: Box::new(receiver),
+                    method,
+                    args: args.into_iter().map(|(_, v)| v).collect(),
+                    span: span_from_simple(e.span()),
                 },
             ),
             // Field access: expr.field (precedence: 10, higher than unary)
@@ -2170,7 +2182,25 @@ where
                                 span: span_from_simple(e.span()),
                             }
                         }
-                        _ => {
+                        Expr::Literal(_)
+                        | Expr::Invocation { .. }
+                        | Expr::EnumInstantiation { .. }
+                        | Expr::InferredEnumInstantiation { .. }
+                        | Expr::Array { .. }
+                        | Expr::Tuple { .. }
+                        | Expr::BinaryOp { .. }
+                        | Expr::UnaryOp { .. }
+                        | Expr::ForExpr { .. }
+                        | Expr::IfExpr { .. }
+                        | Expr::MatchExpr { .. }
+                        | Expr::Group { .. }
+                        | Expr::DictLiteral { .. }
+                        | Expr::DictAccess { .. }
+                        | Expr::FieldAccess { .. }
+                        | Expr::ClosureExpr { .. }
+                        | Expr::LetExpr { .. }
+                        | Expr::MethodCall { .. }
+                        | Expr::Block { .. } => {
                             // For non-reference expressions (e.g., -chord, (a+b)),
                             // use FieldAccess to preserve the base expression
                             Expr::FieldAccess {

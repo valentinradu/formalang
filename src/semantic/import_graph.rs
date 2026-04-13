@@ -5,27 +5,27 @@ use std::path::PathBuf;
 ///
 /// Tracks which modules import which other modules.
 /// Uses depth-first search to detect cycles.
-pub struct ImportGraph {
+pub(crate) struct ImportGraph {
     /// Map from module path to its direct imports
     edges: HashMap<PathBuf, HashSet<PathBuf>>,
 }
 
 impl ImportGraph {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             edges: HashMap::new(),
         }
     }
 
     /// Add an import edge from `from` module to `to` module
-    pub fn add_import(&mut self, from: PathBuf, to: PathBuf) {
+    pub(crate) fn add_import(&mut self, from: PathBuf, to: PathBuf) {
         self.edges.entry(from).or_default().insert(to);
     }
 
     /// Check if adding an import would create a cycle
     ///
     /// Returns the cycle path if one would be created, None otherwise
-    pub fn would_create_cycle(&self, from: &PathBuf, to: &PathBuf) -> Option<Vec<PathBuf>> {
+    pub(crate) fn would_create_cycle(&self, from: &PathBuf, to: &PathBuf) -> Option<Vec<PathBuf>> {
         // Check if there's already a path from `to` back to `from`
         // This would create a cycle: from -> to -> ... -> from
         let mut visited = HashSet::new();

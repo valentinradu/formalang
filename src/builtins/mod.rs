@@ -996,7 +996,16 @@ pub fn resolve_method_type(
                         PrimitiveType::Mat2 | PrimitiveType::Mat3 | PrimitiveType::Mat4 => {
                             Some(PrimitiveType::F32)
                         }
-                        _ => None,
+                        PrimitiveType::String
+                        | PrimitiveType::Number
+                        | PrimitiveType::Boolean
+                        | PrimitiveType::Path
+                        | PrimitiveType::Regex
+                        | PrimitiveType::Never
+                        | PrimitiveType::F32
+                        | PrimitiveType::I32
+                        | PrimitiveType::U32
+                        | PrimitiveType::Bool => None,
                     }
                 }
                 ReturnType::Bool => Some(PrimitiveType::Bool),

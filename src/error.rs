@@ -340,6 +340,14 @@ pub enum CompilerError {
         actual: String,
         span: Span,
     },
+
+    /// Expression nesting exceeded the compiler recursion limit.
+    #[error("Expression nesting exceeded the compiler recursion limit")]
+    ExpressionDepthExceeded { span: Span },
+
+    /// Module contains more definitions than the ID space allows (> u32::MAX).
+    #[error("Module contains too many {kind} definitions")]
+    TooManyDefinitions { kind: &'static str, span: Span },
 }
 
 impl CompilerError {
@@ -407,7 +415,9 @@ impl CompilerError {
             | Self::UnknownMount { span, .. }
             | Self::CannotInferEnumType { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
-            | Self::AssignmentToImmutable { span, .. } => *span,
+            | Self::AssignmentToImmutable { span, .. }
+            | Self::ExpressionDepthExceeded { span }
+            | Self::TooManyDefinitions { span, .. } => *span,
         }
     }
 }

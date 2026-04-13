@@ -90,16 +90,18 @@ impl FileSystemResolver {
         }
 
         // Try: root_dir/path/to.fv (treating last segment as module name)
-        if path.len() > 1 {
-            let mut dir_path = self.root_dir.clone();
-            for segment in &path[..path.len() - 1] {
-                dir_path.push(segment);
-            }
-            dir_path.push(&path[path.len() - 1]);
-            dir_path.set_extension("fv");
+        if let Some((last, init)) = path.split_last() {
+            if !init.is_empty() {
+                let mut dir_path = self.root_dir.clone();
+                for segment in init {
+                    dir_path.push(segment);
+                }
+                dir_path.push(last);
+                dir_path.set_extension("fv");
 
-            if dir_path.exists() {
-                return Some(dir_path);
+                if dir_path.exists() {
+                    return Some(dir_path);
+                }
             }
         }
 
@@ -124,14 +126,16 @@ impl ModuleResolver for FileSystemResolver {
             file_path.set_extension("fv");
             searched.push(file_path);
 
-            if path.len() > 1 {
-                let mut dir_path = self.root_dir.clone();
-                for segment in &path[..path.len() - 1] {
-                    dir_path.push(segment);
+            if let Some((last, init)) = path.split_last() {
+                if !init.is_empty() {
+                    let mut dir_path = self.root_dir.clone();
+                    for segment in init {
+                        dir_path.push(segment);
+                    }
+                    dir_path.push(last);
+                    dir_path.set_extension("fv");
+                    searched.push(dir_path);
                 }
-                dir_path.push(&path[path.len() - 1]);
-                dir_path.set_extension("fv");
-                searched.push(dir_path);
             }
 
             ModuleError::NotFound {
