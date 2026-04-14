@@ -388,9 +388,6 @@ fn test_query_provider_completions_struct() -> Result<(), Box<dyn std::error::Er
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -411,9 +408,6 @@ fn test_query_provider_completions_trait() -> Result<(), Box<dyn std::error::Err
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -435,9 +429,6 @@ fn test_query_provider_completions_enum() -> Result<(), Box<dyn std::error::Erro
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -459,9 +450,6 @@ fn test_query_provider_completions_multiple() -> Result<(), Box<dyn std::error::
         enum D { one, two }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -485,9 +473,6 @@ fn test_query_provider_completions_builtin_types() -> Result<(), Box<dyn std::er
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_type_completions();
@@ -517,9 +502,6 @@ fn test_query_provider_completions_generic() -> Result<(), Box<dyn std::error::E
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -541,9 +523,6 @@ fn test_query_provider_module_definitions() -> Result<(), Box<dyn std::error::Er
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -564,9 +543,6 @@ fn test_query_provider_hover_info() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -589,9 +565,6 @@ fn test_query_provider_find_definition() -> Result<(), Box<dyn std::error::Error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -623,9 +596,6 @@ fn test_find_node_at_offset_struct_name() -> Result<(), Box<dyn std::error::Erro
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset of "User" in the source
@@ -646,9 +616,6 @@ fn test_find_node_at_offset_field_name() -> Result<(), Box<dyn std::error::Error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset of "name" in the source
@@ -669,9 +636,6 @@ fn test_find_node_at_offset_type_reference() -> Result<(), Box<dyn std::error::E
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset of "String" in the source
@@ -692,9 +656,6 @@ fn test_find_node_at_offset_trait_name() -> Result<(), Box<dyn std::error::Error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let named_offset = source.find("Named").ok_or("unwrap on None")?;
@@ -715,9 +676,6 @@ fn test_find_node_at_offset_enum_name() -> Result<(), Box<dyn std::error::Error>
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let status_offset = source.find("Status").ok_or("unwrap on None")?;
@@ -738,9 +696,6 @@ fn test_find_node_at_offset_enum_variant() -> Result<(), Box<dyn std::error::Err
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let active_offset = source.find("active").ok_or("unwrap on None")?;
@@ -763,9 +718,6 @@ fn test_find_node_at_offset_impl_block() -> Result<(), Box<dyn std::error::Error
         }
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find the impl keyword - node finder may not track impl blocks specifically
@@ -789,9 +741,6 @@ fn test_find_node_at_offset_module() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let module_offset = source.find("core").ok_or("unwrap on None")?;
@@ -810,9 +759,6 @@ fn test_find_node_at_offset_expression_literal() -> Result<(), Box<dyn std::erro
         let x = 42
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let num_offset = source.find("42").ok_or("unwrap on None")?;
@@ -831,9 +777,6 @@ fn test_find_node_at_offset_string_literal() -> Result<(), Box<dyn std::error::E
         let s = "hello"
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let str_offset = source.find("hello").ok_or("unwrap on None")?;
@@ -852,9 +795,6 @@ fn test_find_node_at_offset_whitespace() -> Result<(), Box<dyn std::error::Error
         struct A { x: String }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Offset 0 is whitespace/newline
@@ -871,9 +811,6 @@ fn test_find_node_at_offset_whitespace() -> Result<(), Box<dyn std::error::Error
 fn test_find_node_at_offset_out_of_bounds() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { x: String }";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Way beyond source length
@@ -897,9 +834,6 @@ fn test_find_node_at_offset_nested_struct() -> Result<(), Box<dyn std::error::Er
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find "Inner" in the field type (second usage)
@@ -930,9 +864,6 @@ fn test_find_node_at_offset_generic_type() -> Result<(), Box<dyn std::error::Err
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     let t_offset = source.find("<T>").ok_or("unwrap on None")? + 1; // Inside <T>
@@ -955,9 +886,6 @@ fn test_find_node_at_offset_trait_conformance() -> Result<(), Box<dyn std::error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find "Named" in conformance list
@@ -987,9 +915,6 @@ fn test_position_context_has_parents() -> Result<(), Box<dyn std::error::Error>>
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset of "String" in the field type
@@ -1020,9 +945,6 @@ fn test_lsp_workflow_position_to_completion() -> Result<(), Box<dyn std::error::
 
     // Compile and get analyzer
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, analyzer) = result.map_err(|e| format!("{e:?}"))?;
 
     // Simulate cursor at "User" in Admin's field type
@@ -1051,9 +973,6 @@ fn test_lsp_workflow_multiline_navigation() -> Result<(), Box<dyn std::error::Er
     let source = "struct A {\n    x: String\n}\nstruct B {\n    y: Number\n}";
 
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Navigate to different lines
@@ -1157,9 +1076,6 @@ fn test_query_provider_view_completion() -> Result<(), Box<dyn std::error::Error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -1181,9 +1097,6 @@ fn test_query_provider_view_trait_completion() -> Result<(), Box<dyn std::error:
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
@@ -1208,9 +1121,6 @@ fn test_query_provider_type_completions_with_view() -> Result<(), Box<dyn std::e
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_type_completions();
@@ -1237,9 +1147,6 @@ fn test_query_provider_hover_for_enum() -> Result<(), Box<dyn std::error::Error>
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1260,9 +1167,6 @@ fn test_query_provider_hover_for_let() -> Result<(), Box<dyn std::error::Error>>
         let config = "value"
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1283,9 +1187,6 @@ fn test_query_provider_find_definition_enum() -> Result<(), Box<dyn std::error::
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1306,9 +1207,6 @@ fn test_query_provider_find_definition_let() -> Result<(), Box<dyn std::error::E
         let myValue = 42
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1332,9 +1230,6 @@ fn test_query_provider_find_definition_struct() -> Result<(), Box<dyn std::error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1355,9 +1250,6 @@ fn test_query_provider_find_nonexistent() -> Result<(), Box<dyn std::error::Erro
         struct User { name: String }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (_, analyzer) = result.map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
 
@@ -1385,9 +1277,6 @@ fn test_find_node_enclosing_definition() -> Result<(), Box<dyn std::error::Error
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset inside field "name"
@@ -1408,9 +1297,6 @@ fn test_find_node_is_in_expression() -> Result<(), Box<dyn std::error::Error>> {
         struct Result { value: Number = 42 }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at the literal "42"
@@ -1436,9 +1322,6 @@ fn test_find_node_is_in_type_position() -> Result<(), Box<dyn std::error::Error>
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "String" type
@@ -1462,9 +1345,6 @@ fn test_find_node_at_let_binding() -> Result<(), Box<dyn std::error::Error>> {
         let value = 42
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "value"
@@ -1483,9 +1363,6 @@ fn test_find_node_at_let_expression() -> Result<(), Box<dyn std::error::Error>> 
         let x = "hello"
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at the string literal
@@ -1512,9 +1389,6 @@ fn test_find_node_at_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "pending" variant
@@ -1534,9 +1408,6 @@ fn test_find_node_in_impl_with_struct_instantiation() -> Result<(), Box<dyn std:
         struct Container { point: Point = Point(x: 1, y: 2) }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "Point" in instantiation
@@ -1560,9 +1431,6 @@ fn test_find_node_in_for_expression() -> Result<(), Box<dyn std::error::Error>> 
         struct List { items: [String] = for x in ["a", "b"] { x } }
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at iterator variable "x" (first occurrence in for)
@@ -1586,9 +1454,6 @@ fn test_find_node_in_if_expression() -> Result<(), Box<dyn std::error::Error>> {
         struct Result { value: String = if true { "yes" } else { "no" } }
     "#;
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "true" condition
@@ -1612,9 +1477,6 @@ fn test_find_node_in_binary_expression() -> Result<(), Box<dyn std::error::Error
         struct Math { result: Number = 1 + 2 }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "+"
@@ -1641,9 +1503,6 @@ fn test_find_node_trait_field() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let result = compile_with_analyzer(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
     // Find offset at "age" field

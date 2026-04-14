@@ -652,9 +652,6 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut pass = DeadCodeEliminationPass::new();
     let result = pass.run(module);
-    if result.is_err() {
-        return Err(format!("DCE pass should succeed, got: {:?}", result.err()).into());
-    }
     let optimized = result.map_err(|e| format!("pass: {e:?}"))?;
     let default = optimized
         .structs

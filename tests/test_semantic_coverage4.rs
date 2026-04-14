@@ -170,10 +170,7 @@ fn test_doubly_nested_module_with_enum() -> Result<(), Box<dyn std::error::Error
         }
         struct Config { s: outer::inner::Status }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Doubly nested module with enum: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Doubly nested module with enum: {e:?}"))?;
     Ok(())
 }
 
@@ -191,12 +188,7 @@ fn test_doubly_nested_module_with_enum_data_fields() -> Result<(), Box<dyn std::
         }
         struct Config { s: outer::inner::Shape }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Nested module enum with data fields: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -210,12 +202,7 @@ fn test_doubly_nested_module_with_function() -> Result<(), Box<dyn std::error::E
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Doubly nested module with function: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -233,10 +220,7 @@ fn test_triply_nested_module() -> Result<(), Box<dyn std::error::Error>> {
         }
         struct Config { w: a::b::c::Widget }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Triply nested module: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Triply nested module: {e:?}"))?;
     Ok(())
 }
 
@@ -471,10 +455,7 @@ struct Config {
     }
 }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("Match on imported enum: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -879,10 +860,7 @@ fn test_generic_type_satisfies_constraint() -> Result<(), Box<dyn std::error::Er
         struct Widget: Printable { label: String }
         struct Config { c: Container<Widget> }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic satisfies constraint: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic satisfies constraint: {e:?}"))?;
     Ok(())
 }
 
@@ -974,10 +952,7 @@ use a::A
 use b::B
 struct Config { a: A, b: B }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("No cycle imports: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1086,10 +1061,7 @@ struct Config {
     state: Status = Status.active
 }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("Enum from module: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

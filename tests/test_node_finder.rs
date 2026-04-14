@@ -1478,13 +1478,7 @@ fn test_filesystem_resolver_finds_existing_file() -> Result<(), Box<dyn std::err
     let result = resolver2.resolve(&path, None);
     // Clean up
     let _ = std::fs::remove_file(tmp.join("testmod.fv"));
-    if result.is_err() {
-        return Err(format!(
-            "Expected Ok for existing module file, got {:?}",
-            result.err()
-        )
-        .into());
-    }
+    result.map_err(|e| format!("Expected Ok for existing module file, got {e:?}"))?;
     Ok(())
 }
 

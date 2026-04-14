@@ -28,11 +28,8 @@ fn test_generic_arity_mismatch_too_few_args() -> Result<(), Box<dyn std::error::
         struct Box<T> { value: T }
         struct Container { item: Box }
     ";
-    let result = compile(source);
+    compile(source).map_err(|e| format!("{e:?}"))?;
     // Box without type arguments is treated as an opaque type reference — no error
-    if result.is_err() {
-        return Err(format!("Missing generic arg is accepted as opaque type: {:?}", result.err()).into());
-    }
     Ok(())
 }
 
@@ -92,10 +89,7 @@ fn test_validate_dictionary_type_with_struct_values() -> Result<(), Box<dyn std:
         struct Point { x: Number, y: Number }
         struct Config { points: [String: Point] }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -104,10 +98,7 @@ fn test_validate_dictionary_type_nested() -> Result<(), Box<dyn std::error::Erro
     let source = r"
         struct Config { data: [String: Number] }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -116,10 +107,7 @@ fn test_validate_closure_type_with_annotations() -> Result<(), Box<dyn std::erro
     let source = r"
         struct Handler { callback: (Number) -> String }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -174,10 +162,7 @@ fn test_trait_as_valid_type_annotation() -> Result<(), Box<dyn std::error::Error
         trait Shape { area: Number }
         struct Container { shape: Shape }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Traits should be valid in type position: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Traits should be valid in type position: {e:?}"))?;
     Ok(())
 }
 
@@ -721,10 +706,7 @@ fn test_closure_expr_in_let_binding() -> Result<(), Box<dyn std::error::Error>> 
         let items: [Number] = [1, 2, 3, 4, 5]
         let doubled: [Number] = for x in items { x }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -737,10 +719,7 @@ fn test_dict_literal_in_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let data: [String: Number] = ["key": 42]
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Dict literal in let should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Dict literal in let should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -804,10 +783,7 @@ fn test_nested_module_with_traits_and_structs() -> Result<(), Box<dyn std::error
             pub enum Orientation { horizontal, vertical }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested module should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested module should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -820,10 +796,7 @@ fn test_doubly_nested_module() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Doubly nested module should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Doubly nested module should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -836,10 +809,7 @@ fn test_let_inferred_from_array_literal() -> Result<(), Box<dyn std::error::Erro
     let source = r"
         let nums = [1, 2, 3]
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let binding from array literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let binding from array literal: {e:?}"))?;
     Ok(())
 }
 
@@ -849,10 +819,7 @@ fn test_let_inferred_from_struct_instantiation() -> Result<(), Box<dyn std::erro
         struct Point { x: Number, y: Number }
         let p = Point(x: 1, y: 2)
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let binding from struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let binding from struct: {e:?}"))?;
     Ok(())
 }
 
@@ -862,10 +829,7 @@ fn test_let_boolean_inference() -> Result<(), Box<dyn std::error::Error>> {
         let flag = true
         let other = false
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Boolean let inference: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Boolean let inference: {e:?}"))?;
     Ok(())
 }
 
@@ -895,10 +859,7 @@ fn test_standalone_function_definition() -> Result<(), Box<dyn std::error::Error
     let source = r"
         fn add(a: Number, b: Number) -> Number { a + b }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Standalone function: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Standalone function: {e:?}"))?;
     Ok(())
 }
 
@@ -961,10 +922,7 @@ fn test_block_with_let_and_result() -> Result<(), Box<dyn std::error::Error>> {
             x + y
         }}
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Block expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Block expression: {e:?}"))?;
     Ok(())
 }
 
@@ -979,10 +937,7 @@ fn test_block_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Block with assignment: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Block with assignment: {e:?}"))?;
     Ok(())
 }
 
@@ -998,10 +953,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
             x)
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let expression: {e:?}"))?;
     Ok(())
 }
 
@@ -1015,10 +967,7 @@ fn test_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>>
         struct Box<T> { value: T }
         struct Config { box: Box<Number> = Box<Number>(value: 42) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic struct instantiation: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic struct instantiation: {e:?}"))?;
     Ok(())
 }
 
@@ -1068,10 +1017,7 @@ fn test_match_with_wildcard_is_exhaustive() -> Result<(), Box<dyn std::error::Er
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Match with wildcard: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Match with wildcard: {e:?}"))?;
     Ok(())
 }
 
@@ -1103,10 +1049,7 @@ fn test_valid_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Pair { data: (x: Number, y: String) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Tuple type: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Tuple type: {e:?}"))?;
     Ok(())
 }
 
@@ -1117,11 +1060,8 @@ fn test_tuple_let_destructuring() -> Result<(), Box<dyn std::error::Error>> {
         let p: Point = Point(x: 1, y: 2)
         let (a, b) = p
     ";
-    let result = compile(source);
+    compile(source).map_err(|e| format!("{e:?}"))?;
     // Tuple destructuring of a struct should succeed
-    if result.is_err() {
-        return Err(format!("Tuple destructuring: {:?}", result.err()).into());
-    }
     Ok(())
 }
 
@@ -1134,10 +1074,7 @@ fn test_module_level_let_optional_type() -> Result<(), Box<dyn std::error::Error
     let source = r"
         let optional: String? = nil
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Optional let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Optional let: {e:?}"))?;
     Ok(())
 }
 
@@ -1146,10 +1083,7 @@ fn test_module_level_let_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let message: String = "hello world"
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("String let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("String let: {e:?}"))?;
     Ok(())
 }
 
@@ -1158,10 +1092,7 @@ fn test_module_level_let_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let values: [Number] = [1, 2, 3, 4, 5]
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Array let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Array let: {e:?}"))?;
     Ok(())
 }
 
@@ -1175,10 +1106,7 @@ fn test_inferred_enum_instantiation_in_function() -> Result<(), Box<dyn std::err
         enum Status { active, inactive }
         fn get_status() -> Status { .active }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Inferred enum in function: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Inferred enum in function: {e:?}"))?;
     Ok(())
 }
 
@@ -1194,10 +1122,7 @@ fn test_nested_module_type_reference() -> Result<(), Box<dyn std::error::Error>>
         }
         struct Canvas { shape: shapes::Circle }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested module type reference: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested module type reference: {e:?}"))?;
     Ok(())
 }
 
@@ -1232,10 +1157,7 @@ fn test_struct_with_multiple_valid_traits() -> Result<(), Box<dyn std::error::Er
             size: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple trait impl: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple trait impl: {e:?}"))?;
     Ok(())
 }
 
@@ -1264,10 +1186,7 @@ fn test_infer_type_of_ternary_produces_result() -> Result<(), Box<dyn std::error
         let flag: Boolean = true
         let val: Number = if flag { 1 } else { 2 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("If expression in let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("If expression in let: {e:?}"))?;
     Ok(())
 }
 
@@ -1278,10 +1197,7 @@ fn test_infer_type_of_nested_struct_field() -> Result<(), Box<dyn std::error::Er
         struct Outer { inner: Inner }
         let outer: Outer = Outer(inner: Inner(x: 42))
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested struct: {e:?}"))?;
     Ok(())
 }
 
@@ -1298,10 +1214,7 @@ fn test_enum_variant_with_data_fields() -> Result<(), Box<dyn std::error::Error>
             point
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum with data fields: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum with data fields: {e:?}"))?;
     Ok(())
 }
 
@@ -1316,10 +1229,7 @@ fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>>
             shape: Shape = Shape.circle(radius: 5)
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum with data: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum with data: {e:?}"))?;
     Ok(())
 }
 
@@ -1433,10 +1343,7 @@ fn test_function_return_type_valid() -> Result<(), Box<dyn std::error::Error>> {
             fn double() -> Number { self.value + self.value }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function with valid return type: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function with valid return type: {e:?}"))?;
     Ok(())
 }
 
@@ -1445,10 +1352,7 @@ fn test_standalone_function_with_body() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         fn multiply(a: Number, b: Number) -> Number { a * b }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Standalone function with params: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Standalone function with params: {e:?}"))?;
     Ok(())
 }
 
@@ -1457,10 +1361,7 @@ fn test_standalone_function_no_return_type() -> Result<(), Box<dyn std::error::E
     let source = r"
         fn greet(name: String) { name }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function without return type: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function without return type: {e:?}"))?;
     Ok(())
 }
 
@@ -1477,10 +1378,7 @@ fn test_method_call_on_struct_in_impl() -> Result<(), Box<dyn std::error::Error>
             fn get_y() -> Number { self.y }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Method call in impl: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Method call in impl: {e:?}"))?;
     Ok(())
 }
 
@@ -1493,10 +1391,7 @@ fn test_method_call_undefined_method() -> Result<(), Box<dyn std::error::Error>>
             fn get_x() -> Number { self.x }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Simple impl method: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Simple impl method: {e:?}"))?;
     Ok(())
 }
 
@@ -1514,10 +1409,7 @@ fn test_trait_composition_valid() -> Result<(), Box<dyn std::error::Error>> {
             id: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait composition: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait composition: {e:?}"))?;
     Ok(())
 }
 
@@ -1553,10 +1445,7 @@ fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
             mount content: String
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait with mount field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait with mount field: {e:?}"))?;
     Ok(())
 }
 
@@ -1612,11 +1501,8 @@ fn test_match_arm_with_bindings() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
+    compile(source).map_err(|e| format!("{e:?}"))?;
     // Match with enum variant binding should compile successfully
-    if result.is_err() {
-        return Err(format!("Match arm with bindings: {:?}", result.err()).into());
-    }
     Ok(())
 }
 
@@ -1630,10 +1516,7 @@ fn test_mutable_let_binding_in_struct_field() -> Result<(), Box<dyn std::error::
         let mut counter: Number = 0
         struct Config { count: Number = counter }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Mutable let binding: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Mutable let binding: {e:?}"))?;
     Ok(())
 }
 
@@ -1644,12 +1527,9 @@ fn test_immutable_let_binding_in_mut_struct_field() -> Result<(), Box<dyn std::e
         let value: Number = 42
         struct Config { mut count: Number = value }
     ";
-    let result = compile(source);
+    compile(source).map_err(|e| format!("{e:?}"))?;
     // Immutable binding assigned to a mutable struct field — should succeed
     // (the field's mutability is its own property, not the binding's)
-    if result.is_err() {
-        return Err(format!("Immutable binding to mutable field: {:?}", result.err()).into());
-    }
     Ok(())
 }
 
@@ -1662,10 +1542,7 @@ fn test_array_destructuring_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let [first, second] = [1, 2, 3]
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Array destructuring: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Array destructuring: {e:?}"))?;
     Ok(())
 }
 
@@ -1674,10 +1551,7 @@ fn test_array_destructuring_with_rest() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         let [first, ...rest] = [1, 2, 3, 4]
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Array destructuring with rest: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Array destructuring with rest: {e:?}"))?;
     Ok(())
 }
 
@@ -1692,10 +1566,7 @@ fn test_struct_destructuring_valid() -> Result<(), Box<dyn std::error::Error>> {
         let p: Point = Point(x: 1, y: 2)
         let {x, y} = p
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct destructuring: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct destructuring: {e:?}"))?;
     Ok(())
 }
 
@@ -1764,10 +1635,7 @@ fn test_module_level_function_in_module_def() -> Result<(), Box<dyn std::error::
             pub fn add(a: Number, b: Number) -> Number { a + b }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module-level function: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module-level function: {e:?}"))?;
     Ok(())
 }
 
@@ -1783,10 +1651,7 @@ fn test_struct_satisfies_generic_constraint() -> Result<(), Box<dyn std::error::
         struct Named: Printable { label: String }
         struct Container { item: Box<Named> }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic constraint satisfied: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic constraint satisfied: {e:?}"))?;
     Ok(())
 }
 
@@ -1799,10 +1664,7 @@ fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler { callback: (Number) -> Number = |n: Number| n }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure in struct field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure in struct field: {e:?}"))?;
     Ok(())
 }
 
@@ -1816,11 +1678,8 @@ fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         struct Shader { output: Number = normalize(1.0) }
     ";
-    let result = compile(source);
+    compile(source).map_err(|e| format!("{e:?}"))?;
     // normalize is a builtin function — should be recognized and compile
-    if result.is_err() {
-        return Err(format!("normalize builtin should be valid: {:?}", result.err()).into());
-    }
     Ok(())
 }
 
@@ -1836,10 +1695,7 @@ fn test_infer_type_via_binary_op() -> Result<(), Box<dyn std::error::Error>> {
         let sum: Number = a + b
         let product: Number = a * b
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Binary op inference: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Binary op inference: {e:?}"))?;
     Ok(())
 }
 
@@ -1855,10 +1711,7 @@ fn test_let_reference_in_various_expressions() -> Result<(), Box<dyn std::error:
         let items: [Number] = [base, doubled]
         let flag: Boolean = base == doubled
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let references: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let references: {e:?}"))?;
     Ok(())
 }
 
@@ -1879,10 +1732,7 @@ fn test_match_exhaustive_all_variants() -> Result<(), Box<dyn std::error::Error>
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Exhaustive match: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Exhaustive match: {e:?}"))?;
     Ok(())
 }
 
@@ -1897,10 +1747,7 @@ fn test_impl_trait_for_struct() -> Result<(), Box<dyn std::error::Error>> {
         struct Circle { render: Number, radius: Number }
         impl Drawable for Circle {}
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait impl: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait impl: {e:?}"))?;
     Ok(())
 }
 

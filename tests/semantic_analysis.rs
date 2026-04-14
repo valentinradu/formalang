@@ -16,10 +16,7 @@ fn test_view_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
             @mount content: String
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("View with mount should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("View with mount should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -31,10 +28,7 @@ fn test_model_without_mount_field() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Model without mount should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Model without mount should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -46,10 +40,7 @@ fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
             @mount footer: String
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("View trait with mount should compile: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("View trait with mount should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -60,16 +51,7 @@ fn test_model_trait_without_mount() -> Result<(), Box<dyn std::error::Error>> {
             id: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!(
-                "Model trait without mount should compile: {:?}",
-                result.err()
-            )
-            .into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -84,10 +66,7 @@ fn test_impl_with_string_literal() -> Result<(), Box<dyn std::error::Error>> {
             name: String = "Hello!"
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Impl with string literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Impl with string literal: {e:?}"))?;
     Ok(())
 }
 
@@ -98,10 +77,7 @@ fn test_impl_with_number_literal() -> Result<(), Box<dyn std::error::Error>> {
             count: Number = 42
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Impl with number literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Impl with number literal: {e:?}"))?;
     Ok(())
 }
 
@@ -112,10 +88,7 @@ fn test_impl_with_boolean_literal() -> Result<(), Box<dyn std::error::Error>> {
             enabled: Boolean = true
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Impl with boolean literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Impl with boolean literal: {e:?}"))?;
     Ok(())
 }
 
@@ -126,10 +99,7 @@ fn test_impl_with_array_literal() -> Result<(), Box<dyn std::error::Error>> {
             items: [String] = ["a", "b", "c"]
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Impl with array literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Impl with array literal: {e:?}"))?;
     Ok(())
 }
 
@@ -144,10 +114,7 @@ fn test_impl_with_struct_reference() -> Result<(), Box<dyn std::error::Error>> {
             person: Person = Person(name: "John", age: 30)
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Impl with struct reference: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Impl with struct reference: {e:?}"))?;
     Ok(())
 }
 
@@ -166,10 +133,7 @@ fn test_nested_if_expression() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested if expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested if expression: {e:?}"))?;
     Ok(())
 }
 
@@ -182,10 +146,7 @@ fn test_nested_for_expression() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested for expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested for expression: {e:?}"))?;
     Ok(())
 }
 
@@ -197,10 +158,7 @@ fn test_let_with_if() -> Result<(), Box<dyn std::error::Error>> {
             x)
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let with if: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let with if: {e:?}"))?;
     Ok(())
 }
 
@@ -212,10 +170,7 @@ fn test_let_with_for() -> Result<(), Box<dyn std::error::Error>> {
             result)
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let with for: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let with for: {e:?}"))?;
     Ok(())
 }
 
@@ -230,10 +185,7 @@ fn test_string_in_impl() -> Result<(), Box<dyn std::error::Error>> {
             value: String = "hello world"
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("String in impl: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("String in impl: {e:?}"))?;
     Ok(())
 }
 
@@ -244,10 +196,7 @@ fn test_number_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
             value: Number = 1 + 2 * 3 - 4 / 2
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Number arithmetic: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Number arithmetic: {e:?}"))?;
     Ok(())
 }
 
@@ -258,10 +207,7 @@ fn test_boolean_logic() -> Result<(), Box<dyn std::error::Error>> {
             value: Boolean = true && false || true
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Boolean logic: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Boolean logic: {e:?}"))?;
     Ok(())
 }
 
@@ -272,10 +218,7 @@ fn test_comparison_operators() -> Result<(), Box<dyn std::error::Error>> {
             result: Boolean = 1 < 2 && 3 > 2 && 4 >= 4 && 5 <= 5 && 1 == 1 && 1 != 2
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Comparison operators: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Comparison operators: {e:?}"))?;
     Ok(())
 }
 
@@ -293,10 +236,7 @@ fn test_generic_struct_single_param() -> Result<(), Box<dyn std::error::Error>> 
             box: Box<String>
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic struct single param: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic struct single param: {e:?}"))?;
     Ok(())
 }
 
@@ -311,10 +251,7 @@ fn test_generic_struct_multiple_params() -> Result<(), Box<dyn std::error::Error
             pair: Pair<String, Number>
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic struct multiple params: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic struct multiple params: {e:?}"))?;
     Ok(())
 }
 
@@ -328,10 +265,7 @@ fn test_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
             item: T
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic trait: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic trait: {e:?}"))?;
     Ok(())
 }
 
@@ -348,10 +282,7 @@ fn test_nested_generic_types() -> Result<(), Box<dyn std::error::Error>> {
             data: Outer<String>
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested generic types: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested generic types: {e:?}"))?;
     Ok(())
 }
 
@@ -367,10 +298,7 @@ fn test_optional_field() -> Result<(), Box<dyn std::error::Error>> {
             nickname: String?
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Optional field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Optional field: {e:?}"))?;
     Ok(())
 }
 
@@ -381,10 +309,7 @@ fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
             mut count: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Mutable field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Mutable field: {e:?}"))?;
     Ok(())
 }
 
@@ -397,10 +322,7 @@ fn test_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
             enabled: Boolean = true
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Field with default: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Field with default: {e:?}"))?;
     Ok(())
 }
 
@@ -412,10 +334,7 @@ fn test_array_field() -> Result<(), Box<dyn std::error::Error>> {
             numbers: [Number]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Array field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Array field: {e:?}"))?;
     Ok(())
 }
 
@@ -426,10 +345,7 @@ fn test_dictionary_field() -> Result<(), Box<dyn std::error::Error>> {
             data: [String: Number]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Dictionary field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Dictionary field: {e:?}"))?;
     Ok(())
 }
 
@@ -446,10 +362,7 @@ fn test_module_with_struct() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module with struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module with struct: {e:?}"))?;
     Ok(())
 }
 
@@ -462,10 +375,7 @@ fn test_module_with_trait() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module with trait: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module with trait: {e:?}"))?;
     Ok(())
 }
 
@@ -479,10 +389,7 @@ fn test_module_with_enum() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module with enum: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module with enum: {e:?}"))?;
     Ok(())
 }
 
@@ -497,10 +404,7 @@ fn test_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested modules: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested modules: {e:?}"))?;
     Ok(())
 }
 
@@ -513,10 +417,7 @@ fn test_pub_struct_in_module() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Pub struct in module: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Pub struct in module: {e:?}"))?;
     Ok(())
 }
 
@@ -534,10 +435,7 @@ fn test_enum_with_variants() -> Result<(), Box<dyn std::error::Error>> {
             west
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum with variants: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum with variants: {e:?}"))?;
     Ok(())
 }
 
@@ -549,10 +447,7 @@ fn test_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
             failure
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic enum: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic enum: {e:?}"))?;
     Ok(())
 }
 
@@ -567,10 +462,7 @@ fn test_enum_usage_in_struct() -> Result<(), Box<dyn std::error::Error>> {
             status: Status
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum usage in struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum usage in struct: {e:?}"))?;
     Ok(())
 }
 
@@ -592,10 +484,7 @@ fn test_match_basic() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Match basic: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Match basic: {e:?}"))?;
     Ok(())
 }
 
@@ -680,10 +569,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
             pattern: Regex
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("All primitive types: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("All primitive types: {e:?}"))?;
     Ok(())
 }
 
@@ -694,10 +580,7 @@ fn test_never_type() -> Result<(), Box<dyn std::error::Error>> {
             error: Never
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Never type: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Never type: {e:?}"))?;
     Ok(())
 }
 
@@ -712,10 +595,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
             callback: String -> Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure type single param: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure type single param: {e:?}"))?;
     Ok(())
 }
 
@@ -726,10 +606,7 @@ fn test_closure_type_no_return() -> Result<(), Box<dyn std::error::Error>> {
             action: String -> Never
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure type no return: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure type no return: {e:?}"))?;
     Ok(())
 }
 
@@ -742,10 +619,7 @@ fn test_let_at_top_level() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let config = "default"
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let at top level: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let at top level: {e:?}"))?;
     Ok(())
 }
 
@@ -754,10 +628,7 @@ fn test_pub_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         pub let VERSION = "1.0"
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Pub let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Pub let: {e:?}"))?;
     Ok(())
 }
 
@@ -766,10 +637,7 @@ fn test_let_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let count = 42
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let simple: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let simple: {e:?}"))?;
     Ok(())
 }
 
@@ -787,10 +655,7 @@ fn test_struct_conforming_to_trait() -> Result<(), Box<dyn std::error::Error>> {
             label: String
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct conforming to trait: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct conforming to trait: {e:?}"))?;
     Ok(())
 }
 
@@ -804,10 +669,7 @@ fn test_trait_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
             name: String?
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait with optional field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait with optional field: {e:?}"))?;
     Ok(())
 }
 
@@ -825,10 +687,7 @@ fn test_multiple_trait_conformance() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple trait conformance: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple trait conformance: {e:?}"))?;
     Ok(())
 }
 
@@ -872,10 +731,7 @@ fn test_full_application_model() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Full application model: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Full application model: {e:?}"))?;
     Ok(())
 }
 
@@ -894,9 +750,6 @@ fn test_view_component_model() -> Result<(), Box<dyn std::error::Error>> {
             @mount footer: String?
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("View component model: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("View component model: {e:?}"))?;
     Ok(())
 }

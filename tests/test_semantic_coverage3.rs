@@ -77,10 +77,7 @@ pub use a::Foo
 use b::Foo
 struct Config { item: Foo }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("pub use single symbol: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -106,10 +103,7 @@ pub use a::*
 use b::*
 struct Config { item: Bar }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("pub use glob: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -135,10 +129,7 @@ pub use a::{Foo, Bar}
 use b::{Foo, Bar}
 struct Config { foo: Foo, bar: Bar }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("pub use multiple symbols: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -293,10 +284,7 @@ fn test_let_dep_via_field_access() -> Result<(), Box<dyn std::error::Error>> {
         let x_coord: Number = p.x
         let y_coord: Number = p.y
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Field access in let dep: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Field access in let dep: {e:?}"))?;
     Ok(())
 }
 
@@ -312,10 +300,7 @@ fn test_let_dep_via_let_expr() -> Result<(), Box<dyn std::error::Error>> {
         let computed: Number = (let tmp: Number = base
         tmp + 1)
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let expr as dependency: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let expr as dependency: {e:?}"))?;
     Ok(())
 }
 
@@ -333,10 +318,7 @@ fn test_let_dep_via_block_expression() -> Result<(), Box<dyn std::error::Error>>
             x + 1
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Block expression in let dep: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Block expression in let dep: {e:?}"))?;
     Ok(())
 }
 
@@ -351,10 +333,7 @@ fn test_let_dep_via_block_with_assign() -> Result<(), Box<dyn std::error::Error>
             x
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Block with assign in let dep: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Block with assign in let dep: {e:?}"))?;
     Ok(())
 }
 
@@ -367,10 +346,7 @@ fn test_let_dep_via_block_with_expr_statement() -> Result<(), Box<dyn std::error
             a
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Block with expr stmt in let dep: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Block with expr stmt in let dep: {e:?}"))?;
     Ok(())
 }
 
@@ -468,10 +444,7 @@ fn test_assignment_to_struct_field_in_block() -> Result<(), Box<dyn std::error::
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Assignment in impl block: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Assignment in impl block: {e:?}"))?;
     Ok(())
 }
 
@@ -487,10 +460,7 @@ fn test_assignment_checks_group_expr_mutability() -> Result<(), Box<dyn std::err
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Group expr mutability: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Group expr mutability: {e:?}"))?;
     Ok(())
 }
 
@@ -517,10 +487,7 @@ impl Circle {
 use shapes::{Drawable, Circle}
 struct Config { item: Circle }
 ";
-    let result = compile_with_resolver(source, resolver);
-    if result.is_err() {
-        return Err(format!("Impl in loaded module: {:?}", result.err()).into());
-    }
+    compile_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -564,10 +531,7 @@ fn test_module_struct_with_fields() -> Result<(), Box<dyn std::error::Error>> {
         }
         struct App { btn: ui::Button }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module struct with fields: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module struct with fields: {e:?}"))?;
     Ok(())
 }
 
@@ -589,10 +553,7 @@ fn test_invalid_module_path_format() -> Result<(), Box<dyn std::error::Error>> {
         }
         struct Config { item: shapes::Circle }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Valid module path: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Valid module path: {e:?}"))?;
     Ok(())
 }
 
@@ -607,10 +568,7 @@ fn test_function_with_gpu_param_types() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         fn gpu_fn(pos: vec3, color: vec4) -> vec3 { pos }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("GPU param types: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("GPU param types: {e:?}"))?;
     Ok(())
 }
 
@@ -654,10 +612,7 @@ fn test_struct_with_all_gpu_primitives() -> Result<(), Box<dyn std::error::Error
             m4: mat4
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("All GPU primitives: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("All GPU primitives: {e:?}"))?;
     Ok(())
 }
 
@@ -746,10 +701,7 @@ fn test_function_return_number_f32_compatible() -> Result<(), Box<dyn std::error
     let source = r"
         fn compute() -> Number { 42 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Number return: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Number return: {e:?}"))?;
     Ok(())
 }
 
@@ -758,10 +710,7 @@ fn test_function_return_bool_boolean_compatible() -> Result<(), Box<dyn std::err
     let source = r"
         fn check() -> Boolean { true }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Boolean return: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Boolean return: {e:?}"))?;
     Ok(())
 }
 
@@ -818,10 +767,7 @@ fn test_let_binding_with_no_refs() -> Result<(), Box<dyn std::error::Error>> {
         let b: String = "hello"
         let c: Boolean = true
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("No-ref let bindings: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("No-ref let bindings: {e:?}"))?;
     Ok(())
 }
 
@@ -837,10 +783,7 @@ fn test_let_dep_via_enum_instantiation() -> Result<(), Box<dyn std::error::Error
         let r: Number = 5
         let s: Shape = Shape.circle(radius: r)
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let dep via enum instantiation: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let dep via enum instantiation: {e:?}"))?;
     Ok(())
 }
 
@@ -851,10 +794,7 @@ fn test_let_dep_via_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
         enum Direction { north, south }
         let d: Direction = .north
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let dep via inferred enum: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let dep via inferred enum: {e:?}"))?;
     Ok(())
 }
 
@@ -869,10 +809,7 @@ fn test_infer_type_of_user_function_call() -> Result<(), Box<dyn std::error::Err
         fn compute(x: Number) -> Number { x + 1 }
         let result: Number = compute(x: 5)
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("User function call type inference: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("User function call type inference: {e:?}"))?;
     Ok(())
 }
 
@@ -989,10 +926,7 @@ fn test_local_let_binding_mutability_in_block() -> Result<(), Box<dyn std::error
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Local mutable let in block: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Local mutable let in block: {e:?}"))?;
     Ok(())
 }
 
@@ -1154,10 +1088,7 @@ fn test_immutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
         struct Config { val: Number }
         let cfg: Config = Config(val: x)
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Immutable let in struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Immutable let in struct: {e:?}"))?;
     Ok(())
 }
 
@@ -1220,10 +1151,7 @@ fn test_generic_constraint_with_constrained_type_param() -> Result<(), Box<dyn s
         struct Widget: Named { name: String }
         struct Config { b: Box<Widget> }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Constrained type param: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Constrained type param: {e:?}"))?;
     Ok(())
 }
 
@@ -1243,10 +1171,7 @@ fn test_deeply_nested_module_path_access() -> Result<(), Box<dyn std::error::Err
         }
         struct Config { item: a::b::c::Deep }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Deeply nested module path: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Deeply nested module path: {e:?}"))?;
     Ok(())
 }
 

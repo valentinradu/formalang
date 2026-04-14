@@ -740,9 +740,6 @@ fn test_constant_folding_pass_via_pipeline() -> Result<(), Box<dyn std::error::E
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let mut pass = ConstantFoldingPass::new();
     let result = pass.run(module);
-    if result.is_err() {
-        return Err("Folding pass should succeed".into());
-    }
     let folded = result.map_err(|e| format!("pass failed: {e:?}"))?;
     let expr = folded
         .structs

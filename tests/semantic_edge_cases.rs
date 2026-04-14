@@ -13,10 +13,7 @@ fn test_pub_trait() -> Result<(), Box<dyn std::error::Error>> {
             value: String
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -28,10 +25,7 @@ fn test_pub_enum() -> Result<(), Box<dyn std::error::Error>> {
             inactive
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -44,10 +38,7 @@ fn test_pub_module() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -62,10 +53,7 @@ fn test_optional_field_with_default() -> Result<(), Box<dyn std::error::Error>> 
             name: String? = nil
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -76,10 +64,7 @@ fn test_mutable_optional_field() -> Result<(), Box<dyn std::error::Error>> {
             mut current: String?
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -90,10 +75,7 @@ fn test_array_of_optional() -> Result<(), Box<dyn std::error::Error>> {
             values: [String?]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -104,10 +86,7 @@ fn test_optional_array() -> Result<(), Box<dyn std::error::Error>> {
             items: [String]?
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -125,10 +104,7 @@ fn test_nested_generic() -> Result<(), Box<dyn std::error::Error>> {
             nested: Box<Box<String>>
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -142,10 +118,7 @@ fn test_array_of_generic() -> Result<(), Box<dyn std::error::Error>> {
             items: [Wrapper<String>]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -156,10 +129,7 @@ fn test_tuple_with_optionals() -> Result<(), Box<dyn std::error::Error>> {
             point: (x: Number, y: Number?)
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -172,10 +142,7 @@ fn test_nested_arrays() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let matrix = [[1, 2], [3, 4]]
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -184,10 +151,7 @@ fn test_empty_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let empty = []
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -196,10 +160,7 @@ fn test_grouped_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let grouped = (1 + 2) * 3
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -208,10 +169,7 @@ fn test_complex_precedence() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let result = 1 + 2 * 3 - 4 / 2
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -220,10 +178,7 @@ fn test_logical_precedence() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let result = true || false && true
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -234,10 +189,7 @@ fn test_comparison_chain() -> Result<(), Box<dyn std::error::Error>> {
         let b = 2 > 1
         let c = a && b
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -255,10 +207,7 @@ fn test_struct_instantiation_with_type_args() -> Result<(), Box<dyn std::error::
             box: Box<String> = Box<String>(value: "hello")
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -274,10 +223,7 @@ fn test_struct_instantiation_shorthand() -> Result<(), Box<dyn std::error::Error
             end: Point
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -295,10 +241,7 @@ fn test_impl_with_array() -> Result<(), Box<dyn std::error::Error>> {
             items: [Item] = [Item(name: "a"), Item(name: "b")]
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -309,10 +252,7 @@ fn test_impl_with_if() -> Result<(), Box<dyn std::error::Error>> {
             value: String = if true { "yes" } else { "no" }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -326,10 +266,7 @@ fn test_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
             items: [Item] = for i in [1, 2, 3] { Item(id: i) }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -347,10 +284,7 @@ fn test_mount_with_array() -> Result<(), Box<dyn std::error::Error>> {
             mount items: [Item]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -364,10 +298,7 @@ fn test_mount_with_trait() -> Result<(), Box<dyn std::error::Error>> {
             mount body: Renderable
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -382,10 +313,7 @@ fn test_dictionary_field_type() -> Result<(), Box<dyn std::error::Error>> {
             data: [String: Number] = ["a": 1, "b": 2]
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -394,10 +322,7 @@ fn test_nested_dictionary() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let nested = ["outer": ["inner": "value"]]
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -412,10 +337,7 @@ fn test_closure_field_type() -> Result<(), Box<dyn std::error::Error>> {
             onEvent: String -> Boolean
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 
@@ -426,10 +348,7 @@ fn test_closure_array_field() -> Result<(), Box<dyn std::error::Error>> {
             handlers: [() -> String]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Failed: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
 

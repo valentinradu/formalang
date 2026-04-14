@@ -11,30 +11,21 @@ use formalang::{compile, parse_only};
 #[test]
 fn test_compile_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Compile simple: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Compile simple: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_compile_empty() -> Result<(), Box<dyn std::error::Error>> {
     let source = "";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Compile empty: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Compile empty: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_compile_whitespace() -> Result<(), Box<dyn std::error::Error>> {
     let source = "   \n\n   ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Compile whitespace: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Compile whitespace: {e:?}"))?;
     Ok(())
 }
 
@@ -46,10 +37,7 @@ fn test_compile_comments() -> Result<(), Box<dyn std::error::Error>> {
         /* Block comment */
         struct B { }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Compile comments: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Compile comments: {e:?}"))?;
     Ok(())
 }
 
@@ -62,10 +50,7 @@ fn test_nil_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: String? = nil }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nil literal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nil literal: {e:?}"))?;
     Ok(())
 }
 
@@ -74,10 +59,7 @@ fn test_array_literal_empty() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { items: [String] = [] }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Empty array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Empty array: {e:?}"))?;
     Ok(())
 }
 
@@ -86,10 +68,7 @@ fn test_array_literal_single() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { items: [String] = ["one"] }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Single item array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Single item array: {e:?}"))?;
     Ok(())
 }
 
@@ -98,10 +77,7 @@ fn test_array_literal_many() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { items: [Number] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Many items array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Many items array: {e:?}"))?;
     Ok(())
 }
 
@@ -110,10 +86,7 @@ fn test_negative_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = -42 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Negative number: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Negative number: {e:?}"))?;
     Ok(())
 }
 
@@ -122,10 +95,7 @@ fn test_decimal_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = 3.14159 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Decimal number: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Decimal number: {e:?}"))?;
     Ok(())
 }
 
@@ -134,10 +104,7 @@ fn test_negative_decimal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = -0.5 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Negative decimal: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Negative decimal: {e:?}"))?;
     Ok(())
 }
 
@@ -146,10 +113,7 @@ fn test_string_with_escapes() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String = "hello\nworld\t!" }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("String with escapes: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("String with escapes: {e:?}"))?;
     Ok(())
 }
 
@@ -158,10 +122,7 @@ fn test_string_with_quotes() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String = "say \"hello\"" }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("String with quotes: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("String with quotes: {e:?}"))?;
     Ok(())
 }
 
@@ -174,10 +135,7 @@ fn test_arithmetic_precedence() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = 1 + 2 * 3 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Arithmetic precedence: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Arithmetic precedence: {e:?}"))?;
     Ok(())
 }
 
@@ -186,10 +144,7 @@ fn test_comparison_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Boolean = 1 < 2 && 2 < 3 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Comparison chain: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Comparison chain: {e:?}"))?;
     Ok(())
 }
 
@@ -198,10 +153,7 @@ fn test_logical_precedence() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Boolean = true || false && true }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Logical precedence: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Logical precedence: {e:?}"))?;
     Ok(())
 }
 
@@ -210,10 +162,7 @@ fn test_parenthesized_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = (1 + 2) * 3 }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Parenthesized: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Parenthesized: {e:?}"))?;
     Ok(())
 }
 
@@ -222,10 +171,7 @@ fn test_nested_parentheses() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = ((1 + 2) * (3 + 4)) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested parentheses: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested parentheses: {e:?}"))?;
     Ok(())
 }
 
@@ -238,10 +184,7 @@ fn test_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String? = if true { "yes" } }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("If without else: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("If without else: {e:?}"))?;
     Ok(())
 }
 
@@ -250,10 +193,7 @@ fn test_simple_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String = if false { "a" } else { "b" } }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Simple else: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Simple else: {e:?}"))?;
     Ok(())
 }
 
@@ -266,10 +206,7 @@ fn test_for_with_if() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("For with if: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("For with if: {e:?}"))?;
     Ok(())
 }
 
@@ -283,10 +220,7 @@ fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
             a)
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let chain: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let chain: {e:?}"))?;
     Ok(())
 }
 
@@ -304,10 +238,7 @@ fn test_field_access_simple() -> Result<(), Box<dyn std::error::Error>> {
             fn display() -> Inner { self.inner }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Field access simple: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Field access simple: {e:?}"))?;
     Ok(())
 }
 
@@ -328,10 +259,7 @@ fn test_field_access_on_parameter_parses() -> Result<(), Box<dyn std::error::Err
             fn get_x(p: Point) -> Number { p.x }
         }
     ";
-    let result = parse_only(source);
-    if result.is_err() {
-        return Err(format!("Field access on parameter should parse: {:?}", result.err()).into());
-    }
+    parse_only(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -343,16 +271,7 @@ fn test_enum_instantiation_requires_uppercase() -> Result<(), Box<dyn std::error
         enum Status { active, inactive }
         let s: Status = Status.active
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!(
-                "Enum instantiation with uppercase type should compile: {:?}",
-                result.err()
-            )
-            .into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -366,16 +285,7 @@ fn test_field_access_chain_on_parameter_parses() -> Result<(), Box<dyn std::erro
             fn get_value(o: Outer) -> Number { o.inner.value }
         }
     ";
-    let result = parse_only(source);
-    if result.is_err() {
-        return Err(
-            format!(
-                "Field access chain on parameter should parse: {:?}",
-                result.err()
-            )
-            .into(),
-        );
-    }
+    parse_only(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -386,10 +296,7 @@ fn test_field_access_chain_on_parameter_parses() -> Result<(), Box<dyn std::erro
 #[test]
 fn test_enum_single_variant() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Unit { unit }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum single variant: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum single variant: {e:?}"))?;
     Ok(())
 }
 
@@ -406,10 +313,7 @@ fn test_enum_many_variants() -> Result<(), Box<dyn std::error::Error>> {
             violet
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Enum many variants: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Enum many variants: {e:?}"))?;
     Ok(())
 }
 
@@ -427,10 +331,7 @@ fn test_match_exhaustive() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Match exhaustive: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Match exhaustive: {e:?}"))?;
     Ok(())
 }
 
@@ -447,10 +348,7 @@ fn test_empty_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Empty nested modules: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Empty nested modules: {e:?}"))?;
     Ok(())
 }
 
@@ -461,10 +359,7 @@ fn test_sibling_modules() -> Result<(), Box<dyn std::error::Error>> {
         mod b { struct B { } }
         mod c { struct C { } }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Sibling modules: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Sibling modules: {e:?}"))?;
     Ok(())
 }
 
@@ -475,10 +370,7 @@ fn test_sibling_modules() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_trait_single_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Single { field: String }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait single field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait single field: {e:?}"))?;
     Ok(())
 }
 
@@ -493,20 +385,14 @@ fn test_trait_many_fields() -> Result<(), Box<dyn std::error::Error>> {
             e: String?
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait many fields: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait many fields: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_trait_with_generics() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Container<T> { item: T }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait with generics: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait with generics: {e:?}"))?;
     Ok(())
 }
 
@@ -517,10 +403,7 @@ fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
         trait Derived: Base { derived: Number }
         struct Impl: Derived { base: String, derived: Number }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Trait inheritance: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Trait inheritance: {e:?}"))?;
     Ok(())
 }
 
@@ -531,10 +414,7 @@ fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_struct_single_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Single { field: String }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct single field: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct single field: {e:?}"))?;
     Ok(())
 }
 
@@ -550,10 +430,7 @@ fn test_struct_many_fields() -> Result<(), Box<dyn std::error::Error>> {
             f: [String: Number]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct many fields: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct many fields: {e:?}"))?;
     Ok(())
 }
 
@@ -567,20 +444,14 @@ fn test_struct_with_modifiers() -> Result<(), Box<dyn std::error::Error>> {
             default: Number = 0
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct with modifiers: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct with modifiers: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_struct_with_generics() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Box<T> { value: T }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct with generics: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct with generics: {e:?}"))?;
     Ok(())
 }
 
@@ -592,10 +463,7 @@ fn test_struct_multiple_generic_params() -> Result<(), Box<dyn std::error::Error
             values: [V]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct multiple generic params: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct multiple generic params: {e:?}"))?;
     Ok(())
 }
 
@@ -608,10 +476,7 @@ fn test_struct_with_default() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Empty { x: String = "empty" }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct with default: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct with default: {e:?}"))?;
     Ok(())
 }
 
@@ -623,10 +488,7 @@ fn test_struct_with_default_expression() -> Result<(), Box<dyn std::error::Error
             value: Number
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct with default expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct with default expression: {e:?}"))?;
     Ok(())
 }
 
@@ -637,40 +499,28 @@ fn test_struct_with_default_expression() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_deeply_nested_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { data: [[[[String]]]] }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Deeply nested array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Deeply nested array: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_complex_dictionary() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { map: [String: [Number]] }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Complex dictionary: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Complex dictionary: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_optional_dictionary() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { map: [String: Number]? }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Optional dictionary: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Optional dictionary: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_closure_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { callback: String -> Number -> Boolean }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure chain: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure chain: {e:?}"))?;
     Ok(())
 }
 
@@ -681,60 +531,42 @@ fn test_closure_chain() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_let_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let name = \"value\"";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let string: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let string: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_let_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let count = 42";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let number: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let number: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_let_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let flag = true";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let boolean: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let boolean: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_let_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let items = [1, 2, 3]";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let array: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_pub_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub let PUBLIC = \"public\"";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Pub let: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Pub let: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_let_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let counter = 0";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Let expression: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Let expression: {e:?}"))?;
     Ok(())
 }
 
@@ -773,10 +605,7 @@ fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
             user: User = User(id: 1, name: "test", status: Status.active)
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Full file: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Full file: {e:?}"))?;
     Ok(())
 }
 
@@ -808,10 +637,7 @@ fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
             fn getOnClick() -> String { self.label }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("View hierarchy: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("View hierarchy: {e:?}"))?;
     Ok(())
 }
 
@@ -833,10 +659,7 @@ fn test_fn_in_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function in impl: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function in impl: {e:?}"))?;
     Ok(())
 }
 
@@ -854,10 +677,7 @@ fn test_fn_in_impl_with_params() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function with params: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function with params: {e:?}"))?;
     Ok(())
 }
 
@@ -874,10 +694,7 @@ fn test_fn_in_impl_no_return_type() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function without return type: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function without return type: {e:?}"))?;
     Ok(())
 }
 
@@ -900,10 +717,7 @@ fn test_fn_in_impl_with_struct_defaults() -> Result<(), Box<dyn std::error::Erro
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Functions with struct defaults: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Functions with struct defaults: {e:?}"))?;
     Ok(())
 }
 
@@ -930,10 +744,7 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple functions: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple functions: {e:?}"))?;
     Ok(())
 }
 
@@ -947,10 +758,7 @@ fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = math::sin(angle: 1.0) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function call single arg: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function call single arg: {e:?}"))?;
     Ok(())
 }
 
@@ -960,10 +768,7 @@ fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> 
     let source = r"
         struct A { x: Number = math::max(a: 1.0, b: 2.0) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function call multiple args: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function call multiple args: {e:?}"))?;
     Ok(())
 }
 
@@ -973,10 +778,7 @@ fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         struct A { x: Number = builtin::math::sin(angle: 1.0) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function call qualified path: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function call qualified path: {e:?}"))?;
     Ok(())
 }
 
@@ -986,10 +788,7 @@ fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: Number = math::sin(angle: math::cos(angle: 1.0)) }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Nested function calls: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Nested function calls: {e:?}"))?;
     Ok(())
 }
 
@@ -1002,10 +801,7 @@ fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
             fn get_abs() -> Number { self.x.abs() }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Method call: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Method call: {e:?}"))?;
     Ok(())
 }
 
@@ -1018,10 +814,7 @@ fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
             fn get_clamped() -> Number { self.x.clamp(0, 100) }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Method call with args: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Method call with args: {e:?}"))?;
     Ok(())
 }
 
@@ -1034,10 +827,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
             fn get_floored() -> Number { self.x.abs().floor() }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Chained method calls: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Chained method calls: {e:?}"))?;
     Ok(())
 }
 
@@ -1050,10 +840,7 @@ fn test_function_and_method_mixed() -> Result<(), Box<dyn std::error::Error>> {
             fn get_max() -> Number { max(self.x.abs(), 0) }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Mixed function and method calls: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Mixed function and method calls: {e:?}"))?;
     Ok(())
 }
 
@@ -1073,10 +860,7 @@ fn test_fn_param_with_default() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Function parameter with default: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Function parameter with default: {e:?}"))?;
     Ok(())
 }
 
@@ -1092,12 +876,7 @@ fn test_fn_param_multiple_defaults() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Multiple function parameters with defaults: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1113,16 +892,7 @@ fn test_fn_param_mixed_with_and_without_defaults() -> Result<(), Box<dyn std::er
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!(
-                "Function with mixed default/non-default params: {:?}",
-                result.err()
-            )
-            .into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1138,16 +908,7 @@ fn test_fn_param_default_with_expression() -> Result<(), Box<dyn std::error::Err
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!(
-                "Function parameter with expression default: {:?}",
-                result.err()
-            )
-            .into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1163,12 +924,7 @@ fn test_fn_param_default_with_string() -> Result<(), Box<dyn std::error::Error>>
             }
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Function parameter with string default: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1184,11 +940,6 @@ fn test_fn_param_default_with_boolean() -> Result<(), Box<dyn std::error::Error>
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Function parameter with boolean default: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

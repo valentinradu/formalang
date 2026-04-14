@@ -726,10 +726,7 @@ fn test_valid_complex_source() -> Result<(), Box<dyn std::error::Error>> {
 
         let defaultStatus = Status.active
     "#;
-    let result = compile_and_report(source, "test.fv");
-    if result.is_err() {
-        return Err(format!("Valid source should compile: {result:?}").into());
-    }
+    compile_and_report(source, "test.fv").map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

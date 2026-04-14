@@ -347,30 +347,21 @@ fn test_undefined_variable_in_expression() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_empty_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Empty { }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Empty struct: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Empty struct: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_empty_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Empty { }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Empty trait: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Empty trait: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_empty_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = "mod empty { }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Empty module: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Empty module: {e:?}"))?;
     Ok(())
 }
 
@@ -380,10 +371,7 @@ fn test_struct_conforming_empty_trait() -> Result<(), Box<dyn std::error::Error>
         trait Empty { }
         struct A: Empty { }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Struct conforming empty trait: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Struct conforming empty trait: {e:?}"))?;
     Ok(())
 }
 
@@ -392,40 +380,28 @@ fn test_deeply_nested_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { items: [[[[String]]]] }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Deeply nested types: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Deeply nested types: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_optional_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { items: [String]? }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Optional array: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Optional array: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_array_of_optionals() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { items: [String?] }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Array of optionals: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Array of optionals: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_dictionary_of_arrays() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { map: [String: [Number]] }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Dictionary of arrays: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Dictionary of arrays: {e:?}"))?;
     Ok(())
 }
 
@@ -441,10 +417,7 @@ fn test_many_fields() -> Result<(), Box<dyn std::error::Error>> {
             f: [String: Number]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Many fields: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Many fields: {e:?}"))?;
     Ok(())
 }
 
@@ -460,30 +433,21 @@ fn test_multiple_traits() -> Result<(), Box<dyn std::error::Error>> {
             c: Boolean
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple traits: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple traits: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { callback: String -> Boolean }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure single param: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure single param: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { callback: String -> (Number -> Boolean) }";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Closure returning closure: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Closure returning closure: {e:?}"))?;
     Ok(())
 }
 
@@ -496,10 +460,7 @@ fn test_generic_with_multiple_params() -> Result<(), Box<dyn std::error::Error>>
             third: C
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Generic with multiple params: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Generic with multiple params: {e:?}"))?;
     Ok(())
 }
 
@@ -516,12 +477,7 @@ fn test_impl_complex_expression() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(
-            format!("Complex expression in struct field default: {:?}", result.err()).into(),
-        );
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -531,10 +487,7 @@ fn test_multiple_structs_with_defaults() -> Result<(), Box<dyn std::error::Error
         struct A { x: String = "a value" }
         struct B { y: Number = 42 }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple structs with defaults: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple structs with defaults: {e:?}"))?;
     Ok(())
 }
 
@@ -545,10 +498,7 @@ fn test_multiple_enums() -> Result<(), Box<dyn std::error::Error>> {
         enum Two { b, c }
         enum Three { d, e, f }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Multiple enums: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Multiple enums: {e:?}"))?;
     Ok(())
 }
 
@@ -561,10 +511,7 @@ fn test_module_with_all_types() -> Result<(), Box<dyn std::error::Error>> {
             enum E { a, b }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Module with all types: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Module with all types: {e:?}"))?;
     Ok(())
 }
 
@@ -577,10 +524,7 @@ fn test_pub_in_module() -> Result<(), Box<dyn std::error::Error>> {
             pub enum PublicEnum { a }
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Pub in module: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Pub in module: {e:?}"))?;
     Ok(())
 }
 
@@ -634,10 +578,7 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
             orders: [Order]
         }
     ";
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Realistic data model: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Realistic data model: {e:?}"))?;
     Ok(())
 }
 
@@ -666,10 +607,7 @@ fn test_ui_component_model() -> Result<(), Box<dyn std::error::Error>> {
             @mount footer: String?
         }
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("UI component model: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("UI component model: {e:?}"))?;
     Ok(())
 }
 
@@ -700,9 +638,6 @@ fn test_config_model() -> Result<(), Box<dyn std::error::Error>> {
 
         let defaultPort = 3000
     "#;
-    let result = compile(source);
-    if result.is_err() {
-        return Err(format!("Config model: {:?}", result.err()).into());
-    }
+    compile(source).map_err(|e| format!("Config model: {e:?}"))?;
     Ok(())
 }

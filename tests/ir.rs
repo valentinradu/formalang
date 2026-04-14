@@ -11,9 +11,6 @@ use formalang::compile_to_ir;
 #[test]
 fn test_lower_empty_source() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir("");
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
     if !module.structs.is_empty() {
         return Err("assertion failed".into());
@@ -34,9 +31,6 @@ fn test_lower_empty_source() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Point { x: Number, y: Number }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -76,9 +70,6 @@ fn test_lower_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_struct_with_string_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct User { name: String }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -106,9 +97,6 @@ fn test_lower_struct_with_string_field() -> Result<(), Box<dyn std::error::Error
 fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Config { enabled: Boolean }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -145,9 +133,6 @@ fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct List { items: [String] }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -184,9 +169,6 @@ fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>
 fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Profile { bio: String? }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -216,9 +198,6 @@ fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Err
 fn test_lower_struct_with_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Counter { mut count: Number }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -244,9 +223,6 @@ fn test_lower_struct_with_mutable_field() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub struct Public { value: Number }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -268,9 +244,6 @@ fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_private_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Private { value: Number }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -296,9 +269,6 @@ fn test_lower_private_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_simple_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Named { name: String }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 1 {
@@ -330,9 +300,6 @@ fn test_lower_simple_trait() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_trait_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Entity { id: Number, name: String, active: Boolean }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 1 {
@@ -365,9 +332,6 @@ fn test_lower_trait_with_multiple_fields() -> Result<(), Box<dyn std::error::Err
 fn test_lower_public_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub trait Visible { }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 1 {
@@ -393,9 +357,6 @@ fn test_lower_public_trait() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_simple_enum() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Status { active, inactive, pending }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.enums.len() != 1 {
@@ -443,9 +404,6 @@ fn test_lower_simple_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Result { ok(value: String), error(message: String) }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.enums.len() != 1 {
@@ -520,9 +478,6 @@ fn test_lower_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_enum_mixed_variants() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Option { none, some(value: Number) }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let option = &module.enums.first().ok_or("index out of bounds")?;
@@ -578,9 +533,6 @@ fn test_lower_enum_mixed_variants() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_public_enum() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub enum Color { red, green, blue }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if !module
@@ -603,9 +555,6 @@ fn test_lower_public_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { } struct B { } struct C { }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.struct_id("A").is_none() {
@@ -627,9 +576,6 @@ fn test_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait X { } trait Y { }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.trait_id("X").is_none() {
@@ -648,9 +594,6 @@ fn test_trait_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 fn test_enum_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum E1 { a } enum E2 { b }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.enum_id("E1").is_none() {
@@ -669,9 +612,6 @@ fn test_enum_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 fn test_get_struct_by_id() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct First { a: Number } struct Second { b: String }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let first_id = module.struct_id("First").ok_or("struct not found")?;
@@ -692,9 +632,6 @@ fn test_get_struct_by_id() -> Result<(), Box<dyn std::error::Error>> {
 fn test_get_trait_by_id() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait TraitA { } trait TraitB { }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let a_id = module.trait_id("TraitA").ok_or("trait not found")?;
@@ -715,9 +652,6 @@ fn test_get_trait_by_id() -> Result<(), Box<dyn std::error::Error>> {
 fn test_get_enum_by_id() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum EnumA { x } enum EnumB { y }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let a_id = module.enum_id("EnumA").ok_or("enum not found")?;
@@ -746,9 +680,6 @@ fn test_lower_impl_block() -> Result<(), Box<dyn std::error::Error>> {
         impl Counter {}
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 1 {
@@ -767,9 +698,6 @@ fn test_lower_impl_with_literal() -> Result<(), Box<dyn std::error::Error>> {
         struct Config { name: String = "default" }
     "#;
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.is_empty() {
@@ -801,9 +729,6 @@ fn test_lower_struct_implementing_trait() -> Result<(), Box<dyn std::error::Erro
         struct User: Named { name: String, age: Number }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 1 {
@@ -835,9 +760,6 @@ fn test_lower_struct_with_multiple_traits() -> Result<(), Box<dyn std::error::Er
         struct Person: Named + Aged { name: String, age: Number }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let person = &module.structs.first().ok_or("index out of bounds")?;
@@ -855,9 +777,6 @@ fn test_lower_struct_with_multiple_traits() -> Result<(), Box<dyn std::error::Er
 fn test_lower_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Box<T> { value: T }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let box_struct = &module.structs.first().ok_or("index out of bounds")?;
@@ -901,9 +820,6 @@ fn test_lower_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Container<T> { item: T }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let container = &module.traits.first().ok_or("index out of bounds")?;
@@ -947,9 +863,6 @@ fn test_lower_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Maybe<T> { nothing, just(value: T) }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let maybe = &module.enums.first().ok_or("index out of bounds")?;
@@ -988,9 +901,6 @@ fn test_lower_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_multiple_generic_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Pair<A, B> { first: A, second: B }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let pair = &module.structs.first().ok_or("index out of bounds")?;
@@ -1047,9 +957,6 @@ fn test_lower_multiple_definitions() -> Result<(), Box<dyn std::error::Error>> {
         enum Status { draft, published, archived }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 1 {
@@ -1071,9 +978,6 @@ fn test_lower_struct_referencing_another() -> Result<(), Box<dyn std::error::Err
         struct Book { title: String, author: Author }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.structs.len() != 2 {
@@ -1105,9 +1009,6 @@ fn test_lower_struct_with_enum_field() -> Result<(), Box<dyn std::error::Error>>
         struct User { name: String, status: Status }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let user = module
@@ -1134,9 +1035,6 @@ fn test_lower_struct_with_enum_field() -> Result<(), Box<dyn std::error::Error>>
 fn test_lower_field_with_default_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Counter { count: Number = 0 }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
@@ -1163,9 +1061,6 @@ fn test_lower_field_with_default_number() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_field_with_default_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"struct Config { name: String = "default" }"#;
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
@@ -1185,9 +1080,6 @@ fn test_lower_field_with_default_string() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_field_with_default_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Settings { enabled: Boolean = true }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
@@ -1215,9 +1107,6 @@ fn test_lower_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
         trait C: A + B { c: Number }
     ";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.traits.len() != 3 {
@@ -1248,9 +1137,6 @@ fn test_lower_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Matrix { rows: [[Number]] }";
     let result = compile_to_ir(source);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module

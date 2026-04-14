@@ -15,9 +15,7 @@ fn test_array_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
         pub let items = ["first", "second", "third"]
         pub let [a, b] = items
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -28,9 +26,7 @@ fn test_array_destructuring_with_rest() -> Result<(), Box<dyn std::error::Error>
         pub let items = ["first", "second", "third", "fourth"]
         pub let [x, ...rest] = items
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -41,9 +37,7 @@ fn test_array_destructuring_skip_first() -> Result<(), Box<dyn std::error::Error
         pub let items = ["first", "second", "third"]
         pub let [_, second, ...] = items
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -54,9 +48,7 @@ fn test_array_destructuring_first_and_last() -> Result<(), Box<dyn std::error::E
         pub let items = ["first", "second", "third", "fourth"]
         pub let [first, ..., last] = items
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -72,9 +64,7 @@ fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> 
         pub let user = User(name: "Alice", age: 30)
         pub let {name, age} = user
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -86,9 +76,7 @@ fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Err
         pub let user = User(name: "Alice", age: 30)
         pub let {name as username} = user
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -100,9 +88,7 @@ fn test_struct_destructuring_partial() -> Result<(), Box<dyn std::error::Error>>
         pub let user = User(name: "Alice", age: 30)
         pub let {name} = user
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -118,9 +104,7 @@ fn test_enum_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let (permissions, articles) = account
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -132,9 +116,7 @@ fn test_enum_destructuring_nested() -> Result<(), Box<dyn std::error::Error>> {
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let ([firstPerm, ...], articles) = account
     "#;
-    if compile(source).is_err() {
-        return Err("assertion failed".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

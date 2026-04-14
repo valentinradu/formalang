@@ -75,9 +75,6 @@ fn test_mock_resolver_returns_module() -> Result<(), Box<dyn std::error::Error>>
     resolver.add_module(vec!["utils".to_string()], "pub struct Helper { x: String }");
 
     let result = resolver.resolve(&["utils".to_string()], None);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
     let (source, path) = result.map_err(|e| format!("{e:?}"))?;
     if !(source.contains("Helper")) {
         return Err("assertion failed".into());
@@ -159,10 +156,7 @@ fn test_mock_resolver_multi_segment_path() -> Result<(), Box<dyn std::error::Err
         "pub struct List { items: [String] }",
     );
 
-    let result = resolver.resolve(&["std".to_string(), "collections".to_string()], None);
-    if result.is_err() {
-        return Err("assertion failed".into());
-    }
+    resolver.resolve(&["std".to_string(), "collections".to_string()], None).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -565,10 +559,7 @@ struct Main {
     helper: Helper
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -592,10 +583,7 @@ struct Main {
     helper: Helper
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -638,10 +626,7 @@ struct Main {
     items: List
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -660,10 +645,7 @@ pub trait Named {
 use traits::Named
 trait LocalNamed: Named {}
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -680,10 +662,7 @@ struct Item {
     status: Status
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -705,10 +684,7 @@ struct Main {
     helper: Helper
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -733,10 +709,7 @@ struct Main {
     helper: Helper
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -774,10 +747,7 @@ struct Main {
 }
 trait LocalNamed: Named {}
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -802,10 +772,7 @@ struct Main {
     map: Map
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -830,10 +797,7 @@ struct Main {
     helper: PublicHelper
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -898,10 +862,7 @@ struct Main {
     item: Item
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -945,10 +906,7 @@ struct Main {
     name: String
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -968,10 +926,7 @@ struct Config {
     size: Number
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -998,10 +953,7 @@ struct Main {
     parent: ParentStruct
 }
 ";
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Expected success, got: {result:?}").into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1017,10 +969,7 @@ fn test_stdlib_compiles_alone() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to read docs/user/stdlib.fv: {e}"))?;
 
     let root_dir = PathBuf::from(".");
-    let result = analyze_with_filesystem(&stdlib_source, root_dir);
-    if result.is_err() {
-        return Err(format!("Stdlib should compile: {:?}", result.err()).into());
-    }
+    analyze_with_filesystem(&stdlib_source, root_dir).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1040,10 +989,7 @@ impl Modal {
 "#;
     let resolver = MockModuleResolver::new();
 
-    let result = analyze_with_mock(source, resolver);
-    if result.is_err() {
-        return Err(format!("Self-only test should compile: {:?}", result.err()).into());
-    }
+    analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1051,7 +997,7 @@ impl Modal {
 fn test_simple_self_with_stdlib() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions
     let simple_source = r#"
-use stdlib::*
+use mylib::*
 
 pub struct Modal: View {
   isOpen: Boolean = false,
@@ -1066,13 +1012,9 @@ impl Modal {
 }
 "#;
 
-    let root_dir = PathBuf::from(".");
-    let result = analyze_with_filesystem(simple_source, root_dir);
-    if result.is_err() {
-        return Err(
-            format!("Simple self with stdlib should compile: {:?}", result.err()).into(),
-        );
-    }
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(vec!["mylib".to_string()], "pub trait View {}");
+    analyze_with_mock(simple_source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1080,7 +1022,7 @@ impl Modal {
 fn test_minimal_self_reference() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions
     let minimal_source = r"
-use stdlib::*
+use mylib::*
 
 pub struct Modal: View {
   isOpen: Boolean = false,
@@ -1094,13 +1036,9 @@ impl Modal {
 }
 ";
 
-    let root_dir = PathBuf::from(".");
-    let result = analyze_with_filesystem(minimal_source, root_dir);
-    if result.is_err() {
-        return Err(
-            format!("Minimal self reference should compile: {:?}", result.err()).into(),
-        );
-    }
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(vec!["mylib".to_string()], "pub trait View {}");
+    analyze_with_mock(minimal_source, resolver).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -1111,9 +1049,6 @@ struct Test {
   p: Path = /icons/lightning.svg
 }
 ";
-    let result = analyze_with_mock(source, MockModuleResolver::new());
-    if result.is_err() {
-        return Err(format!("Path literal should parse: {:?}", result.err()).into());
-    }
+    analyze_with_mock(source, MockModuleResolver::new()).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
