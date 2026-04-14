@@ -98,7 +98,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     errors: Vec<CompilerError>,
     resolver: R,
     import_graph: ImportGraph,
-    /// Cache of parsed modules (path -> (AST, SymbolTable))
+    /// Cache of parsed modules (path -> (AST, `SymbolTable`))
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
     /// Cache of IR modules for imported modules (keyed by file path)
     ///
@@ -117,8 +117,17 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     closure_param_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context: (type, mutable)
     local_let_bindings: HashMap<String, (String, bool)>,
-    /// Recursion depth counter for validate_expr (to prevent stack overflow)
+    /// Recursion depth counter for `validate_expr` (to prevent stack overflow)
     validate_expr_depth: usize,
+}
+
+impl<R: ModuleResolver> std::fmt::Debug for SemanticAnalyzer<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SemanticAnalyzer")
+            .field("symbols", &self.symbols)
+            .field("errors", &self.errors)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -170,6 +179,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Process a single use statement
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn process_use_statement(&mut self, use_stmt: &UseStmt) {
         // Convert path to string segments
         let path_segments: Vec<String> = use_stmt
@@ -220,7 +230,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Err(ModuleError::PrivateItem { item, module, .. }) => {
                 self.errors.push(CompilerError::PrivateImport {
-                    name: format!("{} from module {}", item, module),
+                    name: format!("{item} from module {module}"),
                     span: use_stmt.span,
                 });
                 return;
@@ -285,8 +295,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.import_symbol(
                     &ident.name,
                     &module_symbols,
-                    module_path.clone(),
-                    path_segments.clone(),
+                    &module_path,
+                    path_segments,
                     use_stmt.span,
                 );
             }
@@ -295,7 +305,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.import_symbol(
                         &ident.name,
                         &module_symbols,
-                        module_path.clone(),
+                        &module_path,
                         path_segments.clone(),
                         use_stmt.span,
                     );
@@ -307,7 +317,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.import_symbol(
                         &name,
                         &module_symbols,
-                        module_path.clone(),
+                        &module_path,
                         path_segments.clone(),
                         use_stmt.span,
                     );
@@ -387,6 +397,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             (file.clone(), module_symbols.clone()),
         );
 
+        // Temporarily set current_file to this module's path so that import-graph
+        // cycle detection is active while processing the module's pub use statements.
+        let saved_current_file = self.current_file.take();
+        self.current_file = Some(module_path.to_path_buf());
+
         // Now process pub use statements
         for statement in &file.statements {
             if let Statement::Use(use_stmt) = statement {
@@ -400,6 +415,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+
+        // Restore original current_file
+        self.current_file = saved_current_file;
 
         // Update the cache with the final symbol table (including re-exports)
         self.module_cache.insert(
@@ -425,6 +443,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Process a pub use statement for a module being loaded
     /// This adds the re-exported symbols to the module's symbol table
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn process_pub_use_for_module(
         &mut self,
         use_stmt: &UseStmt,
@@ -477,7 +496,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Err(ModuleError::PrivateItem { item, module, .. }) => {
                 module_errors.push(CompilerError::PrivateImport {
-                    name: format!("{}::{}", module, item),
+                    name: format!("{module}::{item}"),
                     span: use_stmt.span,
                 });
                 return;
@@ -497,6 +516,30 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return;
             }
         };
+
+        // Check for circular imports using the import graph.
+        if let Some(current_path) = &self.current_file {
+            if let Some(cycle) = self
+                .import_graph
+                .would_create_cycle(current_path, &imported_module_path)
+            {
+                let mut full_cycle = cycle;
+                full_cycle.push(current_path.clone());
+                module_errors.push(CompilerError::CircularImport {
+                    cycle: full_cycle
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" -> "),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+
+            // Add the import edge
+            self.import_graph
+                .add_import(current_path.clone(), imported_module_path.clone());
+        }
 
         // Load and parse the imported module (recursively handles its own pub use statements)
         let imported_symbols =
@@ -520,7 +563,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     &imported_symbols,
                     module_symbols,
                     imported_module_path.clone(),
-                    path_segments.clone(),
+                    path_segments,
                 );
             }
             UseItems::Multiple(idents) => {
@@ -563,6 +606,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Helper to collect a definition into a symbol table (static version for module parsing)
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn collect_definition_into(
         symbols: &mut SymbolTable,
         errors: &mut Vec<CompilerError>,
@@ -772,7 +816,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &mut self,
         name: &str,
         module_symbols: &SymbolTable,
-        module_path: PathBuf,
+        module_path: &std::path::Path,
         logical_path: Vec<String>,
         span: Span,
     ) {
@@ -780,7 +824,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         match self
             .symbols
-            .import_symbol(name, module_symbols, module_path.clone(), logical_path)
+            .import_symbol(name, module_symbols, module_path.to_path_buf(), logical_path)
         {
             Ok(()) => {
                 // Success
@@ -803,6 +847,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Analyze a file and validate all semantic rules
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Vec<CompilerError>)` if any semantic errors are found during analysis.
     pub fn analyze(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
         // Pass 0: Module resolution (process use statements)
         self.resolve_modules(file);
@@ -837,6 +885,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Analyze a file, validate all semantic rules, and classify fields
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Vec<CompilerError>)` if any semantic errors are found during analysis.
     pub fn analyze_and_classify(&mut self, file: &mut File) -> Result<(), Vec<CompilerError>> {
         // Pass 0: Module resolution (process use statements)
         self.resolve_modules(file);
@@ -965,6 +1017,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Collect a single definition
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn collect_definition(&mut self, def: &Definition) {
         match def {
             Definition::Trait(trait_def) => {
@@ -1266,7 +1319,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Module(module_def) => {
                         // Temporarily import module symbols into parent for type resolution
                         // This allows module-internal references to resolve correctly
-                        let module_symbols = self.collect_module_symbols(module_def);
+                        let module_symbols = Self::collect_module_symbols(module_def);
 
                         // Import module symbols temporarily
                         for (name, trait_info) in &module_symbols.traits {
@@ -1342,7 +1395,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Collect symbols from a module definition for temporary import
-    fn collect_module_symbols(&self, module_def: &crate::ast::ModuleDef) -> SymbolTable {
+    fn collect_module_symbols(module_def: &crate::ast::ModuleDef) -> SymbolTable {
         let mut symbols = SymbolTable::new();
         for def in &module_def.definitions {
             match def {
@@ -1421,7 +1474,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Resolve types in a module definition (recursive)
     fn resolve_module_types(&mut self, module_def: &crate::ast::ModuleDef, file: &File) {
         // Temporarily import module symbols
-        let module_symbols = self.collect_module_symbols(module_def);
+        let module_symbols = Self::collect_module_symbols(module_def);
         for (name, trait_info) in &module_symbols.traits {
             self.symbols.traits.insert(name.clone(), trait_info.clone());
         }
@@ -1570,6 +1623,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a type reference
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn validate_type(&mut self, ty: &Type) {
         match ty {
             Type::Primitive(_) => {
@@ -1671,7 +1725,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
                                 if !self.type_satisfies_trait_constraint(arg, &trait_ref.name) {
                                     self.errors.push(CompilerError::GenericConstraintViolation {
-                                        arg: self.type_to_string(arg),
+                                        arg: Self::type_to_string(arg),
                                         constraint: trait_ref.name.clone(),
                                         span: *span,
                                     });
@@ -1765,6 +1819,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a single expression (recursively)
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn validate_expr(&mut self, expr: &Expr, file: &File) {
         // Check recursion depth to prevent stack overflow
         const MAX_EXPR_DEPTH: usize = 500;
@@ -1793,7 +1848,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::Reference { path, span } => {
                 // Handle self keyword
-                if !path.is_empty() && path[0].name == "self" {
+                if path.first().is_some_and(|p| p.name == "self") {
                     // Validate that we're inside an impl block
                     if self.current_impl_struct.is_none() {
                         self.errors.push(CompilerError::UndefinedReference {
@@ -1809,8 +1864,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
 
                     // If it's "self.field", validate the field exists
-                    if path.len() == 2 {
-                        let field_name = &path[1].name;
+                    if let Some(field_ident) = path.get(1).filter(|_| path.len() == 2) {
+                        let field_name = &field_ident.name;
                         if let Some(ref struct_name) = self.current_impl_struct {
                             if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                                 // Check regular fields
@@ -1827,7 +1882,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 }
                                 // Field not found
                                 self.errors.push(CompilerError::UndefinedReference {
-                                    name: format!("self.{}", field_name),
+                                    name: format!("self.{field_name}"),
                                     span: *span,
                                 });
                                 return;
@@ -1840,8 +1895,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
 
                 // Validate references in impl blocks
-                if path.len() == 1 {
-                    let name = &path[0].name;
+                if let Some(first) = path.first().filter(|_| path.len() == 1) {
+                    let name = &first.name;
 
                     // Check if it's a top-level let binding
                     if self.symbols.is_let(name) {
@@ -2003,11 +2058,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             span: *span,
                         });
                     }
-                    if !mounts.is_empty() {
+                    if let Some(first_mount) = mounts.first() {
                         self.errors.push(CompilerError::UnknownMount {
-                            mount: mounts[0].0.name.clone(),
+                            mount: first_mount.0.name.clone(),
                             struct_name: name.clone(),
-                            span: mounts[0].0.span,
+                            span: first_mount.0.span,
                         });
                     }
 
@@ -2021,7 +2076,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                     if !is_builtin && !is_user_function {
                         self.errors.push(CompilerError::UndefinedType {
-                            name: format!("function '{}'", name),
+                            name: format!("function '{name}'"),
                             span: *span,
                         });
                     }
@@ -2228,11 +2283,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         } => {
                             self.validate_expr(value, file);
                             // Register bindings with their types and mutability
-                            let ty_str = if let Some(t) = ty {
-                                self.type_to_string(t)
-                            } else {
-                                self.infer_type(value, file)
-                            };
+                            let ty_str = ty.as_ref().map_or_else(
+                                || self.infer_type(value, file),
+                                |t| Self::type_to_string(t),
+                            );
                             for binding in collect_bindings_from_pattern(pattern) {
                                 self.local_let_bindings
                                     .insert(binding.name, (ty_str.clone(), *mutable));
@@ -2481,16 +2535,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     ("Number", "Number") | ("String", "String")
                 ) || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Other arithmetic operators: Number + Number or GPU numeric types
+            // Arithmetic, comparison, and range operators: Number + Number or GPU numeric types
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
-            | BinaryOperator::Mod => {
-                matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
-                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
-            // Comparison operators: Number + Number or GPU numeric types → Boolean
-            BinaryOperator::Lt | BinaryOperator::Gt | BinaryOperator::Le | BinaryOperator::Ge => {
+            | BinaryOperator::Mod
+            | BinaryOperator::Lt
+            | BinaryOperator::Gt
+            | BinaryOperator::Le
+            | BinaryOperator::Ge
+            | BinaryOperator::Range => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
                     || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
@@ -2503,16 +2557,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 (left_type == "Boolean" && right_type == "Boolean")
                     || (left_type == "bool" && right_type == "bool")
             }
-            // Range operator: Number + Number or compatible GPU integer types
-            BinaryOperator::Range => {
-                matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
-                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
         };
 
         if !valid {
             self.errors.push(CompilerError::InvalidBinaryOp {
-                op: format!("{:?}", op),
+                op: format!("{op:?}"),
                 left_type,
                 right_type,
                 span,
@@ -2892,12 +2941,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 match struct_def.fields.iter().find(|f| f.name.name == field_name) {
                     Some(struct_field) => {
                         // Field exists, check type matches
-                        if !self.types_match(&struct_field.ty, &required_type) {
+                        if !Self::types_match(&struct_field.ty, &required_type) {
                             self.errors.push(CompilerError::TraitFieldTypeMismatch {
                                 field: field_name.clone(),
                                 trait_name: trait_ref.name.clone(),
-                                expected: self.type_to_string(&required_type),
-                                actual: self.type_to_string(&struct_field.ty),
+                                expected: Self::type_to_string(&required_type),
+                                actual: Self::type_to_string(&struct_field.ty),
                                 span: struct_field.span,
                             });
                         }
@@ -2930,13 +2979,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // terminal components like Empty, EmptyShape, etc.
                         let is_never =
                             matches!(&mount_field.ty, Type::Primitive(PrimitiveType::Never));
-                        if !is_never && !self.types_match(&mount_field.ty, &required_type) {
+                        if !is_never && !Self::types_match(&mount_field.ty, &required_type) {
                             self.errors
                                 .push(CompilerError::TraitMountingPointTypeMismatch {
                                     mount: mount_name.clone(),
                                     trait_name: trait_ref.name.clone(),
-                                    expected: self.type_to_string(&required_type),
-                                    actual: self.type_to_string(&mount_field.ty),
+                                    expected: Self::type_to_string(&required_type),
+                                    actual: Self::type_to_string(&mount_field.ty),
                                     span: mount_field.span,
                                 });
                         }
@@ -2955,16 +3004,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check if two types match (structural equality)
-    #[expect(
-        clippy::only_used_in_recursion,
-        reason = "self is required for recursive dispatch through the method"
-    )]
-    fn types_match(&self, ty1: &Type, ty2: &Type) -> bool {
+    fn types_match(ty1: &Type, ty2: &Type) -> bool {
         match (ty1, ty2) {
             (Type::Primitive(p1), Type::Primitive(p2)) => p1 == p2,
             (Type::Ident(i1), Type::Ident(i2)) => i1.name == i2.name,
-            (Type::Array(elem1), Type::Array(elem2)) => self.types_match(elem1, elem2),
-            (Type::Optional(inner1), Type::Optional(inner2)) => self.types_match(inner1, inner2),
+            (Type::Array(elem1), Type::Array(elem2)) => Self::types_match(elem1, elem2),
+            (Type::Optional(inner1), Type::Optional(inner2)) => Self::types_match(inner1, inner2),
             (
                 Type::Generic {
                     name: n1, args: a1, ..
@@ -2979,7 +3024,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     && a1
                         .iter()
                         .zip(a2.iter())
-                        .all(|(t1, t2)| self.types_match(t1, t2))
+                        .all(|(t1, t2)| Self::types_match(t1, t2))
             }
             (Type::TypeParameter(p1), Type::TypeParameter(p2)) => p1.name == p2.name,
             _ => false,
@@ -2987,11 +3032,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Convert a type to a string for error messages
-    #[expect(
-        clippy::only_used_in_recursion,
-        reason = "self is required for recursive dispatch through the method"
-    )]
-    fn type_to_string(&self, ty: &Type) -> String {
+    fn type_to_string(ty: &Type) -> String {
         match ty {
             Type::Primitive(prim) => match prim {
                 PrimitiveType::String => "String".to_string(),
@@ -3024,15 +3065,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             },
             Type::Ident(ident) => ident.name.clone(),
             Type::Array(element_type) => {
-                format!("[{}]", self.type_to_string(element_type))
+                format!("[{}]", Self::type_to_string(element_type))
             }
             Type::Optional(inner_type) => {
-                format!("{}?", self.type_to_string(inner_type))
+                format!("{}?", Self::type_to_string(inner_type))
             }
             Type::Tuple(fields) => {
                 let field_types: Vec<String> = fields
                     .iter()
-                    .map(|f| format!("{}: {}", f.name.name, self.type_to_string(&f.ty)))
+                    .map(|f| format!("{}: {}", f.name.name, Self::type_to_string(&f.ty)))
                     .collect();
                 format!("({})", field_types.join(", "))
             }
@@ -3041,7 +3082,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     name.name.clone()
                 } else {
                     let arg_types: Vec<String> =
-                        args.iter().map(|arg| self.type_to_string(arg)).collect();
+                        args.iter().map(|arg| Self::type_to_string(arg)).collect();
                     format!("{}<{}>", name.name, arg_types.join(", "))
                 }
             }
@@ -3049,23 +3090,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Type::Dictionary { key, value } => {
                 format!(
                     "[{}: {}]",
-                    self.type_to_string(key),
-                    self.type_to_string(value)
+                    Self::type_to_string(key),
+                    Self::type_to_string(value)
                 )
             }
             Type::Closure { params, ret } => {
                 if params.is_empty() {
-                    format!("() -> {}", self.type_to_string(ret))
-                } else if params.len() == 1 {
+                    format!("() -> {}", Self::type_to_string(ret))
+                } else if let Some(only_param) = params.first().filter(|_| params.len() == 1) {
                     format!(
                         "{} -> {}",
-                        self.type_to_string(&params[0]),
-                        self.type_to_string(ret)
+                        Self::type_to_string(only_param),
+                        Self::type_to_string(ret)
                     )
                 } else {
                     let param_types: Vec<String> =
-                        params.iter().map(|p| self.type_to_string(p)).collect();
-                    format!("{} -> {}", param_types.join(", "), self.type_to_string(ret))
+                        params.iter().map(|p| Self::type_to_string(p)).collect();
+                    format!("{} -> {}", param_types.join(", "), Self::type_to_string(ret))
                 }
             }
         }
@@ -3079,12 +3120,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Register function parameters as local bindings
         // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
-            let ty_str = if let Some(ty) = &param.ty {
+            if let Some(ty) = &param.ty {
                 self.validate_type(ty);
-                self.type_to_string(ty)
-            } else {
-                "Unknown".to_string()
-            };
+            }
+            let ty_str = param
+                .ty
+                .as_ref()
+                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
             // Register parameter as a local binding with its type (mutable=true for params)
             self.local_let_bindings
                 .insert(param.name.name.clone(), (ty_str, true));
@@ -3096,7 +3138,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // If there's a declared return type, check it matches the body type
         if let Some(declared_return_type) = &func.return_type {
             let body_type = self.infer_type(&func.body, file);
-            let expected_type = self.type_to_string(declared_return_type);
+            let expected_type = Self::type_to_string(declared_return_type);
 
             // Check if types are compatible
             if !self.type_strings_compatible(&expected_type, &body_type) {
@@ -3121,12 +3163,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Register function parameters as local bindings
         // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
-            let ty_str = if let Some(ty) = &param.ty {
+            if let Some(ty) = &param.ty {
                 self.validate_type(ty);
-                self.type_to_string(ty)
-            } else {
-                "Unknown".to_string()
-            };
+            }
+            let ty_str = param
+                .ty
+                .as_ref()
+                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
             // Register parameter as a local binding with its type (mutable=true for params)
             self.local_let_bindings
                 .insert(param.name.name.clone(), (ty_str, true));
@@ -3143,7 +3186,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // If there's a declared return type, check it matches the body type
         if let Some(declared_return_type) = &func.return_type {
             let body_type = self.infer_type(&func.body, file);
-            let expected_type = self.type_to_string(declared_return_type);
+            let expected_type = Self::type_to_string(declared_return_type);
 
             // Check if types are compatible
             if !self.type_strings_compatible(&expected_type, &body_type) {
@@ -3166,7 +3209,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// - Exact matches
     /// - Number/f32/i32/u32 compatibility
     /// - Unknown/placeholder type params
-    /// - InferredEnum matching enum types
+    /// - `InferredEnum` matching enum types
     fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
         // Exact match
         if expected == actual {
@@ -3256,20 +3299,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Note: Mount points are NOT added to the dependency graph.
                         // See comment above in trait handling for rationale.
                     }
-                    Definition::Enum(_) => {
-                        // Enums don't create type dependencies (they have associated data, not fields)
-                        // Associated data types are validated in Pass 2
-                    }
-                    Definition::Impl(_) => {
-                        // Impl blocks don't create type dependencies
-                        // Dependencies are already tracked via the struct definition
-                    }
-                    Definition::Module(_) => {
-                        // Modules don't create type dependencies themselves
-                        // Type dependencies are handled per nested definition
-                    }
-                    Definition::Function(_) => {
-                        // Standalone functions don't create type dependencies
+                    Definition::Enum(_)
+                    | Definition::Impl(_)
+                    | Definition::Module(_)
+                    | Definition::Function(_) => {
+                        // Enums, impl blocks, modules, and standalone functions
+                        // don't create type dependencies directly
                     }
                 }
             }
@@ -3358,6 +3393,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Extract all let binding references from an expression
     /// Returns a set of let binding names that this expression depends on
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn extract_let_references(&self, expr: &Expr) -> HashSet<String> {
         let mut references = HashSet::new();
 
@@ -3379,8 +3415,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::Reference { path, .. } => {
                 // A simple reference (single identifier) might be a let binding
-                if path.len() == 1 {
-                    let name = &path[0].name;
+                if let Some(first) = path.first().filter(|_| path.len() == 1) {
+                    let name = &first.name;
                     // Check if it's a let binding (not a model/view/enum)
                     if self.symbols.is_let(name) {
                         references.insert(name.clone());
@@ -3404,13 +3440,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     references.extend(self.extract_let_references(mount_expr));
                 }
             }
-            Expr::EnumInstantiation { data, .. } => {
-                // Extract from named field expressions
-                for (_, data_expr) in data {
-                    references.extend(self.extract_let_references(data_expr));
-                }
-            }
-            Expr::InferredEnumInstantiation { data, .. } => {
+            Expr::EnumInstantiation { data, .. } | Expr::InferredEnumInstantiation { data, .. } => {
                 // Extract from named field expressions
                 for (_, data_expr) in data {
                     references.extend(self.extract_let_references(data_expr));
@@ -3519,9 +3549,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Recursively extracts type names from arrays and optionals
     fn add_type_dependencies(graph: &mut TypeGraph, from: &str, ty: &Type) {
         match ty {
-            Type::Primitive(_) => {
-                // Primitive types don't create dependencies
-            }
+            // Primitive types and type parameters don't create dependencies
+            Type::Primitive(_) | Type::TypeParameter(_) => {}
             Type::Ident(ident) => {
                 // Direct type reference creates a dependency
                 graph.add_dependency(from.to_string(), ident.name.clone());
@@ -3549,10 +3578,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Self::add_type_dependencies(graph, from, arg);
                 }
             }
-            Type::TypeParameter(_) => {
-                // Type parameters (e.g., T in struct Container<T>) don't create dependencies
-                // because they're resolved at instantiation time, not definition time
-            }
             Type::Dictionary { key, value } => {
                 // Recursively add dependencies for key and value types
                 Self::add_type_dependencies(graph, from, key);
@@ -3573,6 +3598,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         clippy::only_used_in_recursion,
         reason = "self is required for recursive dispatch through the method"
     )]
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn infer_type(&self, expr: &Expr, file: &File) -> String {
         match expr {
             Expr::Literal(lit) => match lit {
@@ -3587,12 +3613,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             },
             Expr::Array { elements, .. } => {
                 // Infer element type from first element
-                if let Some(first) = elements.first() {
-                    let elem_type = self.infer_type(first, file);
-                    format!("[{}]", elem_type)
-                } else {
-                    "[Unknown]".to_string()
-                }
+                elements.first().map_or_else(
+                    || "[Unknown]".to_string(),
+                    |first| {
+                        let elem_type = self.infer_type(first, file);
+                        format!("[{elem_type}]")
+                    },
+                )
             }
             Expr::Tuple { fields, .. } => {
                 // Infer tuple type from field types
@@ -3625,7 +3652,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         name
                     } else {
                         let arg_types: Vec<String> =
-                            type_args.iter().map(|ty| self.type_to_string(ty)).collect();
+                            type_args.iter().map(|ty| Self::type_to_string(ty)).collect();
                         format!("{}<{}>", name, arg_types.join(", "))
                     }
                 } else {
@@ -3638,17 +3665,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             .map(|(_, expr)| self.infer_type(expr, file))
                             .collect();
                         // Try to resolve builtin return type
-                        if let Some(ret_type) = crate::builtins::BuiltinRegistry::global()
+                        crate::builtins::BuiltinRegistry::global()
                             .resolve_return_type(&name, &arg_types)
-                        {
-                            ret_type
-                        } else {
-                            "Number".to_string() // Fallback for builtin functions
-                        }
+                            .unwrap_or_else(|| "Number".to_string()) // Fallback for builtin functions
+                    } else if let Some(func_info) = self.symbols.get_function(&name) {
+                        // User-defined standalone function — return its declared return type
+                        func_info
+                            .return_type
+                            .as_ref().map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty))
                     } else {
-                        // User-defined function - would need function table lookup
-                        // For now, return a generic type
-                        "Function".to_string()
+                        // Unknown function — cannot infer return type
+                        "Unknown".to_string()
                     }
                 }
             }
@@ -3659,22 +3686,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::Reference { path, .. } => {
                 // Handle self.field references
-                if !path.is_empty() && path[0].name == "self" {
-                    if path.len() == 2 {
+                if path.first().is_some_and(|p| p.name == "self") {
+                    if let Some(field_ident) = path.get(1).filter(|_| path.len() == 2) {
                         // self.field - look up field type in current impl struct
-                        let field_name = &path[1].name;
+                        let field_name = &field_ident.name;
                         if let Some(ref struct_name) = self.current_impl_struct {
                             if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                                 // Check regular fields
                                 for field in &struct_info.fields {
                                     if field.name == *field_name {
-                                        return self.type_to_string(&field.ty);
+                                        return Self::type_to_string(&field.ty);
                                     }
                                 }
                                 // Check mount fields
                                 for field in &struct_info.mount_fields {
                                     if field.name == *field_name {
-                                        return self.type_to_string(&field.ty);
+                                        return Self::type_to_string(&field.ty);
                                     }
                                 }
                             }
@@ -3685,9 +3712,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
 
                 // For references, resolve the type
-                if path.len() == 1 {
+                if let Some(first) = path.first().filter(|_| path.len() == 1) {
                     // Simple reference - check if it's a let binding
-                    let name = &path[0].name;
+                    let name = &first.name;
                     if let Some(let_type) = self.symbols.get_let_type(name) {
                         return let_type.to_string();
                     }
@@ -3701,13 +3728,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             // Check regular fields
                             for field in &struct_info.fields {
                                 if field.name == *name {
-                                    return self.type_to_string(&field.ty);
+                                    return Self::type_to_string(&field.ty);
                                 }
                             }
                             // Check mount fields
                             for field in &struct_info.mount_fields {
                                 if field.name == *name {
-                                    return self.type_to_string(&field.ty);
+                                    return Self::type_to_string(&field.ty);
                                 }
                             }
                         }
@@ -3715,9 +3742,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 // For other references (field access, enum variants, etc.),
                 // return the last component for now
-                path.last()
-                    .map(|ident| ident.name.clone())
-                    .unwrap_or_else(|| "Unknown".to_string())
+                path.last().map_or_else(|| "Unknown".to_string(), |ident| ident.name.clone())
             }
             Expr::BinaryOp { left, op, .. } => {
                 // Result type depends on operator
@@ -3748,7 +3773,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::ForExpr { body, .. } => {
                 // For expression returns an array of the body type
                 let body_type = self.infer_type(body, file);
-                format!("[{}]", body_type)
+                format!("[{body_type}]")
             }
             Expr::IfExpr { then_branch, .. } => {
                 // Type is the type of the then branch
@@ -3756,9 +3781,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::MatchExpr { arms, .. } => {
                 // Type is the type of the first arm's body (simplified)
-                arms.first()
-                    .map(|arm| self.infer_type(&arm.body, file))
-                    .unwrap_or_else(|| "Unknown".to_string())
+                arms.first().map_or_else(|| "Unknown".to_string(), |arm| self.infer_type(&arm.body, file))
             }
             Expr::Group { expr, .. } => self.infer_type(expr, file),
             Expr::DictLiteral { .. } => {
@@ -3798,27 +3821,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// - It's a field access where the entire chain is mutable (upward propagation)
     /// - It's a context access that was marked as mutable
     /// - It's an array element where the array is mutable
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "path[1..] is valid: path.len() >= 2 is guaranteed by the len==1 early return above"
+    )]
     fn is_expr_mutable(&self, expr: &Expr, file: &File) -> bool {
         match expr {
-            // Literal values are never mutable
-            Expr::Literal(_) => false,
-
             // References can be mutable if they refer to mutable let bindings or fields
             Expr::Reference { path, .. } => {
-                if path.is_empty() {
+                let Some(first) = path.first() else {
                     return false;
-                }
+                };
 
                 // Check if this is a reference to a let binding
                 if path.len() == 1 {
-                    return self.is_let_mutable(&path[0].name, file);
+                    return self.is_let_mutable(&first.name, file);
                 }
 
                 // For field access like `user.email`, check if:
                 // 1. The root (user) is mutable
                 // 2. The field (email) is mutable
                 // Both must be true (upward propagation)
-                let root_name = &path[0].name;
+                let root_name = &first.name;
                 let is_root_mutable = self.is_let_mutable(root_name, file);
 
                 if !is_root_mutable {
@@ -3827,45 +3851,35 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                 // Check if all fields in the chain are mutable
                 // For user.profile.email, we need: user is mut, profile field is mut, email field is mut
-                self.is_field_chain_mutable(&path[0].name, &path[1..], file)
+                self.is_field_chain_mutable(&first.name, &path[1..], file)
             }
 
-            // Array elements are mutable if the array expression is mutable
-            Expr::Array { .. } => false, // Array literals are not mutable
-
-            // Tuple literals are not mutable
-            Expr::Tuple { .. } => false,
-
-            // Invocation (struct instantiation or function call) returns new values, not mutable
-            Expr::Invocation { .. }
+            // Literals, arrays, tuples, invocations, binary/unary ops,
+            // for/if/match/closure/method-call expressions produce new values — not mutable
+            Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Literal(_)
+            | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
-            | Expr::InferredEnumInstantiation { .. } => false,
-
-            // Binary and unary operations are not mutable
-            Expr::BinaryOp { .. } => false,
-            Expr::UnaryOp { .. } => false,
-
-            // For/If/Match expressions result in new values, not mutable
-            Expr::ForExpr { .. } | Expr::IfExpr { .. } | Expr::MatchExpr { .. } => false,
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. } => false,
 
             // Grouped expressions delegate to inner expression
             Expr::Group { expr, .. } => self.is_expr_mutable(expr, file),
 
-            // Dictionary expressions are not mutable
-            Expr::DictLiteral { .. } => false,
-            Expr::DictAccess { .. } => false,
-
             // Field access depends on the object
             Expr::FieldAccess { object, .. } => self.is_expr_mutable(object, file),
 
-            // Closure expressions are not mutable
-            Expr::ClosureExpr { .. } => false,
-
             // Let expressions delegate to their body
             Expr::LetExpr { body, .. } => self.is_expr_mutable(body, file),
-
-            // Method calls return new values, not mutable
-            Expr::MethodCall { .. } => false,
 
             // Block expressions delegate to their result
             Expr::Block { result, .. } => self.is_expr_mutable(result, file),
@@ -3894,7 +3908,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check if a field access chain is mutable
-    /// For path like ["profile", "email"], check that both profile and email fields are mutable
+    /// For path like `["profile", "email"]`, check that both profile and email fields are mutable
     fn is_field_chain_mutable(
         &self,
         root_name: &str,
@@ -3912,12 +3926,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let mut current_type = root_type;
         for field_ident in field_path {
             // Check if the current field is mutable in its type
-            if !self.is_struct_field_mutable(&current_type, &field_ident.name, file) {
+            if !Self::is_struct_field_mutable(&current_type, &field_ident.name, file) {
                 return false;
             }
 
             // Get the type of this field to continue checking the chain
-            current_type = self.get_field_type(&current_type, &field_ident.name, file);
+            current_type = Self::get_field_type(&current_type, &field_ident.name, file);
         }
 
         true
@@ -3939,7 +3953,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check if a struct field is mutable
-    fn is_struct_field_mutable(&self, type_name: &str, field_name: &str, file: &File) -> bool {
+    fn is_struct_field_mutable(type_name: &str, field_name: &str, file: &File) -> bool {
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
                 if let Definition::Struct(struct_def) = &**def {
@@ -3957,14 +3971,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Get the type of a struct field
-    fn get_field_type(&self, type_name: &str, field_name: &str, file: &File) -> String {
+    fn get_field_type(type_name: &str, field_name: &str, file: &File) -> String {
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
                 if let Definition::Struct(struct_def) = &**def {
                     if struct_def.name.name == type_name {
                         for field in &struct_def.fields {
                             if field.name.name == field_name {
-                                return self.type_to_string(&field.ty);
+                                return Self::type_to_string(&field.ty);
                             }
                         }
                     }
@@ -4022,8 +4036,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
-    /// Resolve a nested module type path (e.g., ["outer", "inner", "Type"])
-    /// Returns Some(error_message) if the type doesn't exist, None if valid
+    /// Resolve a nested module type path (e.g., `["outer", "inner", "Type"]`)
+    /// Returns `Some(error_message)` if the type doesn't exist, None if valid
     fn resolve_nested_module_type(&self, parts: &[&str], _span: Span) -> Option<String> {
         if parts.is_empty() {
             return Some("empty module path".to_string());
@@ -4047,15 +4061,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(module_info) = current_symbols.modules.get(*module_name) {
                 current_symbols = &module_info.symbols;
             } else {
-                return Some(format!("module '{}' not found", path_so_far));
+                return Some(format!("module '{path_so_far}' not found"));
             }
         }
 
         // Check if type exists in the final module
         if !current_symbols.is_type(type_name) && !current_symbols.is_trait(type_name) {
             return Some(format!(
-                "type '{}' not found in module '{}'",
-                type_name, path_so_far
+                "type '{type_name}' not found in module '{path_so_far}'"
             ));
         }
 
@@ -4065,7 +4078,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check if a method exists on a given type
     ///
     /// Handles:
-    /// 1. Builtin methods on primitive types (vec3.normalize(), mat4.transpose(), etc.)
+    /// 1. Builtin methods on primitive types (`vec3.normalize()`, `mat4.transpose()`, etc.)
     /// 2. User-defined methods in impl blocks
     fn method_exists_on_type(&self, type_name: &str, method_name: &str, file: &File) -> bool {
         // Skip validation for unknown types (chained method calls where we can't infer intermediate types)
@@ -4074,7 +4087,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         // Check if it's a primitive GPU type with builtin methods
-        if let Some(prim) = self.string_to_primitive_type(type_name) {
+        if let Some(prim) = Self::string_to_primitive_type(type_name) {
             if crate::builtins::resolve_method_type(prim, method_name).is_some() {
                 return true;
             }
@@ -4143,8 +4156,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Convert a type string to a PrimitiveType if applicable
-    fn string_to_primitive_type(&self, type_name: &str) -> Option<PrimitiveType> {
+    /// Convert a type string to a `PrimitiveType` if applicable
+    fn string_to_primitive_type(type_name: &str) -> Option<PrimitiveType> {
         match type_name {
             "f32" | "Number" => Some(PrimitiveType::F32),
             "i32" => Some(PrimitiveType::I32),
@@ -4211,10 +4224,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 false
             }
-            // Primitives don't implement user-defined traits
-            Type::Primitive(_) => false,
-            // Arrays, optionals, tuples, etc. don't implement user-defined traits
-            Type::Array(_)
+            // Primitives, arrays, optionals, tuples, etc. don't implement user-defined traits
+            Type::Primitive(_)
+            | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
@@ -4224,20 +4236,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Get a reference to the symbol table for querying
     /// This is primarily used by LSP features for completion, hover, etc.
-    pub fn symbols(&self) -> &SymbolTable {
+    pub const fn symbols(&self) -> &SymbolTable {
         &self.symbols
     }
 
     /// Get all cached IR modules from imports.
     ///
-    /// Returns a map from file path to IrModule for all modules that were
+    /// Returns a map from file path to `IrModule` for all modules that were
     /// analyzed during import resolution. Used by WGSL codegen to generate
     /// impl blocks from imported types.
     ///
     /// # Returns
     ///
     /// Reference to the cached IR modules. Empty if no imports were processed.
-    pub fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
+    pub const fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
         // TODO: Implement - currently returns empty cache
         // Will be populated during parse_and_analyze_module()
         &self.module_ir_cache

@@ -17,6 +17,7 @@ use crate::ir::{IrExpr, IrModule, StructId};
 use std::collections::HashSet;
 
 /// Dead code eliminator that removes unreachable and unused code.
+#[derive(Debug)]
 pub struct DeadCodeEliminator<'a> {
     module: &'a IrModule,
     /// Structs that are actually used
@@ -25,6 +26,7 @@ pub struct DeadCodeEliminator<'a> {
 
 impl<'a> DeadCodeEliminator<'a> {
     /// Create a new dead code eliminator.
+    #[must_use] 
     pub fn new(module: &'a IrModule) -> Self {
         Self {
             module,
@@ -64,12 +66,14 @@ impl<'a> DeadCodeEliminator<'a> {
     }
 
     /// Check if a struct is used.
+    #[must_use] 
     pub fn is_struct_used(&self, id: StructId) -> bool {
         self.used_structs.contains(&id)
     }
 
     /// Get the set of used struct IDs.
-    pub fn used_structs(&self) -> &HashSet<StructId> {
+    #[must_use] 
+    pub const fn used_structs(&self) -> &HashSet<StructId> {
         &self.used_structs
     }
 
@@ -119,6 +123,7 @@ impl<'a> DeadCodeEliminator<'a> {
     }
 
     /// Mark structs used in an expression.
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn mark_used_in_expr(&mut self, expr: &IrExpr) {
         match expr {
             IrExpr::StructInst {
@@ -166,7 +171,7 @@ impl<'a> DeadCodeEliminator<'a> {
                 }
             }
 
-            IrExpr::Tuple { fields, .. } => {
+            IrExpr::Tuple { fields, .. } | IrExpr::EnumInst { fields, .. } => {
                 for (_, e) in fields {
                     self.mark_used_in_expr(e);
                 }
@@ -198,12 +203,6 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.mark_used_in_expr(receiver);
                 for (_, arg) in args {
                     self.mark_used_in_expr(arg);
-                }
-            }
-
-            IrExpr::EnumInst { fields, .. } => {
-                for (_, e) in fields {
-                    self.mark_used_in_expr(e);
                 }
             }
 
@@ -267,6 +266,7 @@ impl<'a> DeadCodeEliminator<'a> {
 /// Eliminate dead code from an expression.
 ///
 /// This removes unreachable branches based on constant conditions.
+#[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
 pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
     use crate::ast::Literal;
 
@@ -449,14 +449,10 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         },
 
         // Leaf expressions are unchanged
-        e @ IrExpr::Literal { .. }
-        | e @ IrExpr::Reference { .. }
-        | e @ IrExpr::SelfFieldRef { .. }
-        | e @ IrExpr::FieldAccess { .. }
-        | e @ IrExpr::LetRef { .. }
-        | e @ IrExpr::UnaryOp { .. }
-        | e @ IrExpr::EventMapping { .. }
-        | e @ IrExpr::Closure { .. } => e,
+        e @
+(IrExpr::Literal { .. } | IrExpr::Reference { .. } | IrExpr::SelfFieldRef { ..
+} | IrExpr::FieldAccess { .. } | IrExpr::LetRef { .. } | IrExpr::UnaryOp { ..
+} | IrExpr::EventMapping { .. } | IrExpr::Closure { .. }) => e,
     }
 }
 
@@ -465,6 +461,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
 /// This removes:
 /// - Unreachable branches in expressions
 /// - Unused struct definitions (when `remove_unused_structs` is true)
+#[must_use] 
 pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> IrModule {
     let mut result = module.clone();
 
@@ -509,6 +506,8 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
 ///
 /// [`IrPass`]: crate::pipeline::IrPass
 /// [`Pipeline`]: crate::pipeline::Pipeline
+#[derive(Debug)]
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 pub struct DeadCodeEliminationPass {
     /// When `true`, structs that are never referenced are removed.
     pub remove_unused_structs: bool,
@@ -516,7 +515,8 @@ pub struct DeadCodeEliminationPass {
 
 impl DeadCodeEliminationPass {
     /// Create a pass with `remove_unused_structs` enabled.
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self {
             remove_unused_structs: true,
         }
@@ -530,7 +530,7 @@ impl Default for DeadCodeEliminationPass {
 }
 
 impl crate::pipeline::IrPass for DeadCodeEliminationPass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "dead-code-elimination"
     }
 
@@ -546,16 +546,17 @@ mod tests {
     use crate::compile_to_ir;
 
     #[test]
-    fn test_eliminate_constant_true_branch() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_eliminate_constant_true_branch() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { value: Number = if true { 1 } else { 2 } }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
         let struct_def = &optimized.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 1
         if let IrExpr::Literal {
@@ -563,23 +564,27 @@ mod tests {
             ..
         } = expr
         {
-            assert!((n - 1.0).abs() < f64::EPSILON, "Expected 1, got {}", n);
+            if (*n - 1.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 1, got {n}").into());
+            }
         } else {
-            panic!("Expected literal 1, got {:?}", expr);
+            return Err(format!("Expected literal 1, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_eliminate_constant_false_branch() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_eliminate_constant_false_branch() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { value: Number = if false { 1 } else { 2 } }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
         let struct_def = &optimized.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 2
         if let IrExpr::Literal {
@@ -587,24 +592,31 @@ mod tests {
             ..
         } = expr
         {
-            assert!((n - 2.0).abs() < f64::EPSILON, "Expected 2, got {}", n);
+            if (*n - 2.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 2, got {n}").into());
+            }
         } else {
-            panic!("Expected literal 2, got {:?}", expr);
+            return Err(format!("Expected literal 2, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_no_elimination_non_constant_condition() {
+    fn test_no_elimination_non_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
         // Use a let binding that references another let binding
-        let source = r#"
+        let source = r"
             let flag: Boolean = true
             let value: Number = if flag { 1 } else { 2 }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
         // Find the "value" let binding
-        let let_binding = optimized.lets.iter().find(|l| l.name == "value").unwrap();
+        let let_binding = optimized
+            .lets
+            .iter()
+            .find(|l| l.name == "value")
+            .ok_or("expected value let binding")?;
         let expr = &let_binding.value;
 
         // flag is a variable reference, so if can't be eliminated
@@ -615,74 +627,76 @@ mod tests {
         } else if let IrExpr::Literal { .. } = expr {
             // Optimizer did constant propagation
         } else {
-            panic!("Expected If or Literal, got {:?}", expr);
+            return Err(format!("Expected If or Literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_analyze_used_structs() {
-        let source = r#"
+    fn test_analyze_used_structs() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Used { value: Number = 1 }
             struct Unused { data: String }
             impl Used {}
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
         let mut eliminator = DeadCodeEliminator::new(&module);
         eliminator.analyze();
 
         // Used should be marked as used (it has an impl block)
-        let used_id = module.struct_id("Used").unwrap();
-        assert!(
-            eliminator.is_struct_used(used_id),
-            "Used struct should be marked as used"
-        );
+        let used_id = module.struct_id("Used").ok_or("Used struct not found")?;
+        if !eliminator.is_struct_used(used_id) {
+            return Err("Used struct should be marked as used".into());
+        }
 
         // Unused should NOT be marked as used
-        let unused_id = module.struct_id("Unused").unwrap();
-        assert!(
-            !eliminator.is_struct_used(unused_id),
-            "Unused struct should not be marked as used"
-        );
+        let unused_id = module
+            .struct_id("Unused")
+            .ok_or("Unused struct not found")?;
+        if eliminator.is_struct_used(unused_id) {
+            return Err("Unused struct should not be marked as used".into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_analyze_struct_referenced_in_field() {
-        let source = r#"
+    fn test_analyze_struct_referenced_in_field() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Inner { value: Number = 1 }
             struct Outer { inner: Inner = Inner(value: 1) }
             impl Outer {}
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
         let mut eliminator = DeadCodeEliminator::new(&module);
         eliminator.analyze();
 
         // Both Inner and Outer should be used
-        let inner_id = module.struct_id("Inner").unwrap();
-        let outer_id = module.struct_id("Outer").unwrap();
+        let inner_id = module.struct_id("Inner").ok_or("Inner struct not found")?;
+        let outer_id = module.struct_id("Outer").ok_or("Outer struct not found")?;
 
-        assert!(
-            eliminator.is_struct_used(inner_id),
-            "Inner struct should be used (referenced by Outer)"
-        );
-        assert!(
-            eliminator.is_struct_used(outer_id),
-            "Outer struct should be used (has impl block)"
-        );
+        if !eliminator.is_struct_used(inner_id) {
+            return Err("Inner struct should be used (referenced by Outer)".into());
+        }
+        if !eliminator.is_struct_used(outer_id) {
+            return Err("Outer struct should be used (has impl block)".into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_nested_dead_code_elimination() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_nested_dead_code_elimination() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { value: Number = if true { if false { 1 } else { 2 } } else { 3 } }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
         let struct_def = &optimized.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // Outer true -> inner expression
         // Inner false -> 2
@@ -692,9 +706,12 @@ mod tests {
             ..
         } = expr
         {
-            assert!((n - 2.0).abs() < f64::EPSILON, "Expected 2, got {}", n);
+            if (*n - 2.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 2, got {n}").into());
+            }
         } else {
-            panic!("Expected literal 2, got {:?}", expr);
+            return Err(format!("Expected literal 2, got {expr:?}").into());
         }
+        Ok(())
     }
 }

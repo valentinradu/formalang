@@ -1,6 +1,6 @@
-//! Intermediate Representation (IR) for FormaLang
+//! Intermediate Representation (IR) for `FormaLang`
 //!
-//! The IR is a type-resolved representation of FormaLang programs optimized for
+//! The IR is a type-resolved representation of `FormaLang` programs optimized for
 //! code generation. Unlike the AST which preserves source syntax, the IR provides:
 //!
 //! - Resolved types on every expression
@@ -64,6 +64,7 @@ use crate::location::Span;
 /// let struct_def = &module.structs[id.0 as usize];
 /// assert_eq!(struct_def.name, "User");
 /// ```
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct StructId(pub u32);
 
@@ -79,6 +80,7 @@ pub struct StructId(pub u32);
 /// let trait_def = &module.traits[id.0 as usize];
 /// assert_eq!(trait_def.name, "Named");
 /// ```
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TraitId(pub u32);
 
@@ -94,6 +96,7 @@ pub struct TraitId(pub u32);
 /// let enum_def = &module.enums[id.0 as usize];
 /// assert_eq!(enum_def.name, "Status");
 /// ```
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
 
@@ -109,6 +112,7 @@ pub struct EnumId(pub u32);
 /// let func_def = &module.functions[id.0 as usize];
 /// assert_eq!(func_def.name, "add");
 /// ```
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FunctionId(pub u32);
 
@@ -116,6 +120,7 @@ pub struct FunctionId(pub u32);
 ///
 /// Used to distinguish between different definition types when referencing
 /// types from other modules.
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExternalKind {
     /// External struct type
@@ -130,7 +135,8 @@ pub enum ExternalKind {
 ///
 /// Tracks which types were imported from external modules, enabling code
 /// generators to emit proper import statements in target languages.
-#[derive(Clone, Debug, PartialEq)]
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrImport {
     /// Logical module path (e.g., `["utils", "helpers"]`)
     pub module_path: Vec<String>,
@@ -138,14 +144,15 @@ pub struct IrImport {
     pub items: Vec<IrImportItem>,
     /// Filesystem path to the source module file.
     ///
-    /// Used by WGSL codegen to look up the cached IrModule for generating
+    /// Used by WGSL codegen to look up the cached `IrModule` for generating
     /// impl blocks from imported types. Populated from symbol table's
     /// `module_origins` during IR lowering.
     pub source_file: std::path::PathBuf,
 }
 
 /// A single imported item from a module.
-#[derive(Clone, Debug, PartialEq)]
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrImportItem {
     /// Name of the imported type
     pub name: String,
@@ -158,6 +165,7 @@ pub struct IrImportItem {
 /// Unlike AST types which use string names, resolved types use IDs that
 /// directly reference definitions. This eliminates the need for symbol
 /// table lookups during code generation.
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
@@ -173,20 +181,20 @@ pub enum ResolvedType {
     Enum(EnumId),
 
     /// Array type: `[T]`
-    Array(Box<ResolvedType>),
+    Array(Box<Self>),
 
     /// Optional type: `T?`
-    Optional(Box<ResolvedType>),
+    Optional(Box<Self>),
 
     /// Named tuple type: `(name1: T1, name2: T2)`
-    Tuple(Vec<(String, ResolvedType)>),
+    Tuple(Vec<(String, Self)>),
 
     /// Generic type instantiation: `Box<String>`
     Generic {
         /// The generic struct being instantiated
         base: StructId,
         /// Type arguments
-        args: Vec<ResolvedType>,
+        args: Vec<Self>,
     },
 
     /// Unresolved type parameter (e.g., `T` in a generic definition)
@@ -221,7 +229,7 @@ pub enum ResolvedType {
         /// Kind of type (struct, trait, or enum)
         kind: ExternalKind,
         /// Type arguments for generic types (empty for non-generic)
-        type_args: Vec<ResolvedType>,
+        type_args: Vec<Self>,
     },
 
     /// Event mapping type: `() -> E` or `T -> E`
@@ -230,9 +238,9 @@ pub enum ResolvedType {
     /// Used for event handlers like `onChange: x -> .valueChanged(value: x)`.
     EventMapping {
         /// Parameter type (None for `() -> E`)
-        param_ty: Option<Box<ResolvedType>>,
+        param_ty: Option<Box<Self>>,
         /// Return type (the event enum type)
-        return_ty: Box<ResolvedType>,
+        return_ty: Box<Self>,
     },
 
     /// Dictionary type: `[K: V]`
@@ -240,21 +248,21 @@ pub enum ResolvedType {
     /// Maps keys of type K to values of type V.
     Dictionary {
         /// Key type
-        key_ty: Box<ResolvedType>,
+        key_ty: Box<Self>,
         /// Value type
-        value_ty: Box<ResolvedType>,
+        value_ty: Box<Self>,
     },
 
     /// Closure/function type: `(T1, T2) -> R`
     ///
     /// Represents a general closure type with multiple parameters.
-    /// Unlike EventMapping which is restricted to enum variant returns,
+    /// Unlike `EventMapping` which is restricted to enum variant returns,
     /// this represents arbitrary pure functions.
     Closure {
         /// Parameter types
-        param_tys: Vec<ResolvedType>,
+        param_tys: Vec<Self>,
         /// Return type
-        return_ty: Box<ResolvedType>,
+        return_ty: Box<Self>,
     },
 }
 
@@ -277,18 +285,18 @@ pub enum ResolvedType {
 /// assert_eq!(struct_def.name, "User");
 ///
 /// // Or use the helper method
-/// let struct_def = module.get_struct(struct_id);
+/// let struct_def = module.get_struct(struct_id).expect("struct exists");
 /// assert_eq!(struct_def.name, "User");
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct IrModule {
-    /// All struct definitions, indexed by StructId
+    /// All struct definitions, indexed by `StructId`
     pub structs: Vec<IrStruct>,
 
-    /// All trait definitions, indexed by TraitId
+    /// All trait definitions, indexed by `TraitId`
     pub traits: Vec<IrTrait>,
 
-    /// All enum definitions, indexed by EnumId
+    /// All enum definitions, indexed by `EnumId`
     pub enums: Vec<IrEnum>,
 
     /// All impl blocks
@@ -329,48 +337,43 @@ pub struct IrModule {
 
 impl IrModule {
     /// Create a new empty IR module.
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Look up a struct by ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the ID is out of bounds.
-    pub fn get_struct(&self, id: StructId) -> &IrStruct {
-        &self.structs[id.0 as usize]
+    /// Look up a struct by ID. Returns `None` if the ID is out of bounds.
+    #[must_use] 
+    pub fn get_struct(&self, id: StructId) -> Option<&IrStruct> {
+        self.structs.get(id.0 as usize)
     }
 
-    /// Look up a trait by ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the ID is out of bounds.
-    pub fn get_trait(&self, id: TraitId) -> &IrTrait {
-        &self.traits[id.0 as usize]
+    /// Look up a trait by ID. Returns `None` if the ID is out of bounds.
+    #[must_use] 
+    pub fn get_trait(&self, id: TraitId) -> Option<&IrTrait> {
+        self.traits.get(id.0 as usize)
     }
 
-    /// Look up an enum by ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the ID is out of bounds.
-    pub fn get_enum(&self, id: EnumId) -> &IrEnum {
-        &self.enums[id.0 as usize]
+    /// Look up an enum by ID. Returns `None` if the ID is out of bounds.
+    #[must_use] 
+    pub fn get_enum(&self, id: EnumId) -> Option<&IrEnum> {
+        self.enums.get(id.0 as usize)
     }
 
     /// Look up a struct ID by name.
+    #[must_use] 
     pub fn struct_id(&self, name: &str) -> Option<StructId> {
         self.struct_names.get(name).copied()
     }
 
     /// Look up a trait ID by name.
+    #[must_use] 
     pub fn trait_id(&self, name: &str) -> Option<TraitId> {
         self.trait_names.get(name).copied()
     }
 
     /// Look up an enum ID by name.
+    #[must_use] 
     pub fn enum_id(&self, name: &str) -> Option<EnumId> {
         self.enum_names.get(name).copied()
     }
@@ -436,11 +439,13 @@ impl IrModule {
     }
 
     /// Look up a let binding by name.
+    #[must_use]
     pub fn get_let(&self, name: &str) -> Option<&IrLet> {
-        self.let_names.get(name).map(|&idx| &self.lets[idx])
+        self.let_names.get(name).and_then(|&idx| self.lets.get(idx))
     }
 
     /// Check if a let binding exists.
+    #[must_use] 
     pub fn has_let(&self, name: &str) -> bool {
         self.let_names.contains_key(name)
     }
@@ -452,16 +457,14 @@ impl IrModule {
         self.lets.push(l);
     }
 
-    /// Look up a function by ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the ID is out of bounds.
-    pub fn get_function(&self, id: FunctionId) -> &IrFunction {
-        &self.functions[id.0 as usize]
+    /// Look up a function by ID. Returns `None` if the ID is out of bounds.
+    #[must_use]
+    pub fn get_function(&self, id: FunctionId) -> Option<&IrFunction> {
+        self.functions.get(id.0 as usize)
     }
 
     /// Look up a function ID by name.
+    #[must_use] 
     pub fn function_id(&self, name: &str) -> Option<FunctionId> {
         self.function_names.get(name).copied()
     }
@@ -546,9 +549,10 @@ impl ResolvedType {
     ///
     /// Useful for error messages and debugging. For code generation,
     /// prefer pattern matching on the variants directly.
+    #[must_use] 
     pub fn display_name(&self, module: &IrModule) -> String {
         match self {
-            ResolvedType::Primitive(p) => match p {
+            Self::Primitive(p) => match p {
                 PrimitiveType::String => "String".to_string(),
                 PrimitiveType::Number => "Number".to_string(),
                 PrimitiveType::Boolean => "Boolean".to_string(),
@@ -577,25 +581,33 @@ impl ResolvedType {
                 PrimitiveType::Mat3 => "mat3".to_string(),
                 PrimitiveType::Mat4 => "mat4".to_string(),
             },
-            ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
-            ResolvedType::Trait(id) => module.get_trait(*id).name.clone(),
-            ResolvedType::Enum(id) => module.get_enum(*id).name.clone(),
-            ResolvedType::Array(inner) => format!("[{}]", inner.display_name(module)),
-            ResolvedType::Optional(inner) => format!("{}?", inner.display_name(module)),
-            ResolvedType::Tuple(fields) => {
+            Self::Struct(id) => module
+                .get_struct(*id)
+                .map_or_else(|| format!("<invalid-struct-{}>", id.0), |s| s.name.clone()),
+            Self::Trait(id) => module
+                .get_trait(*id)
+                .map_or_else(|| format!("<invalid-trait-{}>", id.0), |t| t.name.clone()),
+            Self::Enum(id) => module
+                .get_enum(*id)
+                .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
+            Self::Array(inner) => format!("[{}]", inner.display_name(module)),
+            Self::Optional(inner) => format!("{}?", inner.display_name(module)),
+            Self::Tuple(fields) => {
                 let fields_str: Vec<_> = fields
                     .iter()
                     .map(|(name, ty)| format!("{}: {}", name, ty.display_name(module)))
                     .collect();
                 format!("({})", fields_str.join(", "))
             }
-            ResolvedType::Generic { base, args } => {
-                let base_name = module.get_struct(*base).name.clone();
+            Self::Generic { base, args } => {
+                let base_name = module
+                    .get_struct(*base)
+                    .map_or_else(|| format!("<invalid-struct-{}>", base.0), |s| s.name.clone());
                 let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))
             }
-            ResolvedType::TypeParam(name) => name.clone(),
-            ResolvedType::External {
+            Self::TypeParam(name) => name.clone(),
+            Self::External {
                 name, type_args, ..
             } => {
                 if type_args.is_empty() {
@@ -606,24 +618,23 @@ impl ResolvedType {
                     format!("{}<{}>", name, args_str.join(", "))
                 }
             }
-            ResolvedType::EventMapping {
+            Self::EventMapping {
                 param_ty,
                 return_ty,
             } => {
-                let param_str = match param_ty {
-                    Some(ty) => ty.display_name(module),
-                    None => "()".to_string(),
-                };
+                let param_str = param_ty
+                    .as_ref()
+                    .map_or_else(|| "()".to_string(), |ty| ty.display_name(module));
                 format!("{} -> {}", param_str, return_ty.display_name(module))
             }
-            ResolvedType::Dictionary { key_ty, value_ty } => {
+            Self::Dictionary { key_ty, value_ty } => {
                 format!(
                     "[{}: {}]",
                     key_ty.display_name(module),
                     value_ty.display_name(module)
                 )
             }
-            ResolvedType::Closure {
+            Self::Closure {
                 param_tys,
                 return_ty,
             } => {
@@ -640,8 +651,9 @@ impl ResolvedType {
 
 impl Visibility {
     /// Check if this visibility is public.
-    pub fn is_public(&self) -> bool {
-        matches!(self, Visibility::Public)
+    #[must_use] 
+    pub const fn is_public(&self) -> bool {
+        matches!(self, Self::Public)
     }
 }
 
@@ -658,6 +670,7 @@ impl Visibility {
 /// assert_eq!(simple_type_name("alignment::Horizontal"), "Horizontal");
 /// assert_eq!(simple_type_name("Button"), "Button");
 /// ```
+#[must_use] 
 pub fn simple_type_name(name: &str) -> &str {
     name.rsplit("::").next().unwrap_or(name)
 }

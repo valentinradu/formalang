@@ -24,7 +24,7 @@ pub use reporting::{report_error, report_errors};
 pub use semantic::module_resolver::FileSystemResolver;
 pub use semantic::SemanticAnalyzer;
 
-/// Compile FormaLang source code into a validated AST.
+/// Compile `FormaLang` source code into a validated AST.
 ///
 /// # Pipeline
 ///
@@ -42,6 +42,10 @@ pub use semantic::SemanticAnalyzer;
 ///
 /// * `Ok(File)` - The validated AST
 /// * `Err(Vec<CompilerError>)` - Compilation errors
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
 ///
 /// # Example
 ///
@@ -69,7 +73,11 @@ pub fn compile(source: &str) -> Result<File, Vec<CompilerError>> {
     )
 }
 
-/// Compile FormaLang source code with a custom module resolver.
+/// Compile `FormaLang` source code with a custom module resolver.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
 ///
 /// # Example
 ///
@@ -92,7 +100,10 @@ where
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
-    let mut analyzer = SemanticAnalyzer::new(resolver);
+    // Use a synthetic root path so import-graph cycle detection is active even
+    // when there is no real file on disk.
+    let mut analyzer =
+        SemanticAnalyzer::new_with_file(resolver, std::path::PathBuf::from("<root>"));
     analyzer.analyze_and_classify(&mut file)?;
     Ok(file)
 }
@@ -101,6 +112,10 @@ where
 ///
 /// Useful for LSP implementations that need access to the symbol table for
 /// completion, hover, and go-to-definition.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
 pub fn compile_with_analyzer(
     source: &str,
 ) -> Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>> {
@@ -111,6 +126,10 @@ pub fn compile_with_analyzer(
 }
 
 /// Compile with a custom resolver, returning both AST and analyzer.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
 pub fn compile_with_analyzer_and_resolver<R>(
     source: &str,
     resolver: R,
@@ -125,12 +144,17 @@ where
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
-    let mut analyzer = SemanticAnalyzer::new(resolver);
+    let mut analyzer =
+        SemanticAnalyzer::new_with_file(resolver, std::path::PathBuf::from("<root>"));
     analyzer.analyze_and_classify(&mut file)?;
     Ok((file, analyzer))
 }
 
 /// Compile and format errors for display.
+///
+/// # Errors
+///
+/// Returns a formatted error string if compilation fails.
 ///
 /// # Example
 ///
@@ -147,10 +171,14 @@ pub fn compile_and_report(source: &str, filename: &str) -> Result<File, String> 
     compile(source).map_err(|errors| report_errors(&errors, source, filename))
 }
 
-/// Parse FormaLang source without semantic analysis.
+/// Parse `FormaLang` source without semantic analysis.
 ///
 /// Performs only lexing and parsing. Useful for syntax checking or raw AST
 /// inspection.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if lexing or parsing fails.
 ///
 /// # Example
 ///
@@ -171,13 +199,17 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
     Ok(file)
 }
 
-/// Compile FormaLang source code into an IR module.
+/// Compile `FormaLang` source code into an IR module.
 ///
 /// This is the recommended entry point for code generators. The IR provides
 /// resolved types, ID-based references, and a flat structure optimised for
 /// traversal and emission.
 ///
 /// Attach a [`Backend`] via [`Pipeline`] to emit code from the returned module.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
 ///
 /// # Example
 ///
@@ -200,7 +232,11 @@ pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
     ir::lower_to_ir(&ast, analyzer.symbols())
 }
 
-/// Compile FormaLang source code to IR with a custom module resolver.
+/// Compile `FormaLang` source code to IR with a custom module resolver.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
 pub fn compile_to_ir_with_resolver<R>(
     source: &str,
     resolver: R,

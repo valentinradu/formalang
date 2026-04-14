@@ -9,43 +9,55 @@ use formalang::compile;
 // =============================================================================
 
 #[test]
-fn test_array_destructuring_simple() {
+fn test_array_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
     // Basic positional destructuring: let [a, b] = items
     let source = r#"
         pub let items = ["first", "second", "third"]
         pub let [a, b] = items
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_array_destructuring_with_rest() {
+fn test_array_destructuring_with_rest() -> Result<(), Box<dyn std::error::Error>> {
     // Rest pattern: let [x, ...rest] = items
     let source = r#"
         pub let items = ["first", "second", "third", "fourth"]
         pub let [x, ...rest] = items
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_array_destructuring_skip_first() {
+fn test_array_destructuring_skip_first() -> Result<(), Box<dyn std::error::Error>> {
     // Skip first element: let [_, second, ...] = items
     let source = r#"
         pub let items = ["first", "second", "third"]
         pub let [_, second, ...] = items
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_array_destructuring_first_and_last() {
+fn test_array_destructuring_first_and_last() -> Result<(), Box<dyn std::error::Error>> {
     // Get first and last: let [first, ..., last] = items
     let source = r#"
         pub let items = ["first", "second", "third", "fourth"]
         pub let [first, ..., last] = items
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -53,36 +65,45 @@ fn test_array_destructuring_first_and_last() {
 // =============================================================================
 
 #[test]
-fn test_struct_destructuring_simple() {
+fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
     // Basic struct destructuring: let {name, age} = user
     let source = r#"
         struct User { name: String, age: Number }
         pub let user = User(name: "Alice", age: 30)
         pub let {name, age} = user
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_struct_destructuring_with_rename() {
+fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Error>> {
     // Rename during destructuring: let {name as username} = user
     let source = r#"
         struct User { name: String, age: Number }
         pub let user = User(name: "Alice", age: 30)
         pub let {name as username} = user
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_struct_destructuring_partial() {
+fn test_struct_destructuring_partial() -> Result<(), Box<dyn std::error::Error>> {
     // Partial destructuring: let {name} = user (only extract some fields)
     let source = r#"
         struct User { name: String, age: Number }
         pub let user = User(name: "Alice", age: 30)
         pub let {name} = user
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -90,25 +111,31 @@ fn test_struct_destructuring_partial() {
 // =============================================================================
 
 #[test]
-fn test_enum_destructuring_simple() {
+fn test_enum_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
     // Enum destructuring: let (permissions, articles) = account
     let source = r#"
         enum AccountType { admin, user(permissions: [String], articles: [String]) }
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let (permissions, articles) = account
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_enum_destructuring_nested() {
+fn test_enum_destructuring_nested() -> Result<(), Box<dyn std::error::Error>> {
     // Nested destructuring with enums: let ([firstPerm, ...], articles) = account
     let source = r#"
         enum AccountType { admin, user(permissions: [String], articles: [String]) }
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let ([firstPerm, ...], articles) = account
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -116,36 +143,45 @@ fn test_enum_destructuring_nested() {
 // =============================================================================
 
 #[test]
-fn test_error_duplicate_binding_in_array() {
+fn test_error_duplicate_binding_in_array() -> Result<(), Box<dyn std::error::Error>> {
     // Can't have duplicate bindings in array destructuring
     let source = r#"
         pub let items = ["a", "b"]
         pub let [a, a] = items
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_duplicate_binding_in_struct() {
+fn test_error_duplicate_binding_in_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Can't have duplicate bindings in struct destructuring
-    let source = r#"
+    let source = r"
         struct Point { x: Number, y: Number }
         pub let p = Point(x: 1, y: 2)
         pub let {x, x} = p
-    "#;
+    ";
     // Parser should reject duplicate field names
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_duplicate_binding_across_patterns() {
+fn test_error_duplicate_binding_across_patterns() -> Result<(), Box<dyn std::error::Error>> {
     // Can't redefine an existing binding
     let source = r#"
         pub let items = ["a", "b"]
         pub let [first, second] = items
         pub let first = "other"
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -153,32 +189,41 @@ fn test_error_duplicate_binding_across_patterns() {
 // =============================================================================
 
 #[test]
-fn test_error_array_destructuring_type_mismatch() {
+fn test_error_array_destructuring_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Can't destructure non-array as array
     let source = r#"
         pub let value = "not an array"
         pub let [a, b] = value
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_destructuring_type_mismatch() {
+fn test_error_struct_destructuring_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Can't destructure non-struct as struct
     let source = r#"
         pub let value = "not a struct"
         pub let {name} = value
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_destructuring_missing_field() {
+fn test_error_struct_destructuring_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     // Can't destructure non-existent field
     let source = r#"
         struct User { name: String }
         pub let user = User(name: "Alice")
         pub let {name, age} = user
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }

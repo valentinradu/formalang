@@ -24,12 +24,13 @@ pub struct SymbolTable {
     pub modules: HashMap<String, ModuleInfo>,
     /// Track which module each symbol came from (None = current module)
     module_origins: HashMap<String, Option<PathBuf>>,
-    /// Track the logical module path for imported symbols (e.g., ["utils", "helpers"])
+    /// Track the logical module path for imported symbols (e.g., `["utils", "helpers"]`)
     module_logical_paths: HashMap<String, Vec<String>>,
 }
 
 /// Information about a trait with field and mounting point requirements
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TraitInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -45,6 +46,7 @@ pub struct TraitInfo {
 
 /// Information about a let binding with type
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct LetInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -52,8 +54,9 @@ pub struct LetInfo {
     pub inferred_type: Option<String>,
 }
 
-/// Information about a struct (unified, replaces ModelInfo and ViewInfo)
+/// Information about a struct (unified, replaces `ModelInfo` and `ViewInfo`)
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct StructInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -71,6 +74,7 @@ pub struct StructInfo {
 
 /// Information about a field
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FieldInfo {
     pub name: String,
     pub ty: Type,
@@ -78,6 +82,7 @@ pub struct FieldInfo {
 
 /// Information about an inherent impl block (impl Struct)
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ImplInfo {
     pub struct_name: String,
     pub generics: Vec<GenericParam>,
@@ -86,6 +91,7 @@ pub struct ImplInfo {
 
 /// Information about a trait implementation (impl Trait for Struct)
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TraitImplInfo {
     /// The trait being implemented
     pub trait_name: String,
@@ -99,6 +105,7 @@ pub struct TraitImplInfo {
 
 /// Information about an enum with its variants
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct EnumInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -112,6 +119,7 @@ pub struct EnumInfo {
 
 /// Information about a module with its nested symbol table
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ModuleInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -121,6 +129,7 @@ pub struct ModuleInfo {
 
 /// Information about a standalone function
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FunctionInfo {
     pub visibility: Visibility,
     pub span: Span,
@@ -132,6 +141,7 @@ pub struct FunctionInfo {
 
 /// Kind of symbol (for error reporting)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SymbolKind {
     Trait,
     Struct,
@@ -143,6 +153,7 @@ pub enum SymbolKind {
 }
 
 impl SymbolTable {
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             traits: HashMap::new(),
@@ -251,6 +262,12 @@ impl SymbolTable {
     ///
     /// Returns an error if the trait or struct doesn't exist, or if this
     /// implementation already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err((SymbolKind::Trait, span))` if the trait does not exist,
+    /// `Err((SymbolKind::Struct, span))` if the implementing type does not exist,
+    /// or `Err((SymbolKind::Impl, existing_span))` if this trait is already implemented.
     pub fn define_trait_impl(
         &mut self,
         trait_name: String,
@@ -289,6 +306,7 @@ impl SymbolTable {
     }
 
     /// Get all traits implemented by a struct (both inline and via impl blocks)
+    #[must_use] 
     pub fn get_all_traits_for_struct(&self, struct_name: &str) -> Vec<String> {
         let mut traits = Vec::new();
 
@@ -338,6 +356,7 @@ impl SymbolTable {
     }
 
     /// Get all traits implemented by an enum (from : Trait syntax and impl Trait for Enum)
+    #[must_use] 
     pub fn get_all_traits_for_enum(&self, enum_name: &str) -> Vec<String> {
         let mut all_traits = Vec::new();
 
@@ -359,6 +378,7 @@ impl SymbolTable {
     }
 
     /// Get enum variants
+    #[must_use] 
     pub fn get_enum_variants(&self, name: &str) -> Option<&HashMap<String, (usize, Span)>> {
         self.enums.get(name).map(|info| &info.variants)
     }
@@ -413,6 +433,7 @@ impl SymbolTable {
     }
 
     /// Get function info by name
+    #[must_use] 
     pub fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
         self.functions.get(name)
     }
@@ -423,7 +444,7 @@ impl SymbolTable {
         name: String,
         visibility: Visibility,
         span: Span,
-        symbols: SymbolTable,
+        symbols: Self,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -449,6 +470,7 @@ impl SymbolTable {
     }
 
     /// Get the inferred type of a let binding
+    #[must_use] 
     pub fn get_let_type(&self, name: &str) -> Option<&str> {
         self.lets
             .get(name)
@@ -482,16 +504,19 @@ impl SymbolTable {
     }
 
     /// Get trait info
+    #[must_use] 
     pub fn get_trait(&self, name: &str) -> Option<&TraitInfo> {
         self.traits.get(name)
     }
 
     /// Get struct info
+    #[must_use] 
     pub fn get_struct(&self, name: &str) -> Option<&StructInfo> {
         self.structs.get(name)
     }
 
-    /// Get struct info, supporting module-qualified names like "fill::Solid"
+    /// Get struct info, supporting module-qualified names like "`fill::Solid`"
+    #[must_use] 
     pub fn get_struct_qualified(&self, name: &str) -> Option<&StructInfo> {
         // Try direct lookup first
         if let Some(info) = self.structs.get(name) {
@@ -508,7 +533,8 @@ impl SymbolTable {
         None
     }
 
-    /// Get enum info, supporting module-qualified names like "fill::PatternRepeat"
+    /// Get enum info, supporting module-qualified names like "`fill::PatternRepeat`"
+    #[must_use] 
     pub fn get_enum_qualified(&self, name: &str) -> Option<&EnumInfo> {
         // Try direct lookup first
         if let Some(info) = self.enums.get(name) {
@@ -526,26 +552,31 @@ impl SymbolTable {
     }
 
     /// Check if a name is a struct
+    #[must_use] 
     pub fn is_struct(&self, name: &str) -> bool {
         self.structs.contains_key(name)
     }
 
     /// Check if a name is an enum
+    #[must_use] 
     pub fn is_enum(&self, name: &str) -> bool {
         self.enums.contains_key(name)
     }
 
     /// Check if a name is a let binding
+    #[must_use] 
     pub fn is_let(&self, name: &str) -> bool {
         self.lets.contains_key(name)
     }
 
     /// Check if a name is a type (struct or enum)
+    #[must_use] 
     pub fn is_type(&self, name: &str) -> bool {
         self.structs.contains_key(name) || self.enums.contains_key(name)
     }
 
     /// Get all required fields from a trait (including composed traits)
+    #[must_use] 
     pub fn get_all_trait_fields(&self, name: &str) -> HashMap<String, Type> {
         let mut all_fields = HashMap::new();
 
@@ -564,6 +595,7 @@ impl SymbolTable {
     }
 
     /// Get all required mounting points from a trait (including composed traits)
+    #[must_use] 
     pub fn get_all_trait_mounting_points(&self, name: &str) -> HashMap<String, Type> {
         let mut all_mounts = HashMap::new();
 
@@ -590,10 +622,15 @@ impl SymbolTable {
     /// * `module_table` - The symbol table of the module to import from
     /// * `module_path` - The filesystem path of the module
     /// * `logical_path` - The logical module path (e.g., `["utils", "helpers"]`)
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(ImportError::PrivateItem)` if the symbol exists but is not public,
+    /// or `Err(ImportError::ItemNotFound)` if the symbol does not exist in the module.
     pub fn import_symbol(
         &mut self,
         name: &str,
-        module_table: &SymbolTable,
+        module_table: &Self,
         module_path: PathBuf,
         logical_path: Vec<String>,
     ) -> Result<(), ImportError> {
@@ -684,8 +721,7 @@ impl SymbolTable {
         // Same for logical path - preserve original if this is a re-export
         let actual_logical_path = module_table
             .get_module_logical_path(name)
-            .map(|p| p.to_vec())
-            .unwrap_or(logical_path);
+            .map_or(logical_path, std::clone::Clone::clone);
         self.module_logical_paths
             .insert(name.to_string(), actual_logical_path);
 
@@ -693,6 +729,7 @@ impl SymbolTable {
     }
 
     /// Get generic parameters for a type (trait, struct, or enum)
+    #[must_use] 
     pub fn get_generics(&self, type_name: &str) -> Option<Vec<GenericParam>> {
         // Check traits
         if let Some(info) = self.traits.get(type_name) {
@@ -713,11 +750,13 @@ impl SymbolTable {
     }
 
     /// Check if a name is a trait
+    #[must_use] 
     pub fn is_trait(&self, name: &str) -> bool {
         self.traits.contains_key(name)
     }
 
     /// Get all public symbols in this table
+    #[must_use] 
     pub fn all_public_symbols(&self) -> Vec<String> {
         let mut symbols = Vec::new();
 
@@ -764,6 +803,7 @@ impl SymbolTable {
     ///
     /// * `Some(&PathBuf)` - The filesystem path of the module the symbol was imported from
     /// * `None` - The symbol is local or not found
+    #[must_use] 
     pub fn get_module_origin(&self, name: &str) -> Option<&PathBuf> {
         self.module_origins.get(name).and_then(|opt| opt.as_ref())
     }
@@ -781,11 +821,13 @@ impl SymbolTable {
     ///
     /// * `Some(&Vec<String>)` - The logical module path (e.g., `["utils", "helpers"]`)
     /// * `None` - The symbol is local or not found
+    #[must_use] 
     pub fn get_module_logical_path(&self, name: &str) -> Option<&Vec<String>> {
         self.module_logical_paths.get(name)
     }
 
     /// Get the kind of a symbol (struct, trait, enum, etc.)
+    #[must_use] 
     pub fn get_symbol_kind(&self, name: &str) -> Option<SymbolKind> {
         if self.structs.contains_key(name) {
             Some(SymbolKind::Struct)
@@ -806,7 +848,8 @@ impl SymbolTable {
 }
 
 /// Errors that can occur during symbol import
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ImportError {
     /// Imported item is not public
     PrivateItem { name: String, kind: SymbolKind },
@@ -818,15 +861,16 @@ pub enum ImportError {
 }
 
 impl SymbolKind {
-    pub fn as_str(&self) -> &str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &str {
         match self {
-            SymbolKind::Trait => "trait",
-            SymbolKind::Struct => "struct",
-            SymbolKind::Impl => "impl",
-            SymbolKind::Enum => "enum",
-            SymbolKind::Let => "let binding",
-            SymbolKind::Function => "fn",
-            SymbolKind::Module => "mod",
+            Self::Trait => "trait",
+            Self::Struct => "struct",
+            Self::Impl => "impl",
+            Self::Enum => "enum",
+            Self::Let => "let binding",
+            Self::Function => "fn",
+            Self::Module => "mod",
         }
     }
 }

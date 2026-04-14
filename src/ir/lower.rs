@@ -1,4 +1,4 @@
-//! IR lowering pass: AST + SymbolTable → IrModule
+//! IR lowering pass: AST + `SymbolTable` → `IrModule`
 
 use crate::ast::{
     self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Definition, EnumDef, Expr,
@@ -32,6 +32,11 @@ use std::collections::HashMap;
 /// * `Ok(IrModule)` - The lowered IR module
 /// * `Err(Vec<CompilerError>)` - Errors encountered during lowering
 ///
+/// # Errors
+///
+/// Returns a list of [`CompilerError`] if type resolution or lowering fails for
+/// any definition or expression in the file.
+///
 /// # Example
 ///
 /// ```
@@ -53,11 +58,11 @@ struct IrLowerer<'a> {
     module: IrModule,
     symbols: &'a SymbolTable,
     errors: Vec<CompilerError>,
-    /// Track imports by module path for aggregation: (module_path, source_file) -> items
+    /// Track imports by module path for aggregation: (`module_path`, `source_file`) -> items
     imports_by_module: HashMap<Vec<String>, (Vec<IrImportItem>, std::path::PathBuf)>,
     /// Current struct being processed in an impl block (for self references)
     current_impl_struct: Option<String>,
-    /// Current module prefix for nested definitions (e.g., "outer::inner")
+    /// Current module prefix for nested definitions (e.g., "`outer::inner`")
     current_module_prefix: String,
     /// Current function's return type for inferring enum types
     current_function_return_type: Option<String>,
@@ -120,6 +125,7 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Lower a module-level let binding
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     #[expect(
         clippy::cast_precision_loss,
         reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
@@ -169,7 +175,7 @@ impl<'a> IrLowerer<'a> {
                 };
 
                 for (i, element) in elements.iter().enumerate() {
-                    if let Some(name) = self.extract_binding_name(element) {
+                    if let Some(name) = Self::extract_binding_name(element) {
                         // Create an indexed reference expression
                         let index_expr = IrExpr::Literal {
                             value: Literal::Number(i as f64),
@@ -194,9 +200,7 @@ impl<'a> IrLowerer<'a> {
                     let field_name = field.name.name.clone();
                     let binding_name = field
                         .alias
-                        .as_ref()
-                        .map(|a| a.name.clone())
-                        .unwrap_or_else(|| field_name.clone());
+                        .as_ref().map_or_else(|| field_name.clone(), |a| a.name.clone());
 
                     // Try to get the field type from the struct
                     let field_ty = self.get_field_type_from_resolved(value_expr.ty(), &field_name);
@@ -233,11 +237,9 @@ impl<'a> IrLowerer<'a> {
                 };
 
                 for (i, element) in elements.iter().enumerate() {
-                    if let Some(name) = self.extract_simple_binding_name(element) {
+                    if let Some(name) = Self::extract_simple_binding_name(element) {
                         let ty = tuple_types
-                            .get(i)
-                            .map(|(_, t)| t.clone())
-                            .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()));
+                            .get(i).map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |(_, t)| t.clone());
 
                         self.module.add_let(IrLet {
                             name,
@@ -256,16 +258,16 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Extract binding name from an array pattern element
-    fn extract_binding_name(&self, element: &ast::ArrayPatternElement) -> Option<String> {
+    fn extract_binding_name(element: &ast::ArrayPatternElement) -> Option<String> {
         match element {
-            ast::ArrayPatternElement::Binding(pattern) => self.extract_simple_binding_name(pattern),
+            ast::ArrayPatternElement::Binding(pattern) => Self::extract_simple_binding_name(pattern),
             ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
             ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => None,
         }
     }
 
     /// Extract binding name from a simple binding pattern
-    fn extract_simple_binding_name(&self, pattern: &BindingPattern) -> Option<String> {
+    fn extract_simple_binding_name(pattern: &BindingPattern) -> Option<String> {
         match pattern {
             BindingPattern::Simple(ident) => Some(ident.name.clone()),
             BindingPattern::Array { .. }
@@ -277,9 +279,10 @@ impl<'a> IrLowerer<'a> {
     /// Get field type from a resolved type
     fn get_field_type_from_resolved(&self, ty: &ResolvedType, field_name: &str) -> ResolvedType {
         if let ResolvedType::Struct(id) = ty {
-            let struct_def = self.module.get_struct(*id);
-            if let Some(field) = struct_def.fields.iter().find(|f| f.name == field_name) {
-                return field.ty.clone();
+            if let Some(struct_def) = self.module.get_struct(*id) {
+                if let Some(field) = struct_def.fields.iter().find(|f| f.name == field_name) {
+                    return field.ty.clone();
+                }
             }
         }
         ResolvedType::TypeParam("Unknown".to_string())
@@ -306,11 +309,11 @@ impl<'a> IrLowerer<'a> {
                 }
             }
         }
-        ResolvedType::TypeParam(format!("self.{}", field_name))
+        ResolvedType::TypeParam(format!("self.{field_name}"))
     }
 
     /// Resolve the type of `self` in an impl block context.
-    /// Returns the ResolvedType for the struct or enum being implemented.
+    /// Returns the `ResolvedType` for the struct or enum being implemented.
     fn resolve_impl_self_type(&self, impl_name: &str) -> ResolvedType {
         // First try as a struct
         if let Some(id) = self.module.struct_id(impl_name) {
@@ -324,9 +327,31 @@ impl<'a> IrLowerer<'a> {
         ResolvedType::TypeParam("self".to_string())
     }
 
+    /// Look up all traits for a struct that lives inside a module.
+    ///
+    /// `module_prefix` is a `"::"` separated path (e.g. `"shapes"` or `"a::b"`).
+    /// Returns the trait names as stored in the nested symbol table, which are
+    /// the *unqualified* trait names as written in source.
+    fn get_traits_for_struct_in_module(
+        &self,
+        module_prefix: &str,
+        struct_name: &str,
+    ) -> Vec<String> {
+        // Walk the module hierarchy following the prefix segments.
+        let parts: Vec<&str> = module_prefix.split("::").collect();
+        let mut current = self.symbols;
+        for part in &parts {
+            match current.modules.get(*part) {
+                Some(info) => current = &info.symbols,
+                None => return Vec::new(),
+            }
+        }
+        current.get_all_traits_for_struct(struct_name)
+    }
+
     /// Register imported structs and enums from the symbol table.
     /// This ensures that imported types have struct/enum IDs in the IR module,
-    /// so when we instantiate them, struct_id is populated correctly.
+    /// so when we instantiate them, `struct_id` is populated correctly.
     fn register_imported_types(&mut self) {
         // Register imported structs (top-level)
         for (name, struct_info) in &self.symbols.structs {
@@ -356,27 +381,45 @@ impl<'a> IrLowerer<'a> {
 
     /// Register types from a nested module recursively
     fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
+        // Register traits from this module (placeholder — filled in the second pass)
+        for (name, trait_info) in &module_symbols.traits {
+            let qualified_name = format!("{module_prefix}::{name}");
+            if let Err(e) = self.module.add_trait(
+                qualified_name.clone(),
+                IrTrait {
+                    name: qualified_name,
+                    visibility: trait_info.visibility,
+                    composed_traits: Vec::new(),
+                    fields: Vec::new(),
+                    mount_fields: Vec::new(),
+                    generic_params: Vec::new(),
+                },
+            ) {
+                self.errors.push(e);
+            }
+        }
+
         // Register structs from this module
         for (name, struct_info) in &module_symbols.structs {
-            let qualified_name = format!("{}::{}", module_prefix, name);
+            let qualified_name = format!("{module_prefix}::{name}");
             self.register_struct(&qualified_name, struct_info);
         }
 
         // Register enums from this module
         for (name, enum_info) in &module_symbols.enums {
-            let qualified_name = format!("{}::{}", module_prefix, name);
+            let qualified_name = format!("{module_prefix}::{name}");
             self.register_enum(&qualified_name, enum_info);
         }
 
         // Recursively register nested modules
         for (nested_name, nested_module_info) in &module_symbols.modules {
-            let nested_prefix = format!("{}::{}", module_prefix, nested_name);
+            let nested_prefix = format!("{module_prefix}::{nested_name}");
             self.register_module_types(&nested_prefix, &nested_module_info.symbols);
         }
     }
 
     /// Helper method to register an enum
-    /// Note: EnumInfo doesn't preserve variant field details, so we create placeholder variants
+    /// Note: `EnumInfo` doesn't preserve variant field details, so we create placeholder variants
     fn register_enum(&mut self, name: &str, enum_info: &crate::semantic::symbol_table::EnumInfo) {
         let generic_params = self.lower_generic_params(&enum_info.generics);
 
@@ -513,9 +556,10 @@ impl<'a> IrLowerer<'a> {
                 }
             }
             Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {
-                // Impls are processed after structs
-                // Modules are flattened (nested definitions registered recursively)
-                // Functions are processed in the second pass
+                // Impls are processed after structs.
+                // Modules: nested definitions are registered by register_module_types
+                //   (called from register_imported_types before the first pass).
+                // Functions are processed in the second pass.
             }
         }
     }
@@ -585,13 +629,12 @@ impl<'a> IrLowerer<'a> {
     /// Lower trait with module prefix
     fn lower_trait_with_prefix(&mut self, t: &TraitDef, prefix: &str) {
         let qualified_name = format!("{}::{}", prefix, t.name.name);
-        let id = match self
+        let Some(id) = self
             .module
             .trait_id(&qualified_name)
             .or_else(|| self.module.trait_id(&t.name.name))
-        {
-            Some(id) => id,
-            None => return, // Trait not registered, skip
+        else {
+            return; // Trait not registered, skip
         };
 
         let composed_traits: Vec<TraitId> = t
@@ -609,6 +652,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the trait in place
+        // id was obtained from trait_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
         let trait_def = &mut self.module.traits[id.0 as usize];
         trait_def.name = qualified_name;
         trait_def.visibility = t.visibility;
@@ -621,19 +666,27 @@ impl<'a> IrLowerer<'a> {
     /// Lower struct with module prefix
     fn lower_struct_with_prefix(&mut self, s: &StructDef, prefix: &str) {
         let qualified_name = format!("{}::{}", prefix, s.name.name);
-        let id = match self
+        let Some(id) = self
             .module
             .struct_id(&qualified_name)
             .or_else(|| self.module.struct_id(&s.name.name))
-        {
-            Some(id) => id,
-            None => return, // Struct not registered, skip
+        else {
+            return; // Struct not registered, skip
         };
 
-        let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
+        // Look up the struct's traits from the correct (nested) symbol table.
+        let all_trait_names = self.get_traits_for_struct_in_module(prefix, &s.name.name);
         let traits: Vec<TraitId> = all_trait_names
             .iter()
-            .filter_map(|trait_name| self.module.trait_id(trait_name))
+            .filter_map(|trait_name| {
+                // The trait name from source is unqualified (e.g. "Drawable").
+                // It was registered in the IR as a qualified name (e.g. "shapes::Drawable").
+                // Try the qualified form first, fall back to unqualified.
+                let qualified = format!("{prefix}::{trait_name}");
+                self.module
+                    .trait_id(&qualified)
+                    .or_else(|| self.module.trait_id(trait_name))
+            })
             .collect();
 
         let generic_params = self.lower_generic_params(&s.generics);
@@ -649,6 +702,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the struct in place
+        // id was obtained from struct_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
         let struct_def = &mut self.module.structs[id.0 as usize];
         struct_def.name = qualified_name;
         struct_def.visibility = s.visibility;
@@ -661,13 +716,12 @@ impl<'a> IrLowerer<'a> {
     /// Lower enum with module prefix
     fn lower_enum_with_prefix(&mut self, e: &EnumDef, prefix: &str) {
         let qualified_name = format!("{}::{}", prefix, e.name.name);
-        let id = match self
+        let Some(id) = self
             .module
             .enum_id(&qualified_name)
             .or_else(|| self.module.enum_id(&e.name.name))
-        {
-            Some(id) => id,
-            None => return, // Enum not registered, skip
+        else {
+            return; // Enum not registered, skip
         };
 
         let generic_params = self.lower_generic_params(&e.generics);
@@ -691,6 +745,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the enum in place
+        // id was obtained from enum_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
         let enum_def = &mut self.module.enums[id.0 as usize];
         enum_def.name = qualified_name;
         enum_def.visibility = e.visibility;
@@ -724,6 +780,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the trait in place
+        // id was obtained from trait_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
         let trait_def = &mut self.module.traits[id.0 as usize];
         trait_def.composed_traits = composed_traits;
         trait_def.fields = fields;
@@ -766,6 +824,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the struct in place
+        // id was obtained from struct_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
         let struct_def = &mut self.module.structs[id.0 as usize];
         struct_def.traits = traits;
         struct_def.fields = fields;
@@ -794,6 +854,8 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         // Update the enum in place
+        // id was obtained from enum_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
         let enum_def = &mut self.module.enums[id.0 as usize];
         enum_def.variants = variants;
         enum_def.generic_params = generic_params;
@@ -848,7 +910,7 @@ impl<'a> IrLowerer<'a> {
 
         // Set return type context for inferred enum resolution
         let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = f.return_type.as_ref().map(|t| self.type_name(t));
+        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         let body = self.lower_expr(&f.body);
 
@@ -883,7 +945,7 @@ impl<'a> IrLowerer<'a> {
 
         // Set return type context for inferred enum resolution
         let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = f.return_type.as_ref().map(|t| self.type_name(t));
+        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         let body = self.lower_expr(&f.body);
 
@@ -899,21 +961,21 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Extract the type name from an AST type (for return type context)
-    fn type_name(&self, ty: &ast::Type) -> String {
+    fn type_name(ty: &ast::Type) -> String {
         match ty {
-            ast::Type::Ident(name) => name.name.clone(),
-            ast::Type::Primitive(prim) => format!("{:?}", prim),
-            ast::Type::Optional(inner) => self.type_name(inner),
-            ast::Type::Generic { name, .. } => name.name.clone(),
+            ast::Type::Primitive(prim) => format!("{prim:?}"),
+            ast::Type::Optional(inner) => Self::type_name(inner),
             ast::Type::Array(_) => "Array".to_string(),
             ast::Type::Tuple(_) => "Tuple".to_string(),
             ast::Type::Dictionary { .. } => "Dictionary".to_string(),
             ast::Type::Closure { .. } => "Closure".to_string(),
-            ast::Type::TypeParameter(name) => name.name.clone(),
+            ast::Type::Ident(name)
+            | ast::Type::Generic { name, .. }
+            | ast::Type::TypeParameter(name) => name.name.clone(),
         }
     }
 
-    fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+    fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
         params
             .iter()
             .map(|p| IrGenericParam {
@@ -986,15 +1048,13 @@ impl<'a> IrLowerer<'a> {
                     return external;
                 }
                 // Otherwise try local types
-                if let Some(base) = self.module.struct_id(&name.name) {
-                    ResolvedType::Generic {
+                self.module.struct_id(&name.name).map_or_else(
+                    || ResolvedType::TypeParam(name.name.clone()),
+                    |base| ResolvedType::Generic {
                         base,
                         args: type_args,
-                    }
-                } else {
-                    // Fallback to type param if not found
-                    ResolvedType::TypeParam(name.name.clone())
-                }
+                    },
+                )
             }
 
             Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),
@@ -1015,10 +1075,10 @@ impl<'a> IrLowerer<'a> {
                 value_ty: Box::new(self.lower_type(value)),
             },
 
-            Type::Closure { .. } => {
-                // Closures are lowered as EventMapping types
-                ResolvedType::TypeParam("UnsupportedType".to_string())
-            }
+            Type::Closure { params, ret } => ResolvedType::Closure {
+                param_tys: params.iter().map(|p| self.lower_type(p)).collect(),
+                return_ty: Box::new(self.lower_type(ret)),
+            },
         }
     }
 
@@ -1094,11 +1154,12 @@ impl<'a> IrLowerer<'a> {
         })
     }
 
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
         match expr {
             Expr::Literal(lit) => IrExpr::Literal {
                 value: lit.clone(),
-                ty: self.literal_type(lit),
+                ty: Self::literal_type(lit),
             },
 
             Expr::Invocation {
@@ -1183,7 +1244,7 @@ impl<'a> IrLowerer<'a> {
                         .collect();
 
                     // Try to resolve the function return type
-                    let fn_name = path_strs.last().map(|s| s.as_str()).unwrap_or("");
+                    let fn_name = path_strs.last().map_or("", std::string::String::as_str);
                     let ty = self.resolve_function_return_type(fn_name, &lowered_args);
 
                     IrExpr::FunctionCall {
@@ -1201,16 +1262,16 @@ impl<'a> IrLowerer<'a> {
                 ..
             } => {
                 // Check if we have an enum ID (local or imported)
-                let (enum_id, ty) = if let Some(id) = self.module.enum_id(&enum_name.name) {
-                    // Local or imported enum with ID
-                    (Some(id), ResolvedType::Enum(id))
-                } else if let Some(external_ty) = self.try_external_type(&enum_name.name, vec![]) {
-                    // External enum from unregistered module - no valid ID
-                    (None, external_ty)
-                } else {
-                    // Unknown enum - this shouldn't happen after semantic analysis
-                    (None, ResolvedType::TypeParam(enum_name.name.clone()))
-                };
+                let (enum_id, ty) = self.module.enum_id(&enum_name.name).map_or_else(
+                    || {
+                        // External enum from unregistered module - no valid ID, or unknown enum
+                        self.try_external_type(&enum_name.name, vec![]).map_or_else(
+                            || (None, ResolvedType::TypeParam(enum_name.name.clone())),
+                            |external_ty| (None, external_ty),
+                        )
+                    },
+                    |id| (Some(id), ResolvedType::Enum(id)),
+                );
 
                 IrExpr::EnumInst {
                     enum_id,
@@ -1226,22 +1287,22 @@ impl<'a> IrLowerer<'a> {
             Expr::InferredEnumInstantiation { variant, data, .. } => {
                 // Try to resolve the enum type from the current function's return type context
                 let (enum_id, ty) =
-                    if let Some(return_type_name) = self.current_function_return_type.clone() {
-                        // Check if the return type is an enum
-                        if let Some(id) = self.module.enum_id(&return_type_name) {
-                            (Some(id), ResolvedType::Enum(id))
-                        } else if let Some(external_ty) =
-                            self.try_external_type(&return_type_name, vec![])
-                        {
-                            (None, external_ty)
-                        } else {
-                            // Return type is not an enum we can resolve
-                            (None, ResolvedType::TypeParam("InferredEnum".to_string()))
-                        }
-                    } else {
-                        // No return type context available
-                        (None, ResolvedType::TypeParam("InferredEnum".to_string()))
-                    };
+                    self.current_function_return_type.clone().map_or_else(
+                        || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
+                        |return_type_name| {
+                            // Check if the return type is an enum
+                            self.module.enum_id(&return_type_name).map_or_else(
+                                || {
+                                    // Return type is not an enum we can resolve, or external
+                                    self.try_external_type(&return_type_name, vec![]).map_or_else(
+                                        || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
+                                        |external_ty| (None, external_ty),
+                                    )
+                                },
+                                |id| (Some(id), ResolvedType::Enum(id)),
+                            )
+                        },
+                    );
 
                 IrExpr::EnumInst {
                     enum_id,
@@ -1257,9 +1318,7 @@ impl<'a> IrLowerer<'a> {
             Expr::Array { elements, .. } => {
                 let lowered: Vec<IrExpr> = elements.iter().map(|e| self.lower_expr(e)).collect();
                 let elem_ty = lowered
-                    .first()
-                    .map(|e| e.ty().clone())
-                    .unwrap_or_else(|| ResolvedType::TypeParam("UnknownElement".to_string()));
+                    .first().map_or_else(|| ResolvedType::TypeParam("UnknownElement".to_string()), |e| e.ty().clone());
 
                 IrExpr::Array {
                     elements: lowered,
@@ -1287,7 +1346,8 @@ impl<'a> IrLowerer<'a> {
             Expr::Reference { path, .. } => {
                 let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
 
-                // Check for self.field pattern
+                // Check for self.field pattern — bounds verified by len() == 2 check
+                #[expect(clippy::indexing_slicing, reason = "len == 2 check above guarantees indices 0 and 1")]
                 if path_strs.len() == 2 && path_strs[0] == "self" {
                     let field_name = &path_strs[1];
                     let ty = self.resolve_self_field_type(field_name);
@@ -1297,7 +1357,8 @@ impl<'a> IrLowerer<'a> {
                     };
                 }
 
-                // Check for bare "self" in impl context
+                // Check for bare "self" in impl context — bounds verified by len() == 1 check
+                #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
                 if path_strs.len() == 1 && path_strs[0] == "self" {
                     if let Some(ref impl_name) = self.current_impl_struct {
                         let ty = self.resolve_impl_self_type(impl_name);
@@ -1310,6 +1371,8 @@ impl<'a> IrLowerer<'a> {
 
                 // Check for module-level let binding reference
                 if path_strs.len() == 1 {
+                    // bounds verified by len() == 1 check above
+                    #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
                     let name = &path_strs[0];
                     if let Some(let_type) = self.symbols.get_let_type(name) {
                         let ty = self.string_to_resolved_type(let_type);
@@ -1322,7 +1385,10 @@ impl<'a> IrLowerer<'a> {
 
                 // Fall back to generic reference for other cases
                 let ty = if path_strs.len() == 1 {
-                    ResolvedType::TypeParam(path_strs[0].clone())
+                    // bounds verified by len() == 1 check above
+                    #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
+                    let t = ResolvedType::TypeParam(path_strs[0].clone());
+                    t
                 } else {
                     ResolvedType::TypeParam(path_strs.join("."))
                 };
@@ -1455,9 +1521,7 @@ impl<'a> IrLowerer<'a> {
                     .collect();
 
                 let ty = arms_ir
-                    .first()
-                    .map(|a| a.body.ty().clone())
-                    .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()));
+                    .first().map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |a| a.body.ty().clone());
 
                 IrExpr::Match {
                     scrutinee: Box::new(scrutinee_ir),
@@ -1621,9 +1685,7 @@ impl<'a> IrLowerer<'a> {
                     BindingPattern::Struct { fields, .. } => {
                         // For struct destructuring, use first field name or placeholder
                         fields
-                            .first()
-                            .map(|f| f.name.name.clone())
-                            .unwrap_or_else(|| "_struct".to_string())
+                            .first().map_or_else(|| "_struct".to_string(), |f| f.name.name.clone())
                     }
                     BindingPattern::Array { elements, .. } => {
                         // For array destructuring, use first binding name or placeholder
@@ -1666,7 +1728,7 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn literal_type(&self, lit: &Literal) -> ResolvedType {
+    fn literal_type(lit: &Literal) -> ResolvedType {
         match lit {
             Literal::String(_) => ResolvedType::Primitive(PrimitiveType::String),
             Literal::Number(_) => ResolvedType::Primitive(PrimitiveType::Number),
@@ -1687,32 +1749,30 @@ impl<'a> IrLowerer<'a> {
     fn resolve_field_type(&self, object_ty: &ResolvedType, field_name: &str) -> ResolvedType {
         match object_ty {
             // Vector component access
-            ResolvedType::Primitive(PrimitiveType::Vec2)
-            | ResolvedType::Primitive(PrimitiveType::Vec3)
-            | ResolvedType::Primitive(PrimitiveType::Vec4) => match field_name {
+            ResolvedType::Primitive(PrimitiveType::Vec2 | PrimitiveType::Vec3 |
+PrimitiveType::Vec4) => match field_name {
                 "x" | "y" | "z" | "w" | "r" | "g" | "b" | "a" => {
                     ResolvedType::Primitive(PrimitiveType::F32)
                 }
                 _ => ResolvedType::TypeParam(field_name.to_string()),
             },
-            ResolvedType::Primitive(PrimitiveType::IVec2)
-            | ResolvedType::Primitive(PrimitiveType::IVec3)
-            | ResolvedType::Primitive(PrimitiveType::IVec4) => match field_name {
+            ResolvedType::Primitive(PrimitiveType::IVec2 | PrimitiveType::IVec3 |
+PrimitiveType::IVec4) => match field_name {
                 "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::I32),
                 _ => ResolvedType::TypeParam(field_name.to_string()),
             },
-            ResolvedType::Primitive(PrimitiveType::UVec2)
-            | ResolvedType::Primitive(PrimitiveType::UVec3)
-            | ResolvedType::Primitive(PrimitiveType::UVec4) => match field_name {
+            ResolvedType::Primitive(PrimitiveType::UVec2 | PrimitiveType::UVec3 |
+PrimitiveType::UVec4) => match field_name {
                 "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::U32),
                 _ => ResolvedType::TypeParam(field_name.to_string()),
             },
             // Struct field access
             ResolvedType::Struct(struct_id) => {
-                let struct_def = self.module.get_struct(*struct_id);
-                for field in &struct_def.fields {
-                    if field.name == field_name {
-                        return field.ty.clone();
+                if let Some(struct_def) = self.module.get_struct(*struct_id) {
+                    for field in &struct_def.fields {
+                        if field.name == field_name {
+                            return field.ty.clone();
+                        }
                     }
                 }
                 ResolvedType::TypeParam(field_name.to_string())
@@ -1736,7 +1796,7 @@ impl<'a> IrLowerer<'a> {
     /// Resolve the return type of a method call.
     ///
     /// Handles:
-    /// 1. Builtin methods on GPU types (e.g., vec3.normalize() -> Vec3)
+    /// 1. Builtin methods on GPU types (e.g., `vec3.normalize()` -> Vec3)
     /// 2. User-defined methods in impl blocks
     fn resolve_method_return_type(
         &self,
@@ -1784,13 +1844,13 @@ impl<'a> IrLowerer<'a> {
         }
 
         // Fallback: placeholder type
-        ResolvedType::TypeParam(format!("{}Result", method_name))
+        ResolvedType::TypeParam(format!("{method_name}Result"))
     }
 
     /// Resolve the return type of a function call.
     ///
     /// Handles:
-    /// 1. User-defined standalone functions in IrModule::functions
+    /// 1. User-defined standalone functions in `IrModule::functions`
     /// 2. Builtin functions (math, WGSL intrinsics, etc.)
     /// 3. Falls back to void for unknown functions
     fn resolve_function_return_type(
@@ -1800,16 +1860,17 @@ impl<'a> IrLowerer<'a> {
     ) -> ResolvedType {
         // Check if it's a user-defined function
         if let Some(func_id) = self.module.function_id(fn_name) {
-            let func = self.module.get_function(func_id);
-            // Return the declared return type, or infer from body
-            return func
-                .return_type
-                .clone()
-                .unwrap_or_else(|| func.body.ty().clone());
+            if let Some(func) = self.module.get_function(func_id) {
+                // Return the declared return type, or infer from body
+                return func
+                    .return_type
+                    .clone()
+                    .unwrap_or_else(|| func.body.ty().clone());
+            }
         }
 
         // Check builtin functions registry
-        if let Some(return_ty) = self.resolve_builtin_function_type(fn_name) {
+        if let Some(return_ty) = Self::resolve_builtin_function_type(fn_name) {
             return return_ty;
         }
 
@@ -1820,8 +1881,8 @@ impl<'a> IrLowerer<'a> {
     /// Resolve the return type of a builtin function.
     ///
     /// Returns the appropriate type for common builtin/intrinsic functions.
-    fn resolve_builtin_function_type(&self, fn_name: &str) -> Option<ResolvedType> {
-        use PrimitiveType::*;
+    fn resolve_builtin_function_type(fn_name: &str) -> Option<ResolvedType> {
+        use PrimitiveType::{Number, Vec2, Vec3, Vec4, IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Mat2, Mat3, Mat4, I32, U32, Boolean};
 
         // Math functions (return same type as input, typically f32)
         let math_float_fns = [
@@ -1930,8 +1991,7 @@ impl<'a> IrLowerer<'a> {
             .map(|p| {
                 let ty =
                     p.ty.as_ref()
-                        .map(|t| self.lower_type(t))
-                        .unwrap_or(ResolvedType::TypeParam("Unknown".to_string()));
+                        .map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |t| self.lower_type(t));
                 (p.name.name.clone(), ty)
             })
             .collect();
@@ -1960,8 +2020,8 @@ impl<'a> IrLowerer<'a> {
     ///
     /// # Examples
     ///
-    /// - `() -> .submit` → EventMapping with no param, variant "submit"
-    /// - `x -> .changed(value: x)` → EventMapping with param "x", variant "changed", binding value→x
+    /// - `() -> .submit` → `EventMapping` with no param, variant "submit"
+    /// - `x -> .changed(value: x)` → `EventMapping` with param "x", variant "changed", binding value→x
     fn lower_event_mapping(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
         // Validate: 0 or 1 parameter
         if params.len() > 1 {
@@ -1991,12 +2051,12 @@ impl<'a> IrLowerer<'a> {
                 let (enum_id, return_ty) = self.resolve_event_enum_type(&enum_name.name);
 
                 // Extract field bindings - check if they reference the parameter
-                let field_bindings = self.extract_event_field_bindings(data, param.as_deref());
+                let field_bindings = Self::extract_event_field_bindings(data, param.as_deref());
 
                 // Build the event mapping type
                 let ty = ResolvedType::EventMapping {
                     param_ty,
-                    return_ty: Box::new(return_ty.clone()),
+                    return_ty: Box::new(return_ty),
                 };
 
                 IrExpr::EventMapping {
@@ -2010,7 +2070,7 @@ impl<'a> IrLowerer<'a> {
             // Inferred enum instantiation: .variant or .variant(field: value)
             Expr::InferredEnumInstantiation { variant, data, .. } => {
                 // Extract field bindings
-                let field_bindings = self.extract_event_field_bindings(data, param.as_deref());
+                let field_bindings = Self::extract_event_field_bindings(data, param.as_deref());
 
                 let ty = ResolvedType::EventMapping {
                     param_ty,
@@ -2052,21 +2112,18 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Resolve enum type for event mapping, returning (enum_id, resolved_type).
+    /// Resolve enum type for event mapping, returning (`enum_id`, `resolved_type`).
     fn resolve_event_enum_type(&self, enum_name: &str) -> (Option<super::EnumId>, ResolvedType) {
-        if let Some(enum_id) = self.module.enum_id(enum_name) {
-            (Some(enum_id), ResolvedType::Enum(enum_id))
-        } else {
-            // External or unknown enum
-            (None, ResolvedType::TypeParam(enum_name.to_string()))
-        }
+        self.module.enum_id(enum_name).map_or_else(
+            || (None, ResolvedType::TypeParam(enum_name.to_string())),
+            |enum_id| (Some(enum_id), ResolvedType::Enum(enum_id)),
+        )
     }
 
     /// Extract field bindings from enum variant fields.
     ///
     /// Checks if field values reference the event mapping parameter.
     fn extract_event_field_bindings(
-        &self,
         fields: &[(ast::Ident, Expr)],
         param_name: Option<&str>,
     ) -> Vec<EventFieldBinding> {
@@ -2075,6 +2132,8 @@ impl<'a> IrLowerer<'a> {
             .map(|(field_name, value)| {
                 let source = match value {
                     // Field references the parameter: `value: x`
+                    // path[0] is bounds-safe: guarded by path.len() == 1 in the match guard
+                    #[expect(clippy::indexing_slicing, reason = "len == 1 guard above guarantees index 0")]
                     Expr::Reference { path, .. }
                         if path.len() == 1 && param_name.is_some_and(|p| path[0].name == p) =>
                     {
@@ -2102,11 +2161,10 @@ impl<'a> IrLowerer<'a> {
                     | Expr::LetExpr { .. }
                     | Expr::MethodCall { .. }
                     | Expr::Block { .. } => {
-                        if let Some(p) = param_name {
-                            EventBindingSource::Param(p.to_string())
-                        } else {
-                            EventBindingSource::Literal(Literal::Nil)
-                        }
+                        param_name.map_or(
+                            EventBindingSource::Literal(Literal::Nil),
+                            |p| EventBindingSource::Param(p.to_string()),
+                        )
                     }
                 };
 
@@ -2125,17 +2183,19 @@ impl<'a> IrLowerer<'a> {
             "Boolean" => ResolvedType::Primitive(PrimitiveType::Boolean),
             "Path" => ResolvedType::Primitive(PrimitiveType::Path),
             "Regex" => ResolvedType::Primitive(PrimitiveType::Regex),
-            name => {
-                if let Some(id) = self.module.struct_id(name) {
-                    ResolvedType::Struct(id)
-                } else if let Some(id) = self.module.enum_id(name) {
-                    ResolvedType::Enum(id)
-                } else if let Some(id) = self.module.trait_id(name) {
-                    ResolvedType::Trait(id)
-                } else {
-                    ResolvedType::TypeParam(name.to_string())
-                }
-            }
+            name => self.module.struct_id(name).map_or_else(
+                || {
+                    self.module.enum_id(name).map_or_else(
+                        || {
+                            self.module
+                                .trait_id(name)
+                                .map_or_else(|| ResolvedType::TypeParam(name.to_string()), ResolvedType::Trait)
+                        },
+                        ResolvedType::Enum,
+                    )
+                },
+                ResolvedType::Struct,
+            ),
         }
     }
 
@@ -2171,9 +2231,10 @@ impl<'a> IrLowerer<'a> {
     fn get_variant_fields(&self, enum_ty: &ResolvedType, variant_name: &str) -> Vec<ResolvedType> {
         // Handle direct enum type
         if let ResolvedType::Enum(id) = enum_ty {
-            let enum_def = self.module.get_enum(*id);
-            if let Some(variant) = enum_def.variants.iter().find(|v| v.name == variant_name) {
-                return variant.fields.iter().map(|f| f.ty.clone()).collect();
+            if let Some(enum_def) = self.module.get_enum(*id) {
+                if let Some(variant) = enum_def.variants.iter().find(|v| v.name == variant_name) {
+                    return variant.fields.iter().map(|f| f.ty.clone()).collect();
+                }
             }
         }
         // Handle TypeParam("self") in impl context - resolve to actual enum type
@@ -2181,11 +2242,12 @@ impl<'a> IrLowerer<'a> {
             if name == "self" {
                 if let Some(ref impl_name) = self.current_impl_struct {
                     if let Some(id) = self.module.enum_id(impl_name) {
-                        let enum_def = self.module.get_enum(id);
-                        if let Some(variant) =
-                            enum_def.variants.iter().find(|v| v.name == variant_name)
-                        {
-                            return variant.fields.iter().map(|f| f.ty.clone()).collect();
+                        if let Some(enum_def) = self.module.get_enum(id) {
+                            if let Some(variant) =
+                                enum_def.variants.iter().find(|v| v.name == variant_name)
+                            {
+                                return variant.fields.iter().map(|f| f.ty.clone()).collect();
+                            }
                         }
                     }
                 }
@@ -2200,17 +2262,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lower_empty_file() {
+    fn test_lower_empty_file() -> Result<(), Box<dyn std::error::Error>> {
         let ast = File {
             statements: vec![],
             span: crate::location::Span::default(),
         };
         let symbols = SymbolTable::new();
         let result = lower_to_ir(&ast, &symbols);
-        assert!(result.is_ok());
-        let module = result.unwrap();
-        assert!(module.structs.is_empty());
-        assert!(module.traits.is_empty());
-        assert!(module.enums.is_empty());
+        if result.is_err() {
+            return Err(format!("Expected ok: {:?}", result.err()).into());
+        }
+        let module = result.map_err(|e| format!("{e:?}"))?;
+        if !module.structs.is_empty() {
+            return Err(format!("Expected empty structs, got {}", module.structs.len()).into());
+        }
+        if !module.traits.is_empty() {
+            return Err(format!("Expected empty traits, got {}", module.traits.len()).into());
+        }
+        if !module.enums.is_empty() {
+            return Err(format!("Expected empty enums, got {}", module.enums.len()).into());
+        }
+        Ok(())
     }
 }

@@ -65,9 +65,11 @@ impl TypeGraph {
                 if rec_stack.contains(neighbor) {
                     // Extract the cycle from the path
                     if let Some(cycle_start) = path.iter().position(|t| t == neighbor) {
-                        let mut cycle = path[cycle_start..].to_vec();
-                        cycle.push(neighbor.clone()); // Close the cycle
-                        cycles.push(cycle);
+                        if let Some(cycle_slice) = path.get(cycle_start..) {
+                            let mut cycle = cycle_slice.to_vec();
+                            cycle.push(neighbor.clone()); // Close the cycle
+                            cycles.push(cycle);
+                        }
                     }
                 } else if !visited.contains(neighbor) {
                     // Continue DFS

@@ -9,8 +9,8 @@ use formalang::compile;
 // =============================================================================
 
 #[test]
-fn test_resolve_nested_generic_type() {
-    let source = r#"
+fn test_resolve_nested_generic_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Box<T> {
             value: T
         }
@@ -20,42 +20,51 @@ fn test_resolve_nested_generic_type() {
         struct Config {
             items: Container<String>
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_resolve_array_of_generic() {
-    let source = r#"
+fn test_resolve_array_of_generic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Item<T> {
             value: T
         }
         struct List {
             items: [Item<String>]
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_resolve_optional_generic() {
-    let source = r#"
+fn test_resolve_optional_generic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Wrapper<T> {
             value: T
         }
         struct Container {
             item: Wrapper<String>?
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_resolve_tuple_with_generics() {
-    let source = r#"
+fn test_resolve_tuple_with_generics() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Pair<A, B> {
             first: A,
             second: B
@@ -63,9 +72,12 @@ fn test_resolve_tuple_with_generics() {
         struct Data {
             pair: Pair<String, Number>
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -73,23 +85,26 @@ fn test_resolve_tuple_with_generics() {
 // =============================================================================
 
 #[test]
-fn test_trait_field_type_validation() {
-    let source = r#"
+fn test_trait_field_type_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Typed {
             value: String
         }
         struct Impl: Typed {
             value: Number
         }
-    "#;
+    ";
     let result = compile(source);
     // Type mismatch should be detected
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_trait_multiple_conformance() {
-    let source = r#"
+fn test_trait_multiple_conformance() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Named {
             name: String
         }
@@ -100,42 +115,51 @@ fn test_trait_multiple_conformance() {
             name: String,
             age: Number
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_trait_with_optional_field() {
-    let source = r#"
+fn test_trait_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait MaybeNamed {
             name: String?
         }
         struct User: MaybeNamed {
             name: String?
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_trait_with_array_field() {
-    let source = r#"
+fn test_trait_with_array_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait HasItems {
             items: [String]
         }
         struct Container: HasItems {
             items: [String]
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_trait_inheritance() {
-    let source = r#"
+fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Base {
             id: Number
         }
@@ -146,9 +170,12 @@ fn test_trait_inheritance() {
             id: Number,
             name: String
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -156,83 +183,104 @@ fn test_trait_inheritance() {
 // =============================================================================
 
 #[test]
-fn test_if_expression_with_literal() {
-    let source = r#"
+fn test_if_expression_with_literal() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Data {
             status: Boolean = if true { true } else { false }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_for_expression_with_literal() {
+fn test_for_expression_with_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct List {
             items: [String] = for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_expression_simple() {
-    let source = r#"
+fn test_let_expression_simple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Calculator {
             a: Number = (let x = 10
             x)
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_let_expressions() {
-    let source = r#"
+fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Logic {
             a: Boolean = (let x = true
             let y = false
             x)
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_binary_operators_with_literals() {
-    let source = r#"
+fn test_binary_operators_with_literals() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Math {
             a: Number = 1 + 2
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_comparison_operators_with_literals() {
-    let source = r#"
+fn test_comparison_operators_with_literals() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Compare {
             a: Number = if 1 < 2 { 1 } else { 0 }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_logical_operators_with_literals() {
-    let source = r#"
+fn test_logical_operators_with_literals() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Logic {
             a: Boolean = true && false
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -240,83 +288,98 @@ fn test_logical_operators_with_literals() {
 // =============================================================================
 
 #[test]
-fn test_invalid_if_condition_type() {
-    let source = r#"
+fn test_invalid_if_condition_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number
         }
         impl Test {
             value: if value { 1 } else { 0 }
         }
-    "#;
+    ";
     let result = compile(source);
     // Number is not a valid condition type
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_invalid_for_not_array() {
-    let source = r#"
+fn test_invalid_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: String
         }
         impl Test {
             value: for item in value { item }
         }
-    "#;
+    ";
     let result = compile(source);
     // String is not iterable
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_undefined_variable_reference() {
-    let source = r#"
+fn test_undefined_variable_reference() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number
         }
         impl Test {
             value: undefinedVariable + 1
         }
-    "#;
+    ";
     let result = compile(source);
     // Undefined variable
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_field_access_on_primitive() {
-    let source = r#"
+fn test_field_access_on_primitive() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number
         }
         impl Test {
             value: value.field
         }
-    "#;
+    ";
     let result = compile(source);
     // Cannot access field on Number
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_invalid_arithmetic_on_boolean() {
-    let source = r#"
+fn test_invalid_arithmetic_on_boolean() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             flag: Boolean
         }
         impl Test {
             flag: flag + 1
         }
-    "#;
+    ";
     let result = compile(source);
     // Cannot add Boolean and Number
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_invalid_comparison_types() {
-    let source = r#"
+fn test_invalid_comparison_types() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             text: String,
             num: Number
@@ -324,10 +387,13 @@ fn test_invalid_comparison_types() {
         impl Test {
             text: text < num
         }
-    "#;
+    ";
     let result = compile(source);
     // Cannot compare String and Number
-    assert!(result.is_err());
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -335,41 +401,50 @@ fn test_invalid_comparison_types() {
 // =============================================================================
 
 #[test]
-fn test_mount_field_basic() {
-    let source = r#"
+fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Container {
             @mount content: String
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_multiple_mount_fields() {
-    let source = r#"
+fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Layout {
             @mount header: String,
             @mount main: String,
             @mount footer: String
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_view_trait_with_mount() {
-    let source = r#"
+fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Renderable {
             @mount content: String
         }
         struct View: Renderable {
             @mount content: String
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -377,15 +452,18 @@ fn test_view_trait_with_mount() {
 // =============================================================================
 
 #[test]
-fn test_use_single_item() {
-    let source = r#"
+fn test_use_single_item() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod utils {
             struct Helper { value: String }
         }
-    "#;
+    ";
     // Use statements may need specific syntax - just test the module for now
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -393,33 +471,39 @@ fn test_use_single_item() {
 // =============================================================================
 
 #[test]
-fn test_struct_with_all_field_modifiers() {
-    let source = r#"
+fn test_struct_with_all_field_modifiers() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Complex {
             required: String,
             optional: Number?,
             mut mutable: Boolean,
             @mount content: String
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_deeply_nested_structs() {
-    let source = r#"
+fn test_deeply_nested_structs() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Level3 { value: String }
         struct Level2 { inner: Level3 }
         struct Level1 { inner: Level2 }
         struct Root { inner: Level1 }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_struct_with_defaults() {
+fn test_struct_with_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct WithDefaults {
             name: String = "default",
@@ -428,7 +512,10 @@ fn test_struct_with_defaults() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -436,8 +523,8 @@ fn test_struct_with_defaults() {
 // =============================================================================
 
 #[test]
-fn test_enum_with_many_variants() {
-    let source = r#"
+fn test_enum_with_many_variants() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Color {
             red,
             green,
@@ -448,35 +535,44 @@ fn test_enum_with_many_variants() {
             white,
             black
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_enum_status_variants() {
-    let source = r#"
+fn test_enum_status_variants() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Status {
             pending,
             active,
             complete,
             failed
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_generic_enum_simple() {
-    let source = r#"
+fn test_generic_enum_simple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Container<T> {
             full,
             empty
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -484,26 +580,32 @@ fn test_generic_enum_simple() {
 // =============================================================================
 
 #[test]
-fn test_dictionary_with_struct_value() {
-    let source = r#"
+fn test_dictionary_with_struct_value() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct User { name: String }
         struct Cache {
             users: [String: User]
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_dictionary_literal_in_impl() {
+fn test_dictionary_literal_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config {
             data: [String: Number] = ["a": 1, "b": 2, "c": 3]
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -511,36 +613,45 @@ fn test_dictionary_literal_in_impl() {
 // =============================================================================
 
 #[test]
-fn test_closure_in_field() {
-    let source = r#"
+fn test_closure_in_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Handler {
             process: String -> Number
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_multi_param() {
-    let source = r#"
+fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Calculator {
             operation: Number -> Number
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_expression_in_impl() {
+fn test_closure_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Mapper {
             data: [String] = for item in ["a", "b"] { item }
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -548,39 +659,48 @@ fn test_closure_expression_in_impl() {
 // =============================================================================
 
 #[test]
-fn test_let_with_type_annotation() {
-    let source = r#"
+fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number = (let x: Number = 10
             x)
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_mutable() {
-    let source = r#"
+fn test_let_mutable() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Counter {
             initial: Number = (let mut count = 0
             count)
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_simple_value() {
-    let source = r#"
+fn test_let_simple_value() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number = (let x = 2
             x)
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -588,8 +708,8 @@ fn test_let_simple_value() {
 // =============================================================================
 
 #[test]
-fn test_deeply_nested_modules() {
-    let source = r#"
+fn test_deeply_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod a {
             mod b {
                 mod c {
@@ -597,13 +717,16 @@ fn test_deeply_nested_modules() {
                 }
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_with_trait_and_impl() {
+fn test_module_with_trait_and_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         mod core {
             trait Named {
@@ -615,7 +738,10 @@ fn test_module_with_trait_and_impl() {
         }
     "#;
     let result = compile(source);
-    assert!(result.is_ok(), "Failed: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Failed: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -623,7 +749,7 @@ fn test_module_with_trait_and_impl() {
 // =============================================================================
 
 #[test]
-fn test_impl_block_defaults_applied_on_instantiation() {
+fn test_impl_block_defaults_applied_on_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     // Struct field defaults should make fields optional during instantiation
     let source = r##"
         struct MyBox {
@@ -635,15 +761,20 @@ fn test_impl_block_defaults_applied_on_instantiation() {
         }
     "##;
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Struct field defaults should make fields optional: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Struct field defaults should make fields optional: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_impl_block_defaults_with_mount_fields() {
+fn test_impl_block_defaults_with_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
     // Mount fields with struct field defaults should be optional
     let source = r##"
         trait Shape {}
@@ -658,15 +789,20 @@ fn test_impl_block_defaults_with_mount_fields() {
         }
     "##;
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Mount fields with defaults should be optional: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Mount fields with defaults should be optional: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_impl_block_defaults_partial_override() {
+fn test_impl_block_defaults_partial_override() -> Result<(), Box<dyn std::error::Error>> {
     // Can provide some fields while using struct field defaults for others
     let source = r#"
         struct Config {
@@ -679,15 +815,20 @@ fn test_impl_block_defaults_partial_override() {
         }
     "#;
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Should allow partial override of struct field defaults: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Should allow partial override of struct field defaults: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_impl_block_defaults_nested_instantiation() {
+fn test_impl_block_defaults_nested_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     // Nested struct instantiation should respect struct field defaults
     let source = r#"
         struct Inner {
@@ -702,11 +843,16 @@ fn test_impl_block_defaults_nested_instantiation() {
         }
     "#;
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Nested instantiation should use struct field defaults: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Nested instantiation should use struct field defaults: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -714,8 +860,8 @@ fn test_impl_block_defaults_nested_instantiation() {
 // =============================================================================
 
 #[test]
-fn test_function_return_type_valid_f32() {
-    let source = r#"
+fn test_function_return_type_valid_f32() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Vec2 {
             x: f32,
             y: f32
@@ -725,18 +871,23 @@ fn test_function_return_type_valid_f32() {
                 self.x * self.x + self.y * self.y
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Function with matching return type should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Function with matching return type should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_function_return_type_valid_number() {
-    let source = r#"
+fn test_function_return_type_valid_number() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Calculator {
             value: Number
         }
@@ -745,18 +896,23 @@ fn test_function_return_type_valid_number() {
                 self.value * 2
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Function with Number return type should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Function with Number return type should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_function_return_type_mismatch() {
-    let source = r#"
+fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Data {
             count: Number
         }
@@ -765,24 +921,22 @@ fn test_function_return_type_mismatch() {
                 self.count
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_err(),
-        "Function returning Number when String expected should fail"
-    );
-    let err = result.unwrap_err();
-    let err_str = format!("{:?}", err);
-    assert!(
-        err_str.contains("FunctionReturnTypeMismatch"),
-        "Should report FunctionReturnTypeMismatch error: {}",
-        err_str
-    );
+    if result.is_ok() {
+        return Err("Function returning Number when String expected should fail".into());
+    }
+    let err = result.err().ok_or("expected error")?;
+    let err_str = format!("{err:?}");
+    if !err_str.contains("FunctionReturnTypeMismatch") {
+        return Err(format!("Should report FunctionReturnTypeMismatch error: {err_str}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_function_return_type_boolean_valid() {
-    let source = r#"
+fn test_function_return_type_boolean_valid() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Checker {
             value: Number
         }
@@ -791,19 +945,24 @@ fn test_function_return_type_boolean_valid() {
                 self.value > 0
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Function with Boolean return from comparison should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Function with Boolean return from comparison should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_function_no_return_type_valid() {
+fn test_function_no_return_type_valid() -> Result<(), Box<dyn std::error::Error>> {
     // Functions without explicit return type should accept any body type
-    let source = r#"
+    let source = r"
         struct Processor {
             data: Number
         }
@@ -812,13 +971,18 @@ fn test_function_no_return_type_valid() {
                 self.data * 2
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Function without return type should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Function without return type should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -826,8 +990,8 @@ fn test_function_no_return_type_valid() {
 // =============================================================================
 
 #[test]
-fn test_assignment_to_immutable_fails() {
-    let source = r#"
+fn test_assignment_to_immutable_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Counter { value: Number }
         impl Counter {
             fn get_value(self) -> Number {
@@ -836,26 +1000,25 @@ fn test_assignment_to_immutable_fails() {
                 x
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_err(),
-        "Assignment to immutable binding should fail"
-    );
-    let errors = result.err().unwrap();
-    let error_strings: Vec<String> = errors.iter().map(|e| format!("{:?}", e)).collect();
-    assert!(
-        error_strings
-            .iter()
-            .any(|e| e.contains("immutable") || e.contains("Immutable")),
-        "Error should mention immutable: {:?}",
-        error_strings
-    );
+    if result.is_ok() {
+        return Err("Assignment to immutable binding should fail".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    let error_strings: Vec<String> = errors.iter().map(|e| format!("{e:?}")).collect();
+    if !error_strings
+        .iter()
+        .any(|e| e.contains("immutable") || e.contains("Immutable"))
+    {
+        return Err(format!("Error should mention immutable: {error_strings:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_assignment_to_mutable_succeeds() {
-    let source = r#"
+fn test_assignment_to_mutable_succeeds() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Counter { value: Number }
         impl Counter {
             fn get_value(self) -> Number {
@@ -864,13 +1027,18 @@ fn test_assignment_to_mutable_succeeds() {
                 x
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Assignment to mutable binding should succeed: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Assignment to mutable binding should succeed: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -878,8 +1046,8 @@ fn test_assignment_to_mutable_succeeds() {
 // =============================================================================
 
 #[test]
-fn test_block_expr_with_let_bindings() {
-    let source = r#"
+fn test_block_expr_with_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number = {
                 let a = 1
@@ -887,18 +1055,23 @@ fn test_block_expr_with_let_bindings() {
                 a + b
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Block expression with let bindings should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Block expression with let bindings should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_block_expr_with_assignment() {
-    let source = r#"
+fn test_block_expr_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test { value: Number }
         impl Test {
             fn compute(self) -> Number {
@@ -907,18 +1080,23 @@ fn test_block_expr_with_assignment() {
                 sum
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Block expression with assignment should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Block expression with assignment should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_block_expressions() {
-    let source = r#"
+fn test_nested_block_expressions() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Test {
             value: Number = {
                 let outer = {
@@ -928,11 +1106,16 @@ fn test_nested_block_expressions() {
                 outer + 1
             }
         }
-    "#;
+    ";
     let result = compile(source);
-    assert!(
-        result.is_ok(),
-        "Nested block expressions should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!(
+                "Nested block expressions should compile: {:?}",
+                result.err()
+            )
+            .into(),
+        );
+    }
+    Ok(())
 }

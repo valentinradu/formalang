@@ -2,7 +2,8 @@ use crate::location::Span;
 use std::path::PathBuf;
 
 /// Error types for module resolution
-#[derive(Debug, Clone, PartialEq)]
+#[expect(clippy::exhaustive_enums, reason = "matched exhaustively by consumer code")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
     /// Module file not found
     NotFound {
@@ -47,6 +48,9 @@ pub trait ModuleResolver {
     ///
     /// # Returns
     /// The source code of the module, or an error if resolution fails
+    ///
+    /// # Errors
+    /// Returns a [`ModuleError`] if the module cannot be found or read.
     fn resolve(
         &self,
         path: &[String],
@@ -61,6 +65,7 @@ pub trait ModuleResolver {
 /// # Examples
 /// - `use std::View` → searches for `std/View.fv` or `std.fv`
 /// - `use components::{Button, Text}` → searches for `components/Button.fv` and `components/Text.fv`
+#[derive(Debug)]
 pub struct FileSystemResolver {
     /// Root directory for module resolution
     root_dir: PathBuf,
@@ -68,7 +73,8 @@ pub struct FileSystemResolver {
 
 impl FileSystemResolver {
     /// Create a new filesystem resolver with the given root directory
-    pub fn new(root_dir: PathBuf) -> Self {
+    #[must_use] 
+    pub const fn new(root_dir: PathBuf) -> Self {
         Self { root_dir }
     }
 

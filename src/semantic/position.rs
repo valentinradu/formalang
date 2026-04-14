@@ -1,11 +1,12 @@
 //! Position utilities for LSP integration
 //!
 //! This module provides utilities for bridging between LSP positions (0-indexed)
-//! and FormaLang's internal Location system (1-indexed).
+//! and `FormaLang`'s internal Location system (1-indexed).
 
 use crate::location::{offset_to_location, Location, Span};
 
 /// LSP Position (0-indexed line and character)
+#[expect(clippy::exhaustive_structs, reason = "public API type")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LspPosition {
     pub line: u32,
@@ -13,18 +14,21 @@ pub struct LspPosition {
 }
 
 impl LspPosition {
-    pub fn new(line: u32, character: u32) -> Self {
+    #[must_use] 
+    pub const fn new(line: u32, character: u32) -> Self {
         Self { line, character }
     }
 
-    /// Convert LSP position (0-indexed) to FormaLang Location (1-indexed) with source text
+    /// Convert LSP position (0-indexed) to `FormaLang` Location (1-indexed) with source text
+    #[must_use] 
     pub fn to_location(&self, source: &str) -> Location {
         let offset = Self::to_offset(source, *self);
         offset_to_location(offset, source)
     }
 
     /// Convert LSP position to byte offset
-    pub fn to_offset(source: &str, position: LspPosition) -> usize {
+    #[must_use] 
+    pub fn to_offset(source: &str, position: Self) -> usize {
         let mut current_line = 0u32;
         let mut byte_offset = 0usize;
 
@@ -39,9 +43,7 @@ impl LspPosition {
                     }
 
                     // Stop at newline
-                    if let Some('\n') = source[byte_offset.saturating_add(char_idx)..]
-                        .chars()
-                        .next()
+                    if source[byte_offset.saturating_add(char_idx)..].starts_with('\n')
                     {
                         break;
                     }
@@ -50,8 +52,7 @@ impl LspPosition {
                 // Character position is beyond the line length, return end of line
                 let line_end = source[byte_offset..]
                     .find('\n')
-                    .map(|n| byte_offset.saturating_add(n))
-                    .unwrap_or(source.len());
+                    .map_or(source.len(), |n| byte_offset.saturating_add(n));
                 return line_end;
             }
 
@@ -68,7 +69,7 @@ impl LspPosition {
 }
 
 impl From<Location> for LspPosition {
-    /// Convert FormaLang Location (1-indexed) to LSP position (0-indexed)
+    /// Convert `FormaLang` Location (1-indexed) to LSP position (0-indexed)
     fn from(location: Location) -> Self {
         Self {
             line: u32::try_from(location.line.saturating_sub(1)).unwrap_or(u32::MAX),
@@ -78,28 +79,31 @@ impl From<Location> for LspPosition {
 }
 
 /// Check if a span contains a given byte offset
-pub fn span_contains_offset(span: &Span, offset: usize) -> bool {
+#[must_use] 
+pub const fn span_contains_offset(span: &Span, offset: usize) -> bool {
     span.start.offset <= offset && offset < span.end.offset
 }
 
 /// Check if a span contains a given LSP position
+#[must_use] 
 pub fn span_contains_lsp_position(span: &Span, position: LspPosition, source: &str) -> bool {
     let offset = LspPosition::to_offset(source, position);
     span_contains_offset(span, offset)
 }
 
 /// Get the line content at a given LSP position
+#[must_use] 
 pub fn get_line_at_position(source: &str, position: LspPosition) -> &str {
     let lines: Vec<&str> = source.lines().collect();
-    if (position.line as usize) < lines.len() {
-        lines[position.line as usize]
-    } else {
-        ""
-    }
+    lines
+        .get(position.line as usize)
+        .copied()
+        .unwrap_or("")
 }
 
 /// Get the word at a given offset (useful for symbol resolution)
-/// Returns (word, start_offset, end_offset)
+/// Returns (word, `start_offset`, `end_offset`)
+#[must_use] 
 pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize, usize)> {
     if offset > source.len() {
         return None;
@@ -110,13 +114,11 @@ pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize,
 
     let start = source[..offset]
         .rfind(|c: char| !is_word_char(c))
-        .map(|i| i.saturating_add(1))
-        .unwrap_or(0);
+        .map_or(0, |i| i.saturating_add(1));
 
     let end = source[offset..]
         .find(|c: char| !is_word_char(c))
-        .map(|i| offset.saturating_add(i))
-        .unwrap_or(source.len());
+        .map_or(source.len(), |i| offset.saturating_add(i));
 
     if start < end {
         let word = source[start..end].to_string();
@@ -127,6 +129,7 @@ pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize,
 }
 
 /// Get the word at a given LSP position
+#[must_use] 
 pub fn get_word_at_lsp_position(
     source: &str,
     position: LspPosition,

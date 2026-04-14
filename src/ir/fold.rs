@@ -20,17 +20,22 @@ use crate::ast::{BinaryOperator, Literal, PrimitiveType, UnaryOperator};
 use crate::ir::{IrExpr, IrModule, ResolvedType};
 
 /// Constant folder that evaluates compile-time constant expressions.
+#[derive(Debug)]
 pub struct ConstantFolder<'a> {
     _module: &'a IrModule,
 }
 
 impl<'a> ConstantFolder<'a> {
     /// Create a new constant folder.
-    pub fn new(module: &'a IrModule) -> Self {
+    #[must_use] 
+    pub const fn new(module: &'a IrModule) -> Self {
         Self { _module: module }
     }
 
     /// Fold constants in an expression, returning a potentially simplified expression.
+    #[must_use]
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
+    #[expect(clippy::self_only_used_in_recursion, reason = "public API method; recursive implementation requires self")]
     pub fn fold_expr(&self, expr: IrExpr) -> IrExpr {
         match expr {
             IrExpr::BinaryOp {
@@ -53,7 +58,7 @@ impl<'a> ConstantFolder<'a> {
                     },
                 ) = (&left_folded, &right_folded)
                 {
-                    if let Some(result) = self.fold_binary_op(left_val, op, right_val, &ty) {
+                    if let Some(result) = Self::fold_binary_op(left_val, op, right_val, &ty) {
                         return result;
                     }
                 }
@@ -76,7 +81,7 @@ impl<'a> ConstantFolder<'a> {
                     value: operand_val, ..
                 } = &operand_folded
                 {
-                    if let Some(result) = self.fold_unary_op(op, operand_val, &ty) {
+                    if let Some(result) = Self::fold_unary_op(op, operand_val, &ty) {
                         return result;
                     }
                 }
@@ -180,7 +185,8 @@ impl<'a> ConstantFolder<'a> {
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
-            | IrExpr::LetRef { .. } => expr,
+            | IrExpr::LetRef { .. }
+            | IrExpr::EventMapping { .. } => expr,
 
             // FieldAccess - fold the object expression
             IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
@@ -237,7 +243,6 @@ impl<'a> ConstantFolder<'a> {
                 ty,
             },
 
-            IrExpr::EventMapping { .. } => expr, // Event mappings are metadata, don't fold
 
             IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
                 entries: entries
@@ -276,7 +281,6 @@ impl<'a> ConstantFolder<'a> {
 
     /// Try to fold a binary operation on two literal values.
     fn fold_binary_op(
-        &self,
         left: &Literal,
         op: BinaryOperator,
         right: &Literal,
@@ -351,7 +355,7 @@ impl<'a> ConstantFolder<'a> {
             (Literal::String(l), Literal::String(r)) => {
                 if op == BinaryOperator::Add {
                     Some(IrExpr::Literal {
-                        value: Literal::String(format!("{}{}", l, r)),
+                        value: Literal::String(format!("{l}{r}")),
                         ty: ResolvedType::Primitive(PrimitiveType::String),
                     })
                 } else {
@@ -364,7 +368,6 @@ impl<'a> ConstantFolder<'a> {
     }
 
     fn fold_unary_op(
-        &self,
         op: UnaryOperator,
         operand: &Literal,
         ty: &ResolvedType,
@@ -405,6 +408,7 @@ impl<'a> ConstantFolder<'a> {
 /// Fold constants in an entire IR module.
 ///
 /// This creates a new module with constant expressions folded.
+#[must_use] 
 pub fn fold_constants(module: &IrModule) -> IrModule {
     let folder = ConstantFolder::new(module);
     let mut result = module.clone();
@@ -439,11 +443,14 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
 ///
 /// [`IrPass`]: crate::pipeline::IrPass
 /// [`Pipeline`]: crate::pipeline::Pipeline
+#[derive(Debug)]
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 pub struct ConstantFoldingPass;
 
 impl ConstantFoldingPass {
     /// Create a new constant folding pass.
-    pub fn new() -> Self {
+    #[must_use] 
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -455,7 +462,7 @@ impl Default for ConstantFoldingPass {
 }
 
 impl crate::pipeline::IrPass for ConstantFoldingPass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "constant-folding"
     }
 
@@ -470,63 +477,72 @@ mod tests {
     use crate::compile_to_ir;
 
     #[test]
-    fn test_fold_numeric_addition() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { scale: Number = 1 + 2 }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         // Check the default was folded
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Number(n),
             ..
         } = expr
         {
-            assert!((n - 3.0).abs() < f64::EPSILON, "Expected 3, got {}", n);
+            if (*n - 3.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 3, got {n}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_numeric_multiplication() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { scale: Number = 2 * 3 }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Number(n),
             ..
         } = expr
         {
-            assert!((n - 6.0).abs() < f64::EPSILON, "Expected 6, got {}", n);
+            if (*n - 6.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 6, got {n}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_chained_arithmetic() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { value: Number = 2 + 3 * 4 }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // 2 + 3 * 4 = 2 + 12 = 14
         if let IrExpr::Literal {
@@ -534,147 +550,194 @@ mod tests {
             ..
         } = expr
         {
-            assert!((n - 14.0).abs() < f64::EPSILON, "Expected 14, got {}", n);
+            if (*n - 14.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 14, got {n}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_boolean_and() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_boolean_and() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { flag: Boolean = true && false }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Boolean(b),
             ..
         } = expr
         {
-            assert!(!b, "Expected false, got {}", b);
+            if *b {
+                return Err(format!("Expected false, got {b}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_boolean_or() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { flag: Boolean = true || false }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Boolean(b),
             ..
         } = expr
         {
-            assert!(*b, "Expected true, got {}", b);
+            if !*b {
+                return Err(format!("Expected true, got {b}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_comparison() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_comparison() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { result: Boolean = 1 < 2 }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Boolean(b),
             ..
         } = expr
         {
-            assert!(*b, "Expected true, got {}", b);
+            if !*b {
+                return Err(format!("Expected true, got {b}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_if_constant_condition() {
-        let source = r#"
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
+        let source = r"
             struct Config { value: Number = if true { 1 } else { 2 } }
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::Number(n),
             ..
         } = expr
         {
-            assert!((n - 1.0).abs() < f64::EPSILON, "Expected 1, got {}", n);
+            if (*n - 1.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 1, got {n}").into());
+            }
         } else {
-            panic!("Expected folded literal, got {:?}", expr);
+            return Err(format!("Expected folded literal, got {expr:?}").into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_no_fold_non_constant() {
+    fn test_no_fold_non_constant() -> Result<(), Box<dyn std::error::Error>> {
         // Use a let binding that references another let binding
-        let source = r#"
+        let source = r"
             let x: Number = 1
             let y: Number = x + 1
-        "#;
-        let module = compile_to_ir(source).unwrap();
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         // The y references x, which is a variable - the folder may or may not optimize this
         // depending on whether it does constant propagation through let bindings
-        let let_binding = folded.lets.iter().find(|l| l.name == "y").unwrap();
+        let let_binding = folded
+            .lets
+            .iter()
+            .find(|l| l.name == "y")
+            .ok_or("expected y let binding")?;
         let expr = &let_binding.value;
 
         // Accept either BinaryOp (no constant propagation) or Literal (with propagation)
         match expr {
-            IrExpr::BinaryOp { .. } => { /* Not folded, as expected without propagation */ }
-            IrExpr::Literal { .. } => { /* Folded via constant propagation */ }
-            _ => panic!("Expected BinaryOp or Literal, got {:?}", expr),
+            IrExpr::BinaryOp { .. } | IrExpr::Literal { .. } => {}
+            IrExpr::StructInst { .. }
+            | IrExpr::EnumInst { .. }
+            | IrExpr::Array { .. }
+            | IrExpr::Tuple { .. }
+            | IrExpr::Reference { .. }
+            | IrExpr::SelfFieldRef { .. }
+            | IrExpr::FieldAccess { .. }
+            | IrExpr::LetRef { .. }
+            | IrExpr::UnaryOp { .. }
+            | IrExpr::If { .. }
+            | IrExpr::For { .. }
+            | IrExpr::Match { .. }
+            | IrExpr::FunctionCall { .. }
+            | IrExpr::MethodCall { .. }
+            | IrExpr::EventMapping { .. }
+            | IrExpr::Closure { .. }
+            | IrExpr::DictLiteral { .. }
+            | IrExpr::DictAccess { .. }
+            | IrExpr::Block { .. } => {
+                return Err(format!("Expected BinaryOp or Literal, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_fold_string_concat() {
+    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
+    fn test_fold_string_concat() -> Result<(), Box<dyn std::error::Error>> {
         let source = r#"
             struct Config { name: String = "Hello" + " World" }
         "#;
-        let module = compile_to_ir(source).unwrap();
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
         let struct_def = &folded.structs[0];
         let field = &struct_def.fields[0];
-        let expr = field.default.as_ref().unwrap();
+        let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
             value: Literal::String(s),
             ..
         } = expr
         {
-            assert_eq!(s, "Hello World");
+            if s != "Hello World" {
+                return Err(format!("Expected 'Hello World', got {s:?}").into());
+            }
         } else {
-            panic!("Expected folded string literal, got {:?}", expr);
+            return Err(format!("Expected folded string literal, got {expr:?}").into());
         }
+        Ok(())
     }
 }

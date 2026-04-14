@@ -1,15 +1,16 @@
 //! Semantic queries for LSP features
 //!
 //! This module provides high-level query APIs for IDE features like completion,
-//! hover, go-to-definition, etc. These queries use the SemanticAnalyzer's symbol
+//! hover, go-to-definition, etc. These queries use the `SemanticAnalyzer`'s symbol
 //! table and the AST node finder to provide context-aware information.
 
 use super::symbol_table::{EnumInfo, LetInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo};
-use crate::ast::*;
+use crate::ast::Visibility;
 use crate::location::Span;
 
 /// Kind of completion item
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CompletionKind {
     Keyword,
     ModelTrait,
@@ -25,6 +26,7 @@ pub enum CompletionKind {
 
 /// A completion candidate
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct CompletionCandidate {
     pub label: String,
     pub kind: CompletionKind,
@@ -44,6 +46,7 @@ impl CompletionCandidate {
         }
     }
 
+    #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
         self
@@ -52,6 +55,7 @@ impl CompletionCandidate {
 
 /// Information about a symbol for hover
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct HoverInfo {
     pub symbol_name: String,
     pub kind: SymbolKind,
@@ -62,6 +66,7 @@ pub struct HoverInfo {
 
 /// Information about a definition location
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct DefinitionInfo {
     pub symbol_name: String,
     pub kind: SymbolKind,
@@ -69,17 +74,21 @@ pub struct DefinitionInfo {
 }
 
 /// Query provider for semantic information
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct QueryProvider<'a> {
     pub symbols: &'a SymbolTable,
 }
 
 impl<'a> QueryProvider<'a> {
     /// Create a new query provider
-    pub fn new(symbols: &'a SymbolTable) -> Self {
+    #[must_use] 
+    pub const fn new(symbols: &'a SymbolTable) -> Self {
         Self { symbols }
     }
 
     /// Get all visible symbols as completions
+    #[must_use] 
     pub fn get_all_completions(&self) -> Vec<CompletionCandidate> {
         let mut completions = vec![
             CompletionCandidate::new("pub", CompletionKind::Keyword),
@@ -128,6 +137,7 @@ impl<'a> QueryProvider<'a> {
     }
 
     /// Get type completions (types that can be used in type positions)
+    #[must_use] 
     pub fn get_type_completions(&self) -> Vec<CompletionCandidate> {
         let mut completions = vec![
             CompletionCandidate::new("String", CompletionKind::PrimitiveType),
@@ -166,32 +176,34 @@ impl<'a> QueryProvider<'a> {
     }
 
     /// Get hover info for a symbol by name
+    #[must_use] 
     pub fn get_hover_for_symbol(&self, name: &str) -> Option<HoverInfo> {
         // Check traits
         if let Some(info) = self.symbols.traits.get(name) {
             let kind = SymbolKind::Trait;
-            return Some(self.trait_info_to_hover(name, info, kind));
+            return Some(Self::trait_info_to_hover(name, info, kind));
         }
 
         // Check structs
         if let Some(info) = self.symbols.structs.get(name) {
-            return Some(self.struct_info_to_hover(name, info));
+            return Some(Self::struct_info_to_hover(name, info));
         }
 
         // Check enums
         if let Some(info) = self.symbols.enums.get(name) {
-            return Some(self.enum_info_to_hover(name, info));
+            return Some(Self::enum_info_to_hover(name, info));
         }
 
         // Check let bindings
         if let Some(info) = self.symbols.lets.get(name) {
-            return Some(self.let_info_to_hover(name, info));
+            return Some(Self::let_info_to_hover(name, info));
         }
 
         None
     }
 
     /// Find definition location for a symbol by name
+    #[must_use] 
     pub fn find_definition_by_name(&self, name: &str) -> Option<DefinitionInfo> {
         // Check traits
         if let Some(info) = self.symbols.traits.get(name) {
@@ -234,7 +246,7 @@ impl<'a> QueryProvider<'a> {
 
     // ========== Helper Methods ==========
 
-    fn trait_info_to_hover(&self, name: &str, info: &TraitInfo, kind: SymbolKind) -> HoverInfo {
+    fn trait_info_to_hover(name: &str, info: &TraitInfo, kind: SymbolKind) -> HoverInfo {
         let vis = if matches!(info.visibility, Visibility::Public) {
             "pub "
         } else {
@@ -257,13 +269,13 @@ impl<'a> QueryProvider<'a> {
         HoverInfo {
             symbol_name: name.to_string(),
             kind,
-            signature: format!("{}trait {}{}", vis, name, generics),
+            signature: format!("{vis}trait {name}{generics}"),
             documentation: None,
             source_span: info.span,
         }
     }
 
-    fn struct_info_to_hover(&self, name: &str, info: &StructInfo) -> HoverInfo {
+    fn struct_info_to_hover(name: &str, info: &StructInfo) -> HoverInfo {
         let vis = if matches!(info.visibility, Visibility::Public) {
             "pub "
         } else {
@@ -286,13 +298,13 @@ impl<'a> QueryProvider<'a> {
         HoverInfo {
             symbol_name: name.to_string(),
             kind: SymbolKind::Struct,
-            signature: format!("{}struct {}{}", vis, name, generics),
+            signature: format!("{vis}struct {name}{generics}"),
             documentation: None,
             source_span: info.span,
         }
     }
 
-    fn enum_info_to_hover(&self, name: &str, info: &EnumInfo) -> HoverInfo {
+    fn enum_info_to_hover(name: &str, info: &EnumInfo) -> HoverInfo {
         let vis = if matches!(info.visibility, Visibility::Public) {
             "pub "
         } else {
@@ -315,24 +327,23 @@ impl<'a> QueryProvider<'a> {
         HoverInfo {
             symbol_name: name.to_string(),
             kind: SymbolKind::Enum,
-            signature: format!("{}enum {}{}", vis, name, generics),
+            signature: format!("{vis}enum {name}{generics}"),
             documentation: None,
             source_span: info.span,
         }
     }
 
-    fn let_info_to_hover(&self, name: &str, info: &LetInfo) -> HoverInfo {
+    fn let_info_to_hover(name: &str, info: &LetInfo) -> HoverInfo {
         let vis = if matches!(info.visibility, Visibility::Public) {
             "pub "
         } else {
             ""
         };
 
-        let signature = if let Some(ty) = &info.inferred_type {
-            format!("{}let {}: {}", vis, name, ty)
-        } else {
-            format!("{}let {}", vis, name)
-        };
+        let signature = info.inferred_type.as_ref().map_or_else(
+            || format!("{vis}let {name}"),
+            |ty| format!("{vis}let {name}: {ty}"),
+        );
 
         HoverInfo {
             symbol_name: name.to_string(),

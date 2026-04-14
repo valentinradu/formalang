@@ -2,7 +2,8 @@ use crate::location::Span;
 use thiserror::Error;
 
 /// Compiler error types
-#[derive(Debug, Error, Clone, PartialEq)]
+#[expect(clippy::exhaustive_enums, reason = "matched exhaustively by consumer code")]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum CompilerError {
     // Lexical errors
     #[error("Invalid character: {character}")]
@@ -345,13 +346,14 @@ pub enum CompilerError {
     #[error("Expression nesting exceeded the compiler recursion limit")]
     ExpressionDepthExceeded { span: Span },
 
-    /// Module contains more definitions than the ID space allows (> u32::MAX).
+    /// Module contains more definitions than the ID space allows (> `u32::MAX`).
     #[error("Module contains too many {kind} definitions")]
     TooManyDefinitions { kind: &'static str, span: Span },
 }
 
 impl CompilerError {
-    pub fn span(&self) -> Span {
+    #[must_use] 
+    pub const fn span(&self) -> Span {
         match self {
             Self::InvalidCharacter { span, .. }
             | Self::UnterminatedString { span }

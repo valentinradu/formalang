@@ -4,22 +4,30 @@
 // It uses recursive descent parsing with excellent error recovery.
 
 use chumsky::input::{Stream, ValueInput};
-use chumsky::pratt::*;
+use chumsky::pratt::{prefix, infix, left, postfix};
 use chumsky::prelude::*;
 
-use crate::ast::*;
+use crate::ast::{Ident, Expr, File, Statement, UseItems, Definition, GenericConstraint, Type, BlockStatement, Pattern, BindingPattern, ArrayPatternElement, UseStmt, LetBinding, Visibility, StructPatternField, GenericParam, TraitDef, FieldDef, StructDef, StructField, ImplDef, FnDef, Literal, FnParam, FunctionDef, EnumDef, EnumVariant, ModuleDef, PrimitiveType, TupleField, ClosureParam, UnaryOperator, BinaryOperator, MatchArm};
 use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
 
 type MethodCallArgs = Vec<(Option<Ident>, Expr)>;
 
 /// Main entry point for parsing
-/// Returns the parsed AST or a vector of (error_message, span) tuples
+/// Returns the parsed AST or a vector of (`error_message`, span) tuples
+///
+/// # Errors
+///
+/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors.
 pub fn parse_file(tokens: &[(Token, CustomSpan)]) -> Result<File, Vec<(String, CustomSpan)>> {
     parse_file_internal(tokens, None)
 }
 
 /// Parse with source text for better error positions
+///
+/// # Errors
+///
+/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors.
 pub fn parse_file_with_source(
     tokens: &[(Token, CustomSpan)],
     source: &str,
@@ -41,7 +49,7 @@ fn parse_file_internal(
     });
 
     // Create a stream with end-of-input span
-    let end_offset = tokens.last().map(|(_, s)| s.end.offset).unwrap_or(0);
+    let end_offset = tokens.last().map_or(0, |(_, s)| s.end.offset);
     let end_span: SimpleSpan = (end_offset..end_offset).into();
     let token_stream = Stream::from_iter(token_iter).map(end_span, |(t, s)| (t, s));
 
@@ -55,20 +63,26 @@ fn parse_file_internal(
                 .map(|e| {
                     let simple_span = e.span();
                     let message = format_parse_error(&e);
-                    let custom_span = if let Some(src) = source {
-                        // Compute line/column from source text
-                        CustomSpan::from_range_with_source(simple_span.start, simple_span.end, src)
-                    } else {
-                        // Use span from tokens if available
-                        tokens
-                            .iter()
-                            .find(|(_, span)| {
-                                span.start.offset == simple_span.start
-                                    && span.end.offset == simple_span.end
-                            })
-                            .map(|(_, span)| *span)
-                            .unwrap_or_else(|| span_from_simple(*simple_span))
-                    };
+                    let custom_span = source.map_or_else(
+                        || {
+                            // Use span from tokens if available
+                            tokens
+                                .iter()
+                                .find(|(_, span)| {
+                                    span.start.offset == simple_span.start
+                                        && span.end.offset == simple_span.end
+                                })
+                                .map_or_else(|| span_from_simple(*simple_span), |(_, span)| *span)
+                        },
+                        |src| {
+                            // Compute line/column from source text
+                            CustomSpan::from_range_with_source(
+                                simple_span.start,
+                                simple_span.end,
+                                src,
+                            )
+                        },
+                    );
                     (message, custom_span)
                 })
                 .collect::<Vec<_>>()
@@ -124,6 +138,7 @@ fn fill_statement_span(stmt: &mut Statement, source: &str) {
 }
 
 /// Fill spans in a definition
+#[expect(clippy::too_many_lines, reason = "exhaustive match over all Definition variants")]
 fn fill_definition_span(def: &mut Definition, source: &str) {
     match def {
         Definition::Module(m) => {
@@ -263,9 +278,8 @@ fn fill_definition_span(def: &mut Definition, source: &str) {
 fn fill_type_span(ty: &mut Type, source: &str) {
     match ty {
         Type::Primitive(_) => {}
-        Type::Ident(ident) => fill_span(&mut ident.span, source),
-        Type::Array(inner) => fill_type_span(inner, source),
-        Type::Optional(inner) => fill_type_span(inner, source),
+        Type::Ident(ident) | Type::TypeParameter(ident) => fill_span(&mut ident.span, source),
+        Type::Array(inner) | Type::Optional(inner) => fill_type_span(inner, source),
         Type::Tuple(fields) => {
             for field in fields {
                 fill_span(&mut field.name.span, source);
@@ -280,7 +294,6 @@ fn fill_type_span(ty: &mut Type, source: &str) {
             }
             fill_span(span, source);
         }
-        Type::TypeParameter(ident) => fill_span(&mut ident.span, source),
         Type::Dictionary { key, value } => {
             fill_type_span(key, source);
             fill_type_span(value, source);
@@ -295,6 +308,7 @@ fn fill_type_span(ty: &mut Type, source: &str) {
 }
 
 /// Fill spans in an expression
+#[expect(clippy::too_many_lines, reason = "exhaustive match over all Expr variants")]
 fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
         Expr::Literal(_) => {} // Literals don't have mutable spans
@@ -580,9 +594,7 @@ fn format_parse_error(error: &Rich<'_, Token>) -> String {
     use chumsky::error::RichPattern;
 
     let found = error
-        .found()
-        .map(|t| format!("{}", t))
-        .unwrap_or_else(|| "end of input".to_string());
+        .found().map_or_else(|| "end of input".to_string(), |t| format!("{t}"));
 
     let expected: Vec<String> = error
         .expected()
@@ -602,9 +614,11 @@ fn format_parse_error(error: &Rich<'_, Token>) -> String {
     if expected.is_empty() {
         format!("found {} at {}..{}", found, span.start, span.end)
     } else if expected.len() == 1 {
+        #[expect(clippy::indexing_slicing, reason = "bounds checked above: expected.len() == 1")]
+        let first = &expected[0];
         format!(
             "found {} at {}..{}, expected {}",
-            found, span.start, span.end, expected[0]
+            found, span.start, span.end, first
         )
     } else {
         format!(
@@ -667,14 +681,13 @@ where
         .map_with(|((visibility, mut path), items), e| {
             let items = items.unwrap_or_else(|| {
                 // If no items specified, last segment is the item
-                if let Some(last) = path.pop() {
-                    UseItems::Single(last)
-                } else {
-                    UseItems::Single(Ident {
+                path.pop().map_or_else(
+                    || UseItems::Single(Ident {
                         name: String::new(),
                         span: CustomSpan::default(),
-                    })
-                }
+                    }),
+                    UseItems::Single,
+                )
             });
 
             UseStmt {
@@ -940,7 +953,7 @@ where
         .collect()
         .delimited_by(just(Token::Lt), just(Token::Gt))
         .or_not()
-        .map(|params| params.unwrap_or_default())
+        .map(std::option::Option::unwrap_or_default)
 }
 
 /// Parse a trait definition
@@ -1009,7 +1022,7 @@ where
                 .collect(),
         )
         .or_not()
-        .map(|traits| traits.unwrap_or_default())
+        .map(std::option::Option::unwrap_or_default)
 }
 
 /// Parse a field definition: mut? name: Type
@@ -1166,7 +1179,7 @@ fn block_statements_to_expr(mut statements: Vec<BlockStatement>, span: crate::Sp
     let result = match last {
         BlockStatement::Expr(expr) => expr,
         // If last is a statement (not expr), push it back and use Nil as result
-        stmt @ BlockStatement::Let { .. } | stmt @ BlockStatement::Assign { .. } => {
+        stmt @ (BlockStatement::Let { .. } | BlockStatement::Assign { .. }) => {
             statements.push(stmt);
             Expr::Literal(Literal::Nil)
         }
@@ -1403,6 +1416,7 @@ where
 }
 
 /// Parse a type expression
+#[expect(clippy::too_many_lines, reason = "parser combinator composition for all type forms")]
 fn type_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Type, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -1565,6 +1579,7 @@ where
 }
 
 /// Parse an expression
+#[expect(clippy::too_many_lines, reason = "parser combinator composition for all expression forms")]
 fn expr_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -1657,12 +1672,11 @@ where
             // Filter: only match if the type name (last path element) starts with uppercase
             // This distinguishes `Status.active` (enum) from `point.x` (field access)
             .try_map(|(path, variant), span| {
-                let type_name = path.last().map(|id| id.name.as_str()).unwrap_or("");
+                let type_name = path.last().map_or("", |id| id.name.as_str());
                 if type_name
                     .chars()
                     .next()
-                    .map(|c| c.is_uppercase())
-                    .unwrap_or(false)
+                    .is_some_and(char::is_uppercase)
                 {
                     Ok((path, variant))
                 } else {
@@ -1681,7 +1695,7 @@ where
         let enum_without_args = enum_base
             .clone()
             .then(just(Token::LParen).not().rewind())
-            .map(|((path, variant), _)| (path, variant, vec![]));
+            .map(|((path, variant), ())| (path, variant, vec![]));
         // Try with-args first, then without-args
         let enum_instantiation =
             enum_with_args
@@ -2265,8 +2279,8 @@ where
     choice((wildcard, variant))
 }
 
-/// Helper to convert SimpleSpan to our custom Span
-fn span_from_simple(s: SimpleSpan) -> CustomSpan {
+/// Helper to convert `SimpleSpan` to our custom Span
+const fn span_from_simple(s: SimpleSpan) -> CustomSpan {
     CustomSpan::from_range(s.start, s.end)
 }
 
@@ -2277,7 +2291,7 @@ mod tests {
 
     fn parse_type_str(input: &str) -> Result<Type, Vec<(String, CustomSpan)>> {
         // Parse the type as a struct field and extract it
-        let wrapper = format!("struct Test {{ field: {} }}", input);
+        let wrapper = format!("struct Test {{ field: {input} }}");
         let tokens = Lexer::tokenize_all(&wrapper);
         let result = parse_file(&tokens)?;
 
@@ -2296,182 +2310,362 @@ mod tests {
     }
 
     #[test]
-    fn test_never_type_parsing() {
+    fn test_never_type_parsing() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("Never");
-        assert!(result.is_ok(), "Failed to parse Never type: {:?}", result);
-        let ty = result.unwrap();
-        assert_eq!(ty, Type::Primitive(PrimitiveType::Never));
+        if result.is_err() {
+            return Err(format!("Failed to parse Never type: {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
+        if ty != Type::Primitive(PrimitiveType::Never) {
+            return Err(format!("{:?} != {:?}", ty, Type::Primitive(PrimitiveType::Never)).into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_never_in_struct_field() {
-        let input = r#"
+    fn test_never_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
+        let input = r"
             pub struct Empty: View {
                 mount body: Never
             }
-        "#;
+        ";
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
-        assert!(
-            result.is_ok(),
-            "Failed to parse struct with Never field: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse struct with Never field: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_optional_never_type() {
+    fn test_optional_never_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("Never?");
-        assert!(result.is_ok(), "Failed to parse Never? type: {:?}", result);
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse Never? type: {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Optional(inner) => {
-                assert_eq!(*inner, Type::Primitive(PrimitiveType::Never));
+                if *inner != Type::Primitive(PrimitiveType::Never) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        *inner,
+                        Type::Primitive(PrimitiveType::Never)
+                    )
+                    .into());
+                }
             }
-            _ => panic!("Expected Optional type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Optional type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_array_of_never_type() {
+    fn test_array_of_never_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[Never]");
-        assert!(result.is_ok(), "Failed to parse [Never] type: {:?}", result);
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse [Never] type: {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Array(inner) => {
-                assert_eq!(*inner, Type::Primitive(PrimitiveType::Never));
+                if *inner != Type::Primitive(PrimitiveType::Never) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        *inner,
+                        Type::Primitive(PrimitiveType::Never)
+                    )
+                    .into());
+                }
             }
-            _ => panic!("Expected Array type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Array type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_dictionary_type_parsing() {
+    fn test_dictionary_type_parsing() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[String: Number]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse [String: Number] type: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse [String: Number] type: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Dictionary { key, value } => {
-                assert_eq!(*key, Type::Primitive(PrimitiveType::String));
-                assert_eq!(*value, Type::Primitive(PrimitiveType::Number));
+                if *key != Type::Primitive(PrimitiveType::String) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        *key,
+                        Type::Primitive(PrimitiveType::String)
+                    )
+                    .into());
+                }
+                if *value != Type::Primitive(PrimitiveType::Number) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        *value,
+                        Type::Primitive(PrimitiveType::Number)
+                    )
+                    .into());
+                }
             }
-            _ => panic!("Expected Dictionary type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Dictionary type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_dictionary_in_struct_field() {
-        let input = r#"
+    fn test_dictionary_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
+        let input = r"
             pub struct Config {
                 settings: [String: String]
             }
-        "#;
+        ";
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
-        assert!(
-            result.is_ok(),
-            "Failed to parse struct with Dictionary field: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!(
+                "Failed to parse struct with Dictionary field: : {result:?}"
+            )
+            .into());
+        }
 
-        let file = result.unwrap();
+        let file = result.map_err(|e| format!("{e:?}"))?;
         if let Some(Statement::Definition(def)) = file.statements.first() {
             if let Definition::Struct(s) = &**def {
                 if let Some(field) = s.fields.first() {
                     match &field.ty {
                         Type::Dictionary { key, value } => {
-                            assert_eq!(**key, Type::Primitive(PrimitiveType::String));
-                            assert_eq!(**value, Type::Primitive(PrimitiveType::String));
+                            if **key != Type::Primitive(PrimitiveType::String) {
+                                return Err(format!(
+                                    "{:?} != {:?}",
+                                    **key,
+                                    Type::Primitive(PrimitiveType::String)
+                                )
+                                .into());
+                            }
+                            if **value != Type::Primitive(PrimitiveType::String) {
+                                return Err(format!(
+                                    "{:?} != {:?}",
+                                    **value,
+                                    Type::Primitive(PrimitiveType::String)
+                                )
+                                .into());
+                            }
                         }
-                        _ => panic!("Expected Dictionary type, got {:?}", field.ty),
+                        Type::Primitive(_)
+                        | Type::Ident(_)
+                        | Type::Generic { .. }
+                        | Type::Array(_)
+                        | Type::Optional(_)
+                        | Type::Tuple(_)
+                        | Type::Closure { .. }
+                        | Type::TypeParameter(_) => {
+                            return Err(
+                                format!("Expected Dictionary type, got {:?}", field.ty).into()
+                            )
+                        }
                     }
                 } else {
-                    panic!("No fields found");
+                    return Err("No fields found".into());
                 }
             } else {
-                panic!("No struct found");
+                return Err("No struct found".into());
             }
         } else {
-            panic!("No definition found");
+            return Err("No definition found".into());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_nested_dictionary_type() {
+    fn test_nested_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[String: [Number: Boolean]]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse nested dictionary type: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse nested dictionary type: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Dictionary { key, value } => {
-                assert_eq!(*key, Type::Primitive(PrimitiveType::String));
+                if *key != Type::Primitive(PrimitiveType::String) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        *key,
+                        Type::Primitive(PrimitiveType::String)
+                    )
+                    .into());
+                }
                 match *value {
                     Type::Dictionary {
                         key: inner_key,
                         value: inner_value,
                     } => {
-                        assert_eq!(*inner_key, Type::Primitive(PrimitiveType::Number));
-                        assert_eq!(*inner_value, Type::Primitive(PrimitiveType::Boolean));
+                        if *inner_key != Type::Primitive(PrimitiveType::Number) {
+                            return Err(format!(
+                                "{:?} != {:?}",
+                                *inner_key,
+                                Type::Primitive(PrimitiveType::Number)
+                            )
+                            .into());
+                        }
+                        if *inner_value != Type::Primitive(PrimitiveType::Boolean) {
+                            return Err(format!(
+                                "{:?} != {:?}",
+                                *inner_value,
+                                Type::Primitive(PrimitiveType::Boolean)
+                            )
+                            .into());
+                        }
                     }
-                    _ => panic!("Expected inner Dictionary type, got {:?}", value),
+                    Type::Primitive(_)
+                    | Type::Ident(_)
+                    | Type::Generic { .. }
+                    | Type::Array(_)
+                    | Type::Optional(_)
+                    | Type::Tuple(_)
+                    | Type::Closure { .. }
+                    | Type::TypeParameter(_) => {
+                        return Err(
+                            format!("Expected inner Dictionary type, got {value:?}").into()
+                        )
+                    }
                 }
             }
-            _ => panic!("Expected Dictionary type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Dictionary type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_optional_dictionary_type() {
+    fn test_optional_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[String: Number]?");
-        assert!(
-            result.is_ok(),
-            "Failed to parse optional dictionary type: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse optional dictionary type: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Optional(inner) => match *inner {
                 Type::Dictionary { key, value } => {
-                    assert_eq!(*key, Type::Primitive(PrimitiveType::String));
-                    assert_eq!(*value, Type::Primitive(PrimitiveType::Number));
+                    if *key != Type::Primitive(PrimitiveType::String) {
+                        return Err(format!(
+                            "{:?} != {:?}",
+                            *key,
+                            Type::Primitive(PrimitiveType::String)
+                        )
+                        .into());
+                    }
+                    if *value != Type::Primitive(PrimitiveType::Number) {
+                        return Err(format!(
+                            "{:?} != {:?}",
+                            *value,
+                            Type::Primitive(PrimitiveType::Number)
+                        )
+                        .into());
+                    }
                 }
-                _ => panic!("Expected Dictionary type inside Optional, got {:?}", inner),
+                Type::Primitive(_)
+                | Type::Ident(_)
+                | Type::Generic { .. }
+                | Type::Array(_)
+                | Type::Optional(_)
+                | Type::Tuple(_)
+                | Type::Closure { .. }
+                | Type::TypeParameter(_) => {
+                    return Err(format!(
+                        "Expected Dictionary type inside Optional, got {inner:?}"
+                    )
+                    .into())
+                }
             },
-            _ => panic!("Expected Optional type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Optional type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_dictionary_with_custom_types() {
+    fn test_dictionary_with_custom_types() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[UserId: UserData]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse dictionary with custom types: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!(
+                "Failed to parse dictionary with custom types: : {result:?}"
+            )
+            .into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Dictionary { key, value } => match (*key, *value) {
                 (Type::Ident(k), Type::Ident(v)) => {
-                    assert_eq!(k.name, "UserId");
-                    assert_eq!(v.name, "UserData");
+                    if k.name != "UserId" {
+                        return Err(format!("expected {:?} == {:?}", k.name, "UserId").into());
+                    }
+                    if v.name != "UserData" {
+                        return Err(format!("expected {:?} == {:?}", v.name, "UserData").into());
+                    }
                 }
-                _ => panic!("Expected Ident types"),
+                _ => return Err("Expected Ident types".into()),
             },
-            _ => panic!("Expected Dictionary type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Dictionary type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     // Helper to parse an expression from let binding
     fn parse_expr_from_let(input: &str) -> Result<Expr, Vec<(String, CustomSpan)>> {
-        let wrapper = format!("let x = {}", input);
+        let wrapper = format!("let x = {input}");
         let tokens = Lexer::tokenize_all(&wrapper);
         let result = parse_file(&tokens)?;
 
@@ -2485,85 +2679,158 @@ mod tests {
     }
 
     #[test]
-    fn test_dictionary_literal_parsing() {
+    fn test_dictionary_literal_parsing() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("[\"key\": 42, \"name\": 100]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse dictionary literal: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse dictionary literal: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictLiteral { entries, .. } => {
-                assert_eq!(entries.len(), 2);
+                if entries.len() != 2 {
+                    return Err(format!("expected {:?} == {:?}", entries.len(), 2).into());
+                }
                 // Check first entry
-                match (&entries[0].0, &entries[0].1) {
+                #[expect(clippy::indexing_slicing, reason = "bounds checked above: entries.len() == 2")]
+                let (first_key, first_val) = (&entries[0].0, &entries[0].1);
+                match (first_key, first_val) {
                     (Expr::Literal(Literal::String(k)), Expr::Literal(Literal::Number(v))) => {
-                        assert_eq!(k, "key");
-                        assert_eq!(*v, 42.0);
+                        if k != "key" {
+                            return Err(format!("expected {:?} == {:?}", k, "key").into());
+                        }
+                        if (*v - 42.0_f64).abs() > f64::EPSILON {
+                            return Err(format!("expected {:?} == {:?}", *v, 42.0).into());
+                        }
                     }
-                    _ => panic!("Expected string key and number value"),
+                    _ => return Err("Expected string key and number value".into()),
                 }
             }
-            _ => panic!("Expected DictLiteral, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected DictLiteral, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_empty_dictionary_literal() {
+    fn test_empty_dictionary_literal() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("[:]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse empty dictionary: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse empty dictionary: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictLiteral { entries, .. } => {
-                assert!(entries.is_empty(), "Expected empty entries");
+                if !entries.is_empty() {
+                    return Err("Expected empty entries".into());
+                }
             }
-            _ => panic!("Expected DictLiteral, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected DictLiteral, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_dictionary_access_parsing() {
+    fn test_dictionary_access_parsing() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("data[\"key\"]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse dictionary access: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse dictionary access: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
                 (Expr::Reference { path, .. }, Expr::Literal(Literal::String(k))) => {
-                    assert_eq!(path[0].name, "data");
-                    assert_eq!(k, "key");
+                    let first = path.first().ok_or("expected at least one path segment")?;
+                    if first.name != "data" {
+                        return Err(format!("expected {:?} == {:?}", first.name, "data").into());
+                    }
+                    if k != "key" {
+                        return Err(format!("expected {:?} == {:?}", k, "key").into());
+                    }
                 }
-                _ => panic!("Expected reference and string key"),
+                _ => return Err("Expected reference and string key".into()),
             },
-            _ => panic!("Expected DictAccess, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected DictAccess, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_chained_dictionary_access() {
+    #[expect(clippy::too_many_lines, reason = "test verifies deeply nested AST structure")]
+    fn test_chained_dictionary_access() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("data[\"outer\"][\"inner\"]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse chained dict access: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse chained dict access: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => {
                 // Outer access: dict is another DictAccess, key is "inner"
                 match (*key,) {
                     (Expr::Literal(Literal::String(k)),) => {
-                        assert_eq!(k, "inner");
+                        if k != "inner" {
+                            return Err(format!("expected {:?} == {:?}", k, "inner").into());
+                        }
                     }
-                    _ => panic!("Expected string key 'inner'"),
+                    _ => return Err("Expected string key 'inner'".into()),
                 }
                 match *dict {
                     Expr::DictAccess {
@@ -2573,230 +2840,565 @@ mod tests {
                     } => {
                         match (*inner_key,) {
                             (Expr::Literal(Literal::String(k)),) => {
-                                assert_eq!(k, "outer");
+                                if k != "outer" {
+                                    return Err(format!("expected {:?} == {:?}", k, "outer").into());
+                                }
                             }
-                            _ => panic!("Expected string key 'outer'"),
+                            _ => return Err("Expected string key 'outer'".into()),
                         }
                         match *inner_dict {
                             Expr::Reference { path, .. } => {
-                                assert_eq!(path[0].name, "data");
+                                let first = path.first().ok_or("expected at least one path segment")?;
+                                if first.name != "data" {
+                                    return Err(format!(
+                                        "expected {:?} == {:?}",
+                                        first.name, "data"
+                                    )
+                                    .into());
+                                }
                             }
-                            _ => panic!("Expected reference 'data'"),
+                            Expr::Literal(_)
+                            | Expr::Invocation { .. }
+                            | Expr::EnumInstantiation { .. }
+                            | Expr::InferredEnumInstantiation { .. }
+                            | Expr::Array { .. }
+                            | Expr::Tuple { .. }
+                            | Expr::BinaryOp { .. }
+                            | Expr::UnaryOp { .. }
+                            | Expr::ForExpr { .. }
+                            | Expr::IfExpr { .. }
+                            | Expr::MatchExpr { .. }
+                            | Expr::Group { .. }
+                            | Expr::DictLiteral { .. }
+                            | Expr::DictAccess { .. }
+                            | Expr::FieldAccess { .. }
+                            | Expr::ClosureExpr { .. }
+                            | Expr::LetExpr { .. }
+                            | Expr::MethodCall { .. }
+                            | Expr::Block { .. } => return Err("Expected reference 'data'".into()),
                         }
                     }
-                    _ => panic!("Expected inner DictAccess"),
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Reference { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => return Err("Expected inner DictAccess".into()),
                 }
             }
-            _ => panic!("Expected DictAccess, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected DictAccess, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_dictionary_with_expression_key() {
+    fn test_dictionary_with_expression_key() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("data[index]");
-        assert!(
-            result.is_ok(),
-            "Failed to parse dict access with expr key: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(
+                format!("Failed to parse dict access with expr key: : {result:?}").into(),
+            );
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
                 (Expr::Reference { path: d, .. }, Expr::Reference { path: k, .. }) => {
-                    assert_eq!(d[0].name, "data");
-                    assert_eq!(k[0].name, "index");
+                    let d0 = d.first().ok_or("expected at least one segment in dict path")?;
+                    if d0.name != "data" {
+                        return Err(format!("expected {:?} == {:?}", d0.name, "data").into());
+                    }
+                    let k0 = k.first().ok_or("expected at least one segment in key path")?;
+                    if k0.name != "index" {
+                        return Err(format!("expected {:?} == {:?}", k0.name, "index").into());
+                    }
                 }
-                _ => panic!("Expected two references"),
+                _ => return Err("Expected two references".into()),
             },
-            _ => panic!("Expected DictAccess, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected DictAccess, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     // Closure type tests
     #[test]
-    fn test_closure_type_no_params() {
+    fn test_closure_type_no_params() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("() -> Event");
-        assert!(result.is_ok(), "Failed to parse () -> Event: {:?}", result);
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse () -> Event: {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Closure { params, ret } => {
-                assert!(params.is_empty(), "Expected empty params");
+                if !params.is_empty() {
+                    return Err("Expected empty params".into());
+                }
                 match *ret {
-                    Type::Ident(ident) => assert_eq!(ident.name, "Event"),
-                    _ => panic!("Expected Ident return type"),
+                    Type::Ident(ident) => {
+                        if ident.name != "Event" {
+                            return Err(format!("{:?} != {:?}", ident.name, "Event").into());
+                        }
+                    }
+                    Type::Primitive(_)
+                    | Type::Generic { .. }
+                    | Type::Array(_)
+                    | Type::Optional(_)
+                    | Type::Tuple(_)
+                    | Type::Dictionary { .. }
+                    | Type::Closure { .. }
+                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
                 }
             }
-            _ => panic!("Expected Closure type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Closure type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_closure_type_single_param() {
+    fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("String -> Event");
-        assert!(
-            result.is_ok(),
-            "Failed to parse String -> Event: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse String -> Event: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Closure { params, ret } => {
-                assert_eq!(params.len(), 1);
-                assert_eq!(params[0], Type::Primitive(PrimitiveType::String));
+                if params.len() != 1 {
+                    return Err(format!("expected {:?} == {:?}", params.len(), 1).into());
+                }
+                let p0 = params.first().ok_or("expected at least one param")?;
+                if *p0 != Type::Primitive(PrimitiveType::String) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        p0,
+                        Type::Primitive(PrimitiveType::String)
+                    )
+                    .into());
+                }
                 match *ret {
-                    Type::Ident(ident) => assert_eq!(ident.name, "Event"),
-                    _ => panic!("Expected Ident return type"),
+                    Type::Ident(ident) => {
+                        if ident.name != "Event" {
+                            return Err(format!("{:?} != {:?}", ident.name, "Event").into());
+                        }
+                    }
+                    Type::Primitive(_)
+                    | Type::Generic { .. }
+                    | Type::Array(_)
+                    | Type::Optional(_)
+                    | Type::Tuple(_)
+                    | Type::Dictionary { .. }
+                    | Type::Closure { .. }
+                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
                 }
             }
-            _ => panic!("Expected Closure type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Closure type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_closure_type_multi_params() {
+    fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("Number, Number -> Point");
-        assert!(
-            result.is_ok(),
-            "Failed to parse Number, Number -> Point: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse Number, Number -> Point: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Closure { params, ret } => {
-                assert_eq!(params.len(), 2);
-                assert_eq!(params[0], Type::Primitive(PrimitiveType::Number));
-                assert_eq!(params[1], Type::Primitive(PrimitiveType::Number));
+                if params.len() != 2 {
+                    return Err(format!("expected {:?} == {:?}", params.len(), 2).into());
+                }
+                let p0 = params.first().ok_or("expected at least 1 param")?;
+                if *p0 != Type::Primitive(PrimitiveType::Number) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        p0,
+                        Type::Primitive(PrimitiveType::Number)
+                    )
+                    .into());
+                }
+                let p1 = params.get(1).ok_or("expected at least 2 params")?;
+                if *p1 != Type::Primitive(PrimitiveType::Number) {
+                    return Err(format!(
+                        "{:?} != {:?}",
+                        p1,
+                        Type::Primitive(PrimitiveType::Number)
+                    )
+                    .into());
+                }
                 match *ret {
-                    Type::Ident(ident) => assert_eq!(ident.name, "Point"),
-                    _ => panic!("Expected Ident return type"),
+                    Type::Ident(ident) => {
+                        if ident.name != "Point" {
+                            return Err(format!("{:?} != {:?}", ident.name, "Point").into());
+                        }
+                    }
+                    Type::Primitive(_)
+                    | Type::Generic { .. }
+                    | Type::Array(_)
+                    | Type::Optional(_)
+                    | Type::Tuple(_)
+                    | Type::Dictionary { .. }
+                    | Type::Closure { .. }
+                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
                 }
             }
-            _ => panic!("Expected Closure type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Closure type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_optional_closure_type() {
+    fn test_optional_closure_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("(String -> Event)?");
-        assert!(
-            result.is_ok(),
-            "Failed to parse (String -> Event)?: {:?}",
-            result
-        );
-        let ty = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse (String -> Event)?: : {result:?}").into());
+        }
+        let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
             Type::Optional(inner) => match *inner {
                 Type::Closure { params, .. } => {
-                    assert_eq!(params.len(), 1);
+                    if params.len() != 1 {
+                        return Err(format!("expected {:?} == {:?}", params.len(), 1).into());
+                    }
                 }
-                _ => panic!("Expected Closure inside Optional"),
+                Type::Primitive(_)
+                | Type::Ident(_)
+                | Type::Generic { .. }
+                | Type::Array(_)
+                | Type::Optional(_)
+                | Type::Tuple(_)
+                | Type::Dictionary { .. }
+                | Type::TypeParameter(_) => return Err("Expected Closure inside Optional".into()),
             },
-            _ => panic!("Expected Optional type, got {:?}", ty),
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. }
+            | Type::TypeParameter(_) => {
+                return Err(format!("Expected Optional type, got {ty:?}").into())
+            }
         }
+        Ok(())
     }
 
     // Closure expression tests
     #[test]
-    fn test_closure_expr_no_params() {
+    fn test_closure_expr_no_params() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("() -> .submit");
-        assert!(
-            result.is_ok(),
-            "Failed to parse () -> .submit: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse () -> .submit: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::ClosureExpr { params, body, .. } => {
-                assert!(params.is_empty());
+                if !params.is_empty() {
+                    return Err(
+                        format!("params should be empty, has {} items", params.len()).into(),
+                    );
+                }
                 match *body {
                     Expr::InferredEnumInstantiation { variant, .. } => {
-                        assert_eq!(variant.name, "submit");
+                        if variant.name != "submit" {
+                            return Err(
+                                format!("expected {:?} == {:?}", variant.name, "submit").into()
+                            );
+                        }
                     }
-                    _ => panic!("Expected InferredEnumInstantiation, got {:?}", body),
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Reference { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => {
+                        return Err(
+                            format!("Expected InferredEnumInstantiation, got {body:?}").into(),
+                        )
+                    }
                 }
             }
-            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected ClosureExpr, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_closure_expr_single_param() {
+    fn test_closure_expr_single_param() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("x -> .changed(value: x)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse x -> .changed(...): {:?}",
-            result
-        );
-        let expr = result.unwrap();
-        match expr {
-            Expr::ClosureExpr { params, .. } => {
-                assert_eq!(params.len(), 1);
-                assert_eq!(params[0].name.name, "x");
-                assert!(params[0].ty.is_none());
-            }
-            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+        if result.is_err() {
+            return Err(format!("Failed to parse x -> .changed(...): : {result:?}").into());
         }
-    }
-
-    #[test]
-    fn test_closure_expr_multi_params() {
-        let result = parse_expr_from_let("w, h -> .resized(width: w, height: h)");
-        assert!(result.is_ok(), "Failed to parse w, h -> ...: {:?}", result);
-        let expr = result.unwrap();
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::ClosureExpr { params, .. } => {
-                assert_eq!(params.len(), 2);
-                assert_eq!(params[0].name.name, "w");
-                assert_eq!(params[1].name.name, "h");
-            }
-            _ => panic!("Expected ClosureExpr, got {:?}", expr),
-        }
-    }
-
-    #[test]
-    fn test_closure_expr_with_type_annotation() {
-        let result = parse_expr_from_let("x: String -> .textChanged(value: x)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse x: String -> ...: {:?}",
-            result
-        );
-        let expr = result.unwrap();
-        match expr {
-            Expr::ClosureExpr { params, .. } => {
-                assert_eq!(params.len(), 1);
-                assert_eq!(params[0].name.name, "x");
-                match &params[0].ty {
-                    Some(Type::Primitive(PrimitiveType::String)) => {}
-                    _ => panic!("Expected String type annotation"),
+                if params.len() != 1 {
+                    return Err(format!("expected {:?} == {:?}", params.len(), 1).into());
+                }
+                let p0 = params.first().ok_or("expected at least one param")?;
+                if p0.name.name != "x" {
+                    return Err(format!("expected {:?} == {:?}", p0.name.name, "x").into());
+                }
+                if p0.ty.is_some() {
+                    return Err("params[0].ty should be None".into());
                 }
             }
-            _ => panic!("Expected ClosureExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected ClosureExpr, got {expr:?}").into())
+            }
         }
+        Ok(())
     }
 
     #[test]
-    fn test_closure_in_struct_field() {
-        let input = r#"
+    fn test_closure_expr_multi_params() -> Result<(), Box<dyn std::error::Error>> {
+        let result = parse_expr_from_let("w, h -> .resized(width: w, height: h)");
+        if result.is_err() {
+            return Err(format!("Failed to parse w, h -> ...: {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
+        match expr {
+            Expr::ClosureExpr { params, .. } => {
+                if params.len() != 2 {
+                    return Err(format!("expected {:?} == {:?}", params.len(), 2).into());
+                }
+                let p0 = params.first().ok_or("expected at least 1 param")?;
+                if p0.name.name != "w" {
+                    return Err(format!("expected {:?} == {:?}", p0.name.name, "w").into());
+                }
+                let p1 = params.get(1).ok_or("expected at least 2 params")?;
+                if p1.name.name != "h" {
+                    return Err(format!("expected {:?} == {:?}", p1.name.name, "h").into());
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected ClosureExpr, got {expr:?}").into())
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_closure_expr_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
+        let result = parse_expr_from_let("x: String -> .textChanged(value: x)");
+        if result.is_err() {
+            return Err(format!("Failed to parse x: String -> ...: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
+        match expr {
+            Expr::ClosureExpr { params, .. } => {
+                if params.len() != 1 {
+                    return Err(format!("expected {:?} == {:?}", params.len(), 1).into());
+                }
+                let p0 = params.first().ok_or("expected at least one param")?;
+                if p0.name.name != "x" {
+                    return Err(format!("expected {:?} == {:?}", p0.name.name, "x").into());
+                }
+                match &p0.ty {
+                    Some(Type::Primitive(PrimitiveType::String)) => {}
+                    _ => return Err("Expected String type annotation".into()),
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {
+                return Err(format!("Expected ClosureExpr, got {expr:?}").into())
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
+        let input = r"
             pub struct Button<E> {
                 action: () -> E
             }
-        "#;
+        ";
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
-        assert!(
-            result.is_ok(),
-            "Failed to parse struct with closure field: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(
+                format!("Failed to parse struct with closure field: : {result:?}").into(),
+            );
+        }
+        Ok(())
     }
 
     // Let expression tests
     #[test]
-    fn test_let_expr_basic() {
+    #[expect(clippy::too_many_lines, reason = "test verifies all fields of LetExpr AST node")]
+    fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("let x = 42 x");
-        assert!(result.is_ok(), "Failed to parse let x = 42 x: {:?}", result);
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse let x = 42 x: {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::LetExpr {
                 mutable,
@@ -2806,276 +3408,471 @@ mod tests {
                 body,
                 ..
             } => {
-                assert!(!mutable);
-                match pattern {
-                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "x"),
-                    _ => panic!("Expected simple pattern"),
+                if mutable {
+                    return Err("expected !mutable, but was true".into());
                 }
-                assert!(ty.is_none());
+                match pattern {
+                    BindingPattern::Simple(ident) => {
+                        if ident.name != "x" {
+                            return Err(format!("{:?} != {:?}", ident.name, "x").into());
+                        }
+                    }
+                    BindingPattern::Array { .. }
+                    | BindingPattern::Struct { .. }
+                    | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
+                }
+                if ty.is_some() {
+                    return Err(format!("ty should be None but got {ty:?}").into());
+                }
                 match *value {
-                    Expr::Literal(Literal::Number(n)) => assert_eq!(n, 42.0),
-                    _ => panic!("Expected number literal"),
+                    Expr::Literal(Literal::Number(n)) => {
+                        if (n - 42.0_f64).abs() > f64::EPSILON {
+                            return Err(format!("{:?} != {:?}", n, 42.0).into());
+                        }
+                    }
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Reference { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => return Err("Expected number literal".into()),
                 }
                 match *body {
-                    Expr::Reference { path, .. } => assert_eq!(path[0].name, "x"),
-                    _ => panic!("Expected reference in body"),
+                    Expr::Reference { path, .. } => {
+                        let first = path.first().ok_or("expected at least one path segment")?;
+                        if first.name != "x" {
+                            return Err(format!("{:?} != {:?}", first.name, "x").into());
+                        }
+                    }
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::LetExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => return Err("Expected reference in body".into()),
                 }
             }
-            _ => panic!("Expected LetExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_with_type() {
+    fn test_let_expr_with_type() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("let count: Number = 100 count");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let with type: {:?}",
-            result
-        );
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse let with type: : {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::LetExpr { pattern, ty, .. } => {
                 match pattern {
-                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "count"),
-                    _ => panic!("Expected simple pattern"),
+                    BindingPattern::Simple(ident) => {
+                        if ident.name != "count" {
+                            return Err(format!("{:?} != {:?}", ident.name, "count").into());
+                        }
+                    }
+                    BindingPattern::Array { .. }
+                    | BindingPattern::Struct { .. }
+                    | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
                 match ty {
                     Some(Type::Primitive(PrimitiveType::Number)) => {}
-                    _ => panic!("Expected Number type annotation"),
+                    _ => return Err("Expected Number type annotation".into()),
                 }
             }
-            _ => panic!("Expected LetExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_mutable() {
+    fn test_let_expr_mutable() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("let mut counter = 0 counter");
-        assert!(result.is_ok(), "Failed to parse let mut: {:?}", result);
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse let mut: {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::LetExpr {
                 mutable, pattern, ..
             } => {
-                assert!(mutable);
+                if !mutable {
+                    return Err("expected mutable to be true".into());
+                }
                 match pattern {
-                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "counter"),
-                    _ => panic!("Expected simple pattern"),
+                    BindingPattern::Simple(ident) => {
+                        if ident.name != "counter" {
+                            return Err(format!("{:?} != {:?}", ident.name, "counter").into());
+                        }
+                    }
+                    BindingPattern::Array { .. }
+                    | BindingPattern::Struct { .. }
+                    | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
             }
-            _ => panic!("Expected LetExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_in_for() {
-        let input = r#"
+    fn test_let_expr_in_for() -> Result<(), Box<dyn std::error::Error>> {
+        let input = r"
             struct App {
                 content: [String] = for item in items {
                     let formatted = item
                     Label(text: formatted)
                 }
             }
-        "#;
+        ";
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
-        assert!(
-            result.is_ok(),
-            "Failed to parse let in for block: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse let in for block: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_nested_let_exprs() {
+    fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("let x = 1 let y = 2 x");
-        assert!(result.is_ok(), "Failed to parse nested let: {:?}", result);
-        let expr = result.unwrap();
+        if result.is_err() {
+            return Err(format!("Failed to parse nested let: {result:?}").into());
+        }
+        let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::LetExpr { pattern, body, .. } => {
                 match pattern {
-                    BindingPattern::Simple(ident) => assert_eq!(ident.name, "x"),
-                    _ => panic!("Expected simple pattern"),
+                    BindingPattern::Simple(ident) => {
+                        if ident.name != "x" {
+                            return Err(format!("{:?} != {:?}", ident.name, "x").into());
+                        }
+                    }
+                    BindingPattern::Array { .. }
+                    | BindingPattern::Struct { .. }
+                    | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
                 match *body {
                     Expr::LetExpr {
                         pattern: inner_pattern,
                         ..
                     } => match inner_pattern {
-                        BindingPattern::Simple(ident) => assert_eq!(ident.name, "y"),
-                        _ => panic!("Expected simple pattern"),
+                        BindingPattern::Simple(ident) => {
+                            if ident.name != "y" {
+                                return Err(format!("{:?} != {:?}", ident.name, "y").into());
+                            }
+                        }
+                        BindingPattern::Array { .. }
+                        | BindingPattern::Struct { .. }
+                        | BindingPattern::Tuple { .. } => {
+                            return Err("Expected simple pattern".into())
+                        }
                     },
-                    _ => panic!("Expected nested LetExpr"),
+                    Expr::Literal(_)
+                    | Expr::Invocation { .. }
+                    | Expr::EnumInstantiation { .. }
+                    | Expr::InferredEnumInstantiation { .. }
+                    | Expr::Array { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Reference { .. }
+                    | Expr::BinaryOp { .. }
+                    | Expr::UnaryOp { .. }
+                    | Expr::ForExpr { .. }
+                    | Expr::IfExpr { .. }
+                    | Expr::MatchExpr { .. }
+                    | Expr::Group { .. }
+                    | Expr::DictLiteral { .. }
+                    | Expr::DictAccess { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::ClosureExpr { .. }
+                    | Expr::MethodCall { .. }
+                    | Expr::Block { .. } => return Err("Expected nested LetExpr".into()),
                 }
             }
-            _ => panic!("Expected LetExpr, got {:?}", expr),
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Reference { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_simple() {
+    fn test_block_expr_simple() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("{ let x = 1 x }");
-        assert!(result.is_ok(), "Failed to parse block: {:?}", result);
+        if result.is_err() {
+            return Err(format!("Failed to parse block: {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_with_call() {
+    fn test_block_expr_with_call() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("{ let v = foo.bar(1) Result(value: v) }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block with call: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse block with call: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_no_let() {
+    fn test_block_expr_no_let() -> Result<(), Box<dyn std::error::Error>> {
         // Block with just a result expression (no let statements)
         let result = parse_expr_from_let("{ Result(value: 1) }");
-        assert!(result.is_ok(), "Failed to parse block no let: {:?}", result);
+        if result.is_err() {
+            return Err(format!("Failed to parse block no let: {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_let_simple_then_call() {
+    fn test_block_expr_let_simple_then_call() -> Result<(), Box<dyn std::error::Error>> {
         // Block with let binding a literal, then a call
         let result = parse_expr_from_let("{ let v = 1 Result(value: v) }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let simple then call: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(
+                format!("Failed to parse block let simple then call: : {result:?}").into(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_let_field_access() {
+    fn test_block_expr_let_field_access() -> Result<(), Box<dyn std::error::Error>> {
         // Block with let binding field access, then a reference
         let result = parse_expr_from_let("{ let v = foo.bar v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let field access: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse block let field access: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_let_call_then_ref() {
+    fn test_block_expr_let_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Block with let binding a call, then a reference
         let result = parse_expr_from_let("{ let v = foo(1) v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let call then ref: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse block let call then ref: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_block_expr_let_method_call_then_ref() {
+    fn test_block_expr_let_method_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Block with let binding a method call, then a reference
         let result = parse_expr_from_let("{ let v = foo.bar(1) v }");
-        assert!(
-            result.is_ok(),
-            "Failed to parse block let method call then ref: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!(
+                "Failed to parse block let method call then ref: : {result:?}"
+            )
+            .into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_method_call_then_ref() {
+    fn test_let_expr_method_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with method call value, then reference body
         // This uses the let EXPRESSION, not block statement
         let result = parse_expr_from_let("let v = foo.bar(1) v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr method call then ref: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!(
+                "Failed to parse let expr method call then ref: : {result:?}"
+            )
+            .into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_fn_call_then_ref() {
+    fn test_let_expr_fn_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with function call value, then reference body
         let result = parse_expr_from_let("let v = foo(1) v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr fn call then ref: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(
+                format!("Failed to parse let expr fn call then ref: : {result:?}").into(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_let_expr_field_access_then_ref() {
+    fn test_let_expr_field_access_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with field access value, then reference body
         let result = parse_expr_from_let("let v = foo.bar v");
-        assert!(
-            result.is_ok(),
-            "Failed to parse let expr field access then ref: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!(
+                "Failed to parse let expr field access then ref: : {result:?}"
+            )
+            .into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_method_call_standalone() {
+    fn test_method_call_standalone() -> Result<(), Box<dyn std::error::Error>> {
         // Just a method call, no following expression
         let result = parse_expr_from_let("foo.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse standalone method call: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse standalone method call: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_method_call_no_args() {
+    fn test_method_call_no_args() -> Result<(), Box<dyn std::error::Error>> {
         // Method call with no args
         let result = parse_expr_from_let("foo.bar()");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call no args: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse method call no args: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_field_access_standalone() {
+    fn test_field_access_standalone() -> Result<(), Box<dyn std::error::Error>> {
         // Field access (no parens)
         let result = parse_expr_from_let("foo.bar");
-        assert!(result.is_ok(), "Failed to parse field access: {:?}", result);
+        if result.is_err() {
+            return Err(format!("Failed to parse field access: {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_reference_standalone() {
+    fn test_reference_standalone() -> Result<(), Box<dyn std::error::Error>> {
         // Just a reference
         let result = parse_expr_from_let("foo");
-        assert!(result.is_ok(), "Failed to parse reference: {:?}", result);
+        if result.is_err() {
+            return Err(format!("Failed to parse reference: {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_method_call_on_self() {
+    fn test_method_call_on_self() -> Result<(), Box<dyn std::error::Error>> {
         // Method call on self
         let result = parse_expr_from_let("self.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call on self: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse method call on self: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_method_call_on_this() {
+    fn test_method_call_on_this() -> Result<(), Box<dyn std::error::Error>> {
         // Method call on 'this' (not a keyword, just an identifier)
         let result = parse_expr_from_let("this.bar(1)");
-        assert!(
-            result.is_ok(),
-            "Failed to parse method call on this: {:?}",
-            result
-        );
+        if result.is_err() {
+            return Err(format!("Failed to parse method call on this: : {result:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_invocation_simple() {
+    fn test_invocation_simple() -> Result<(), Box<dyn std::error::Error>> {
         // Simple invocation (should work)
         let result = parse_expr_from_let("foo(1)");
-        assert!(result.is_ok(), "Failed to parse invocation: {:?}", result);
+        if result.is_err() {
+            return Err(format!("Failed to parse invocation: {result:?}").into());
+        }
+        Ok(())
     }
 }

@@ -78,31 +78,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_graph_is_empty() {
+    fn test_new_graph_is_empty() -> Result<(), Box<dyn std::error::Error>> {
         let graph = ImportGraph::new();
-        assert!(graph.edges.is_empty());
+        if !graph.edges.is_empty() { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_default_creates_empty_graph() {
+    fn test_default_creates_empty_graph() -> Result<(), Box<dyn std::error::Error>> {
         let graph = ImportGraph::default();
-        assert!(graph.edges.is_empty());
+        if !graph.edges.is_empty() { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_add_import_creates_edge() {
+    fn test_add_import_creates_edge() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let from = PathBuf::from("a.forma");
         let to = PathBuf::from("b.forma");
 
         graph.add_import(from.clone(), to.clone());
 
-        assert!(graph.edges.contains_key(&from));
-        assert!(graph.edges.get(&from).unwrap().contains(&to));
+        if !graph.edges.contains_key(&from) {
+            return Err("Expected edge from 'from'".into());
+        }
+        let edges = graph.edges.get(&from).ok_or("edges not found")?;
+        if !edges.contains(&to) {
+            return Err(format!("Expected edges to contain {to:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_add_multiple_imports_from_same_module() {
+    fn test_add_multiple_imports_from_same_module() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let from = PathBuf::from("main.forma");
         let to1 = PathBuf::from("utils.forma");
@@ -111,27 +119,35 @@ mod tests {
         graph.add_import(from.clone(), to1.clone());
         graph.add_import(from.clone(), to2.clone());
 
-        let imports = graph.edges.get(&from).unwrap();
-        assert_eq!(imports.len(), 2);
-        assert!(imports.contains(&to1));
-        assert!(imports.contains(&to2));
+        let imports = graph.edges.get(&from).ok_or("imports not found")?;
+        if imports.len() != 2 {
+            return Err(format!("Expected 2 imports, got {}", imports.len()).into());
+        }
+        if !imports.contains(&to1) {
+            return Err(format!("Expected imports to contain {to1:?}").into());
+        }
+        if !imports.contains(&to2) {
+            return Err(format!("Expected imports to contain {to2:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_no_cycle_simple() {
+    fn test_no_cycle_simple() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
 
-        graph.add_import(a.clone(), b.clone());
+        graph.add_import(a.clone(), b);
 
         // Adding c -> a should not create a cycle
         let c = PathBuf::from("c.forma");
-        assert!(graph.would_create_cycle(&c, &a).is_none());
+        if graph.would_create_cycle(&c, &a).is_some() { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_detects_direct_cycle() {
+    fn test_detects_direct_cycle() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
@@ -141,13 +157,18 @@ mod tests {
 
         // b importing a would create cycle: a -> b -> a
         let cycle = graph.would_create_cycle(&b, &a);
-        assert!(cycle.is_some());
-        let cycle_path = cycle.unwrap();
-        assert!(cycle_path.contains(&a));
+        if cycle.is_none() {
+            return Err("Expected cycle to be detected".into());
+        }
+        let cycle_path = cycle.ok_or("cycle not found")?;
+        if !cycle_path.contains(&a) {
+            return Err(format!("Expected cycle to contain {a:?}").into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_detects_indirect_cycle() {
+    fn test_detects_indirect_cycle() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
@@ -155,15 +176,19 @@ mod tests {
 
         // a -> b -> c
         graph.add_import(a.clone(), b.clone());
-        graph.add_import(b.clone(), c.clone());
+        graph.add_import(b, c.clone());
 
         // c importing a would create cycle: a -> b -> c -> a
         let cycle = graph.would_create_cycle(&c, &a);
-        assert!(cycle.is_some());
+        if cycle.is_none() {
+            return Err("Expected indirect cycle to be detected".into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_no_false_positive_for_diamond() {
+    #[expect(clippy::many_single_char_names, reason = "graph node names a-e are conventional")]
+    fn test_no_false_positive_for_diamond() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
@@ -173,33 +198,35 @@ mod tests {
         // Diamond pattern: a -> b, a -> c, b -> d, c -> d
         graph.add_import(a.clone(), b.clone());
         graph.add_import(a.clone(), c.clone());
-        graph.add_import(b.clone(), d.clone());
-        graph.add_import(c.clone(), d.clone());
+        graph.add_import(b, d.clone());
+        graph.add_import(c, d);
 
         // This is a DAG, not a cycle
         // Adding e -> a should not detect a cycle
         let e = PathBuf::from("e.forma");
-        assert!(graph.would_create_cycle(&e, &a).is_none());
+        if graph.would_create_cycle(&e, &a).is_some() { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_no_cycle_in_chain() {
+    fn test_no_cycle_in_chain() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
         let c = PathBuf::from("c.forma");
 
         // Linear chain: a -> b -> c
-        graph.add_import(a.clone(), b.clone());
-        graph.add_import(b.clone(), c.clone());
+        graph.add_import(a, b.clone());
+        graph.add_import(b, c.clone());
 
         // Adding d -> c should not create a cycle
         let d = PathBuf::from("d.forma");
-        assert!(graph.would_create_cycle(&d, &c).is_none());
+        if graph.would_create_cycle(&d, &c).is_some() { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_already_visited_node() {
+    fn test_already_visited_node() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
         let b = PathBuf::from("b.forma");
@@ -209,11 +236,12 @@ mod tests {
         // Graph: a -> b, a -> c, b -> d, c -> d (d has multiple incoming)
         graph.add_import(a.clone(), b.clone());
         graph.add_import(a.clone(), c.clone());
-        graph.add_import(b.clone(), d.clone());
-        graph.add_import(c.clone(), d.clone());
+        graph.add_import(b, d.clone());
+        graph.add_import(c, d.clone());
 
         // d importing a would create cycles through both paths
         let cycle = graph.would_create_cycle(&d, &a);
-        assert!(cycle.is_some());
+        if cycle.is_none() { return Err("assertion failed".into()); }
+        Ok(())
     }
 }

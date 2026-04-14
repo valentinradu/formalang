@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Source code location information for error reporting and LSP
+#[expect(clippy::exhaustive_structs, reason = "public API type")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
     /// Byte offset from start of file
@@ -12,7 +13,8 @@ pub struct Location {
 }
 
 impl Location {
-    pub fn new(offset: usize, line: usize, column: usize) -> Self {
+    #[must_use] 
+    pub const fn new(offset: usize, line: usize, column: usize) -> Self {
         Self {
             offset,
             line,
@@ -20,7 +22,8 @@ impl Location {
         }
     }
 
-    pub fn start() -> Self {
+    #[must_use] 
+    pub const fn start() -> Self {
         Self {
             offset: 0,
             line: 1,
@@ -36,6 +39,7 @@ impl Default for Location {
 }
 
 /// A span of source code between two locations
+#[expect(clippy::exhaustive_structs, reason = "public API type")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct Span {
     pub start: Location,
@@ -43,11 +47,13 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: Location, end: Location) -> Self {
+    #[must_use] 
+    pub const fn new(start: Location, end: Location) -> Self {
         Self { start, end }
     }
 
-    pub fn single(location: Location) -> Self {
+    #[must_use] 
+    pub const fn single(location: Location) -> Self {
         Self {
             start: location,
             end: location,
@@ -55,8 +61,9 @@ impl Span {
     }
 
     /// Combine two spans into one that covers both
-    pub fn merge(self, other: Span) -> Span {
-        Span {
+    #[must_use] 
+    pub const fn merge(self, other: Self) -> Self {
+        Self {
             start: if self.start.offset < other.start.offset {
                 self.start
             } else {
@@ -72,7 +79,8 @@ impl Span {
 
     /// Create a span from byte offsets (for logos compatibility)
     /// Note: This creates a span with line=0, column=0. Use `from_range_with_source` to compute actual positions.
-    pub fn from_range(start: usize, end: usize) -> Self {
+    #[must_use] 
+    pub const fn from_range(start: usize, end: usize) -> Self {
         Self {
             start: Location {
                 offset: start,
@@ -88,6 +96,7 @@ impl Span {
     }
 
     /// Create a span from byte offsets with proper line/column calculation
+    #[must_use] 
     pub fn from_range_with_source(start: usize, end: usize, source: &str) -> Self {
         Self {
             start: offset_to_location(start, source),
@@ -97,6 +106,7 @@ impl Span {
 }
 
 /// Convert a byte offset to a Location with line and column information
+#[must_use] 
 pub fn offset_to_location(offset: usize, source: &str) -> Location {
     let mut line: usize = 1;
     let mut column: usize = 1;
@@ -125,6 +135,7 @@ pub fn offset_to_location(offset: usize, source: &str) -> Location {
 }
 
 /// Fill in line/column information for a span given the source text
+#[must_use] 
 pub fn fill_span_positions(span: Span, source: &str) -> Span {
     Span {
         start: offset_to_location(span.start.offset, source),

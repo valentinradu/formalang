@@ -3,7 +3,12 @@
 //! These tests exercise the module resolution paths in semantic analysis
 //! without requiring actual filesystem access.
 
-use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
+use formalang::error::CompilerError;
+use formalang::lexer::Lexer;
+use formalang::location::Span;
+use formalang::parser;
+use formalang::semantic::module_resolver::{FileSystemResolver, ModuleError, ModuleResolver};
+use formalang::semantic::SemanticAnalyzer;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -55,7 +60,7 @@ impl ModuleResolver for MockModuleResolver {
             .ok_or_else(|| ModuleError::NotFound {
                 path: path_vec,
                 searched_paths: vec![],
-                span: formalang::location::Span::default(),
+                span: Span::default(),
             })
     }
 }
@@ -65,55 +70,89 @@ impl ModuleResolver for MockModuleResolver {
 // =============================================================================
 
 #[test]
-fn test_mock_resolver_returns_module() {
+fn test_mock_resolver_returns_module() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(vec!["utils".to_string()], "pub struct Helper { x: String }");
 
     let result = resolver.resolve(&["utils".to_string()], None);
-    assert!(result.is_ok());
-    let (source, path) = result.unwrap();
-    assert!(source.contains("Helper"));
-    assert!(path.to_string_lossy().contains("utils"));
+    if result.is_err() {
+        return Err("assertion failed".into());
+    }
+    let (source, path) = result.map_err(|e| format!("{e:?}"))?;
+    if !(source.contains("Helper")) {
+        return Err("assertion failed".into());
+    }
+    if !(path.to_string_lossy().contains("utils")) {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mock_resolver_not_found() {
+fn test_mock_resolver_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = MockModuleResolver::new();
 
     let result = resolver.resolve(&["nonexistent".to_string()], None);
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        ModuleError::NotFound { path, .. } => {
-            assert_eq!(path, vec!["nonexistent".to_string()]);
-        }
-        _ => panic!("Expected NotFound error"),
+    if result.is_ok() {
+        return Err("assertion failed".into());
     }
+    let err = result.err().ok_or("expected error")?;
+    match err {
+        ModuleError::NotFound { path, .. } => {
+            if path != vec!["nonexistent".to_string()] {
+                return Err(format!(
+                    "expected {:?} but got {:?}",
+                    vec!["nonexistent".to_string()],
+                    path
+                )
+                .into());
+            }
+        }
+        ModuleError::CircularImport { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Expected NotFound error".into());
+        }
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mock_resolver_returns_configured_error() {
+fn test_mock_resolver_returns_configured_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_error(
         vec!["broken".to_string()],
         ModuleError::ReadError {
             path: PathBuf::from("broken.forma"),
             error: "Permission denied".to_string(),
-            span: formalang::location::Span::default(),
+            span: Span::default(),
         },
     );
 
     let result = resolver.resolve(&["broken".to_string()], None);
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        ModuleError::ReadError { error, .. } => {
-            assert!(error.contains("Permission denied"));
-        }
-        _ => panic!("Expected ReadError"),
+    if result.is_ok() {
+        return Err("assertion failed".into());
     }
+    let err = result.err().ok_or("expected error")?;
+    match err {
+        ModuleError::ReadError { error, .. } => {
+            if !(error.contains("Permission denied")) {
+                return Err("assertion failed".into());
+            }
+        }
+        ModuleError::NotFound { .. }
+        | ModuleError::CircularImport { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Expected ReadError".into());
+        }
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mock_resolver_multi_segment_path() {
+fn test_mock_resolver_multi_segment_path() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["std".to_string(), "collections".to_string()],
@@ -121,7 +160,10 @@ fn test_mock_resolver_multi_segment_path() {
     );
 
     let result = resolver.resolve(&["std".to_string(), "collections".to_string()], None);
-    assert!(result.is_ok());
+    if result.is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -129,11 +171,11 @@ fn test_mock_resolver_multi_segment_path() {
 // =============================================================================
 
 #[test]
-fn test_module_error_not_found_fields() {
+fn test_module_error_not_found_fields() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::NotFound {
         path: vec!["foo".to_string(), "bar".to_string()],
         searched_paths: vec![PathBuf::from("/a/b.forma"), PathBuf::from("/a/b/c.forma")],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     match error {
@@ -142,71 +184,115 @@ fn test_module_error_not_found_fields() {
             searched_paths,
             ..
         } => {
-            assert_eq!(path.len(), 2);
-            assert_eq!(searched_paths.len(), 2);
+            if path.len() != 2 {
+                return Err(format!("expected {:?} but got {:?}", 2, path.len()).into());
+            }
+            if searched_paths.len() != 2 {
+                return Err(format!("expected {:?} but got {:?}", 2, searched_paths.len()).into());
+            }
         }
-        _ => panic!("Wrong error type"),
+        ModuleError::CircularImport { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Wrong error type".into());
+        }
     }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_circular_import() {
+fn test_module_error_circular_import() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::CircularImport {
         cycle: vec!["a".to_string(), "b".to_string(), "a".to_string()],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     match error {
         ModuleError::CircularImport { cycle, .. } => {
-            assert_eq!(cycle.len(), 3);
-            assert_eq!(cycle[0], "a");
-            assert_eq!(cycle[2], "a");
+            if cycle.len() != 3 {
+                return Err(format!("expected {:?} but got {:?}", 3, cycle.len()).into());
+            }
+            let first = cycle.first().ok_or("cycle is empty")?;
+            if first != "a" {
+                return Err(format!("expected {:?} but got {:?}", "a", first).into());
+            }
+            let last = cycle.last().ok_or("cycle is empty")?;
+            if last != "a" {
+                return Err(format!("expected {:?} but got {:?}", "a", last).into());
+            }
         }
-        _ => panic!("Wrong error type"),
+        ModuleError::NotFound { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Wrong error type".into());
+        }
     }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_read_error() {
+fn test_module_error_read_error() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::ReadError {
         path: PathBuf::from("/some/path.forma"),
         error: "File not accessible".to_string(),
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     match error {
         ModuleError::ReadError { path, error, .. } => {
-            assert!(path.to_string_lossy().contains("path.forma"));
-            assert!(error.contains("accessible"));
+            if !(path.to_string_lossy().contains("path.forma")) {
+                return Err("assertion failed".into());
+            }
+            if !(error.contains("accessible")) {
+                return Err("assertion failed".into());
+            }
         }
-        _ => panic!("Wrong error type"),
+        ModuleError::NotFound { .. }
+        | ModuleError::CircularImport { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Wrong error type".into());
+        }
     }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_private_item() {
+fn test_module_error_private_item() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::PrivateItem {
         item: "InternalHelper".to_string(),
         module: "utils".to_string(),
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     match error {
         ModuleError::PrivateItem { item, module, .. } => {
-            assert_eq!(item, "InternalHelper");
-            assert_eq!(module, "utils");
+            if item != "InternalHelper" {
+                return Err(format!("expected {:?} but got {:?}", "InternalHelper", item).into());
+            }
+            if module != "utils" {
+                return Err(format!("expected {:?} but got {:?}", "utils", module).into());
+            }
         }
-        _ => panic!("Wrong error type"),
+        ModuleError::NotFound { .. }
+        | ModuleError::CircularImport { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("Wrong error type".into());
+        }
     }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_item_not_found() {
+fn test_module_error_item_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::ItemNotFound {
         item: "Missing".to_string(),
         module: "utils".to_string(),
         available: vec!["Helper".to_string(), "Utils".to_string()],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     match error {
@@ -216,73 +302,91 @@ fn test_module_error_item_not_found() {
             available,
             ..
         } => {
-            assert_eq!(item, "Missing");
-            assert_eq!(module, "utils");
-            assert_eq!(available.len(), 2);
+            if item != "Missing" {
+                return Err(format!("expected {:?} but got {:?}", "Missing", item).into());
+            }
+            if module != "utils" {
+                return Err(format!("expected {:?} but got {:?}", "utils", module).into());
+            }
+            if available.len() != 2 {
+                return Err(format!("expected {:?} but got {:?}", 2, available.len()).into());
+            }
         }
-        _ => panic!("Wrong error type"),
+        ModuleError::NotFound { .. }
+        | ModuleError::CircularImport { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::PrivateItem { .. } => {
+            return Err("Wrong error type".into());
+        }
     }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_equality() {
+fn test_module_error_equality() -> Result<(), Box<dyn std::error::Error>> {
     let error1 = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
     let error2 = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
-    assert_eq!(error1, error2);
+    if error1 != error2 {
+        return Err(format!("expected {error2:?} but got {error1:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_debug() {
+fn test_module_error_debug() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
-    let debug_str = format!("{:?}", error);
-    assert!(debug_str.contains("NotFound"));
-    assert!(debug_str.contains("test"));
+    let debug_str = format!("{error:?}");
+    if !(debug_str.contains("NotFound")) {
+        return Err("assertion failed: expected debug string to contain 'NotFound'".into());
+    }
+    if !(debug_str.contains("test")) {
+        return Err("assertion failed: expected debug string to contain 'test'".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_error_clone() {
+fn test_module_error_clone() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::ReadError {
         path: PathBuf::from("test.forma"),
         error: "Test error".to_string(),
-        span: formalang::location::Span::default(),
+        span: Span::default(),
     };
 
     let cloned = error.clone();
-    assert_eq!(error, cloned);
+    if error != cloned {
+        return Err(format!("expected {cloned:?} but got {error:?}").into());
+    }
+    Ok(())
 }
 
 // =============================================================================
 // Semantic Analyzer Integration Tests with Mock Resolver
 // =============================================================================
 
-use formalang::lexer::Lexer;
-use formalang::parser;
-use formalang::semantic::module_resolver::FileSystemResolver;
-use formalang::semantic::SemanticAnalyzer;
-
 fn analyze_with_mock(
     source: &str,
     resolver: MockModuleResolver,
-) -> Result<(), Vec<formalang::error::CompilerError>> {
+) -> Result<(), Vec<CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
     let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
-            .map(|(msg, span)| formalang::error::CompilerError::ParseError { message: msg, span })
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
@@ -292,12 +396,12 @@ fn analyze_with_mock(
 fn analyze_with_filesystem(
     source: &str,
     root_dir: PathBuf,
-) -> Result<(), Vec<formalang::error::CompilerError>> {
+) -> Result<(), Vec<CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
     let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
-            .map(|(msg, span)| formalang::error::CompilerError::ParseError { message: msg, span })
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
     let resolver = FileSystemResolver::new(root_dir);
@@ -306,45 +410,57 @@ fn analyze_with_filesystem(
 }
 
 #[test]
-fn test_semantic_use_module_not_found() {
+fn test_semantic_use_module_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = MockModuleResolver::new();
-    let source = r#"
+    let source = r"
 use nonexistent::Helper
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::ModuleNotFound { .. })));
+        .any(|e| matches!(e, CompilerError::ModuleNotFound { .. }))
+    {
+        return Err(format!("expected ModuleNotFound error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_read_error() {
+fn test_semantic_use_module_read_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_error(
         vec!["broken".to_string()],
         ModuleError::ReadError {
             path: PathBuf::from("broken.forma"),
             error: "Permission denied".to_string(),
-            span: formalang::location::Span::default(),
+            span: Span::default(),
         },
     );
-    let source = r#"
+    let source = r"
 use broken::Helper
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::ModuleReadError { .. })));
+        .any(|e| matches!(e, CompilerError::ModuleReadError { .. }))
+    {
+        return Err(format!("expected ModuleReadError error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_circular_import() {
+fn test_semantic_use_circular_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_error(
         vec!["circular".to_string()],
@@ -354,46 +470,58 @@ fn test_semantic_use_circular_import() {
                 "circular".to_string(),
                 "main".to_string(),
             ],
-            span: formalang::location::Span::default(),
+            span: Span::default(),
         },
     );
-    let source = r#"
+    let source = r"
 use circular::Helper
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::CircularImport { .. })));
+        .any(|e| matches!(e, CompilerError::CircularImport { .. }))
+    {
+        return Err(format!("expected CircularImport error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_private_item() {
+fn test_semantic_use_private_item() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_error(
         vec!["utils".to_string()],
         ModuleError::PrivateItem {
             item: "InternalHelper".to_string(),
             module: "utils".to_string(),
-            span: formalang::location::Span::default(),
+            span: Span::default(),
         },
     );
-    let source = r#"
+    let source = r"
 use utils::InternalHelper
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::PrivateImport { .. })));
+        .any(|e| matches!(e, CompilerError::PrivateImport { .. }))
+    {
+        return Err(format!("expected PrivateImport error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_item_not_found() {
+fn test_semantic_use_item_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_error(
         vec!["utils".to_string()],
@@ -401,138 +529,166 @@ fn test_semantic_use_item_not_found() {
             item: "Missing".to_string(),
             module: "utils".to_string(),
             available: vec!["Helper".to_string(), "Utils".to_string()],
-            span: formalang::location::Span::default(),
+            span: Span::default(),
         },
     );
-    let source = r#"
+    let source = r"
 use utils::Missing
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors.iter().any(|e| matches!(
-        e,
-        formalang::error::CompilerError::ImportItemNotFound { .. }
-    )));
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::ImportItemNotFound { .. }
+        )
+    }) {
+        return Err(format!("expected ImportItemNotFound error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_success_single_item() {
+fn test_semantic_use_module_success_single_item() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
         "pub struct Helper { name: String }",
     );
-    let source = r#"
+    let source = r"
 use utils::Helper
 struct Main {
     helper: Helper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_success_multiple_items() {
+fn test_semantic_use_module_success_multiple_items() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct Helper {
     name: String
 }
 pub struct Utils {
     value: Number
 }
-"#,
+",
     );
-    let source = r#"
+    let source = r"
 use utils::{Helper, Utils}
 struct Main {
     helper: Helper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_parse_error() {
+fn test_semantic_use_module_parse_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     // Add module with invalid syntax
     resolver.add_module(
         vec!["broken".to_string()],
         "pub struct Helper { name String }", // missing colon
     );
-    let source = r#"
+    let source = r"
 use broken::Helper
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::ParseError { .. })));
+        .any(|e| matches!(e, CompilerError::ParseError { .. }))
+    {
+        return Err(format!("expected ParseError error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_nested_module_path() {
+fn test_semantic_use_nested_module_path() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["std".to_string(), "collections".to_string()],
         "pub struct List { items: [String] }",
     );
-    let source = r#"
+    let source = r"
 use std::collections::List
 struct Main {
     items: List
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_with_trait() {
+fn test_semantic_use_module_with_trait() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["traits".to_string()],
-        r#"
+        r"
 pub trait Named {
     name: String
 }
-"#,
+",
     );
-    let source = r#"
+    let source = r"
 use traits::Named
 trait LocalNamed: Named {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_module_with_enum() {
+fn test_semantic_use_module_with_enum() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["types".to_string()],
         "pub enum Status { Active, Inactive }",
     );
-    let source = r#"
+    let source = r"
 use types::Status
 struct Item {
     status: Status
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_multiple_use_statements() {
+fn test_semantic_multiple_use_statements() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
@@ -542,40 +698,46 @@ fn test_semantic_multiple_use_statements() {
         vec!["types".to_string()],
         "pub struct Value { amount: Number }",
     );
-    let source = r#"
+    let source = r"
 use utils::Helper
 use types::Value
 struct Main {
     helper: Helper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_same_module_twice() {
+fn test_semantic_use_same_module_twice() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct Helper {
     name: String
 }
 pub struct Utils {
     value: Number
 }
-"#,
+",
     );
-    let source = r#"
+    let source = r"
 use utils::Helper
 use utils::Utils
 struct Main {
     helper: Helper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -583,11 +745,11 @@ struct Main {
 // =============================================================================
 
 #[test]
-fn test_semantic_use_glob_import_all_public() {
+fn test_semantic_use_glob_import_all_public() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct Helper {
     name: String
 }
@@ -601,9 +763,9 @@ pub enum Status {
 pub trait Named {
     name: String
 }
-"#,
+",
     );
-    let source = r#"
+    let source = r"
 use utils::*
 struct Main {
     helper: Helper,
@@ -611,110 +773,123 @@ struct Main {
     status: Status
 }
 trait LocalNamed: Named {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_import_nested_path() {
+fn test_semantic_use_glob_import_nested_path() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["std".to_string(), "collections".to_string()],
-        r#"
+        r"
 pub struct List {
     items: [String]
 }
 pub struct Map {
     keys: [String]
 }
-"#,
+",
     );
-    let source = r#"
+    let source = r"
 use std::collections::*
 struct Main {
     list: List,
     map: Map
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_import_only_public() {
+fn test_semantic_use_glob_import_only_public() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct PublicHelper {
     name: String
 }
 struct PrivateHelper {
     secret: String
 }
-"#,
+",
     );
     // Glob import should only import PublicHelper, not PrivateHelper
-    let source = r#"
+    let source = r"
 use utils::*
 struct Main {
     helper: PublicHelper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_import_private_not_accessible() {
+fn test_semantic_use_glob_import_private_not_accessible() -> Result<(), Box<dyn std::error::Error>>
+{
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct PublicHelper {
     name: String
 }
 struct PrivateHelper {
     secret: String
 }
-"#,
+",
     );
     // Trying to use PrivateHelper after glob import should fail
-    let source = r#"
+    let source = r"
 use utils::*
 struct Main {
     helper: PrivateHelper
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err(), "Expected error for private type usage");
+    if result.is_ok() {
+        return Err("Expected error for private type usage".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_with_other_imports() {
+fn test_semantic_use_glob_with_other_imports() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
-        r#"
+        r"
 pub struct Helper {
     name: String
 }
-"#,
+",
     );
     resolver.add_module(
         vec!["types".to_string()],
-        r#"
+        r"
 pub struct Value {
     amount: Number
 }
 pub struct Item {
     id: String
 }
-"#,
+",
     );
     // Mix glob import with specific imports
-    let source = r#"
+    let source = r"
 use utils::Helper
 use types::*
 struct Main {
@@ -722,51 +897,63 @@ struct Main {
     value: Value,
     item: Item
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_module_not_found() {
+fn test_semantic_use_glob_module_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = MockModuleResolver::new();
-    let source = r#"
+    let source = r"
 use nonexistent::*
 struct Main {}
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_err());
-    let errors = result.unwrap_err();
-    assert!(errors
+    if result.is_ok() {
+        return Err("assertion failed".into());
+    }
+    let errors = result.err().ok_or("expected error")?;
+    if !errors
         .iter()
-        .any(|e| matches!(e, formalang::error::CompilerError::ModuleNotFound { .. })));
+        .any(|e| matches!(e, CompilerError::ModuleNotFound { .. }))
+    {
+        return Err(format!("expected ModuleNotFound error, got: {errors:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_empty_module() {
+fn test_semantic_use_glob_empty_module() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     // Module with no public symbols
     resolver.add_module(
         vec!["empty".to_string()],
-        r#"
+        r"
 struct PrivateOnly {
     secret: String
 }
-"#,
+",
     );
     // Glob import from module with no public symbols should succeed (imports nothing)
-    let source = r#"
+    let source = r"
 use empty::*
 struct Main {
     name: String
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_with_let_bindings() {
+fn test_semantic_use_glob_with_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["constants".to_string()],
@@ -775,22 +962,25 @@ pub let MAX_SIZE: Number = 100
 pub let DEFAULT_NAME: String = "unnamed"
 "#,
     );
-    let source = r#"
+    let source = r"
 use constants::*
 struct Config {
     size: Number
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_semantic_use_glob_with_nested_module() {
+fn test_semantic_use_glob_with_nested_module() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(
         vec!["parent".to_string()],
-        r#"
+        r"
 pub struct ParentStruct {
     name: String
 }
@@ -799,17 +989,20 @@ pub mod child {
         value: Number
     }
 }
-"#,
+",
     );
     // Glob import should import ParentStruct and child module, but not child's contents directly
-    let source = r#"
+    let source = r"
 use parent::*
 struct Main {
     parent: ParentStruct
 }
-"#;
+";
     let result = analyze_with_mock(source, resolver);
-    assert!(result.is_ok(), "Expected success, got: {:?}", result);
+    if result.is_err() {
+        return Err(format!("Expected success, got: {result:?}").into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -818,18 +1011,21 @@ struct Main {
 
 #[test]
 #[ignore = "stdlib uses WGSL types like vec2 that need parser support"]
-fn test_stdlib_compiles_alone() {
+fn test_stdlib_compiles_alone() -> Result<(), Box<dyn std::error::Error>> {
     // Load stdlib from filesystem
-    let stdlib_source =
-        std::fs::read_to_string("stdlib.fv").expect("Failed to read docs/user/stdlib.fv");
+    let stdlib_source = std::fs::read_to_string("stdlib.fv")
+        .map_err(|e| format!("Failed to read docs/user/stdlib.fv: {e}"))?;
 
     let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(&stdlib_source, root_dir);
-    assert!(result.is_ok(), "Stdlib should compile: {:?}", result.err());
+    if result.is_err() {
+        return Err(format!("Stdlib should compile: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_self_only() {
+fn test_self_only() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions, not struct field defaults
     let source = r#"
 pub struct Modal {
@@ -845,17 +1041,16 @@ impl Modal {
     let resolver = MockModuleResolver::new();
 
     let result = analyze_with_mock(source, resolver);
-    assert!(
-        result.is_ok(),
-        "Self-only test should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(format!("Self-only test should compile: {:?}", result.err()).into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_simple_self_with_stdlib() {
+fn test_simple_self_with_stdlib() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions
-    let simple_source = r##"
+    let simple_source = r#"
 use stdlib::*
 
 pub struct Modal: View {
@@ -869,21 +1064,22 @@ impl Modal {
     self.title
   }
 }
-"##;
+"#;
 
     let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(simple_source, root_dir);
-    assert!(
-        result.is_ok(),
-        "Simple self with stdlib should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!("Simple self with stdlib should compile: {:?}", result.err()).into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_minimal_self_reference() {
+fn test_minimal_self_reference() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions
-    let minimal_source = r#"
+    let minimal_source = r"
 use stdlib::*
 
 pub struct Modal: View {
@@ -896,28 +1092,28 @@ impl Modal {
     self.isOpen
   }
 }
-"#;
+";
 
     let root_dir = PathBuf::from(".");
     let result = analyze_with_filesystem(minimal_source, root_dir);
-    assert!(
-        result.is_ok(),
-        "Minimal self reference should compile: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(
+            format!("Minimal self reference should compile: {:?}", result.err()).into(),
+        );
+    }
+    Ok(())
 }
 
 #[test]
-fn test_path_literal_parsing() {
-    let source = r#"
+fn test_path_literal_parsing() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
 struct Test {
   p: Path = /icons/lightning.svg
 }
-"#;
+";
     let result = analyze_with_mock(source, MockModuleResolver::new());
-    assert!(
-        result.is_ok(),
-        "Path literal should parse: {:?}",
-        result.err()
-    );
+    if result.is_err() {
+        return Err(format!("Path literal should parse: {:?}", result.err()).into());
+    }
+    Ok(())
 }

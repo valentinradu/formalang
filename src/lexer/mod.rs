@@ -5,12 +5,14 @@ pub use token::{parse_regex, Token};
 use crate::location::Span;
 use logos::Logos;
 
-/// Lexer for FormaLang source code
+/// Lexer for `FormaLang` source code
+#[derive(Debug)]
 pub struct Lexer<'source> {
     lexer: logos::Lexer<'source, Token>,
 }
 
 impl<'source> Lexer<'source> {
+    #[must_use] 
     pub fn new(source: &'source str) -> Self {
         Self {
             lexer: Token::lexer(source),
@@ -25,7 +27,7 @@ impl<'source> Lexer<'source> {
 
         match token {
             Ok(tok) => Some((tok, span)),
-            Err(_) => {
+            Err(()) => {
                 // Lexer error - skip this token and continue
                 self.next_token()
             }
@@ -33,12 +35,14 @@ impl<'source> Lexer<'source> {
     }
 
     /// Get current span
+    #[must_use] 
     pub fn span(&self) -> Span {
         let range = self.lexer.span();
         Span::from_range(range.start, range.end)
     }
 
     /// Tokenize entire source (useful for testing and debugging)
+    #[must_use] 
     pub fn tokenize_all(source: &'source str) -> Vec<(Token, Span)> {
         let mut lexer = Self::new(source);
         let mut tokens = Vec::new();

@@ -1,6 +1,6 @@
 //! Backend pipeline for IR transformation and code generation.
 //!
-//! FormaLang produces an [`IrModule`] from source code. This module defines
+//! `FormaLang` produces an [`IrModule`] from source code. This module defines
 //! the traits needed to transform that IR and emit code from it.
 //!
 //! # Architecture
@@ -89,6 +89,10 @@ pub trait IrPass {
     fn name(&self) -> &str;
 
     /// Transform the module, returning a new module or errors.
+    ///
+    /// # Errors
+    ///
+    /// Returns a non-empty vector of [`CompilerError`] if the pass fails.
     fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<CompilerError>>;
 }
 
@@ -127,10 +131,15 @@ pub trait Backend {
     type Error: std::error::Error;
 
     /// Generate output from the IR module.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Self::Error` if code generation fails.
     fn generate(&self, module: &IrModule) -> Result<Self::Output, Self::Error>;
 }
 
 /// Error produced by a [`Pipeline`].
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Debug)]
 pub enum PipelineError<E: std::error::Error> {
     /// One or more passes failed with compiler errors.
@@ -142,13 +151,13 @@ pub enum PipelineError<E: std::error::Error> {
 impl<E: std::error::Error> std::fmt::Display for PipelineError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PipelineError::PassErrors(errors) => {
+            Self::PassErrors(errors) => {
                 for e in errors {
                     writeln!(f, "{e}")?;
                 }
                 Ok(())
             }
-            PipelineError::BackendError(e) => write!(f, "{e}"),
+            Self::BackendError(e) => write!(f, "{e}"),
         }
     }
 }
@@ -156,8 +165,8 @@ impl<E: std::error::Error> std::fmt::Display for PipelineError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for PipelineError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            PipelineError::BackendError(e) => Some(e),
-            PipelineError::PassErrors(_) => None,
+            Self::BackendError(e) => Some(e),
+            Self::PassErrors(_) => None,
         }
     }
 }
@@ -194,19 +203,33 @@ pub struct Pipeline {
     passes: Vec<Box<dyn IrPass>>,
 }
 
+impl std::fmt::Debug for Pipeline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pipeline")
+            .field("passes_count", &self.passes.len())
+            .finish()
+    }
+}
+
 impl Pipeline {
     /// Create an empty pipeline with no passes.
+    #[must_use] 
     pub fn new() -> Self {
         Self { passes: Vec::new() }
     }
 
     /// Append a pass and return `self` for chaining.
+    #[must_use]
     pub fn pass(mut self, p: impl IrPass + 'static) -> Self {
         self.passes.push(Box::new(p));
         self
     }
 
     /// Run all passes in order, returning the transformed module.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors from the first failing pass.
     pub fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         let mut current = module;
         for pass in &mut self.passes {
@@ -216,6 +239,11 @@ impl Pipeline {
     }
 
     /// Run all passes then emit with the given backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError::PassErrors`] if any pass fails, or
+    /// [`PipelineError::BackendError`] if the backend fails.
     pub fn emit<B: Backend>(
         &mut self,
         module: IrModule,

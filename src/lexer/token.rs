@@ -1,6 +1,7 @@
 use logos::Logos;
 
-/// Token types for FormaLang lexer
+/// Token types for `FormaLang` lexer
+#[expect(clippy::exhaustive_enums, reason = "token enum is matched exhaustively by the parser")]
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\n\r]+")] // Skip whitespace
 #[logos(skip r"//[^\n]*")] // Skip line comments
@@ -227,13 +228,12 @@ fn parse_multiline_string(s: &str) -> String {
 
 fn process_escapes(s: &str) -> String {
     let mut result = String::new();
-    let mut chars = s.chars().peekable();
+    let mut chars = s.chars();
 
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             match chars.next() {
-                Some('"') => result.push('"'),
-                Some('\\') => result.push('\\'),
+                Some(c @ ('"' | '\\')) => result.push(c),
                 Some('n') => result.push('\n'),
                 Some('t') => result.push('\t'),
                 Some('r') => result.push('\r'),
@@ -261,6 +261,7 @@ fn process_escapes(s: &str) -> String {
 }
 
 /// Helper to parse regex string into pattern and flags
+#[must_use] 
 pub fn parse_regex(s: &str) -> Option<(String, String)> {
     let content = s.strip_prefix("r/")?;
     let last_slash = content.rfind('/')?;
@@ -271,144 +272,147 @@ pub fn parse_regex(s: &str) -> Option<(String, String)> {
 }
 
 impl Token {
-    pub fn is_keyword(&self) -> bool {
+    #[must_use] 
+    pub const fn is_keyword(&self) -> bool {
         matches!(
             self,
-            Token::Trait
-                | Token::Struct
-                | Token::Impl
-                | Token::Enum
-                | Token::Module
-                | Token::Use
-                | Token::Pub
-                | Token::Let
-                | Token::Mut
-                | Token::Mount
-                | Token::Match
-                | Token::For
-                | Token::In
-                | Token::If
-                | Token::Else
-                | Token::True
-                | Token::False
-                | Token::Nil
-                | Token::As
-                | Token::Fn
+            Self::Trait
+                | Self::Struct
+                | Self::Impl
+                | Self::Enum
+                | Self::Module
+                | Self::Use
+                | Self::Pub
+                | Self::Let
+                | Self::Mut
+                | Self::Mount
+                | Self::Match
+                | Self::For
+                | Self::In
+                | Self::If
+                | Self::Else
+                | Self::True
+                | Self::False
+                | Self::Nil
+                | Self::As
+                | Self::Fn
         )
     }
 
-    pub fn is_type_keyword(&self) -> bool {
+    #[must_use] 
+    pub const fn is_type_keyword(&self) -> bool {
         matches!(
             self,
-            Token::StringType
-                | Token::NumberType
-                | Token::BooleanType
-                | Token::PathType
-                | Token::RegexType
-                | Token::NeverType
-                | Token::F32Type
-                | Token::I32Type
-                | Token::U32Type
-                | Token::BoolType
-                | Token::Vec2Type
-                | Token::Vec3Type
-                | Token::Vec4Type
-                | Token::IVec2Type
-                | Token::IVec3Type
-                | Token::IVec4Type
-                | Token::UVec2Type
-                | Token::UVec3Type
-                | Token::UVec4Type
-                | Token::Mat2Type
-                | Token::Mat3Type
-                | Token::Mat4Type
+            Self::StringType
+                | Self::NumberType
+                | Self::BooleanType
+                | Self::PathType
+                | Self::RegexType
+                | Self::NeverType
+                | Self::F32Type
+                | Self::I32Type
+                | Self::U32Type
+                | Self::BoolType
+                | Self::Vec2Type
+                | Self::Vec3Type
+                | Self::Vec4Type
+                | Self::IVec2Type
+                | Self::IVec3Type
+                | Self::IVec4Type
+                | Self::UVec2Type
+                | Self::UVec3Type
+                | Self::UVec4Type
+                | Self::Mat2Type
+                | Self::Mat3Type
+                | Self::Mat4Type
         )
     }
 
-    pub fn as_str(&self) -> &'static str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Token::Trait => "trait",
-            Token::Struct => "struct",
-            Token::Impl => "impl",
-            Token::Enum => "enum",
-            Token::Module => "mod",
-            Token::Use => "use",
-            Token::Pub => "pub",
-            Token::Let => "let",
-            Token::Mut => "mut",
-            Token::Mount => "mount",
-            Token::Match => "match",
-            Token::For => "for",
-            Token::In => "in",
-            Token::If => "if",
-            Token::Else => "else",
-            Token::True => "true",
-            Token::False => "false",
-            Token::Nil => "nil",
-            Token::As => "as",
-            Token::SelfKeyword => "self",
-            Token::Fn => "fn",
-            Token::StringType => "String",
-            Token::NumberType => "Number",
-            Token::BooleanType => "Boolean",
-            Token::PathType => "Path",
-            Token::RegexType => "Regex",
-            Token::NeverType => "Never",
-            Token::F32Type => "f32",
-            Token::I32Type => "i32",
-            Token::U32Type => "u32",
-            Token::BoolType => "bool",
-            Token::Vec2Type => "vec2",
-            Token::Vec3Type => "vec3",
-            Token::Vec4Type => "vec4",
-            Token::IVec2Type => "ivec2",
-            Token::IVec3Type => "ivec3",
-            Token::IVec4Type => "ivec4",
-            Token::UVec2Type => "uvec2",
-            Token::UVec3Type => "uvec3",
-            Token::UVec4Type => "uvec4",
-            Token::Mat2Type => "mat2",
-            Token::Mat3Type => "mat3",
-            Token::Mat4Type => "mat4",
-            Token::Dot => ".",
-            Token::Colon => ":",
-            Token::DoubleColon => "::",
-            Token::Comma => ",",
-            Token::Equals => "=",
-            Token::Plus => "+",
-            Token::Minus => "-",
-            Token::Star => "*",
-            Token::Slash => "/",
-            Token::Percent => "%",
-            Token::EqEq => "==",
-            Token::Ne => "!=",
-            Token::Lt => "<",
-            Token::Gt => ">",
-            Token::Le => "<=",
-            Token::Ge => ">=",
-            Token::And => "&&",
-            Token::Or => "||",
-            Token::Pipe => "|",
-            Token::Bang => "!",
-            Token::Question => "?",
-            Token::Arrow => "->",
-            Token::Underscore => "_",
-            Token::DotDot => "..",
-            Token::DotDotDot => "...",
-            Token::LParen => "(",
-            Token::RParen => ")",
-            Token::LBrace => "{",
-            Token::RBrace => "}",
-            Token::LBracket => "[",
-            Token::RBracket => "]",
-            Token::Eof => "<eof>",
-            Token::String(_)
-            | Token::UnsignedInt(_)
-            | Token::SignedInt(_)
-            | Token::Number(_)
-            | Token::Regex(_)
-            | Token::Path(_)
-            | Token::Ident(_) => "<complex token>",
+            Self::Trait => "trait",
+            Self::Struct => "struct",
+            Self::Impl => "impl",
+            Self::Enum => "enum",
+            Self::Module => "mod",
+            Self::Use => "use",
+            Self::Pub => "pub",
+            Self::Let => "let",
+            Self::Mut => "mut",
+            Self::Mount => "mount",
+            Self::Match => "match",
+            Self::For => "for",
+            Self::In => "in",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::True => "true",
+            Self::False => "false",
+            Self::Nil => "nil",
+            Self::As => "as",
+            Self::SelfKeyword => "self",
+            Self::Fn => "fn",
+            Self::StringType => "String",
+            Self::NumberType => "Number",
+            Self::BooleanType => "Boolean",
+            Self::PathType => "Path",
+            Self::RegexType => "Regex",
+            Self::NeverType => "Never",
+            Self::F32Type => "f32",
+            Self::I32Type => "i32",
+            Self::U32Type => "u32",
+            Self::BoolType => "bool",
+            Self::Vec2Type => "vec2",
+            Self::Vec3Type => "vec3",
+            Self::Vec4Type => "vec4",
+            Self::IVec2Type => "ivec2",
+            Self::IVec3Type => "ivec3",
+            Self::IVec4Type => "ivec4",
+            Self::UVec2Type => "uvec2",
+            Self::UVec3Type => "uvec3",
+            Self::UVec4Type => "uvec4",
+            Self::Mat2Type => "mat2",
+            Self::Mat3Type => "mat3",
+            Self::Mat4Type => "mat4",
+            Self::Dot => ".",
+            Self::Colon => ":",
+            Self::DoubleColon => "::",
+            Self::Comma => ",",
+            Self::Equals => "=",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+            Self::Percent => "%",
+            Self::EqEq => "==",
+            Self::Ne => "!=",
+            Self::Lt => "<",
+            Self::Gt => ">",
+            Self::Le => "<=",
+            Self::Ge => ">=",
+            Self::And => "&&",
+            Self::Or => "||",
+            Self::Pipe => "|",
+            Self::Bang => "!",
+            Self::Question => "?",
+            Self::Arrow => "->",
+            Self::Underscore => "_",
+            Self::DotDot => "..",
+            Self::DotDotDot => "...",
+            Self::LParen => "(",
+            Self::RParen => ")",
+            Self::LBrace => "{",
+            Self::RBrace => "}",
+            Self::LBracket => "[",
+            Self::RBracket => "]",
+            Self::Eof => "<eof>",
+            Self::String(_)
+            | Self::UnsignedInt(_)
+            | Self::SignedInt(_)
+            | Self::Number(_)
+            | Self::Regex(_)
+            | Self::Path(_)
+            | Self::Ident(_) => "<complex token>",
         }
     }
 }
@@ -417,89 +421,89 @@ impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // For literal tokens, show descriptive names
-            Token::String(_) => write!(f, "string"),
-            Token::Number(_) => write!(f, "number"),
-            Token::UnsignedInt(_) => write!(f, "unsigned int"),
-            Token::SignedInt(_) => write!(f, "signed int"),
-            Token::Regex(_) => write!(f, "regex"),
-            Token::Path(_) => write!(f, "path"),
-            Token::Ident(_) => write!(f, "identifier"),
+            Self::String(_) => write!(f, "string"),
+            Self::Number(_) => write!(f, "number"),
+            Self::UnsignedInt(_) => write!(f, "unsigned int"),
+            Self::SignedInt(_) => write!(f, "signed int"),
+            Self::Regex(_) => write!(f, "regex"),
+            Self::Path(_) => write!(f, "path"),
+            Self::Ident(_) => write!(f, "identifier"),
             // For all other tokens, use the as_str() representation
-            Token::Trait
-            | Token::Struct
-            | Token::Impl
-            | Token::Enum
-            | Token::Module
-            | Token::Use
-            | Token::Pub
-            | Token::Let
-            | Token::Mut
-            | Token::Mount
-            | Token::Match
-            | Token::For
-            | Token::In
-            | Token::If
-            | Token::Else
-            | Token::True
-            | Token::False
-            | Token::Nil
-            | Token::As
-            | Token::SelfKeyword
-            | Token::Fn
-            | Token::StringType
-            | Token::NumberType
-            | Token::BooleanType
-            | Token::PathType
-            | Token::RegexType
-            | Token::NeverType
-            | Token::F32Type
-            | Token::I32Type
-            | Token::U32Type
-            | Token::BoolType
-            | Token::Vec2Type
-            | Token::Vec3Type
-            | Token::Vec4Type
-            | Token::IVec2Type
-            | Token::IVec3Type
-            | Token::IVec4Type
-            | Token::UVec2Type
-            | Token::UVec3Type
-            | Token::UVec4Type
-            | Token::Mat2Type
-            | Token::Mat3Type
-            | Token::Mat4Type
-            | Token::Dot
-            | Token::Colon
-            | Token::DoubleColon
-            | Token::Comma
-            | Token::Equals
-            | Token::Plus
-            | Token::Minus
-            | Token::Star
-            | Token::Slash
-            | Token::Percent
-            | Token::EqEq
-            | Token::Ne
-            | Token::Lt
-            | Token::Gt
-            | Token::Le
-            | Token::Ge
-            | Token::And
-            | Token::Or
-            | Token::Pipe
-            | Token::Bang
-            | Token::Question
-            | Token::Arrow
-            | Token::Underscore
-            | Token::DotDot
-            | Token::DotDotDot
-            | Token::LParen
-            | Token::RParen
-            | Token::LBrace
-            | Token::RBrace
-            | Token::LBracket
-            | Token::RBracket
-            | Token::Eof => write!(f, "'{}'", self.as_str()),
+            Self::Trait
+            | Self::Struct
+            | Self::Impl
+            | Self::Enum
+            | Self::Module
+            | Self::Use
+            | Self::Pub
+            | Self::Let
+            | Self::Mut
+            | Self::Mount
+            | Self::Match
+            | Self::For
+            | Self::In
+            | Self::If
+            | Self::Else
+            | Self::True
+            | Self::False
+            | Self::Nil
+            | Self::As
+            | Self::SelfKeyword
+            | Self::Fn
+            | Self::StringType
+            | Self::NumberType
+            | Self::BooleanType
+            | Self::PathType
+            | Self::RegexType
+            | Self::NeverType
+            | Self::F32Type
+            | Self::I32Type
+            | Self::U32Type
+            | Self::BoolType
+            | Self::Vec2Type
+            | Self::Vec3Type
+            | Self::Vec4Type
+            | Self::IVec2Type
+            | Self::IVec3Type
+            | Self::IVec4Type
+            | Self::UVec2Type
+            | Self::UVec3Type
+            | Self::UVec4Type
+            | Self::Mat2Type
+            | Self::Mat3Type
+            | Self::Mat4Type
+            | Self::Dot
+            | Self::Colon
+            | Self::DoubleColon
+            | Self::Comma
+            | Self::Equals
+            | Self::Plus
+            | Self::Minus
+            | Self::Star
+            | Self::Slash
+            | Self::Percent
+            | Self::EqEq
+            | Self::Ne
+            | Self::Lt
+            | Self::Gt
+            | Self::Le
+            | Self::Ge
+            | Self::And
+            | Self::Or
+            | Self::Pipe
+            | Self::Bang
+            | Self::Question
+            | Self::Arrow
+            | Self::Underscore
+            | Self::DotDot
+            | Self::DotDotDot
+            | Self::LParen
+            | Self::RParen
+            | Self::LBrace
+            | Self::RBrace
+            | Self::LBracket
+            | Self::RBracket
+            | Self::Eof => write!(f, "'{}'", self.as_str()),
         }
     }
 }

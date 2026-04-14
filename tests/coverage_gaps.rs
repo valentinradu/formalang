@@ -1,6 +1,6 @@
 //! Tests to cover gaps in test coverage
 //!
-//! Targets: AST helpers, Token parsing, ImportGraph, semantic edge cases
+//! Targets: AST helpers, Token parsing, `ImportGraph`, semantic edge cases
 
 use formalang::compile;
 
@@ -9,73 +9,97 @@ use formalang::compile;
 // =============================================================================
 
 #[test]
-fn test_expr_span_struct_instantiation() {
-    let source = r#"
+fn test_expr_span_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Point { x: Number, y: Number }
         struct Container { p: Point = Point(x: 1, y: 2) }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_enum_instantiation() {
+fn test_expr_span_enum_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         enum Status { active, error(msg: String) }
         struct A { s: Status = Status.error(msg: "fail") }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_inferred_enum() {
-    let source = r#"
+fn test_expr_span_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Color { red, green, blue }
         struct A { c: Color = .red }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_tuple() {
+fn test_expr_span_tuple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { t: (first: String, second: Number) = (first: "a", second: 1) }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_dict_literal() {
+fn test_expr_span_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let config = ["key": "value", "num": "42"]
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_dict_access() {
+fn test_expr_span_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
             x: String = (let d = ["a": "b"]
             d["a"])
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_closure() {
-    let source = r#"
+fn test_expr_span_closure() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let add = x, y -> 0
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_expr_span_group() {
-    let source = r#"
+fn test_expr_span_group() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Number = (1 + 2) * 3 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -83,45 +107,60 @@ fn test_expr_span_group() {
 // =============================================================================
 
 #[test]
-fn test_binary_op_precedence_mul_add() {
-    let source = r#"
+fn test_binary_op_precedence_mul_add() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Number = 1 + 2 * 3 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_binary_op_precedence_comparison() {
-    let source = r#"
+fn test_binary_op_precedence_comparison() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Boolean = 1 < 2 && 3 > 2 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_binary_op_precedence_or_and() {
-    let source = r#"
+fn test_binary_op_precedence_or_and() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Boolean = true || false && true }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_binary_op_all_comparison() {
-    let source = r#"
+fn test_binary_op_all_comparison() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A {
             x: Boolean = 1 == 1 && 1 != 2 && 1 < 2 && 2 > 1 && 1 <= 1 && 2 >= 2
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_binary_op_modulo() {
-    let source = r#"
+fn test_binary_op_modulo() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Number = 10 % 3 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -129,59 +168,80 @@ fn test_binary_op_modulo() {
 // =============================================================================
 
 #[test]
-fn test_string_escape_newline() {
+fn test_string_escape_newline() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s = "line1\nline2"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_string_escape_tab() {
+fn test_string_escape_tab() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s = "col1\tcol2"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_string_escape_carriage_return() {
+fn test_string_escape_carriage_return() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let s = \"hello\\rworld\"";
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_string_escape_quote() {
+fn test_string_escape_quote() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s = "He said \"Hello\""
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_string_escape_backslash() {
+fn test_string_escape_backslash() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s = "path\\to\\file"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_string_unicode_escape() {
+fn test_string_unicode_escape() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s = "\u0041\u0042\u0043"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_multiline_string() {
+fn test_multiline_string() -> Result<(), Box<dyn std::error::Error>> {
     // Multiline strings (""""..."""") may not be fully implemented
     // Testing regular string with escapes instead
     let source = r#"
         let s = "line1\nline2\nline3"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -189,27 +249,36 @@ fn test_multiline_string() {
 // =============================================================================
 
 #[test]
-fn test_regex_with_flags() {
-    let source = r#"
+fn test_regex_with_flags() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let pattern = r/hello.*/gi
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_regex_no_flags() {
-    let source = r#"
+fn test_regex_no_flags() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let pattern = r/[a-z]+/
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_path_literal_usage() {
-    let source = r#"
+fn test_path_literal_usage() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let p = /usr/local/bin
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -217,41 +286,53 @@ fn test_path_literal_usage() {
 // =============================================================================
 
 #[test]
-fn test_generic_constraint_validation() {
-    let source = r#"
+fn test_generic_constraint_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Printable { text: String }
         struct Printer<T: Printable> { item: T }
         struct Doc: Printable { text: String }
         struct MyPrinter { printer: Printer<Doc> }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_multiple_generic_params() {
-    let source = r#"
+fn test_multiple_generic_params() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Pair<A, B> { first: A, second: B }
         struct Container { pair: Pair<String, Number> }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_generic_in_trait() {
-    let source = r#"
+fn test_generic_in_trait() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Container<T> { item: T }
-    "#;
+    ";
     // Generic traits might not support struct conformance with same generic param
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_generics() {
-    let source = r#"
+fn test_nested_generics() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Box<T> { value: T }
         struct Nested { box: Box<Box<String>> }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -259,7 +340,7 @@ fn test_nested_generics() {
 // =============================================================================
 
 #[test]
-fn test_deeply_nested_if() {
+fn test_deeply_nested_if() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
             x: String = if true {
@@ -273,11 +354,14 @@ fn test_deeply_nested_if() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_for_with_let() {
+fn test_nested_for_with_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
             items: [String] = for item in ["a", "b", "c"] {
@@ -286,11 +370,14 @@ fn test_nested_for_with_let() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_match_with_bindings() {
+fn test_match_with_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         enum Result { ok, err }
         let status: Result = Result.ok
@@ -301,17 +388,23 @@ fn test_match_with_bindings() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_complex_binary_expression() {
-    let source = r#"
+fn test_complex_binary_expression() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A {
             x: Number = (1 + 2) * (3 - 4) / (5 % 2)
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -319,48 +412,63 @@ fn test_complex_binary_expression() {
 // =============================================================================
 
 #[test]
-fn test_error_duplicate_generic_param() {
-    let source = r#"
+fn test_error_duplicate_generic_param() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Bad<T, T> { x: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_unknown_generic_constraint() {
-    let source = r#"
+fn test_error_unknown_generic_constraint() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Bad<T: UnknownTrait> { x: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_as_trait_constraint() {
-    let source = r#"
+fn test_error_struct_as_trait_constraint() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct NotATrait { x: String }
         struct Bad<T: NotATrait> { x: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_generic_without_args_in_field() {
+fn test_generic_without_args_in_field() -> Result<(), Box<dyn std::error::Error>> {
     // Using a generic type without explicit args in a field definition
     // This is allowed - the type remains uninstantiated
-    let source = r#"
+    let source = r"
         struct Box<T> { value: T }
         struct Container { box: Box }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_wrong_generic_arity() {
-    let source = r#"
+fn test_error_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Box<T> { value: T }
         struct Container { box: Box<String, Number> }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -368,38 +476,47 @@ fn test_error_wrong_generic_arity() {
 // =============================================================================
 
 #[test]
-fn test_nested_modules() {
-    let source = r#"
+fn test_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod outer {
             mod inner {
                 pub struct Deep { x: String }
             }
             struct Middle { x: String }
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_with_impl() {
+fn test_module_with_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         mod ui {
             struct Button { label: String = "click" }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_pub_visibility_all_types() {
-    let source = r#"
+fn test_pub_visibility_all_types() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod api {
             pub trait T { x: String }
             pub struct S: T { x: String }
             pub enum E { a, b }
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -407,43 +524,55 @@ fn test_pub_visibility_all_types() {
 // =============================================================================
 
 #[test]
-fn test_closure_type_in_field() {
-    let source = r#"
+fn test_closure_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Handler {
             onClick: () -> String
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_with_params() {
-    let source = r#"
+fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Mapper {
             transform: String -> Number
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_multi_param() {
-    let source = r#"
+fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Reducer {
             reduce: Number, Number -> Number
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_returning_closure() {
-    let source = r#"
+fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Factory {
             create: String -> (Number -> Boolean)
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -451,19 +580,25 @@ fn test_closure_returning_closure() {
 // =============================================================================
 
 #[test]
-fn test_nil_in_optional_field() {
-    let source = r#"
+fn test_nil_in_optional_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: String? = nil }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nil_in_impl() {
-    let source = r#"
+fn test_nil_in_impl() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: String? = nil }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -471,35 +606,47 @@ fn test_nil_in_impl() {
 // =============================================================================
 
 #[test]
-fn test_default_string() {
+fn test_default_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config { name: String = "default" }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_default_number() {
-    let source = r#"
+fn test_default_number() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Config { count: Number = 42 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_default_boolean() {
-    let source = r#"
+fn test_default_boolean() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Config { enabled: Boolean = true }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_default_array() {
+fn test_default_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config { items: [String] = ["a", "b"] }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -507,33 +654,42 @@ fn test_default_array() {
 // =============================================================================
 
 #[test]
-fn test_mount_field_basic() {
-    let source = r#"
+fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Container {
             @mount content: String
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mount_field_array() {
-    let source = r#"
+fn test_mount_field_array() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct List {
             @mount items: [String]
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mount_field_optional() {
-    let source = r#"
+fn test_mount_field_optional() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Card {
             @mount footer: String?
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -541,23 +697,29 @@ fn test_mount_field_optional() {
 // =============================================================================
 
 #[test]
-fn test_mut_field_basic() {
-    let source = r#"
+fn test_mut_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Counter {
             mut count: Number
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_mut_field_with_default() {
-    let source = r#"
+fn test_mut_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Counter {
             mut count: Number = 0
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -565,41 +727,53 @@ fn test_mut_field_with_default() {
 // =============================================================================
 
 #[test]
-fn test_error_duplicate_module() {
-    let source = r#"
+fn test_error_duplicate_module() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod ui { struct A { x: String } }
         mod ui { struct B { y: Number } }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_as_composed_trait() {
+fn test_error_struct_as_composed_trait() -> Result<(), Box<dyn std::error::Error>> {
     // Using a struct in trait composition should fail
-    let source = r#"
+    let source = r"
         struct NotATrait { x: String }
         trait MyTrait: NotATrait { y: Number }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_enum_as_composed_trait() {
+fn test_error_enum_as_composed_trait() -> Result<(), Box<dyn std::error::Error>> {
     // Using an enum in trait composition should fail
-    let source = r#"
+    let source = r"
         enum NotATrait { a, b }
         trait MyTrait: NotATrait { y: Number }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_undefined_composed_trait() {
+fn test_error_undefined_composed_trait() -> Result<(), Box<dyn std::error::Error>> {
     // Using an undefined trait in composition should fail
-    let source = r#"
+    let source = r"
         trait MyTrait: UndefinedTrait { x: String }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -607,33 +781,42 @@ fn test_error_undefined_composed_trait() {
 // =============================================================================
 
 #[test]
-fn test_module_path_type() {
-    let source = r#"
+fn test_module_path_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod ui {
             pub struct Button { label: String }
         }
         struct App { btn: ui::Button }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_module_path_undefined_type() {
-    let source = r#"
+fn test_error_module_path_undefined_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod ui {
             pub struct Button { label: String }
         }
         struct App { btn: ui::NonExistent }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_undefined_module_in_path() {
-    let source = r#"
+fn test_error_undefined_module_in_path() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct App { btn: nonexistent::Button }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -641,20 +824,26 @@ fn test_error_undefined_module_in_path() {
 // =============================================================================
 
 #[test]
-fn test_error_out_of_scope_type_param() {
+fn test_error_out_of_scope_type_param() -> Result<(), Box<dyn std::error::Error>> {
     // Using T outside a generic definition
-    let source = r#"
+    let source = r"
         struct Container { x: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_type_param_in_scope() {
-    let source = r#"
+fn test_type_param_in_scope() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Container<T> { x: T }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -662,37 +851,46 @@ fn test_type_param_in_scope() {
 // =============================================================================
 
 #[test]
-fn test_deeply_nested_modules() {
-    let source = r#"
+fn test_deeply_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod outer {
             pub mod middle {
                 pub struct Inner { x: String }
             }
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_with_trait_and_struct() {
+fn test_module_with_trait_and_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         mod shapes {
             pub trait Drawable { x: String }
             pub struct Circle: Drawable { x: String = "drawing circle", radius: Number }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_with_enum() {
-    let source = r#"
+fn test_module_with_enum() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod colors {
             pub enum Color { red, green, blue }
         }
         struct Palette { main: colors::Color }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -700,21 +898,27 @@ fn test_module_with_enum() {
 // =============================================================================
 
 #[test]
-fn test_error_impl_for_undefined_struct() {
-    let source = r#"
+fn test_error_impl_for_undefined_struct() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         impl NonExistent {}
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_duplicate_impl() {
-    let source = r#"
+fn test_error_duplicate_impl() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: String }
         impl A {}
         impl A {}
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -722,11 +926,14 @@ fn test_error_duplicate_impl() {
 // =============================================================================
 
 #[test]
-fn test_error_duplicate_enum_variant() {
-    let source = r#"
+fn test_error_duplicate_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Status { active, pending, active }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -734,20 +941,26 @@ fn test_error_duplicate_enum_variant() {
 // =============================================================================
 
 #[test]
-fn test_error_duplicate_let_binding() {
-    let source = r#"
+fn test_error_duplicate_let_binding() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let x = 1
         let x = 2
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_binding_simple() {
-    let source = r#"
+fn test_let_binding_simple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let x = 42
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -755,29 +968,38 @@ fn test_let_binding_simple() {
 // =============================================================================
 
 #[test]
-fn test_generic_with_trait_constraint() {
-    let source = r#"
+fn test_generic_with_trait_constraint() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Printable { text: String }
         struct Wrapper<T: Printable> { item: T }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_generic_constraint_is_struct() {
-    let source = r#"
+fn test_error_generic_constraint_is_struct() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct NotATrait { x: String }
         struct Wrapper<T: NotATrait> { item: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_generic_constraint_is_undefined() {
-    let source = r#"
+fn test_error_generic_constraint_is_undefined() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Wrapper<T: NonExistentTrait> { item: T }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -785,22 +1007,28 @@ fn test_error_generic_constraint_is_undefined() {
 // =============================================================================
 
 #[test]
-fn test_trait_with_mount_field() {
-    let source = r#"
+fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Container { @mount content: String }
         struct Box: Container { @mount content: String }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_trait_composition_chain() {
-    let source = r#"
+fn test_trait_composition_chain() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait A { a: String }
         trait B: A { b: Number }
         struct C: B { a: String, b: Number }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -808,20 +1036,23 @@ fn test_trait_composition_chain() {
 // =============================================================================
 
 #[test]
-fn test_module_impl_with_expressions() {
-    let source = r#"
+fn test_module_impl_with_expressions() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod math {
             pub struct Calculator {
                 x: Number = (let result = 1 + 2
                 result)
             }
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_impl_with_if() {
+fn test_module_impl_with_if() -> Result<(), Box<dyn std::error::Error>> {
     // let bindings are only allowed at top level, not inside modules
     let source = r#"
         let flag: Boolean = true
@@ -831,11 +1062,14 @@ fn test_module_impl_with_if() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_impl_with_for() {
+fn test_module_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
     // let bindings are only allowed at top level, not inside modules
     let source = r#"
         let data: [String] = ["a", "b"]
@@ -845,7 +1079,10 @@ fn test_module_impl_with_for() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -853,14 +1090,17 @@ fn test_module_impl_with_for() {
 // =============================================================================
 
 #[test]
-fn test_module_enum_with_data() {
-    let source = r#"
+fn test_module_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod errors {
             pub enum Result { ok(value: String), err(message: String) }
         }
         struct Handler { result: errors::Result }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -868,66 +1108,87 @@ fn test_module_enum_with_data() {
 // =============================================================================
 
 #[test]
-fn test_error_struct_missing_generic_args() {
+fn test_error_struct_missing_generic_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Box<T> { value: T }
         struct Container { box: Box<String> = Box(value: "test") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_extra_generic_args() {
+fn test_error_struct_extra_generic_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Simple { x: String }
         struct Container { s: Simple = Simple<String>(x: "test") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_wrong_generic_arity() {
+fn test_error_struct_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Pair<A, B> { a: A, b: B }
         struct Container { pair: Pair<String, Number> = Pair<String>(a: "x", b: 1) }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_unknown_field() {
-    let source = r#"
+fn test_error_struct_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1, y: 2, z: 3) }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_missing_field() {
-    let source = r#"
+fn test_error_struct_missing_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1) }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_unknown_mount() {
+fn test_error_struct_unknown_mount() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Box { label: String }
         struct App { box: Box = Box(label: "test") { nonexistent: "value" } }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_struct_missing_mount() {
+fn test_error_struct_missing_mount() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Box { label: String, @mount content: String }
         struct App { box: Box = Box(label: "test") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -935,21 +1196,27 @@ fn test_error_struct_missing_mount() {
 // =============================================================================
 
 #[test]
-fn test_enum_instantiation_simple() {
-    let source = r#"
+fn test_enum_instantiation_simple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         enum Status { ok, error }
         struct Response { status: Status = Status.ok }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_enum_instantiation_with_data() {
+fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         enum Message { text(content: String), error(code: Number) }
         struct Logger { msg: Message = Message.text(content: "hello") }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -957,21 +1224,27 @@ fn test_enum_instantiation_with_data() {
 // =============================================================================
 
 #[test]
-fn test_impl_field_reference() {
+fn test_impl_field_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let name: String = "test"
         struct Person { age: Number, display: String = name }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_impl_mount_field_reference() {
+fn test_impl_mount_field_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let content: String = "text"
         struct Card { @mount content: String, display: String = content }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -979,21 +1252,27 @@ fn test_impl_mount_field_reference() {
 // =============================================================================
 
 #[test]
-fn test_generic_type_argument_validation() {
-    let source = r#"
+fn test_generic_type_argument_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Box<T> { value: T }
         struct Container { box: Box<UndefinedType> }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_generic_in_impl_expression() {
+fn test_generic_in_impl_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Box<T> { value: T }
         struct Wrapper { box: Box<String> = Box<String>(value: "test") }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1001,18 +1280,21 @@ fn test_generic_in_impl_expression() {
 // =============================================================================
 
 #[test]
-fn test_for_loop_variable_in_scope() {
+fn test_for_loop_variable_in_scope() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let items: [String] = ["a", "b"]
         struct List {
             output: [String] = for item in items { item }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_for_loops_separate_vars() {
+fn test_nested_for_loops_separate_vars() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let rows: [String] = ["a", "b"]
         struct Grid {
@@ -1023,7 +1305,10 @@ fn test_nested_for_loops_separate_vars() {
             }
         }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1031,26 +1316,32 @@ fn test_nested_for_loops_separate_vars() {
 // =============================================================================
 
 #[test]
-fn test_let_in_impl_scope() {
-    let source = r#"
+fn test_let_in_impl_scope() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Calc {
             result: Number = (let doubled = 2
             doubled)
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_reference_in_impl() {
-    let source = r#"
+fn test_let_reference_in_impl() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let base: Number = 1
         struct Config {
             result: Number = (let x = base
             x)
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1058,22 +1349,28 @@ fn test_let_reference_in_impl() {
 // =============================================================================
 
 #[test]
-fn test_field_access_chain() {
+fn test_field_access_chain() -> Result<(), Box<dyn std::error::Error>> {
     // Field access chain is validated during semantic analysis
     let source = r#"
         let inner: String = "text"
         struct Outer { display: String = inner }
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_nested_struct_instantiation() {
-    let source = r#"
+fn test_nested_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Inner { x: Number }
         struct Outer { inner: Inner = Inner(x: 42) }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1081,68 +1378,86 @@ fn test_nested_struct_instantiation() {
 // =============================================================================
 
 #[test]
-fn test_error_enum_variant_without_data() {
+fn test_error_enum_variant_without_data() -> Result<(), Box<dyn std::error::Error>> {
     // Providing data to a variant that has no fields
     let source = r#"
         enum Status { ok, error }
         struct Response { status: Status }
         impl Response { status: Status.ok(msg: "test") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_enum_variant_requires_data() {
+fn test_error_enum_variant_requires_data() -> Result<(), Box<dyn std::error::Error>> {
     // Not providing data to a variant that requires fields
-    let source = r#"
+    let source = r"
         enum Message { text(content: String) }
         struct Logger { msg: Message }
         impl Logger { msg: Message.text }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_enum_missing_field() {
+fn test_error_enum_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     // Missing a required field in enum variant
     let source = r#"
         enum User { profile(name: String, age: Number) }
         struct App { user: User }
         impl App { user: User.profile(name: "Bob") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_enum_unknown_field() {
+fn test_error_enum_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
     // Providing an unknown field to enum variant
     let source = r#"
         enum User { profile(name: String) }
         struct App { user: User }
         impl App { user: User.profile(name: "Bob", unknown: "x") }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_enum_unknown_variant() {
+fn test_error_enum_unknown_variant() -> Result<(), Box<dyn std::error::Error>> {
     // Using an unknown variant
-    let source = r#"
+    let source = r"
         enum Status { ok, error }
         struct Response { status: Status }
         impl Response { status: Status.unknown }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_undefined_enum() {
+fn test_error_undefined_enum() -> Result<(), Box<dyn std::error::Error>> {
     // Using an enum that doesn't exist
-    let source = r#"
+    let source = r"
         struct Response { status: String }
         impl Response { status: NonExistent.ok }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1150,21 +1465,27 @@ fn test_error_undefined_enum() {
 // =============================================================================
 
 #[test]
-fn test_error_missing_trait_mount() {
-    let source = r#"
+fn test_error_missing_trait_mount() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Container { @mount content: String }
         struct Box: Container { label: String }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_trait_mount_type_mismatch() {
-    let source = r#"
+fn test_error_trait_mount_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Container { @mount content: String }
         struct Box: Container { @mount content: Number }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1172,21 +1493,27 @@ fn test_error_trait_mount_type_mismatch() {
 // =============================================================================
 
 #[test]
-fn test_error_missing_trait_field() {
-    let source = r#"
+fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Nameable { name: String }
         struct Person: Nameable { age: Number }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_trait_field_type_mismatch() {
-    let source = r#"
+fn test_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Identifiable { id: Number }
         struct Item: Identifiable { id: String }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1194,32 +1521,41 @@ fn test_error_trait_field_type_mismatch() {
 // =============================================================================
 
 #[test]
-fn test_error_circular_type_dependency() {
-    let source = r#"
+fn test_error_circular_type_dependency() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { b: B }
         struct B { a: A }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_circular_trait_dependency() {
-    let source = r#"
+fn test_error_circular_trait_dependency() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait A: B { x: String }
         trait B: A { y: Number }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_valid_indirect_dependency() {
+fn test_valid_indirect_dependency() -> Result<(), Box<dyn std::error::Error>> {
     // Not circular - all dependencies are one-way
-    let source = r#"
+    let source = r"
         struct A { x: String }
         struct B { a: A }
         struct C { b: B }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1227,49 +1563,64 @@ fn test_valid_indirect_dependency() {
 // =============================================================================
 
 #[test]
-fn test_type_mismatch_array() {
-    let source = r#"
+fn test_type_mismatch_array() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Items { list: [String] }
         struct Bag: Items { list: [Number] }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_type_mismatch_optional() {
-    let source = r#"
+fn test_type_mismatch_optional() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait MaybeValue { value: String? }
         struct Box: MaybeValue { value: Number? }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_type_mismatch_generic() {
-    let source = r#"
+fn test_type_mismatch_generic() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Container<T> { item: T }
         trait Holder { box: Container<String> }
         struct MyHolder: Holder { box: Container<Number> }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_type_mismatch_tuple() {
-    let source = r#"
+fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Pair { coords: (x: Number, y: Number) }
         struct Point: Pair { coords: (a: String, b: String) }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_type_mismatch_closure() {
-    let source = r#"
+fn test_type_mismatch_closure() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Handler { callback: String -> Number }
         struct MyHandler: Handler { callback: Number -> String }
-    "#;
-    assert!(compile(source).is_err());
+    ";
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1277,19 +1628,25 @@ fn test_type_mismatch_closure() {
 // =============================================================================
 
 #[test]
-fn test_dict_type_in_field() {
-    let source = r#"
+fn test_dict_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct Config { data: [String: Number] }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_dict_literal_simple() {
+fn test_dict_literal_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let config = ["key": "value"]
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1297,24 +1654,30 @@ fn test_dict_literal_simple() {
 // =============================================================================
 
 #[test]
-fn test_generic_with_multiple_constraints() {
-    let source = r#"
+fn test_generic_with_multiple_constraints() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait A { a: String }
         trait B { b: Number }
         struct Container<T: A> { item: T }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_generic_constraint_validation_full() {
-    let source = r#"
+fn test_generic_constraint_validation_full() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         trait Printable { text: String }
         struct Printer<T: Printable> { item: T }
         struct Doc: Printable { text: String }
         struct App { printer: Printer<Doc> }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1322,28 +1685,34 @@ fn test_generic_constraint_validation_full() {
 // =============================================================================
 
 #[test]
-fn test_error_invalid_binary_op_types() {
+fn test_error_invalid_binary_op_types() -> Result<(), Box<dyn std::error::Error>> {
     // Can't add string and number directly
     let source = r#"
         struct A { x: Boolean }
         impl A { x: "hello" + 123 }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_for_loop_not_array() {
+fn test_error_for_loop_not_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String, items: [String] }
         impl A {
             items: for item in "not an array" { item }
         }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_match_not_enum() {
+fn test_error_match_not_enum() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String, result: String }
         impl A {
@@ -1352,11 +1721,14 @@ fn test_error_match_not_enum() {
             }
         }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_non_exhaustive_match() {
+fn test_error_non_exhaustive_match() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         enum Status { ok, error, pending }
         struct Handler { status: Status, result: String }
@@ -1366,11 +1738,14 @@ fn test_error_non_exhaustive_match() {
             }
         }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_error_duplicate_match_arm() {
+fn test_error_duplicate_match_arm() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         enum Status { ok, error }
         struct Handler { status: Status, result: String }
@@ -1382,16 +1757,22 @@ fn test_error_duplicate_match_arm() {
             }
         }
     "#;
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_inferred_enum_in_let() {
+fn test_inferred_enum_in_let() -> Result<(), Box<dyn std::error::Error>> {
     // Using inferred enum syntax - parses but may need context
-    let source = r#"
+    let source = r"
         let x = .someVariant
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1399,27 +1780,36 @@ fn test_inferred_enum_in_let() {
 // =============================================================================
 
 #[test]
-fn test_closure_multiple_params() {
-    let source = r#"
+fn test_closure_multiple_params() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { reducer: Number, Number -> Number }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_no_params() {
-    let source = r#"
+fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { callback: () -> String }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_closure_returning_closure_type() {
-    let source = r#"
+fn test_closure_returning_closure_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { factory: String -> (Number -> Boolean) }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1427,28 +1817,34 @@ fn test_closure_returning_closure_type() {
 // =============================================================================
 
 #[test]
-fn test_module_trait_field_validation() {
-    let source = r#"
+fn test_module_trait_field_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod traits {
             pub trait Named { name: String }
         }
         struct Person: traits::Named { name: String }
-    "#;
+    ";
     // Module path for trait conformance not yet supported
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_module_nested_type_reference() {
-    let source = r#"
+fn test_module_nested_type_reference() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         mod ui {
             pub struct Widget { id: String }
         }
         mod app {
             pub struct Screen { widget: ui::Widget }
         }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1456,35 +1852,47 @@ fn test_module_nested_type_reference() {
 // =============================================================================
 
 #[test]
-fn test_let_type_inference_number() {
-    let source = r#"
+fn test_let_type_inference_number() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let x = 42
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_type_inference_string() {
+fn test_let_type_inference_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let x = "hello"
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_type_inference_boolean() {
-    let source = r#"
+fn test_let_type_inference_boolean() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         let x = true
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_let_type_inference_array() {
+fn test_let_type_inference_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let items = ["a", "b", "c"]
     "#;
-    assert!(compile(source).is_ok());
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -1492,35 +1900,47 @@ fn test_let_type_inference_array() {
 // =============================================================================
 
 #[test]
-fn test_question_mark_operator() {
-    let source = r#"
+fn test_question_mark_operator() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { opt: String?, result: String }
         impl A { result: opt? }
-    "#;
+    ";
     // Question mark unwrap requires proper context
-    assert!(compile(source).is_err());
+    if compile(source).is_ok() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_deeply_nested_binary_ops() {
-    let source = r#"
+fn test_deeply_nested_binary_ops() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Number = ((1 + 2) * 3 - 4) / 5 % 6 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_comparison_chain() {
-    let source = r#"
+fn test_comparison_chain() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Boolean = 1 < 2 && 2 < 3 && 3 <= 4 }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }
 
 #[test]
-fn test_logical_operators() {
-    let source = r#"
+fn test_logical_operators() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
         struct A { x: Boolean = true && false || true }
-    "#;
-    assert!(compile(source).is_ok());
+    ";
+    if compile(source).is_err() {
+        return Err("assertion failed".into());
+    }
+    Ok(())
 }

@@ -1,4 +1,4 @@
-//! FormaLang Compiler CLI
+//! `FormaLang` Compiler CLI
 //!
 //! Usage:
 //!   fvc check <file.fv> [--stdlib-path <path>]
@@ -20,40 +20,39 @@ use std::time::Instant;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        print_usage();
-        return ExitCode::from(1);
-    }
-
     let stdlib_path = parse_stdlib_path(&args);
 
-    match args[1].as_str() {
-        "check" => {
-            if args.len() < 3 {
+    match args.get(1).map(String::as_str) {
+        Some("check") => {
+            let Some(input_path) = args.get(2) else {
                 eprintln!("Error: Missing input file");
                 print_usage();
                 return ExitCode::from(1);
-            }
-            check_command(&args[2], stdlib_path)
+            };
+            check_command(input_path, stdlib_path)
         }
-        "watch" => {
-            if args.len() < 3 {
+        Some("watch") => {
+            let Some(input_path) = args.get(2) else {
                 eprintln!("Error: Missing input file");
                 print_usage();
                 return ExitCode::from(1);
-            }
-            watch_command(&args[2], stdlib_path)
+            };
+            watch_command(input_path, stdlib_path.as_deref())
         }
-        "help" | "--help" | "-h" => {
+        Some("help" | "--help" | "-h") => {
             print_usage();
             ExitCode::SUCCESS
         }
-        "version" | "--version" | "-v" => {
+        Some("version" | "--version" | "-v") => {
             println!("fvc {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
-        cmd => {
+        Some(cmd) => {
             eprintln!("Error: Unknown command '{cmd}'");
+            print_usage();
+            ExitCode::from(1)
+        }
+        None => {
             print_usage();
             ExitCode::from(1)
         }
@@ -88,9 +87,7 @@ fn parse_stdlib_path(args: &[String]) -> Option<PathBuf> {
 fn resolve_base_dir(input_path: &str, stdlib_path: Option<PathBuf>) -> PathBuf {
     stdlib_path.unwrap_or_else(|| {
         PathBuf::from(input_path)
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."))
+            .parent().map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
     })
 }
 
@@ -127,7 +124,7 @@ fn check_command(input_path: &str, stdlib_path: Option<PathBuf>) -> ExitCode {
     }
 }
 
-fn watch_command(input_path: &str, stdlib_path: Option<PathBuf>) -> ExitCode {
+fn watch_command(input_path: &str, stdlib_path: Option<&std::path::Path>) -> ExitCode {
     use std::thread;
     use std::time::Duration;
 
@@ -144,7 +141,7 @@ fn watch_command(input_path: &str, stdlib_path: Option<PathBuf>) -> ExitCode {
         if current_modified != last_modified {
             last_modified = current_modified;
             println!("\n--- File changed, rechecking... ---\n");
-            check_command(input_path, stdlib_path.clone());
+            check_command(input_path, stdlib_path.map(PathBuf::from));
         }
     }
 }

@@ -1,6 +1,6 @@
-//! Builtin functions for FormaLang
+//! Builtin functions for `FormaLang`
 //!
-//! This module provides definitions for builtin functions available in FormaLang,
+//! This module provides definitions for builtin functions available in `FormaLang`,
 //! including math functions, vector operations, and utility functions.
 //!
 //! These functions map directly to WGSL builtin functions for GPU execution.
@@ -9,6 +9,7 @@ use crate::ast::PrimitiveType;
 use std::collections::HashMap;
 
 /// A builtin function definition.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct BuiltinFunction {
     /// Function name
@@ -22,6 +23,7 @@ pub struct BuiltinFunction {
 }
 
 /// A function signature (parameter types -> return type).
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     /// Parameter types
@@ -31,7 +33,8 @@ pub struct FunctionSignature {
 }
 
 /// Parameter type for builtin functions.
-#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParamType {
     /// A specific primitive type
     Primitive(PrimitiveType),
@@ -52,7 +55,8 @@ pub enum ParamType {
 }
 
 /// Return type for builtin functions.
-#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReturnType {
     /// A specific primitive type
     Primitive(PrimitiveType),
@@ -65,6 +69,7 @@ pub enum ReturnType {
 }
 
 /// Category of builtin functions.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinCategory {
     /// Math functions (sin, cos, sqrt, etc.)
@@ -82,23 +87,24 @@ pub enum BuiltinCategory {
 }
 
 // Shorthand for creating param/return types
-fn p(t: PrimitiveType) -> ParamType {
+const fn p(t: PrimitiveType) -> ParamType {
     ParamType::Primitive(t)
 }
 
-fn r(t: PrimitiveType) -> ReturnType {
+const fn r(t: PrimitiveType) -> ReturnType {
     ReturnType::Primitive(t)
 }
 
-fn same_param(i: usize) -> ReturnType {
+const fn same_param(i: usize) -> ReturnType {
     ReturnType::SameAsParam(i)
 }
 
-fn same_as(i: usize) -> ParamType {
+const fn same_as(i: usize) -> ParamType {
     ParamType::SameAs(i)
 }
 
 /// Registry of all builtin functions.
+#[derive(Debug)]
 pub struct BuiltinRegistry {
     functions: HashMap<&'static str, BuiltinFunction>,
 }
@@ -111,6 +117,7 @@ impl Default for BuiltinRegistry {
 
 impl BuiltinRegistry {
     /// Create a new registry with all builtin functions.
+    #[must_use] 
     pub fn new() -> Self {
         let mut registry = Self {
             functions: HashMap::new(),
@@ -124,11 +131,13 @@ impl BuiltinRegistry {
     }
 
     /// Look up a builtin function by name.
+    #[must_use] 
     pub fn get(&self, name: &str) -> Option<&BuiltinFunction> {
         self.functions.get(name)
     }
 
     /// Check if a function is a builtin.
+    #[must_use] 
     pub fn is_builtin(&self, name: &str) -> bool {
         self.functions.contains_key(name)
     }
@@ -148,52 +157,45 @@ impl BuiltinRegistry {
     /// Resolve the return type of a builtin function given argument types.
     /// Returns the type name as a string, or None if the function doesn't exist
     /// or argument types don't match any signature.
+    #[must_use] 
     pub fn resolve_return_type(&self, name: &str, arg_types: &[String]) -> Option<String> {
         let func = self.get(name)?;
 
         // Use the first signature as the primary one
-        if let Some(sig) = func.signatures.first() {
-            match &sig.return_type {
-                ReturnType::Primitive(prim) => Some(self.primitive_to_string(prim)),
-                ReturnType::SameAsParam(n) => {
-                    // Return same type as the nth argument
-                    arg_types
-                        .get(*n)
-                        .cloned()
-                        .or_else(|| Some("Number".to_string()))
-                }
-                ReturnType::ScalarOf(n) => {
-                    // Extract scalar type from vector argument
-                    arg_types
-                        .get(*n)
-                        .map(|ty| self.scalar_of_type(ty))
-                        .or_else(|| Some("Number".to_string()))
-                }
-                ReturnType::Bool => Some("Boolean".to_string()),
+        func.signatures.first().and_then(|sig| match &sig.return_type {
+            ReturnType::Primitive(prim) => Some(Self::primitive_to_string(*prim)),
+            ReturnType::SameAsParam(n) => {
+                // Return same type as the nth argument
+                arg_types
+                    .get(*n)
+                    .cloned()
+                    .or_else(|| Some("Number".to_string()))
             }
-        } else {
-            None
-        }
+            ReturnType::ScalarOf(n) => {
+                // Extract scalar type from vector argument
+                arg_types
+                    .get(*n)
+                    .map(|ty| Self::scalar_of_type(ty))
+                    .or_else(|| Some("Number".to_string()))
+            }
+            ReturnType::Bool => Some("Boolean".to_string()),
+        })
     }
 
     /// Extract the scalar component type from a vector type
-    fn scalar_of_type(&self, ty: &str) -> String {
-        match ty {
-            "vec2" | "vec3" | "vec4" => "Number".to_string(),
-            "ivec2" | "ivec3" | "ivec4" => "Number".to_string(), // i32 maps to Number
-            "uvec2" | "uvec3" | "uvec4" => "Number".to_string(), // u32 maps to Number
-            _ => "Number".to_string(),                           // Default fallback
-        }
+    fn scalar_of_type(_ty: &str) -> String {
+        // All vector and matrix types map to Number in FormaLang
+        "Number".to_string()
     }
 
-    /// Convert a primitive type to its FormaLang type name
-    fn primitive_to_string(&self, prim: &PrimitiveType) -> String {
+    /// Convert a primitive type to its `FormaLang` type name
+    fn primitive_to_string(prim: PrimitiveType) -> String {
         match prim {
-            // GPU scalar types
-            PrimitiveType::F32 => "Number".to_string(),
-            PrimitiveType::I32 => "Number".to_string(),
-            PrimitiveType::U32 => "Number".to_string(),
-            PrimitiveType::Bool => "Boolean".to_string(),
+            // GPU scalar types that map to Number
+            PrimitiveType::F32 | PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Number => {
+                "Number".to_string()
+            }
+            PrimitiveType::Bool | PrimitiveType::Boolean => "Boolean".to_string(),
             // GPU vector types (float)
             PrimitiveType::Vec2 => "vec2".to_string(),
             PrimitiveType::Vec3 => "vec3".to_string(),
@@ -212,8 +214,6 @@ impl BuiltinRegistry {
             PrimitiveType::Mat4 => "mat4".to_string(),
             // FormaLang-specific types
             PrimitiveType::String => "String".to_string(),
-            PrimitiveType::Number => "Number".to_string(),
-            PrimitiveType::Boolean => "Boolean".to_string(),
             PrimitiveType::Path => "Path".to_string(),
             PrimitiveType::Regex => "Regex".to_string(),
             PrimitiveType::Never => "Never".to_string(),
@@ -224,15 +224,16 @@ impl BuiltinRegistry {
     pub fn global() -> &'static Self {
         use std::sync::OnceLock;
         static INSTANCE: OnceLock<BuiltinRegistry> = OnceLock::new();
-        INSTANCE.get_or_init(BuiltinRegistry::new)
+        INSTANCE.get_or_init(Self::new)
     }
 
     fn register(&mut self, func: BuiltinFunction) {
         self.functions.insert(func.name, func);
     }
 
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn register_math_functions(&mut self) {
-        use PrimitiveType::*;
+        use PrimitiveType::{F32, I32, U32};
 
         // Trigonometric functions
         self.register(BuiltinFunction {
@@ -601,8 +602,9 @@ impl BuiltinRegistry {
         });
     }
 
+    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn register_vector_functions(&mut self) {
-        use PrimitiveType::*;
+        use PrimitiveType::{Vec2, F32, Vec3, Vec4};
 
         self.register(BuiltinFunction {
             name: "length",
@@ -744,7 +746,7 @@ impl BuiltinRegistry {
     }
 
     fn register_matrix_functions(&mut self) {
-        use PrimitiveType::*;
+        use PrimitiveType::{Mat2, Mat3, Mat4, F32};
 
         self.register(BuiltinFunction {
             name: "transpose",
@@ -788,7 +790,7 @@ impl BuiltinRegistry {
     }
 
     fn register_comparison_functions(&mut self) {
-        use PrimitiveType::*;
+        use PrimitiveType::{Vec2, Vec3, Vec4, F32, Bool, I32, U32};
 
         self.register(BuiltinFunction {
             name: "all",
@@ -856,7 +858,7 @@ impl BuiltinRegistry {
     }
 
     fn register_interpolation_functions(&mut self) {
-        use PrimitiveType::*;
+        use PrimitiveType::{F32, Vec2, Vec3, Vec4};
 
         self.register(BuiltinFunction {
             name: "mix",
@@ -928,6 +930,7 @@ pub fn builtins() -> &'static BuiltinRegistry {
 ///
 /// This handles cases like `vec3.normalize()`, `vec3.length()`, etc.
 /// Returns `None` if the method is not a builtin or doesn't match the receiver type.
+#[must_use] 
 pub fn resolve_method_type(
     receiver_type: PrimitiveType,
     method_name: &str,
@@ -937,11 +940,9 @@ pub fn resolve_method_type(
 
     // Find a signature where the first parameter matches the receiver type
     for sig in &func.signatures {
-        if sig.params.is_empty() {
+        let Some(first_param) = sig.params.first() else {
             continue;
-        }
-
-        let first_param = &sig.params[0];
+        };
         let matches = match first_param {
             ParamType::Primitive(p) => *p == receiver_type,
             ParamType::AnyFloatVec => matches!(
@@ -984,17 +985,17 @@ pub fn resolve_method_type(
                 ReturnType::ScalarOf(_) => {
                     // Extract scalar from vector/matrix
                     match receiver_type {
-                        PrimitiveType::Vec2 | PrimitiveType::Vec3 | PrimitiveType::Vec4 => {
-                            Some(PrimitiveType::F32)
-                        }
+                        PrimitiveType::Vec2
+                        | PrimitiveType::Vec3
+                        | PrimitiveType::Vec4
+                        | PrimitiveType::Mat2
+                        | PrimitiveType::Mat3
+                        | PrimitiveType::Mat4 => Some(PrimitiveType::F32),
                         PrimitiveType::IVec2 | PrimitiveType::IVec3 | PrimitiveType::IVec4 => {
                             Some(PrimitiveType::I32)
                         }
                         PrimitiveType::UVec2 | PrimitiveType::UVec3 | PrimitiveType::UVec4 => {
                             Some(PrimitiveType::U32)
-                        }
-                        PrimitiveType::Mat2 | PrimitiveType::Mat3 | PrimitiveType::Mat4 => {
-                            Some(PrimitiveType::F32)
                         }
                         PrimitiveType::String
                         | PrimitiveType::Number
@@ -1021,121 +1022,128 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_has_math_functions() {
+    fn test_registry_has_math_functions() -> Result<(), Box<dyn std::error::Error>> {
         let registry = BuiltinRegistry::new();
-        assert!(registry.is_builtin("sin"));
-        assert!(registry.is_builtin("cos"));
-        assert!(registry.is_builtin("sqrt"));
-        assert!(registry.is_builtin("pow"));
-        assert!(registry.is_builtin("abs"));
+        if !(registry.is_builtin("sin")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("cos")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("sqrt")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("pow")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("abs")) { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_registry_has_vector_functions() {
+    fn test_registry_has_vector_functions() -> Result<(), Box<dyn std::error::Error>> {
         let registry = BuiltinRegistry::new();
-        assert!(registry.is_builtin("dot"));
-        assert!(registry.is_builtin("cross"));
-        assert!(registry.is_builtin("normalize"));
-        assert!(registry.is_builtin("length"));
+        if !(registry.is_builtin("dot")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("cross")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("normalize")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("length")) { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_registry_has_interpolation_functions() {
+    fn test_registry_has_interpolation_functions() -> Result<(), Box<dyn std::error::Error>> {
         let registry = BuiltinRegistry::new();
-        assert!(registry.is_builtin("mix"));
-        assert!(registry.is_builtin("step"));
-        assert!(registry.is_builtin("smoothstep"));
+        if !(registry.is_builtin("mix")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("step")) { return Err("assertion failed".into()); }
+        if !(registry.is_builtin("smoothstep")) { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_function_signatures() {
+    fn test_function_signatures() -> Result<(), Box<dyn std::error::Error>> {
         let registry = BuiltinRegistry::new();
-        let sqrt = registry.get("sqrt").unwrap();
+        let sqrt = registry.get("sqrt").ok_or("sqrt not found in registry")?;
         // sqrt has multiple signatures (scalar and vector)
-        assert!(sqrt.signatures.len() >= 2);
+        if sqrt.signatures.len() < 2 {
+            return Err(format!(
+                "Expected at least 2 signatures for sqrt, got {}",
+                sqrt.signatures.len()
+            )
+            .into());
+        }
+        Ok(())
     }
 
     #[test]
-    fn test_by_category() {
+    fn test_by_category() -> Result<(), Box<dyn std::error::Error>> {
         let registry = BuiltinRegistry::new();
         let math_funcs: Vec<_> = registry.by_category(BuiltinCategory::Math).collect();
-        assert!(!math_funcs.is_empty());
-        assert!(math_funcs.iter().any(|f| f.name == "sin"));
+        if math_funcs.is_empty() { return Err("math_funcs should not be empty".into()); }
+        if !(math_funcs.iter().any(|f| f.name == "sin")) { return Err("assertion failed".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_global_builtins() {
-        assert!(builtins().is_builtin("sin"));
-        assert!(!builtins().is_builtin("not_a_function"));
+    fn test_global_builtins() -> Result<(), Box<dyn std::error::Error>> {
+        if !(builtins().is_builtin("sin")) { return Err("assertion failed".into()); }
+        if builtins().is_builtin("not_a_function") { return Err("'not_a_function' should not be a builtin".into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_method_type_normalize() {
+    fn test_resolve_method_type_normalize() -> Result<(), Box<dyn std::error::Error>> {
         // normalize(Vec3) -> Vec3
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Vec3, "normalize"),
-            Some(PrimitiveType::Vec3)
-        );
+        let a = resolve_method_type(PrimitiveType::Vec3, "normalize");
+        let b = Some(PrimitiveType::Vec3);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
         // normalize(Vec2) -> Vec2
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Vec2, "normalize"),
-            Some(PrimitiveType::Vec2)
-        );
+        let a = resolve_method_type(PrimitiveType::Vec2, "normalize");
+        let b = Some(PrimitiveType::Vec2);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_method_type_length() {
+    fn test_resolve_method_type_length() -> Result<(), Box<dyn std::error::Error>> {
         // length(Vec3) -> F32
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Vec3, "length"),
-            Some(PrimitiveType::F32)
-        );
+        let a = resolve_method_type(PrimitiveType::Vec3, "length");
+        let b = Some(PrimitiveType::F32);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
         // length(Vec2) -> F32
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Vec2, "length"),
-            Some(PrimitiveType::F32)
-        );
+        let a = resolve_method_type(PrimitiveType::Vec2, "length");
+        let b = Some(PrimitiveType::F32);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_method_type_math() {
+    fn test_resolve_method_type_math() -> Result<(), Box<dyn std::error::Error>> {
         // sin(F32) -> F32
-        assert_eq!(
-            resolve_method_type(PrimitiveType::F32, "sin"),
-            Some(PrimitiveType::F32)
-        );
+        let a = resolve_method_type(PrimitiveType::F32, "sin");
+        let b = Some(PrimitiveType::F32);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
         // sqrt(F32) -> F32
-        assert_eq!(
-            resolve_method_type(PrimitiveType::F32, "sqrt"),
-            Some(PrimitiveType::F32)
-        );
+        let a = resolve_method_type(PrimitiveType::F32, "sqrt");
+        let b = Some(PrimitiveType::F32);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_method_type_invalid() {
+    fn test_resolve_method_type_invalid() -> Result<(), Box<dyn std::error::Error>> {
         // String is not a GPU type
-        assert_eq!(
-            resolve_method_type(PrimitiveType::String, "normalize"),
-            None
-        );
+        let a = resolve_method_type(PrimitiveType::String, "normalize");
+        let b = None;
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
         // Non-existent method
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Vec3, "not_a_method"),
-            None
-        );
+        let a = resolve_method_type(PrimitiveType::Vec3, "not_a_method");
+        let b = None;
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
+        Ok(())
     }
 
     #[test]
-    fn test_resolve_method_type_matrix() {
+    fn test_resolve_method_type_matrix() -> Result<(), Box<dyn std::error::Error>> {
         // transpose(Mat3) -> Mat3
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Mat3, "transpose"),
-            Some(PrimitiveType::Mat3)
-        );
+        let a = resolve_method_type(PrimitiveType::Mat3, "transpose");
+        let b = Some(PrimitiveType::Mat3);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
         // determinant(Mat4) -> F32
-        assert_eq!(
-            resolve_method_type(PrimitiveType::Mat4, "determinant"),
-            Some(PrimitiveType::F32)
-        );
+        let a = resolve_method_type(PrimitiveType::Mat4, "determinant");
+        let b = Some(PrimitiveType::F32);
+        if a != b { return Err(format!("expected {b:?}, got {a:?}").into()); }
+        Ok(())
     }
 }

@@ -16,6 +16,7 @@ use super::{EnumId, ResolvedType, StructId};
 /// - `Literal { value: Literal::Number(_), ty }` → `ty` is `ResolvedType::Primitive(Number)`
 /// - `BinaryOp { op: Eq, .. }` → `ty` is `ResolvedType::Primitive(Boolean)`
 /// - `For { .. }` → `ty` is `ResolvedType::Array(body_type)`
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Clone, Debug)]
 pub enum IrExpr {
     /// Literal value (string, number, boolean, etc.)
@@ -34,9 +35,9 @@ pub enum IrExpr {
         /// Generic type arguments (e.g., `[String]` for `Box<String>`)
         type_args: Vec<ResolvedType>,
         /// Regular field arguments
-        fields: Vec<(String, IrExpr)>,
+        fields: Vec<(String, Self)>,
         /// Mount field arguments
-        mounts: Vec<(String, IrExpr)>,
+        mounts: Vec<(String, Self)>,
         /// Resolved type (the struct type or External)
         ty: ResolvedType,
     },
@@ -49,7 +50,7 @@ pub enum IrExpr {
         /// Variant name
         variant: String,
         /// Associated data fields
-        fields: Vec<(String, IrExpr)>,
+        fields: Vec<(String, Self)>,
         /// Resolved type (the enum type or External)
         ty: ResolvedType,
     },
@@ -57,7 +58,7 @@ pub enum IrExpr {
     /// Array literal: `[1, 2, 3]`
     Array {
         /// Array elements
-        elements: Vec<IrExpr>,
+        elements: Vec<Self>,
         /// Resolved type: `Array(element_type)`
         ty: ResolvedType,
     },
@@ -65,7 +66,7 @@ pub enum IrExpr {
     /// Tuple literal: `(x: 1, y: 2)`
     Tuple {
         /// Named fields
-        fields: Vec<(String, IrExpr)>,
+        fields: Vec<(String, Self)>,
         /// Resolved type: `Tuple(fields)`
         ty: ResolvedType,
     },
@@ -107,7 +108,7 @@ pub enum IrExpr {
     /// a simple identifier path.
     FieldAccess {
         /// The base expression to access a field on
-        object: Box<IrExpr>,
+        object: Box<Self>,
         /// The field name to access
         field: String,
         /// Resolved type of the field
@@ -129,11 +130,11 @@ pub enum IrExpr {
     /// Binary operation: `a + b`, `x == y`, `p && q`
     BinaryOp {
         /// Left operand
-        left: Box<IrExpr>,
+        left: Box<Self>,
         /// Operator
         op: BinaryOperator,
         /// Right operand
-        right: Box<IrExpr>,
+        right: Box<Self>,
         /// Resolved type (operand type for arithmetic, Boolean for comparison/logical)
         ty: ResolvedType,
     },
@@ -143,7 +144,7 @@ pub enum IrExpr {
         /// Operator
         op: UnaryOperator,
         /// Operand
-        operand: Box<IrExpr>,
+        operand: Box<Self>,
         /// Resolved type (operand type for negation, Boolean for logical not)
         ty: ResolvedType,
     },
@@ -151,11 +152,11 @@ pub enum IrExpr {
     /// Conditional expression: `if cond { a } else { b }`
     If {
         /// Condition (must be Boolean)
-        condition: Box<IrExpr>,
+        condition: Box<Self>,
         /// Then branch
-        then_branch: Box<IrExpr>,
+        then_branch: Box<Self>,
         /// Else branch (optional)
-        else_branch: Option<Box<IrExpr>>,
+        else_branch: Option<Box<Self>>,
         /// Resolved type (same as branches)
         ty: ResolvedType,
     },
@@ -167,9 +168,9 @@ pub enum IrExpr {
         /// Loop variable type
         var_ty: ResolvedType,
         /// Collection being iterated (must be Array)
-        collection: Box<IrExpr>,
+        collection: Box<Self>,
         /// Loop body
-        body: Box<IrExpr>,
+        body: Box<Self>,
         /// Resolved type: `Array(body_type)`
         ty: ResolvedType,
     },
@@ -177,7 +178,7 @@ pub enum IrExpr {
     /// Match expression: `match x { A => ..., B => ... }`
     Match {
         /// Value being matched (must be Enum)
-        scrutinee: Box<IrExpr>,
+        scrutinee: Box<Self>,
         /// Match arms
         arms: Vec<IrMatchArm>,
         /// Resolved type (same as arm bodies)
@@ -186,11 +187,11 @@ pub enum IrExpr {
 
     /// Function call: `sin(angle: x)` or `builtin::math::sin(angle: x)`
     FunctionCall {
-        /// Function path (e.g., ["builtin", "math", "sin"])
+        /// Function path (e.g., `["builtin", "math", "sin"]`)
         path: Vec<String>,
-        /// Arguments: (optional_parameter_name, value)
+        /// Arguments: (`optional_parameter_name`, value)
         /// Some(name) for named args, None for positional args
-        args: Vec<(Option<String>, IrExpr)>,
+        args: Vec<(Option<String>, Self)>,
         /// Resolved return type
         ty: ResolvedType,
     },
@@ -198,11 +199,11 @@ pub enum IrExpr {
     /// Method call: `self.fill.sample(coords)`
     MethodCall {
         /// Receiver expression
-        receiver: Box<IrExpr>,
+        receiver: Box<Self>,
         /// Method name
         method: String,
-        /// Named arguments: (parameter_name, value) - None for positional args
-        args: Vec<(Option<String>, IrExpr)>,
+        /// Named arguments: (`parameter_name`, value) - None for positional args
+        args: Vec<(Option<String>, Self)>,
         /// Resolved return type
         ty: ResolvedType,
     },
@@ -233,12 +234,12 @@ pub enum IrExpr {
     /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
     ///
     /// Pure closures that can be inlined or converted to named functions.
-    /// Unlike EventMapping, these can have arbitrary bodies and multiple parameters.
+    /// Unlike `EventMapping`, these can have arbitrary bodies and multiple parameters.
     Closure {
         /// Parameter names and types
         params: Vec<(String, ResolvedType)>,
         /// Closure body
-        body: Box<IrExpr>,
+        body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
         ty: ResolvedType,
     },
@@ -246,7 +247,7 @@ pub enum IrExpr {
     /// Dictionary literal: `["key": value, "key2": value2]`
     DictLiteral {
         /// Key-value entries
-        entries: Vec<(IrExpr, IrExpr)>,
+        entries: Vec<(Self, Self)>,
         /// Resolved type: `Dictionary { key_ty, value_ty }`
         ty: ResolvedType,
     },
@@ -254,9 +255,9 @@ pub enum IrExpr {
     /// Dictionary access: `dict["key"]` or `dict[index]`
     DictAccess {
         /// The dictionary being accessed
-        dict: Box<IrExpr>,
+        dict: Box<Self>,
         /// The key expression
-        key: Box<IrExpr>,
+        key: Box<Self>,
         /// Resolved type: the value type of the dictionary
         ty: ResolvedType,
     },
@@ -269,13 +270,14 @@ pub enum IrExpr {
         /// Statements in the block (let bindings, assignments, expressions)
         statements: Vec<IrBlockStatement>,
         /// The final expression whose value is the block's value
-        result: Box<IrExpr>,
+        result: Box<Self>,
         /// Resolved type (same as result expression)
         ty: ResolvedType,
     },
 }
 
 /// A statement within a block expression.
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Clone, Debug)]
 pub enum IrBlockStatement {
     /// Let binding: `let x = expr` or `let mut x = expr`
@@ -305,27 +307,28 @@ impl IrBlockStatement {
     ///
     /// This is useful for implementing transformations like constant folding
     /// or dead code elimination that need to recursively process expressions.
+    #[must_use]
     pub fn map_exprs<F>(self, mut f: F) -> Self
     where
         F: FnMut(IrExpr) -> IrExpr,
     {
         match self {
-            IrBlockStatement::Let {
+            Self::Let {
                 name,
                 mutable,
                 ty,
                 value,
-            } => IrBlockStatement::Let {
+            } => Self::Let {
                 name,
                 mutable,
                 ty,
                 value: f(value),
             },
-            IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
+            Self::Assign { target, value } => Self::Assign {
                 target: f(target),
                 value: f(value),
             },
-            IrBlockStatement::Expr(expr) => IrBlockStatement::Expr(f(expr)),
+            Self::Expr(expr) => Self::Expr(f(expr)),
         }
     }
 }
@@ -333,6 +336,7 @@ impl IrBlockStatement {
 /// A field binding in an event mapping.
 ///
 /// Maps an enum variant field to a source.
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Clone, Debug)]
 pub struct EventFieldBinding {
     /// The field name in the enum variant
@@ -342,6 +346,7 @@ pub struct EventFieldBinding {
 }
 
 /// Source of a value in an event mapping field binding.
+#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
 #[derive(Clone, Debug)]
 pub enum EventBindingSource {
     /// References the event mapping parameter: `x -> .changed(value: x)`
@@ -351,6 +356,7 @@ pub enum EventBindingSource {
 }
 
 /// A match arm: `Variant(bindings) => body` or `_ => body`
+#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
 #[derive(Clone, Debug)]
 pub struct IrMatchArm {
     /// Variant name being matched (empty string for wildcard)
@@ -368,29 +374,30 @@ pub struct IrMatchArm {
 
 impl IrExpr {
     /// Get the resolved type of this expression.
-    pub fn ty(&self) -> &ResolvedType {
+    #[must_use] 
+    pub const fn ty(&self) -> &ResolvedType {
         match self {
-            IrExpr::Literal { ty, .. } => ty,
-            IrExpr::StructInst { ty, .. } => ty,
-            IrExpr::EnumInst { ty, .. } => ty,
-            IrExpr::Array { ty, .. } => ty,
-            IrExpr::Tuple { ty, .. } => ty,
-            IrExpr::Reference { ty, .. } => ty,
-            IrExpr::SelfFieldRef { ty, .. } => ty,
-            IrExpr::FieldAccess { ty, .. } => ty,
-            IrExpr::LetRef { ty, .. } => ty,
-            IrExpr::BinaryOp { ty, .. } => ty,
-            IrExpr::UnaryOp { ty, .. } => ty,
-            IrExpr::If { ty, .. } => ty,
-            IrExpr::For { ty, .. } => ty,
-            IrExpr::Match { ty, .. } => ty,
-            IrExpr::FunctionCall { ty, .. } => ty,
-            IrExpr::MethodCall { ty, .. } => ty,
-            IrExpr::EventMapping { ty, .. } => ty,
-            IrExpr::Closure { ty, .. } => ty,
-            IrExpr::DictLiteral { ty, .. } => ty,
-            IrExpr::DictAccess { ty, .. } => ty,
-            IrExpr::Block { ty, .. } => ty,
+            Self::Literal { ty, .. }
+            | Self::StructInst { ty, .. }
+            | Self::EnumInst { ty, .. }
+            | Self::Array { ty, .. }
+            | Self::Tuple { ty, .. }
+            | Self::Reference { ty, .. }
+            | Self::SelfFieldRef { ty, .. }
+            | Self::FieldAccess { ty, .. }
+            | Self::LetRef { ty, .. }
+            | Self::BinaryOp { ty, .. }
+            | Self::UnaryOp { ty, .. }
+            | Self::If { ty, .. }
+            | Self::For { ty, .. }
+            | Self::Match { ty, .. }
+            | Self::FunctionCall { ty, .. }
+            | Self::MethodCall { ty, .. }
+            | Self::EventMapping { ty, .. }
+            | Self::Closure { ty, .. }
+            | Self::DictLiteral { ty, .. }
+            | Self::DictAccess { ty, .. }
+            | Self::Block { ty, .. } => ty,
         }
     }
 }

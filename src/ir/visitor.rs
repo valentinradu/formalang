@@ -176,8 +176,6 @@ pub fn walk_expr<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
 /// This is called by the default `visit_expr` implementation.
 pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
     match expr {
-        IrExpr::Literal { .. } => {}
-
         IrExpr::StructInst { fields, mounts, .. } => {
             for (_, e) in fields {
                 walk_expr(visitor, e);
@@ -187,7 +185,7 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             }
         }
 
-        IrExpr::EnumInst { fields, .. } => {
+        IrExpr::EnumInst { fields, .. } | IrExpr::Tuple { fields, .. } => {
             for (_, e) in fields {
                 walk_expr(visitor, e);
             }
@@ -199,21 +197,9 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             }
         }
 
-        IrExpr::Tuple { fields, .. } => {
-            for (_, e) in fields {
-                walk_expr(visitor, e);
-            }
-        }
-
-        IrExpr::Reference { .. } => {}
-
-        IrExpr::SelfFieldRef { .. } => {}
-
         IrExpr::FieldAccess { object, .. } => {
             walk_expr(visitor, object);
         }
-
-        IrExpr::LetRef { .. } => {}
 
         IrExpr::BinaryOp { left, right, .. } => {
             walk_expr(visitor, left);
@@ -266,11 +252,6 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             }
         }
 
-        IrExpr::EventMapping { .. } => {
-            // Event mappings have no child expressions to walk
-            // (field bindings are data, not expressions)
-        }
-
         IrExpr::DictLiteral { entries, .. } => {
             for (k, v) in entries {
                 walk_expr(visitor, k);
@@ -295,6 +276,12 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
         IrExpr::Closure { body, .. } => {
             walk_expr(visitor, body);
         }
+
+        IrExpr::EventMapping { .. }
+        | IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => {}
     }
 }
 
