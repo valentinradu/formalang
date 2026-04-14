@@ -1,10 +1,12 @@
 # IR Reference
 
-**Last Updated**: 2025-11-27
+**Last Updated**: 2026-04-14
 
 This document provides a complete reference for the FormaLang Intermediate
 Representation (IR). The IR is the recommended output for building code
-generators targeting TypeScript, Swift, Kotlin, or other languages.
+generators. Code generation is not built into the library — backends are
+external and plug in via the `IrPass`/`Backend` trait system defined in
+`src/pipeline.rs`.
 
 > **Note**: For syntax analysis or source-level tooling, use the
 > [AST](ast.md) instead. The IR is optimized for code generation, not source
@@ -38,7 +40,7 @@ Semantic Analyzer -> Validated AST + SymbolTable
 IR Lowering -> IrModule  <-- This document
   |
   v
-Code Generators -> TypeScript / Swift / Kotlin
+Plugin System -> [IrPass, ...] -> Backend -> Output
 ```
 
 ### What the IR Provides
@@ -136,9 +138,13 @@ IrModule (root)
 |   +-- generic_params: Vec<IrGenericParam>
 |
 +-- impls: Vec<IrImpl>
-    |
-    +-- struct_id: StructId -----> points to IrStruct
-    +-- defaults: Vec<(String, IrExpr)>
+|   |
+|   +-- struct_id: StructId -----> points to IrStruct
+|   +-- defaults: Vec<(String, IrExpr)>
+|
++-- lets: Vec<IrLet>        // Module-level let bindings
+|
++-- functions: Vec<IrFunction>  // Standalone function definitions
 ```
 
 ### IrModule
@@ -151,6 +157,8 @@ pub struct IrModule {
     pub traits: Vec<IrTrait>,
     pub enums: Vec<IrEnum>,
     pub impls: Vec<IrImpl>,
+    pub lets: Vec<IrLet>,        // Module-level let bindings
+    pub functions: Vec<IrFunction>, // Standalone function definitions
     pub imports: Vec<IrImport>,  // External module imports
 }
 ```
@@ -159,23 +167,29 @@ pub struct IrModule {
 
 ```rust
 impl IrModule {
-    /// Look up a struct by ID (panics if out of bounds)
-    pub fn get_struct(&self, id: StructId) -> &IrStruct;
+    /// Look up a struct by ID. Returns None if out of bounds.
+    pub fn get_struct(&self, id: StructId) -> Option<&IrStruct>;
 
-    /// Look up a trait by ID (panics if out of bounds)
-    pub fn get_trait(&self, id: TraitId) -> &IrTrait;
+    /// Look up a trait by ID. Returns None if out of bounds.
+    pub fn get_trait(&self, id: TraitId) -> Option<&IrTrait>;
 
-    /// Look up an enum by ID (panics if out of bounds)
-    pub fn get_enum(&self, id: EnumId) -> &IrEnum;
+    /// Look up an enum by ID. Returns None if out of bounds.
+    pub fn get_enum(&self, id: EnumId) -> Option<&IrEnum>;
 
-    /// Look up a struct ID by name
+    /// Look up a function by ID. Returns None if out of bounds.
+    pub fn get_function(&self, id: FunctionId) -> Option<&IrFunction>;
+
+    /// Look up a struct ID by name.
     pub fn struct_id(&self, name: &str) -> Option<StructId>;
 
-    /// Look up a trait ID by name
+    /// Look up a trait ID by name.
     pub fn trait_id(&self, name: &str) -> Option<TraitId>;
 
-    /// Look up an enum ID by name
+    /// Look up an enum ID by name.
     pub fn enum_id(&self, name: &str) -> Option<EnumId>;
+
+    /// Look up a function ID by name.
+    pub fn function_id(&self, name: &str) -> Option<FunctionId>;
 }
 ```
 
@@ -286,16 +300,20 @@ pub struct EnumId(pub u32);
 IDs index into the corresponding `Vec` in `IrModule`:
 
 ```rust
-// Direct indexing
-let struct_def = &module.structs[id.0 as usize];
-
-// Or use helper method
-let struct_def = module.get_struct(id);
+// Use helper method (returns Option)
+if let Some(struct_def) = module.get_struct(id) {
+    // use struct_def
+}
 
 // Lookup by name
 if let Some(id) = module.struct_id("User") {
-    let struct_def = module.get_struct(id);
+    if let Some(struct_def) = module.get_struct(id) {
+        // use struct_def
+    }
 }
+
+// Direct indexing (when ID is known valid)
+let struct_def = &module.structs[id.0 as usize];
 ```
 
 ### ID Type Safety
@@ -320,7 +338,7 @@ names, resolved types use IDs that directly reference definitions.
 
 ```rust
 pub enum ResolvedType {
-    /// Primitive type (String, Number, Boolean, Path, Regex, Never)
+    /// Primitive type (String, Number, Boolean, Path, Regex)
     Primitive(PrimitiveType),
 
     /// Reference to a struct definition
@@ -357,6 +375,29 @@ pub enum ResolvedType {
         kind: ExternalKind,        // Struct, Trait, or Enum
         type_args: Vec<ResolvedType>,  // For generics
     },
+
+    /// Event mapping type: `() -> E` or `T -> E`
+    ///
+    /// Used for event handler fields like `onChange: String -> Event`.
+    EventMapping {
+        param_ty: Option<Box<ResolvedType>>,  // None for () -> E
+        return_ty: Box<ResolvedType>,         // The event enum type
+    },
+
+    /// Dictionary type: [K: V]
+    Dictionary {
+        key_ty: Box<ResolvedType>,
+        value_ty: Box<ResolvedType>,
+    },
+
+    /// General closure type: (T1, T2) -> R
+    ///
+    /// Unlike EventMapping (restricted to enum returns), this represents
+    /// arbitrary pure functions.
+    Closure {
+        param_tys: Vec<ResolvedType>,
+        return_ty: Box<ResolvedType>,
+    },
 }
 ```
 
@@ -378,6 +419,10 @@ pub enum ResolvedType {
 | `T` (in generic) | `TypeParam("T")` |
 | `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
 | `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
+| `String -> Event` | `EventMapping { param_ty: Some(Primitive(String)), return_ty: Enum(n) }` |
+| `() -> Event` | `EventMapping { param_ty: None, return_ty: Enum(n) }` |
+| `[String: Number]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(Number) }` |
+| `(String, Number) -> Boolean` | `Closure { param_tys: [...], return_ty: Primitive(Boolean) }` |
 
 ### Display Names
 
@@ -652,6 +697,60 @@ pub struct IrMatchArm {
 
     /// Body expression
     pub body: IrExpr,
+}
+```
+
+### IrLet
+
+Module-level let bindings (constants and computed values):
+
+```rust
+pub struct IrLet {
+    /// Binding name
+    pub name: String,
+
+    /// Visibility (public or private)
+    pub visibility: Visibility,
+
+    /// Whether this binding is mutable
+    pub mutable: bool,
+
+    /// The resolved type of the binding
+    pub ty: ResolvedType,
+
+    /// The bound expression
+    pub value: IrExpr,
+}
+```
+
+### IrFunction
+
+Standalone function definitions (outside of impl blocks):
+
+```rust
+pub struct IrFunction {
+    /// Function name
+    pub name: String,
+
+    /// Parameters (first is typically `self` for methods)
+    pub params: Vec<IrFunctionParam>,
+
+    /// Return type (None = unit/void)
+    pub return_type: Option<ResolvedType>,
+
+    /// Function body expression
+    pub body: IrExpr,
+}
+
+pub struct IrFunctionParam {
+    /// Parameter name
+    pub name: String,
+
+    /// Parameter type (None for `self`)
+    pub ty: Option<ResolvedType>,
+
+    /// Default value expression, if any
+    pub default: Option<IrExpr>,
 }
 ```
 
@@ -1320,4 +1419,3 @@ The IR design follows patterns from the Rust compiler (HIR/THIR/MIR):
 
 - [AST Reference](ast.md): For syntax analysis and source-level tooling
 - [Architecture](architecture.md): Overall compiler architecture
-- [IR Design Plan](../../plans/ir-design.md): Original design document

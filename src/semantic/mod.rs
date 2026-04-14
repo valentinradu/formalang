@@ -102,8 +102,8 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
     /// Cache of IR modules for imported modules (keyed by file path)
     ///
-    /// Populated during `parse_and_analyze_module()` to enable WGSL codegen
-    /// to generate impl blocks from imported types.
+    /// Populated during `parse_and_analyze_module()` to enable codegen
+    /// backends to generate impl blocks from imported types.
     module_ir_cache: HashMap<PathBuf, crate::ir::IrModule>,
     /// Current file path being analyzed
     current_file: Option<PathBuf>,
@@ -429,7 +429,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return Err(module_errors);
         }
 
-        // Lower the module to IR and cache it for WGSL codegen
+        // Lower the module to IR and cache it for codegen backends
         // This enables generating impl blocks from imported types
         if let Ok(ir_module) = crate::ir::lower_to_ir(&file, &module_symbols) {
             self.module_ir_cache
@@ -4243,7 +4243,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Get all cached IR modules from imports.
     ///
     /// Returns a map from file path to `IrModule` for all modules that were
-    /// analyzed during import resolution. Used by WGSL codegen to generate
+    /// analyzed during import resolution. Used by codegen backends to generate
     /// impl blocks from imported types.
     ///
     /// # Returns

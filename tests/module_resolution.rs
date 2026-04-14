@@ -962,7 +962,7 @@ struct Main {
 // =============================================================================
 
 #[test]
-#[ignore = "stdlib uses WGSL types like vec2 that need parser support"]
+#[ignore = "stdlib uses GPU types like vec2 that need parser support"]
 fn test_stdlib_compiles_alone() -> Result<(), Box<dyn std::error::Error>> {
     // Load stdlib from filesystem
     let stdlib_source = std::fs::read_to_string("stdlib.fv")

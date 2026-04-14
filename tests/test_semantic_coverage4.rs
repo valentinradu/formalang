@@ -1169,8 +1169,8 @@ fn test_closure_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_trait_field_type_mismatch_with_gpu_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Shader { position: vec3 }
-        struct BadShader: Shader { position: Number }
+        trait GpuNode { position: vec3 }
+        struct BadGpuNode: GpuNode { position: Number }
     ";
     let result = compile(source);
     if result.is_ok() {

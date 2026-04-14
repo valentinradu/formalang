@@ -75,7 +75,9 @@ provides consumes
 
 ### Primitive Types
 
-FormaLang has **6 built-in primitive types**:
+FormaLang has two categories of primitive types.
+
+**General-purpose types:**
 
 ```formalang
 pub struct Primitives {
@@ -84,6 +86,25 @@ pub struct Primitives {
   active: Boolean,        // true or false
   logo: Path,             // File/resource paths
   pattern: Regex          // Regular expressions
+}
+```
+
+**GPU/numeric types** (for math-heavy code and GPU backends):
+
+```formalang
+pub struct GpuData {
+  a: f32,                 // 32-bit float
+  b: i32,                 // 32-bit signed integer
+  c: u32,                 // 32-bit unsigned integer
+  d: bool,                // GPU boolean
+  pos: vec2,              // 2-component float vector
+  dir: vec3,              // 3-component float vector
+  color: vec4,            // 4-component float vector
+  ipos: ivec2,            // 2-component integer vector
+  idir: ivec3,            // 3-component integer vector
+  m2: mat2,               // 2x2 matrix
+  m3: mat3,               // 3x3 matrix
+  transform: mat4         // 4x4 matrix
 }
 ```
 
@@ -1669,6 +1690,7 @@ use utils::helpers::formatDate
 **Type System**:
 
 - ✅ Primitive types (`String`, `Number`, `Boolean`, `Path`, `Regex`)
+- ✅ GPU numeric types (`f32`, `i32`, `u32`, `bool`, `vec2`–`vec4`, `ivec2`–`ivec4`, `mat2`–`mat4`)
 - ✅ Array types (`[Type]`, `[Type, N]` for fixed-size)
 - ✅ Dictionary types (`[KeyType: ValueType]` with String/Number/enum keys)
 - ✅ Optional types (`Type?`)
@@ -1723,14 +1745,14 @@ use utils::helpers::formatDate
 - ✅ Multi-item imports
 - ✅ Nested modules (`mod` blocks)
 
-**Validation** (5-pass semantic analysis):
+**Validation** (6-pass semantic analysis):
 
 - ✅ Module resolution (use statements)
+- ✅ Symbol table building (all definitions)
 - ✅ Type resolution (all types exist)
 - ✅ Expression validation (type compatibility, exhaustiveness)
 - ✅ Trait validation (complete implementation)
 - ✅ Cycle detection (no circular dependencies)
-- ✅ Generic validation (arity, constraints, inference)
 
 **Tooling**:
 
@@ -1738,14 +1760,13 @@ use utils::helpers::formatDate
 - ✅ Parser (chumsky-based parsing)
 - ✅ AST (complete representation)
 - ✅ Error reporting (ariadne-based diagnostics)
-- ✅ CLI tool (compile, check, watch)
+- ✅ CLI tool (`fvc check`, `fvc watch`)
 - ✅ LSP server (diagnostics, completion, hover)
 
 ### 📋 Not Yet Implemented
 
 **Future Enhancements**:
 
-- ⏳ Standard library
 - ⏳ Incremental compilation (salsa)
 - ⏳ Code formatter
 - ⏳ REPL mode

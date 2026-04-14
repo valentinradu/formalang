@@ -1676,7 +1676,7 @@ fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
     // GPU vector methods - exercises method_exists_on_type with primitives
     let source = r"
-        struct Shader { output: Number = normalize(1.0) }
+        struct Gpu { output: Number = normalize(1.0) }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     // normalize is a builtin function — should be recognized and compile

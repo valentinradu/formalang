@@ -1,6 +1,6 @@
 # Claude Agent Guidelines
 
-**Last Updated**: 2025-11-22
+**Last Updated**: 2026-04-14
 **Status**: Active
 
 ## Quick Reference
@@ -66,22 +66,26 @@
 
 ### About
 
-Forma is a declarative language compiler written in Rust.
+Forma is a declarative language compiler written in Rust. It is a pure
+compiler frontend library — parsing, semantic analysis, and IR lowering
+are built-in; code generation is the responsibility of embedders via the
+plugin system.
 
 ### Architecture
 
-- **Compiler phases**: Lexer -> Parser -> Semantic Analyser
-- **Library design**: In-process, designed as a library
-- **Output**: Validated AST as Rust data structure
-- **Modular design**: Separate crates for distinct phases
+- **Compiler phases**: Lexer -> Parser -> Semantic Analyser -> IR Lowering -> Plugin System
+- **Library design**: In-process, single-crate library
+- **Output**: `IrModule` (type-resolved IR) via `compile_to_ir`; raw `File` (AST) via `compile`
+- **Plugin system**: `IrPass` for IR transforms; `Backend` for code generation; composed with `Pipeline`
+- **Built-in passes**: `DeadCodeEliminationPass`, `ConstantFoldingPass` in `formalang::ir`
 
 ### Stdlib Usage
 
 - **Always import via `use`**: Never append or concatenate stdlib source
 - **Use FileSystemResolver**: Tests should import stdlib from filesystem
-- **Location**: `stdlib.fv` at project root, modules in `stdlib/` directory
+- **Location**: modules in `stdlib/` directory (no single `stdlib.fv` at root)
 - **Import pattern**: `use stdlib::*` for all stdlib symbols
-- **No include_str**: Never use `include_str!("stdlib.fv")` or similar
+- **No include_str**: Never use `include_str!` to load stdlib
 - **Impl block defaults**: Importing a struct/enum also imports its impl block
 - **Test setup**: Use `PathBuf::from(".")` as resolver root
 

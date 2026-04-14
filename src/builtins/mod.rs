@@ -3,7 +3,7 @@
 //! This module provides definitions for builtin functions available in `FormaLang`,
 //! including math functions, vector operations, and utility functions.
 //!
-//! These functions map directly to WGSL builtin functions for GPU execution.
+//! These functions map to GPU builtin functions for use in codegen backends.
 
 use crate::ast::PrimitiveType;
 use std::collections::HashMap;

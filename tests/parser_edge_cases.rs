@@ -248,7 +248,7 @@ fn test_field_access_simple() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Regression test: field access on function parameters should NOT be parsed as enum instantiation.
 /// Before the fix, `point.x` was being parsed as `EnumInstantiation { enum_name: "point", variant: "x" }`
-/// instead of field access, causing WGSL codegen to output `Unknown_x` instead of `point.x`.
+/// instead of field access, causing codegen to output `Unknown_x` instead of `point.x`.
 #[test]
 fn test_field_access_on_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
     // This tests that lowercase.identifier parses correctly (not as enum instantiation)

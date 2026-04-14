@@ -358,7 +358,7 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_struct(name, struct_info);
-                // Track this import for WGSL codegen (to find impl blocks)
+                // Track this import for codegen (to find impl blocks)
                 self.try_track_external_import(name, ExternalKind::Struct);
             }
         }
@@ -368,7 +368,7 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_enum(name, enum_info);
-                // Track this import for WGSL codegen (to find impl blocks)
+                // Track this import for codegen (to find impl blocks)
                 self.try_track_external_import(name, ExternalKind::Enum);
             }
         }
@@ -1851,7 +1851,7 @@ PrimitiveType::UVec4) => match field_name {
     ///
     /// Handles:
     /// 1. User-defined standalone functions in `IrModule::functions`
-    /// 2. Builtin functions (math, WGSL intrinsics, etc.)
+    /// 2. Builtin functions (math, GPU intrinsics, etc.)
     /// 3. Falls back to void for unknown functions
     fn resolve_function_return_type(
         &self,

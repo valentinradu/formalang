@@ -810,7 +810,7 @@ where
     .labelled("identifier")
 }
 
-/// Parse an invocation target: identifier or WGSL type constructor
+/// Parse an invocation target: identifier or GPU type constructor
 /// Accepts regular identifiers plus vec2, vec3, vec4, ivec2, etc. for type constructors
 fn invocation_target_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
@@ -821,12 +821,12 @@ where
         // Regular identifiers
         Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span())),
         Token::SelfKeyword = e => Ident::new("self".to_string(), span_from_simple(e.span())),
-        // WGSL scalar type constructors (for casting)
+        // GPU scalar type constructors (for casting)
         Token::F32Type = e => Ident::new("f32".to_string(), span_from_simple(e.span())),
         Token::I32Type = e => Ident::new("i32".to_string(), span_from_simple(e.span())),
         Token::U32Type = e => Ident::new("u32".to_string(), span_from_simple(e.span())),
         Token::BoolType = e => Ident::new("bool".to_string(), span_from_simple(e.span())),
-        // WGSL vector type constructors
+        // GPU vector type constructors
         Token::Vec2Type = e => Ident::new("vec2".to_string(), span_from_simple(e.span())),
         Token::Vec3Type = e => Ident::new("vec3".to_string(), span_from_simple(e.span())),
         Token::Vec4Type = e => Ident::new("vec4".to_string(), span_from_simple(e.span())),
@@ -836,7 +836,7 @@ where
         Token::UVec2Type = e => Ident::new("uvec2".to_string(), span_from_simple(e.span())),
         Token::UVec3Type = e => Ident::new("uvec3".to_string(), span_from_simple(e.span())),
         Token::UVec4Type = e => Ident::new("uvec4".to_string(), span_from_simple(e.span())),
-        // WGSL matrix type constructors
+        // GPU matrix type constructors
         Token::Mat2Type = e => Ident::new("mat2".to_string(), span_from_simple(e.span())),
         Token::Mat3Type = e => Ident::new("mat3".to_string(), span_from_simple(e.span())),
         Token::Mat4Type = e => Ident::new("mat4".to_string(), span_from_simple(e.span())),
@@ -1718,10 +1718,10 @@ where
                 });
 
         // Invocation: Name(arg: value, ...) or Name<Type>(arg: value, ...)
-        // Can be struct instantiation, function call, or WGSL type constructor
+        // Can be struct instantiation, function call, or GPU type constructor
         // With optional mount points (for structs): Name(arg: value) { mount: expr, ... }
         // Supports module-qualified paths: module::Name(...)
-        // Also supports WGSL type constructors: vec2(x, y), mat4(...)
+        // Also supports GPU type constructors: vec2(x, y), mat4(...)
         let invocation = invocation_target_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
