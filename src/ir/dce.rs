@@ -397,7 +397,6 @@ mod tests {
     use crate::compile_to_ir;
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_eliminate_constant_true_branch() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { value: Number = if true { 1 } else { 2 } }
@@ -405,8 +404,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = &optimized.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 1
@@ -425,7 +424,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_eliminate_constant_false_branch() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { value: Number = if false { 1 } else { 2 } }
@@ -433,8 +431,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = &optimized.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 2
@@ -537,7 +535,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_nested_dead_code_elimination() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { value: Number = if true { if false { 1 } else { 2 } } else { 3 } }
@@ -545,8 +542,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = &optimized.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // Outer true -> inner expression

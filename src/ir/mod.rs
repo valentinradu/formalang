@@ -144,7 +144,7 @@ pub struct IrImport {
     pub items: Vec<IrImportItem>,
     /// Filesystem path to the source module file.
     ///
-    /// Used by WGSL codegen to look up the cached `IrModule` for generating
+    /// Used by codegen backends to look up the cached `IrModule` for generating
     /// impl blocks from imported types. Populated from symbol table's
     /// `module_origins` during IR lowering.
     pub source_file: std::path::PathBuf,

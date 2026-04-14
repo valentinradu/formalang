@@ -382,7 +382,6 @@ mod tests {
     use crate::compile_to_ir;
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { scale: Number = 1 + 2 }
@@ -391,8 +390,8 @@ mod tests {
         let folded = fold_constants(&module);
 
         // Check the default was folded
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -410,7 +409,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { scale: Number = 2 * 3 }
@@ -418,8 +416,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -437,7 +435,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { value: Number = 2 + 3 * 4 }
@@ -445,8 +442,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // 2 + 3 * 4 = 2 + 12 = 14
@@ -465,7 +462,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_boolean_and() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { flag: Boolean = true && false }
@@ -473,8 +469,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -492,7 +488,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { flag: Boolean = true || false }
@@ -500,8 +495,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -519,7 +514,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_comparison() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { result: Boolean = 1 < 2 }
@@ -527,8 +521,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -546,7 +540,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
             struct Config { value: Number = if true { 1 } else { 2 } }
@@ -554,8 +547,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -620,7 +613,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test source defines exactly one struct with one field")]
     fn test_fold_string_concat() -> Result<(), Box<dyn std::error::Error>> {
         let source = r#"
             struct Config { name: String = "Hello" + " World" }
@@ -628,8 +620,8 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = &folded.structs[0];
-        let field = &struct_def.fields[0];
+        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
+        let field = struct_def.fields.first().ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {

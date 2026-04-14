@@ -528,7 +528,7 @@ fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_lower_vec3_constructor() -> Result<(), Box<dyn std::error::Error>> {
     // Test that a function call to another named function lowers to IrExpr::FunctionCall.
-    // (Vec3/vec3 were WGSL-specific and removed with the shader backend.)
+    // (Vec3/vec3 were GPU-type constructors removed with the old codegen backend.)
     let source = r"
         fn sum(a: Number, b: Number, c: Number) -> Number { a + b + c }
         fn make_result() -> Number { sum(1, 2, 3) }

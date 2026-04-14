@@ -443,7 +443,7 @@ fn test_mutability_mismatch_in_struct_field() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_gpu_primitive_type_f32() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Shader { value: f32 }
+        struct GpuType { value: f32 }
     ";
     compile(source).map_err(|e| format!("f32 type: {e:?}"))?;
     Ok(())
@@ -452,7 +452,7 @@ fn test_gpu_primitive_type_f32() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_gpu_primitive_type_vec3() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Shader { position: vec3 }
+        struct GpuVec { position: vec3 }
     ";
     compile(source).map_err(|e| format!("vec3 type: {e:?}"))?;
     Ok(())
@@ -742,10 +742,10 @@ fn test_block_expression_with_assign() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Shader {
+        struct GpuNode {
             direction: vec3
         }
-        impl Shader {
+        impl GpuNode {
             fn get_norm() -> vec3 { self.direction.normalize() }
         }
     ";
@@ -756,10 +756,10 @@ fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_method_call_length_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Shader {
+        struct GpuPos {
             pos: vec3
         }
-        impl Shader {
+        impl GpuPos {
             fn get_len() -> f32 { self.pos.length() }
         }
     ";

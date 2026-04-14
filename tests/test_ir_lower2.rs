@@ -992,14 +992,14 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_lower_builtin_function_calls() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn shader_test() -> Number { sin(0) + cos(0) }
+        fn builtin_test() -> Number { sin(0) + cos(0) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let func = module
         .functions
         .iter()
-        .find(|f| f.name == "shader_test")
-        .ok_or("shader_test")?;
+        .find(|f| f.name == "builtin_test")
+        .ok_or("builtin_test")?;
     let IrExpr::BinaryOp {
         left, right, op, ..
     } = &func.body

@@ -1,10 +1,10 @@
 # AST Reference
 
-**Last Updated**: 2025-01-08
+**Last Updated**: 2026-04-14
 
 This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
 
-> **Note**: For code generation, use the [IR (Intermediate Representation)](ir.md) instead. The IR provides resolved types, linked references, and is optimized for generating WGSL shader code.
+> **Note**: For code generation, use the [IR (Intermediate Representation)](ir.md) instead. The IR provides resolved types, linked references, and is optimized for backend code generation.
 
 ## Overview
 
