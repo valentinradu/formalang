@@ -4,13 +4,26 @@ use crate::error::CompilerError;
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 
 /// Report a single compiler error with beautiful formatting
-#[must_use] 
-#[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
+#[must_use]
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
     let mut output = Vec::new();
+    let report = build_error_report(error, filename);
+    let _ = report
+        .finish()
+        .write((filename, Source::from(source)), &mut output);
+    String::from_utf8_lossy(&output).into_owned()
+}
+
+type ReportBuilder<'a> = ariadne::ReportBuilder<'a, (&'a str, std::ops::Range<usize>)>;
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "match expression over 30 variants — arms cannot be further extracted without losing context"
+)]
+fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> ReportBuilder<'a> {
     let span = error.span();
 
-    let report = match error {
+    match error {
         CompilerError::ParseError { message, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E001")
@@ -457,13 +470,7 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
                         .with_color(Color::Red),
                 )
         }
-    };
-
-    let _ = report
-        .finish()
-        .write((filename, Source::from(source)), &mut output);
-
-    String::from_utf8_lossy(&output).into_owned()
+    }
 }
 
 /// Report multiple compiler errors

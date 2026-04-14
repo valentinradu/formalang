@@ -231,351 +231,216 @@ impl BuiltinRegistry {
         self.functions.insert(func.name, func);
     }
 
-    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn register_math_functions(&mut self) {
-        use PrimitiveType::{F32, I32, U32};
+        self.register_trig_functions();
+        self.register_exponential_functions();
+        self.register_rounding_functions();
+        self.register_minmax_functions();
+    }
 
-        // Trigonometric functions
+    fn register_trig_functions(&mut self) {
+        use PrimitiveType::F32;
+
         self.register(BuiltinFunction {
             name: "sin",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Sine of angle in radians",
         });
-
         self.register(BuiltinFunction {
             name: "cos",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Cosine of angle in radians",
         });
-
         self.register(BuiltinFunction {
             name: "tan",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Tangent of angle in radians",
         });
-
         self.register(BuiltinFunction {
             name: "asin",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Arc sine",
         });
-
         self.register(BuiltinFunction {
             name: "acos",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Arc cosine",
         });
-
         self.register(BuiltinFunction {
             name: "atan",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Arc tangent",
         });
-
         self.register(BuiltinFunction {
             name: "atan2",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32), p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32), p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Arc tangent of y/x",
         });
+    }
 
-        // Exponential and logarithmic
+    fn register_exponential_functions(&mut self) {
+        use PrimitiveType::F32;
+
         self.register(BuiltinFunction {
             name: "exp",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Natural exponential (e^x)",
         });
-
         self.register(BuiltinFunction {
             name: "exp2",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Base-2 exponential (2^x)",
         });
-
         self.register(BuiltinFunction {
             name: "log",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Natural logarithm",
         });
-
         self.register(BuiltinFunction {
             name: "log2",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Base-2 logarithm",
         });
-
         self.register(BuiltinFunction {
             name: "pow",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32), p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32), p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Power function (x^y)",
         });
-
         self.register(BuiltinFunction {
             name: "sqrt",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Square root",
         });
-
         self.register(BuiltinFunction {
             name: "inverseSqrt",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Inverse square root (1/sqrt(x))",
         });
+    }
 
-        // Rounding functions
+    fn register_rounding_functions(&mut self) {
+        use PrimitiveType::{F32, I32};
+
         self.register(BuiltinFunction {
             name: "abs",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(I32)],
-                    return_type: r(I32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(I32)], return_type: r(I32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Absolute value",
         });
-
         self.register(BuiltinFunction {
             name: "sign",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(I32)],
-                    return_type: r(I32),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(I32)], return_type: r(I32) },
             ],
             category: BuiltinCategory::Math,
             description: "Sign of value (-1, 0, or 1)",
         });
-
         self.register(BuiltinFunction {
             name: "floor",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Floor (round toward negative infinity)",
         });
-
         self.register(BuiltinFunction {
             name: "ceil",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Ceiling (round toward positive infinity)",
         });
-
         self.register(BuiltinFunction {
             name: "round",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Round to nearest integer",
         });
-
         self.register(BuiltinFunction {
             name: "trunc",
-            signatures: vec![FunctionSignature {
-                params: vec![p(F32)],
-                return_type: r(F32),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(F32)], return_type: r(F32) }],
             category: BuiltinCategory::Math,
             description: "Truncate toward zero",
         });
-
         self.register(BuiltinFunction {
             name: "fract",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Fractional part (x - floor(x))",
         });
+    }
 
-        // Min/max/clamp
+    fn register_minmax_functions(&mut self) {
+        use PrimitiveType::{F32, I32, U32};
+
         self.register(BuiltinFunction {
             name: "min",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32), p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(I32), p(I32)],
-                    return_type: r(I32),
-                },
-                FunctionSignature {
-                    params: vec![p(U32), p(U32)],
-                    return_type: r(U32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec, same_as(0)],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32), p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(I32), p(I32)], return_type: r(I32) },
+                FunctionSignature { params: vec![p(U32), p(U32)], return_type: r(U32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec, same_as(0)], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Minimum of two values",
         });
-
         self.register(BuiltinFunction {
             name: "max",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32), p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(I32), p(I32)],
-                    return_type: r(I32),
-                },
-                FunctionSignature {
-                    params: vec![p(U32), p(U32)],
-                    return_type: r(U32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec, same_as(0)],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32), p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(I32), p(I32)], return_type: r(I32) },
+                FunctionSignature { params: vec![p(U32), p(U32)], return_type: r(U32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec, same_as(0)], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Maximum of two values",
         });
-
         self.register(BuiltinFunction {
             name: "clamp",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32), p(F32), p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(I32), p(I32), p(I32)],
-                    return_type: r(I32),
-                },
-                FunctionSignature {
-                    params: vec![p(U32), p(U32), p(U32)],
-                    return_type: r(U32),
-                },
+                FunctionSignature { params: vec![p(F32), p(F32), p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(I32), p(I32), p(I32)], return_type: r(I32) },
+                FunctionSignature { params: vec![p(U32), p(U32), p(U32)], return_type: r(U32) },
                 FunctionSignature {
                     params: vec![ParamType::AnyFloatVec, same_as(0), same_as(0)],
                     return_type: same_param(0),
@@ -584,161 +449,99 @@ impl BuiltinRegistry {
             category: BuiltinCategory::Math,
             description: "Clamp value between min and max",
         });
-
         self.register(BuiltinFunction {
             name: "saturate",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(F32)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![ParamType::AnyFloatVec],
-                    return_type: same_param(0),
-                },
+                FunctionSignature { params: vec![p(F32)], return_type: r(F32) },
+                FunctionSignature { params: vec![ParamType::AnyFloatVec], return_type: same_param(0) },
             ],
             category: BuiltinCategory::Math,
             description: "Clamp to [0, 1] range",
         });
     }
 
-    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn register_vector_functions(&mut self) {
-        use PrimitiveType::{Vec2, F32, Vec3, Vec4};
+        self.register_vector_geometry_functions();
+        self.register_vector_transform_functions();
+    }
+
+    fn register_vector_geometry_functions(&mut self) {
+        use PrimitiveType::{F32, Vec2, Vec3, Vec4};
 
         self.register(BuiltinFunction {
             name: "length",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec4)],
-                    return_type: r(F32),
-                },
+                FunctionSignature { params: vec![p(Vec2)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec3)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec4)], return_type: r(F32) },
             ],
             category: BuiltinCategory::Vector,
             description: "Vector length (magnitude)",
         });
-
         self.register(BuiltinFunction {
             name: "distance",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2), p(Vec2)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3), p(Vec3)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec4), p(Vec4)],
-                    return_type: r(F32),
-                },
+                FunctionSignature { params: vec![p(Vec2), p(Vec2)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec3), p(Vec3)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec4), p(Vec4)], return_type: r(F32) },
             ],
             category: BuiltinCategory::Vector,
             description: "Distance between two points",
         });
-
         self.register(BuiltinFunction {
             name: "normalize",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2)],
-                    return_type: r(Vec2),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3)],
-                    return_type: r(Vec3),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec4)],
-                    return_type: r(Vec4),
-                },
+                FunctionSignature { params: vec![p(Vec2)], return_type: r(Vec2) },
+                FunctionSignature { params: vec![p(Vec3)], return_type: r(Vec3) },
+                FunctionSignature { params: vec![p(Vec4)], return_type: r(Vec4) },
             ],
             category: BuiltinCategory::Vector,
             description: "Normalize vector to unit length",
         });
-
         self.register(BuiltinFunction {
             name: "dot",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2), p(Vec2)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3), p(Vec3)],
-                    return_type: r(F32),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec4), p(Vec4)],
-                    return_type: r(F32),
-                },
+                FunctionSignature { params: vec![p(Vec2), p(Vec2)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec3), p(Vec3)], return_type: r(F32) },
+                FunctionSignature { params: vec![p(Vec4), p(Vec4)], return_type: r(F32) },
             ],
             category: BuiltinCategory::Vector,
             description: "Dot product of two vectors",
         });
-
         self.register(BuiltinFunction {
             name: "cross",
-            signatures: vec![FunctionSignature {
-                params: vec![p(Vec3), p(Vec3)],
-                return_type: r(Vec3),
-            }],
+            signatures: vec![FunctionSignature { params: vec![p(Vec3), p(Vec3)], return_type: r(Vec3) }],
             category: BuiltinCategory::Vector,
             description: "Cross product of two 3D vectors",
         });
+    }
+
+    fn register_vector_transform_functions(&mut self) {
+        use PrimitiveType::{F32, Vec2, Vec3};
 
         self.register(BuiltinFunction {
             name: "reflect",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2), p(Vec2)],
-                    return_type: r(Vec2),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3), p(Vec3)],
-                    return_type: r(Vec3),
-                },
+                FunctionSignature { params: vec![p(Vec2), p(Vec2)], return_type: r(Vec2) },
+                FunctionSignature { params: vec![p(Vec3), p(Vec3)], return_type: r(Vec3) },
             ],
             category: BuiltinCategory::Vector,
             description: "Reflect incident vector about normal",
         });
-
         self.register(BuiltinFunction {
             name: "refract",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2), p(Vec2), p(F32)],
-                    return_type: r(Vec2),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3), p(Vec3), p(F32)],
-                    return_type: r(Vec3),
-                },
+                FunctionSignature { params: vec![p(Vec2), p(Vec2), p(F32)], return_type: r(Vec2) },
+                FunctionSignature { params: vec![p(Vec3), p(Vec3), p(F32)], return_type: r(Vec3) },
             ],
             category: BuiltinCategory::Vector,
             description: "Refract incident vector through surface",
         });
-
         self.register(BuiltinFunction {
             name: "faceForward",
             signatures: vec![
-                FunctionSignature {
-                    params: vec![p(Vec2), p(Vec2), p(Vec2)],
-                    return_type: r(Vec2),
-                },
-                FunctionSignature {
-                    params: vec![p(Vec3), p(Vec3), p(Vec3)],
-                    return_type: r(Vec3),
-                },
+                FunctionSignature { params: vec![p(Vec2), p(Vec2), p(Vec2)], return_type: r(Vec2) },
+                FunctionSignature { params: vec![p(Vec3), p(Vec3), p(Vec3)], return_type: r(Vec3) },
             ],
             category: BuiltinCategory::Vector,
             description: "Flip normal to face forward",

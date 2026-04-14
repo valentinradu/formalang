@@ -123,126 +123,65 @@ impl<'a> DeadCodeEliminator<'a> {
     }
 
     /// Mark structs used in an expression.
-    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn mark_used_in_expr(&mut self, expr: &IrExpr) {
         match expr {
-            IrExpr::StructInst {
-                struct_id,
-                fields,
-                mounts,
-                ..
-            } => {
-                if let Some(id) = struct_id {
-                    self.used_structs.insert(*id);
-                }
-                for (_, e) in fields {
-                    self.mark_used_in_expr(e);
-                }
-                for (_, e) in mounts {
-                    self.mark_used_in_expr(e);
-                }
+            IrExpr::StructInst { struct_id, fields, mounts, .. } => {
+                if let Some(id) = struct_id { self.used_structs.insert(*id); }
+                for (_, e) in fields { self.mark_used_in_expr(e); }
+                for (_, e) in mounts { self.mark_used_in_expr(e); }
             }
-
             IrExpr::BinaryOp { left, right, .. } => {
                 self.mark_used_in_expr(left);
                 self.mark_used_in_expr(right);
             }
-
-            IrExpr::UnaryOp { operand, .. } => {
-                self.mark_used_in_expr(operand);
-            }
-
-            IrExpr::If {
-                condition,
-                then_branch,
-                else_branch,
-                ..
-            } => {
+            IrExpr::UnaryOp { operand, .. } => self.mark_used_in_expr(operand),
+            IrExpr::If { condition, then_branch, else_branch, .. } => {
                 self.mark_used_in_expr(condition);
                 self.mark_used_in_expr(then_branch);
-                if let Some(else_b) = else_branch {
-                    self.mark_used_in_expr(else_b);
-                }
+                if let Some(else_b) = else_branch { self.mark_used_in_expr(else_b); }
             }
-
             IrExpr::Array { elements, .. } => {
-                for e in elements {
-                    self.mark_used_in_expr(e);
-                }
+                for e in elements { self.mark_used_in_expr(e); }
             }
-
             IrExpr::Tuple { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-                for (_, e) in fields {
-                    self.mark_used_in_expr(e);
-                }
+                for (_, e) in fields { self.mark_used_in_expr(e); }
             }
-
-            IrExpr::For {
-                collection, body, ..
-            } => {
+            IrExpr::For { collection, body, .. } => {
                 self.mark_used_in_expr(collection);
                 self.mark_used_in_expr(body);
             }
-
-            IrExpr::Match {
-                scrutinee, arms, ..
-            } => {
+            IrExpr::Match { scrutinee, arms, .. } => {
                 self.mark_used_in_expr(scrutinee);
-                for arm in arms {
-                    self.mark_used_in_expr(&arm.body);
-                }
+                for arm in arms { self.mark_used_in_expr(&arm.body); }
             }
-
             IrExpr::FunctionCall { args, .. } => {
-                for (_, arg) in args {
-                    self.mark_used_in_expr(arg);
-                }
+                for (_, arg) in args { self.mark_used_in_expr(arg); }
             }
-
             IrExpr::MethodCall { receiver, args, .. } => {
                 self.mark_used_in_expr(receiver);
-                for (_, arg) in args {
-                    self.mark_used_in_expr(arg);
-                }
+                for (_, arg) in args { self.mark_used_in_expr(arg); }
             }
-
             IrExpr::DictLiteral { entries, .. } => {
                 for (k, v) in entries {
                     self.mark_used_in_expr(k);
                     self.mark_used_in_expr(v);
                 }
             }
-
             IrExpr::DictAccess { dict, key, .. } => {
                 self.mark_used_in_expr(dict);
                 self.mark_used_in_expr(key);
             }
-
-            IrExpr::Block {
-                statements, result, ..
-            } => {
-                for stmt in statements {
-                    self.mark_used_in_block_statement(stmt);
-                }
+            IrExpr::Block { statements, result, .. } => {
+                for stmt in statements { self.mark_used_in_block_statement(stmt); }
                 self.mark_used_in_expr(result);
             }
-
-            // Leaf expressions don't reference structs
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. }
             | IrExpr::EventMapping { .. } => {}
-
-            // FieldAccess needs to traverse into the object
-            IrExpr::FieldAccess { object, .. } => {
-                self.mark_used_in_expr(object);
-            }
-
-            // Closures have a body that may reference structs
-            IrExpr::Closure { body, .. } => {
-                self.mark_used_in_expr(body);
-            }
+            IrExpr::FieldAccess { object, .. } => self.mark_used_in_expr(object),
+            IrExpr::Closure { body, .. } => self.mark_used_in_expr(body),
         }
     }
 
@@ -266,161 +205,80 @@ impl<'a> DeadCodeEliminator<'a> {
 /// Eliminate dead code from an expression.
 ///
 /// This removes unreachable branches based on constant conditions.
-#[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
 pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
     use crate::ast::Literal;
-
     match expr {
-        // If the condition is constant, eliminate the dead branch
-        IrExpr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ty,
-        } => {
-            let cond_folded = eliminate_dead_code_expr(*condition);
-
-            // Check if condition is a constant boolean
-            if let IrExpr::Literal {
-                value: Literal::Boolean(b),
-                ..
-            } = &cond_folded
-            {
+        IrExpr::If { condition, then_branch, else_branch, ty } => {
+            let cond = eliminate_dead_code_expr(*condition);
+            if let IrExpr::Literal { value: Literal::Boolean(b), .. } = &cond {
                 if *b {
-                    // Condition is always true, return then branch
                     return eliminate_dead_code_expr(*then_branch);
-                } else if let Some(else_branch) = else_branch {
-                    // Condition is always false, return else branch
-                    return eliminate_dead_code_expr(*else_branch);
+                } else if let Some(else_b) = else_branch {
+                    return eliminate_dead_code_expr(*else_b);
                 }
             }
-
-            // Can't eliminate, process children
             IrExpr::If {
-                condition: Box::new(cond_folded),
+                condition: Box::new(cond),
                 then_branch: Box::new(eliminate_dead_code_expr(*then_branch)),
                 else_branch: else_branch.map(|e| Box::new(eliminate_dead_code_expr(*e))),
                 ty,
             }
         }
-
-        // Recursively process other expressions
-        IrExpr::BinaryOp {
-            left,
-            op,
-            right,
-            ty,
-        } => IrExpr::BinaryOp {
+        IrExpr::BinaryOp { left, op, right, ty } => IrExpr::BinaryOp {
             left: Box::new(eliminate_dead_code_expr(*left)),
             op,
             right: Box::new(eliminate_dead_code_expr(*right)),
             ty,
         },
-
         IrExpr::Array { elements, ty } => IrExpr::Array {
             elements: elements.into_iter().map(eliminate_dead_code_expr).collect(),
             ty,
         },
-
         IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
-            fields: fields
-                .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
-                .collect(),
+            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
             ty,
         },
-
-        IrExpr::StructInst {
+        IrExpr::StructInst { struct_id, type_args, fields, mounts, ty } => IrExpr::StructInst {
             struct_id,
             type_args,
-            fields,
-            mounts,
-            ty,
-        } => IrExpr::StructInst {
-            struct_id,
-            type_args,
-            fields: fields
-                .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
-                .collect(),
-            mounts: mounts
-                .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
-                .collect(),
+            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
+            mounts: mounts.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
             ty,
         },
-
-        IrExpr::For {
-            var,
-            var_ty,
-            collection,
-            body,
-            ty,
-        } => IrExpr::For {
+        IrExpr::For { var, var_ty, collection, body, ty } => IrExpr::For {
             var,
             var_ty,
             collection: Box::new(eliminate_dead_code_expr(*collection)),
             body: Box::new(eliminate_dead_code_expr(*body)),
             ty,
         },
-
-        IrExpr::Match {
-            scrutinee,
-            arms,
-            ty,
-        } => IrExpr::Match {
+        IrExpr::Match { scrutinee, arms, ty } => IrExpr::Match {
             scrutinee: Box::new(eliminate_dead_code_expr(*scrutinee)),
-            arms: arms
-                .into_iter()
-                .map(|arm| crate::ir::IrMatchArm {
-                    variant: arm.variant,
-                    is_wildcard: arm.is_wildcard,
-                    bindings: arm.bindings,
-                    body: eliminate_dead_code_expr(arm.body),
-                })
-                .collect(),
+            arms: arms.into_iter().map(|arm| crate::ir::IrMatchArm {
+                variant: arm.variant,
+                is_wildcard: arm.is_wildcard,
+                bindings: arm.bindings,
+                body: eliminate_dead_code_expr(arm.body),
+            }).collect(),
             ty,
         },
-
         IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
             path,
-            args: args
-                .into_iter()
-                .map(|(name, expr)| (name, eliminate_dead_code_expr(expr)))
-                .collect(),
+            args: args.into_iter().map(|(name, e)| (name, eliminate_dead_code_expr(e))).collect(),
             ty,
         },
-
-        IrExpr::MethodCall {
-            receiver,
-            method,
-            args,
-            ty,
-        } => IrExpr::MethodCall {
+        IrExpr::MethodCall { receiver, method, args, ty } => IrExpr::MethodCall {
             receiver: Box::new(eliminate_dead_code_expr(*receiver)),
             method,
-            args: args
-                .into_iter()
-                .map(|(name, expr)| (name, eliminate_dead_code_expr(expr)))
-                .collect(),
+            args: args.into_iter().map(|(name, e)| (name, eliminate_dead_code_expr(e))).collect(),
             ty,
         },
-
-        IrExpr::EnumInst {
+        IrExpr::EnumInst { enum_id, variant, fields, ty } => IrExpr::EnumInst {
             enum_id,
             variant,
-            fields,
-            ty,
-        } => IrExpr::EnumInst {
-            enum_id,
-            variant,
-            fields: fields
-                .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
-                .collect(),
+            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
             ty,
         },
-
         IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
             entries: entries
                 .into_iter()
@@ -428,31 +286,24 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .collect(),
             ty,
         },
-
         IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
             dict: Box::new(eliminate_dead_code_expr(*dict)),
             key: Box::new(eliminate_dead_code_expr(*key)),
             ty,
         },
-
-        IrExpr::Block {
-            statements,
-            result,
-            ty,
-        } => IrExpr::Block {
-            statements: statements
-                .into_iter()
-                .map(|stmt| stmt.map_exprs(eliminate_dead_code_expr))
-                .collect(),
+        IrExpr::Block { statements, result, ty } => IrExpr::Block {
+            statements: statements.into_iter().map(|stmt| stmt.map_exprs(eliminate_dead_code_expr)).collect(),
             result: Box::new(eliminate_dead_code_expr(*result)),
             ty,
         },
-
-        // Leaf expressions are unchanged
-        e @
-(IrExpr::Literal { .. } | IrExpr::Reference { .. } | IrExpr::SelfFieldRef { ..
-} | IrExpr::FieldAccess { .. } | IrExpr::LetRef { .. } | IrExpr::UnaryOp { ..
-} | IrExpr::EventMapping { .. } | IrExpr::Closure { .. }) => e,
+        e @ (IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::EventMapping { .. }
+        | IrExpr::Closure { .. }) => e,
     }
 }
 

@@ -770,121 +770,103 @@ impl<'ast> NodeFinder<'ast> {
     }
 
     /// Visit an expression
-    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
     fn visit_expr(&mut self, expr: &'ast Expr) {
-        // For now, just mark that we're in an expression
-        // More detailed expression visiting can be added later as needed
         if let Some(span) = Self::expr_span(expr) {
             if span_contains_offset(&span, self.offset) {
                 self.parents.push(NodeAtPosition::Expression(expr));
-
-                // Visit nested expressions based on type
-                match expr {
-                    Expr::Reference { path, .. } => {
-                        for ident in path {
-                            if span_contains_offset(&ident.span, self.offset) {
-                                self.found_node = Some(NodeAtPosition::Identifier(ident));
-                                self.parents.pop();
-                                return;
-                            }
-                        }
-                    }
-                    Expr::BinaryOp { left, right, .. } => {
-                        self.visit_expr(left);
-                        if self.found_node.is_none() {
-                            self.visit_expr(right);
-                        }
-                    }
-                    Expr::ForExpr {
-                        var,
-                        collection,
-                        body,
-                        ..
-                    } => {
-                        if span_contains_offset(&var.span, self.offset) {
-                            self.found_node = Some(NodeAtPosition::Identifier(var));
-                        } else {
-                            self.visit_expr(collection);
-                            if self.found_node.is_none() {
-                                self.visit_expr(body);
-                            }
-                        }
-                    }
-                    Expr::IfExpr {
-                        condition,
-                        then_branch,
-                        else_branch,
-                        ..
-                    } => {
-                        self.visit_expr(condition);
-                        if self.found_node.is_none() {
-                            self.visit_expr(then_branch);
-                        }
-                        if self.found_node.is_none() {
-                            if let Some(else_expr) = else_branch {
-                                self.visit_expr(else_expr);
-                            }
-                        }
-                    }
-                    Expr::MatchExpr {
-                        scrutinee, arms, ..
-                    } => {
-                        self.visit_expr(scrutinee);
-                        if self.found_node.is_none() {
-                            for arm in arms {
-                                self.visit_expr(&arm.body);
-                                if self.found_node.is_some() {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Expr::Group { expr, .. } => {
-                        self.visit_expr(expr);
-                    }
-                    Expr::Array { elements, .. } => {
-                        for elem in elements {
-                            self.visit_expr(elem);
-                            if self.found_node.is_some() {
-                                break;
-                            }
-                        }
-                    }
-                    Expr::Tuple { fields, .. } => {
-                        for (name, field_expr) in fields {
-                            if span_contains_offset(&name.span, self.offset) {
-                                self.found_node = Some(NodeAtPosition::Identifier(name));
-                                break;
-                            }
-                            self.visit_expr(field_expr);
-                            if self.found_node.is_some() {
-                                break;
-                            }
-                        }
-                    }
-                    Expr::Literal(_)
-                    | Expr::Invocation { .. }
-                    | Expr::EnumInstantiation { .. }
-                    | Expr::InferredEnumInstantiation { .. }
-                    | Expr::UnaryOp { .. }
-                    | Expr::DictLiteral { .. }
-                    | Expr::DictAccess { .. }
-                    | Expr::FieldAccess { .. }
-                    | Expr::ClosureExpr { .. }
-                    | Expr::LetExpr { .. }
-                    | Expr::MethodCall { .. }
-                    | Expr::Block { .. } => {
-                        // For other expression types, just mark that we found an expression
-                    }
-                }
-
-                // If no more specific node found, use the expression itself
+                self.visit_expr_inner(expr);
                 if self.found_node.is_none() {
                     self.found_node = Some(NodeAtPosition::Expression(expr));
                 }
-
                 self.parents.pop();
             }
+        }
+    }
+
+    /// Dispatch to per-variant expression visitors.
+    fn visit_expr_inner(&mut self, expr: &'ast Expr) {
+        match expr {
+            Expr::Reference { path, .. } => {
+                for ident in path {
+                    if span_contains_offset(&ident.span, self.offset) {
+                        self.found_node = Some(NodeAtPosition::Identifier(ident));
+                        return;
+                    }
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                self.visit_expr(left);
+                if self.found_node.is_none() {
+                    self.visit_expr(right);
+                }
+            }
+            Expr::ForExpr { var, collection, body, .. } => {
+                if span_contains_offset(&var.span, self.offset) {
+                    self.found_node = Some(NodeAtPosition::Identifier(var));
+                } else {
+                    self.visit_expr(collection);
+                    if self.found_node.is_none() {
+                        self.visit_expr(body);
+                    }
+                }
+            }
+            Expr::IfExpr { condition, then_branch, else_branch, .. } => {
+                self.visit_expr(condition);
+                if self.found_node.is_none() {
+                    self.visit_expr(then_branch);
+                }
+                if self.found_node.is_none() {
+                    if let Some(else_expr) = else_branch {
+                        self.visit_expr(else_expr);
+                    }
+                }
+            }
+            Expr::MatchExpr { scrutinee, arms, .. } => {
+                self.visit_expr(scrutinee);
+                if self.found_node.is_none() {
+                    for arm in arms {
+                        self.visit_expr(&arm.body);
+                        if self.found_node.is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
+            Expr::Group { expr, .. } => {
+                self.visit_expr(expr);
+            }
+            Expr::Array { elements, .. } => {
+                for elem in elements {
+                    self.visit_expr(elem);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::Tuple { fields, .. } => {
+                for (name, field_expr) in fields {
+                    if span_contains_offset(&name.span, self.offset) {
+                        self.found_node = Some(NodeAtPosition::Identifier(name));
+                        break;
+                    }
+                    self.visit_expr(field_expr);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => {}
         }
     }
 

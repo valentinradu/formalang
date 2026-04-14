@@ -1,0 +1,1191 @@
+//! IR lowering pass: AST + `SymbolTable` → `IrModule`
+
+mod expr;
+mod types;
+
+use crate::ast::{
+    self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
+    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef,
+    Type,
+};
+use crate::error::CompilerError;
+use crate::semantic::symbol_table::SymbolTable;
+
+use super::{
+    simple_type_name, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction,
+    IrFunctionParam, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet, IrModule, IrStruct,
+    IrTrait, ResolvedType, TraitId,
+};
+use crate::semantic::symbol_table::SymbolKind;
+use std::collections::HashMap;
+
+/// Lower an AST and symbol table into an IR module.
+///
+/// This is the main entry point for the lowering pass. It takes a validated AST
+/// and its corresponding symbol table and produces an IR module with resolved types.
+///
+/// # Arguments
+///
+/// * `ast` - The validated AST from the semantic analyzer
+/// * `symbols` - The symbol table built during semantic analysis
+///
+/// # Returns
+///
+/// * `Ok(IrModule)` - The lowered IR module
+/// * `Err(Vec<CompilerError>)` - Errors encountered during lowering
+///
+/// # Errors
+///
+/// Returns a list of [`CompilerError`] if type resolution or lowering fails for
+/// any definition or expression in the file.
+///
+/// # Example
+///
+/// ```
+/// use formalang::{compile_with_analyzer, ir::lower_to_ir};
+///
+/// let source = "pub struct User { name: String }";
+/// let (ast, analyzer) = compile_with_analyzer(source).unwrap();
+/// let ir = lower_to_ir(&ast, analyzer.symbols()).unwrap();
+/// assert_eq!(ir.structs.len(), 1);
+/// ```
+pub fn lower_to_ir(ast: &File, symbols: &SymbolTable) -> Result<IrModule, Vec<CompilerError>> {
+    let mut lowerer = IrLowerer::new(symbols);
+    lowerer.lower_file(ast)?;
+    Ok(lowerer.module)
+}
+
+/// Internal state for the lowering pass.
+struct IrLowerer<'a> {
+    pub(super) module: IrModule,
+    pub(super) symbols: &'a SymbolTable,
+    pub(super) errors: Vec<CompilerError>,
+    /// Track imports by module path for aggregation: (`module_path`, `source_file`) -> items
+    pub(super) imports_by_module: HashMap<Vec<String>, (Vec<IrImportItem>, std::path::PathBuf)>,
+    /// Current struct being processed in an impl block (for self references)
+    pub(super) current_impl_struct: Option<String>,
+    /// Current module prefix for nested definitions (e.g., "`outer::inner`")
+    pub(super) current_module_prefix: String,
+    /// Current function's return type for inferring enum types
+    pub(super) current_function_return_type: Option<String>,
+}
+
+impl<'a> IrLowerer<'a> {
+    fn new(symbols: &'a SymbolTable) -> Self {
+        Self {
+            module: IrModule::new(),
+            symbols,
+            errors: Vec::new(),
+            imports_by_module: HashMap::new(),
+            current_impl_struct: None,
+            current_module_prefix: String::new(),
+            current_function_return_type: None,
+        }
+    }
+
+    fn lower_file(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
+        // Pre-pass: register imported structs and enums so they have IDs
+        self.register_imported_types();
+
+        // First pass: register all definitions to get IDs
+        for statement in &file.statements {
+            if let Statement::Definition(def) = statement {
+                self.register_definition(def.as_ref());
+            }
+        }
+
+        // Second pass: lower all definitions with resolved types
+        for statement in &file.statements {
+            if let Statement::Definition(def) = statement {
+                self.lower_definition(def.as_ref());
+            }
+        }
+
+        // Third pass: lower module-level let bindings
+        for statement in &file.statements {
+            if let Statement::Let(let_binding) = statement {
+                self.lower_let_binding(let_binding);
+            }
+        }
+
+        // Finalize imports: convert the map to a vec of IrImport
+        self.module.imports = self
+            .imports_by_module
+            .drain()
+            .map(|(module_path, (items, source_file))| IrImport {
+                module_path,
+                items,
+                source_file,
+            })
+            .collect();
+
+        if self.errors.is_empty() {
+            Ok(())
+        } else {
+            Err(std::mem::take(&mut self.errors))
+        }
+    }
+
+    /// Lower a module-level let binding
+    fn lower_let_binding(&mut self, let_binding: &LetBinding) {
+        match &let_binding.pattern {
+            BindingPattern::Simple(ident) => self.lower_simple_let(let_binding, &ident.name),
+            BindingPattern::Array { elements, .. } => {
+                self.lower_array_destructuring_let(let_binding, elements);
+            }
+            BindingPattern::Struct { fields, .. } => {
+                self.lower_struct_destructuring_let(let_binding, fields);
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                self.lower_tuple_destructuring_let(let_binding, elements);
+            }
+        }
+    }
+
+    /// Lower a simple `let name = value` binding.
+    fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
+        let ty = if let Some(type_ann) = &let_binding.type_annotation {
+            self.lower_type(type_ann)
+        } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
+            self.string_to_resolved_type(let_type)
+        } else {
+            let expr = self.lower_expr(&let_binding.value);
+            expr.ty().clone()
+        };
+        let value = self.lower_expr(&let_binding.value);
+        self.module.add_let(IrLet {
+            name: ident_name.to_string(),
+            visibility: let_binding.visibility,
+            mutable: let_binding.mutable,
+            ty,
+            value,
+        });
+    }
+
+    /// Lower an array destructuring let binding: `let [a, b, c] = value`.
+    fn lower_array_destructuring_let(
+        &mut self,
+        let_binding: &LetBinding,
+        elements: &[ast::ArrayPatternElement],
+    ) {
+        let value_expr = self.lower_expr(&let_binding.value);
+        let elem_ty = match value_expr.ty() {
+            ResolvedType::Array(inner) => (**inner).clone(),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::EventMapping { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
+        };
+        for (i, element) in elements.iter().enumerate() {
+            if let Some(name) = Self::extract_binding_name(element) {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
+                )]
+                let index_expr = IrExpr::Literal {
+                    value: Literal::Number(i as f64),
+                    ty: ResolvedType::Primitive(PrimitiveType::Number),
+                };
+                self.module.add_let(IrLet {
+                    name,
+                    visibility: let_binding.visibility,
+                    mutable: let_binding.mutable,
+                    ty: elem_ty.clone(),
+                    value: index_expr,
+                });
+            }
+        }
+    }
+
+    /// Lower a struct destructuring let binding: `let { field, other: alias } = value`.
+    fn lower_struct_destructuring_let(
+        &mut self,
+        let_binding: &LetBinding,
+        fields: &[ast::StructPatternField],
+    ) {
+        let value_expr = self.lower_expr(&let_binding.value);
+        for field in fields {
+            let field_name = field.name.name.clone();
+            let binding_name =
+                field.alias.as_ref().map_or_else(|| field_name.clone(), |a| a.name.clone());
+            let field_ty = self.get_field_type_from_resolved(value_expr.ty(), &field_name);
+            self.module.add_let(IrLet {
+                name: binding_name,
+                visibility: let_binding.visibility,
+                mutable: let_binding.mutable,
+                ty: field_ty,
+                value: IrExpr::Reference {
+                    path: vec![field_name],
+                    ty: ResolvedType::TypeParam("StructField".to_string()),
+                },
+            });
+        }
+    }
+
+    /// Lower a tuple destructuring let binding: `let (a, b) = value`.
+    fn lower_tuple_destructuring_let(
+        &mut self,
+        let_binding: &LetBinding,
+        elements: &[BindingPattern],
+    ) {
+        let value_expr = self.lower_expr(&let_binding.value);
+        let tuple_types = match value_expr.ty() {
+            ResolvedType::Tuple(fields) => fields.clone(),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::EventMapping { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => Vec::new(),
+        };
+        for (i, element) in elements.iter().enumerate() {
+            if let Some(name) = Self::extract_simple_binding_name(element) {
+                let ty = tuple_types
+                    .get(i)
+                    .map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |(_, t)| t.clone());
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "tuple destructuring indices are small source-code positions that fit exactly in f64 mantissa"
+                )]
+                self.module.add_let(IrLet {
+                    name,
+                    visibility: let_binding.visibility,
+                    mutable: let_binding.mutable,
+                    ty,
+                    value: IrExpr::Literal {
+                        value: Literal::Number(i as f64),
+                        ty: ResolvedType::Primitive(PrimitiveType::Number),
+                    },
+                });
+            }
+        }
+    }
+
+    /// Extract binding name from an array pattern element
+    fn extract_binding_name(element: &ast::ArrayPatternElement) -> Option<String> {
+        match element {
+            ast::ArrayPatternElement::Binding(pattern) => Self::extract_simple_binding_name(pattern),
+            ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
+            ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => None,
+        }
+    }
+
+    /// Extract binding name from a simple binding pattern
+    fn extract_simple_binding_name(pattern: &BindingPattern) -> Option<String> {
+        match pattern {
+            BindingPattern::Simple(ident) => Some(ident.name.clone()),
+            BindingPattern::Array { .. }
+            | BindingPattern::Struct { .. }
+            | BindingPattern::Tuple { .. } => None,
+        }
+    }
+
+    /// Resolve the type of a self.field reference using current impl context
+    pub(super) fn resolve_self_field_type(&mut self, field_name: &str) -> ResolvedType {
+        if let Some(struct_name) = self.current_impl_struct.clone() {
+            // Look up the struct in the symbol table
+            if let Some(struct_info) = self.symbols.structs.get(&struct_name) {
+                // Check regular fields
+                if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
+                    let ty = field.ty.clone();
+                    return self.lower_type(&ty);
+                }
+                // Check mount fields
+                if let Some(field) = struct_info
+                    .mount_fields
+                    .iter()
+                    .find(|f| f.name == field_name)
+                {
+                    let ty = field.ty.clone();
+                    return self.lower_type(&ty);
+                }
+            }
+        }
+        ResolvedType::TypeParam(format!("self.{field_name}"))
+    }
+
+    /// Resolve the type of `self` in an impl block context.
+    /// Returns the `ResolvedType` for the struct or enum being implemented.
+    pub(super) fn resolve_impl_self_type(&self, impl_name: &str) -> ResolvedType {
+        // First try as a struct
+        if let Some(id) = self.module.struct_id(impl_name) {
+            return ResolvedType::Struct(id);
+        }
+        // Then try as an enum
+        if let Some(id) = self.module.enum_id(impl_name) {
+            return ResolvedType::Enum(id);
+        }
+        // Fall back to TypeParam if not found
+        ResolvedType::TypeParam("self".to_string())
+    }
+
+    /// Look up all traits for a struct that lives inside a module.
+    ///
+    /// `module_prefix` is a `"::"` separated path (e.g. `"shapes"` or `"a::b"`).
+    /// Returns the trait names as stored in the nested symbol table, which are
+    /// the *unqualified* trait names as written in source.
+    fn get_traits_for_struct_in_module(
+        &self,
+        module_prefix: &str,
+        struct_name: &str,
+    ) -> Vec<String> {
+        // Walk the module hierarchy following the prefix segments.
+        let parts: Vec<&str> = module_prefix.split("::").collect();
+        let mut current = self.symbols;
+        for part in &parts {
+            match current.modules.get(*part) {
+                Some(info) => current = &info.symbols,
+                None => return Vec::new(),
+            }
+        }
+        current.get_all_traits_for_struct(struct_name)
+    }
+
+    /// Register imported structs and enums from the symbol table.
+    /// This ensures that imported types have struct/enum IDs in the IR module,
+    /// so when we instantiate them, `struct_id` is populated correctly.
+    fn register_imported_types(&mut self) {
+        // Register imported structs (top-level)
+        for (name, struct_info) in &self.symbols.structs {
+            // Check if this is an imported symbol
+            if self.symbols.get_module_origin(name).is_some() {
+                self.register_struct(name, struct_info);
+                // Track this import for WGSL codegen (to find impl blocks)
+                self.try_track_external_import(name, ExternalKind::Struct);
+            }
+        }
+
+        // Register imported enums (top-level)
+        for (name, enum_info) in &self.symbols.enums {
+            // Check if this is an imported symbol
+            if self.symbols.get_module_origin(name).is_some() {
+                self.register_enum(name, enum_info);
+                // Track this import for WGSL codegen (to find impl blocks)
+                self.try_track_external_import(name, ExternalKind::Enum);
+            }
+        }
+
+        // Register types from imported nested modules (e.g., fill::Solid)
+        for (module_name, module_info) in &self.symbols.modules {
+            self.register_module_types(module_name, &module_info.symbols);
+        }
+    }
+
+    /// Register types from a nested module recursively
+    fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
+        // Register traits from this module (placeholder — filled in the second pass)
+        for (name, trait_info) in &module_symbols.traits {
+            let qualified_name = format!("{module_prefix}::{name}");
+            if let Err(e) = self.module.add_trait(
+                qualified_name.clone(),
+                IrTrait {
+                    name: qualified_name,
+                    visibility: trait_info.visibility,
+                    composed_traits: Vec::new(),
+                    fields: Vec::new(),
+                    mount_fields: Vec::new(),
+                    generic_params: Vec::new(),
+                },
+            ) {
+                self.errors.push(e);
+            }
+        }
+
+        // Register structs from this module
+        for (name, struct_info) in &module_symbols.structs {
+            let qualified_name = format!("{module_prefix}::{name}");
+            self.register_struct(&qualified_name, struct_info);
+        }
+
+        // Register enums from this module
+        for (name, enum_info) in &module_symbols.enums {
+            let qualified_name = format!("{module_prefix}::{name}");
+            self.register_enum(&qualified_name, enum_info);
+        }
+
+        // Recursively register nested modules
+        for (nested_name, nested_module_info) in &module_symbols.modules {
+            let nested_prefix = format!("{module_prefix}::{nested_name}");
+            self.register_module_types(&nested_prefix, &nested_module_info.symbols);
+        }
+    }
+
+    /// Helper method to register an enum
+    /// Note: `EnumInfo` doesn't preserve variant field details, so we create placeholder variants
+    fn register_enum(&mut self, name: &str, enum_info: &crate::semantic::symbol_table::EnumInfo) {
+        let generic_params = self.lower_generic_params(&enum_info.generics);
+
+        // EnumInfo only stores variant names and arity, not field details
+        // We create placeholder variants with empty fields
+        let variants: Vec<IrEnumVariant> = enum_info
+            .variants
+            .keys()
+            .map(|variant_name| IrEnumVariant {
+                name: variant_name.clone(),
+                fields: Vec::new(), // Field details not available in EnumInfo
+            })
+            .collect();
+
+        if let Err(e) = self.module.add_enum(
+            name.to_string(),
+            IrEnum {
+                name: name.to_string(),
+                visibility: enum_info.visibility,
+                variants,
+                generic_params,
+            },
+        ) {
+            self.errors.push(e);
+        }
+    }
+
+    /// Helper method to register a struct with full field information
+    fn register_struct(
+        &mut self,
+        name: &str,
+        struct_info: &crate::semantic::symbol_table::StructInfo,
+    ) {
+        // Convert fields from StructInfo to IrField
+        let fields: Vec<IrField> = struct_info
+            .fields
+            .iter()
+            .map(|f| IrField {
+                name: f.name.clone(),
+                ty: self.lower_type(&f.ty),
+                mutable: false,
+                optional: false,
+                default: None,
+            })
+            .collect();
+
+        // Convert mount_fields from StructInfo to IrField
+        let mount_fields: Vec<IrField> = struct_info
+            .mount_fields
+            .iter()
+            .map(|f| IrField {
+                name: f.name.clone(),
+                ty: self.lower_type(&f.ty),
+                mutable: false,
+                optional: false,
+                default: None,
+            })
+            .collect();
+
+        // Convert trait names to trait IDs
+        // Use get_all_traits_for_struct to include both inline traits and impl blocks
+        let all_trait_names = self.symbols.get_all_traits_for_struct(name);
+        let traits: Vec<TraitId> = all_trait_names
+            .iter()
+            .filter_map(|trait_name| self.module.trait_id(trait_name))
+            .collect();
+
+        // Convert generic params
+        let generic_params = self.lower_generic_params(&struct_info.generics);
+
+        if let Err(e) = self.module.add_struct(
+            name.to_string(),
+            IrStruct {
+                name: name.to_string(),
+                visibility: struct_info.visibility,
+                traits,
+                fields,
+                mount_fields,
+                generic_params,
+            },
+        ) {
+            self.errors.push(e);
+        }
+    }
+
+    /// First pass: register definitions to allocate IDs
+    fn register_definition(&mut self, def: &Definition) {
+        match def {
+            Definition::Trait(t) => {
+                let name = t.name.name.clone();
+                // Create placeholder, will be filled in second pass
+                if let Err(e) = self.module.add_trait(
+                    name,
+                    IrTrait {
+                        name: t.name.name.clone(),
+                        visibility: t.visibility,
+                        composed_traits: Vec::new(),
+                        fields: Vec::new(),
+                        mount_fields: Vec::new(),
+                        generic_params: Vec::new(),
+                    },
+                ) {
+                    self.errors.push(e);
+                }
+            }
+            Definition::Struct(s) => {
+                let name = s.name.name.clone();
+                if let Err(e) = self.module.add_struct(
+                    name,
+                    IrStruct {
+                        name: s.name.name.clone(),
+                        visibility: s.visibility,
+                        traits: Vec::new(),
+                        fields: Vec::new(),
+                        mount_fields: Vec::new(),
+                        generic_params: Vec::new(),
+                    },
+                ) {
+                    self.errors.push(e);
+                }
+            }
+            Definition::Enum(e) => {
+                let name = e.name.name.clone();
+                if let Err(e) = self.module.add_enum(
+                    name,
+                    IrEnum {
+                        name: e.name.name.clone(),
+                        visibility: e.visibility,
+                        variants: Vec::new(),
+                        generic_params: Vec::new(),
+                    },
+                ) {
+                    self.errors.push(e);
+                }
+            }
+            Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {
+                // Impls are processed after structs.
+                // Modules: nested definitions are registered by register_module_types
+                //   (called from register_imported_types before the first pass).
+                // Functions are processed in the second pass.
+            }
+        }
+    }
+
+    /// Second pass: lower definitions with full type resolution
+    fn lower_definition(&mut self, def: &Definition) {
+        match def {
+            Definition::Trait(t) => self.lower_trait(t),
+            Definition::Struct(s) => self.lower_struct(s),
+            Definition::Enum(e) => self.lower_enum(e),
+            Definition::Impl(i) => self.lower_impl(i),
+            Definition::Function(f) => self.lower_function(f.as_ref()),
+            Definition::Module(m) => {
+                // Lower nested definitions within the module
+                self.lower_module(&m.name.name, &m.definitions);
+            }
+        }
+    }
+
+    /// Lower definitions within a module
+    /// This processes nested definitions with their qualified names
+    fn lower_module(&mut self, module_name: &str, definitions: &[Definition]) {
+        // Save current module prefix
+        let saved_prefix = self.current_module_prefix.clone();
+
+        // Update module prefix for nested definitions
+        if self.current_module_prefix.is_empty() {
+            self.current_module_prefix = module_name.to_string();
+        } else {
+            self.current_module_prefix = format!("{}::{}", self.current_module_prefix, module_name);
+        }
+
+        // Lower all definitions in the module
+        for def in definitions {
+            match def {
+                Definition::Trait(t) => {
+                    // Traits in modules use qualified names
+                    self.lower_trait_with_prefix(t, &self.current_module_prefix.clone());
+                }
+                Definition::Struct(s) => {
+                    // Structs in modules use qualified names
+                    self.lower_struct_with_prefix(s, &self.current_module_prefix.clone());
+                }
+                Definition::Enum(e) => {
+                    // Enums in modules use qualified names
+                    self.lower_enum_with_prefix(e, &self.current_module_prefix.clone());
+                }
+                Definition::Impl(i) => {
+                    // Impls in modules
+                    self.lower_impl(i);
+                }
+                Definition::Function(f) => {
+                    // Functions in modules
+                    self.lower_function(f.as_ref());
+                }
+                Definition::Module(m) => {
+                    // Recursively process nested modules
+                    self.lower_module(&m.name.name, &m.definitions);
+                }
+            }
+        }
+
+        // Restore module prefix
+        self.current_module_prefix = saved_prefix;
+    }
+
+    /// Lower trait with module prefix
+    fn lower_trait_with_prefix(&mut self, t: &TraitDef, prefix: &str) {
+        let qualified_name = format!("{}::{}", prefix, t.name.name);
+        let Some(id) = self
+            .module
+            .trait_id(&qualified_name)
+            .or_else(|| self.module.trait_id(&t.name.name))
+        else {
+            return; // Trait not registered, skip
+        };
+
+        let composed_traits: Vec<TraitId> = t
+            .traits
+            .iter()
+            .filter_map(|ident| self.module.trait_id(&ident.name))
+            .collect();
+
+        let generic_params = self.lower_generic_params(&t.generics);
+        let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
+        let mount_fields: Vec<IrField> = t
+            .mount_fields
+            .iter()
+            .map(|f| self.lower_field_def(f))
+            .collect();
+
+        // Update the trait in place
+        // id was obtained from trait_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
+        let trait_def = &mut self.module.traits[id.0 as usize];
+        trait_def.name = qualified_name;
+        trait_def.visibility = t.visibility;
+        trait_def.composed_traits = composed_traits;
+        trait_def.generic_params = generic_params;
+        trait_def.fields = fields;
+        trait_def.mount_fields = mount_fields;
+    }
+
+    /// Lower struct with module prefix
+    fn lower_struct_with_prefix(&mut self, s: &StructDef, prefix: &str) {
+        let qualified_name = format!("{}::{}", prefix, s.name.name);
+        let Some(id) = self
+            .module
+            .struct_id(&qualified_name)
+            .or_else(|| self.module.struct_id(&s.name.name))
+        else {
+            return; // Struct not registered, skip
+        };
+
+        // Look up the struct's traits from the correct (nested) symbol table.
+        let all_trait_names = self.get_traits_for_struct_in_module(prefix, &s.name.name);
+        let traits: Vec<TraitId> = all_trait_names
+            .iter()
+            .filter_map(|trait_name| {
+                // The trait name from source is unqualified (e.g. "Drawable").
+                // It was registered in the IR as a qualified name (e.g. "shapes::Drawable").
+                // Try the qualified form first, fall back to unqualified.
+                let qualified = format!("{prefix}::{trait_name}");
+                self.module
+                    .trait_id(&qualified)
+                    .or_else(|| self.module.trait_id(trait_name))
+            })
+            .collect();
+
+        let generic_params = self.lower_generic_params(&s.generics);
+        let fields: Vec<IrField> = s
+            .fields
+            .iter()
+            .map(|f| self.lower_struct_field(f))
+            .collect();
+        let mount_fields: Vec<IrField> = s
+            .mount_fields
+            .iter()
+            .map(|f| self.lower_struct_field(f))
+            .collect();
+
+        // Update the struct in place
+        // id was obtained from struct_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
+        let struct_def = &mut self.module.structs[id.0 as usize];
+        struct_def.name = qualified_name;
+        struct_def.visibility = s.visibility;
+        struct_def.traits = traits;
+        struct_def.generic_params = generic_params;
+        struct_def.fields = fields;
+        struct_def.mount_fields = mount_fields;
+    }
+
+    /// Lower enum with module prefix
+    fn lower_enum_with_prefix(&mut self, e: &EnumDef, prefix: &str) {
+        let qualified_name = format!("{}::{}", prefix, e.name.name);
+        let Some(id) = self
+            .module
+            .enum_id(&qualified_name)
+            .or_else(|| self.module.enum_id(&e.name.name))
+        else {
+            return; // Enum not registered, skip
+        };
+
+        let generic_params = self.lower_generic_params(&e.generics);
+        let variants: Vec<IrEnumVariant> = e
+            .variants
+            .iter()
+            .map(|v| IrEnumVariant {
+                name: v.name.name.clone(),
+                fields: v
+                    .fields
+                    .iter()
+                    .map(|f| IrField {
+                        name: f.name.name.clone(),
+                        ty: self.lower_type(&f.ty),
+                        default: None,
+                        optional: false,
+                        mutable: false,
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        // Update the enum in place
+        // id was obtained from enum_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
+        let enum_def = &mut self.module.enums[id.0 as usize];
+        enum_def.name = qualified_name;
+        enum_def.visibility = e.visibility;
+        enum_def.generic_params = generic_params;
+        enum_def.variants = variants;
+    }
+
+    fn lower_trait(&mut self, t: &TraitDef) {
+        let Some(id) = self.module.trait_id(&t.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: t.name.name.clone(),
+                span: t.span,
+            });
+            return;
+        };
+
+        let composed_traits: Vec<TraitId> = t
+            .traits
+            .iter()
+            .filter_map(|ident| self.module.trait_id(&ident.name))
+            .collect();
+
+        let generic_params = self.lower_generic_params(&t.generics);
+
+        let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
+
+        let mount_fields: Vec<IrField> = t
+            .mount_fields
+            .iter()
+            .map(|f| self.lower_field_def(f))
+            .collect();
+
+        // Update the trait in place
+        // id was obtained from trait_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
+        let trait_def = &mut self.module.traits[id.0 as usize];
+        trait_def.composed_traits = composed_traits;
+        trait_def.fields = fields;
+        trait_def.mount_fields = mount_fields;
+        trait_def.generic_params = generic_params;
+    }
+
+    fn lower_struct(&mut self, s: &StructDef) {
+        let Some(id) = self.module.struct_id(&s.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: s.name.name.clone(),
+                span: s.span,
+            });
+            return;
+        };
+
+        // Get all traits from both inline definition and impl blocks
+        let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
+        let traits: Vec<TraitId> = all_trait_names
+            .iter()
+            .filter_map(|trait_name| {
+                // Check if this is an external trait and track the import
+                self.try_track_external_import(trait_name, ExternalKind::Trait);
+                self.module.trait_id(trait_name)
+            })
+            .collect();
+
+        let generic_params = self.lower_generic_params(&s.generics);
+
+        let fields: Vec<IrField> = s
+            .fields
+            .iter()
+            .map(|f| self.lower_struct_field(f))
+            .collect();
+
+        let mount_fields: Vec<IrField> = s
+            .mount_fields
+            .iter()
+            .map(|f| self.lower_struct_field(f))
+            .collect();
+
+        // Update the struct in place
+        // id was obtained from struct_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
+        let struct_def = &mut self.module.structs[id.0 as usize];
+        struct_def.traits = traits;
+        struct_def.fields = fields;
+        struct_def.mount_fields = mount_fields;
+        struct_def.generic_params = generic_params;
+    }
+
+    fn lower_enum(&mut self, e: &EnumDef) {
+        let Some(id) = self.module.enum_id(&e.name.name) else {
+            self.errors.push(CompilerError::UndefinedType {
+                name: e.name.name.clone(),
+                span: e.span,
+            });
+            return;
+        };
+
+        let generic_params = self.lower_generic_params(&e.generics);
+
+        let variants: Vec<IrEnumVariant> = e
+            .variants
+            .iter()
+            .map(|v| IrEnumVariant {
+                name: v.name.name.clone(),
+                fields: v.fields.iter().map(|f| self.lower_field_def(f)).collect(),
+            })
+            .collect();
+
+        // Update the enum in place
+        // id was obtained from enum_id() which guarantees it is a valid index
+        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
+        let enum_def = &mut self.module.enums[id.0 as usize];
+        enum_def.variants = variants;
+        enum_def.generic_params = generic_params;
+    }
+
+    fn lower_impl(&mut self, i: &ImplDef) {
+        use super::ImplTarget;
+
+        // Build qualified name if we're inside a module
+        let qualified_name = if self.current_module_prefix.is_empty() {
+            i.name.name.clone()
+        } else {
+            format!("{}::{}", self.current_module_prefix, i.name.name)
+        };
+
+        // Try to find struct first (qualified then unqualified), then enum
+        let target = if let Some(id) = self.module.struct_id(&qualified_name) {
+            ImplTarget::Struct(id)
+        } else if let Some(id) = self.module.struct_id(&i.name.name) {
+            ImplTarget::Struct(id)
+        } else if let Some(id) = self.module.enum_id(&qualified_name) {
+            ImplTarget::Enum(id)
+        } else if let Some(id) = self.module.enum_id(&i.name.name) {
+            ImplTarget::Enum(id)
+        } else {
+            return; // Error would have been caught in semantic analysis
+        };
+
+        // Set current impl struct/enum for self reference resolution
+        self.current_impl_struct = Some(i.name.name.clone());
+
+        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+
+        // Clear the context
+        self.current_impl_struct = None;
+
+        self.module.add_impl(IrImpl { target, functions });
+    }
+
+    fn lower_function(&mut self, f: &FunctionDef) {
+        let params: Vec<IrFunctionParam> = f
+            .params
+            .iter()
+            .map(|p| IrFunctionParam {
+                name: p.name.name.clone(),
+                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
+                default: p.default.as_ref().map(|e| self.lower_expr(e)),
+            })
+            .collect();
+
+        let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
+
+        // Set return type context for inferred enum resolution
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
+
+        let body = self.lower_expr(&f.body);
+
+        // Restore previous return type context
+        self.current_function_return_type = saved_return_type;
+
+        if let Err(e) = self.module.add_function(
+            f.name.name.clone(),
+            IrFunction {
+                name: f.name.name.clone(),
+                params,
+                return_type,
+                body,
+            },
+        ) {
+            self.errors.push(e);
+        }
+    }
+
+    fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
+        let params: Vec<IrFunctionParam> = f
+            .params
+            .iter()
+            .map(|p| IrFunctionParam {
+                name: p.name.name.clone(),
+                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
+                default: p.default.as_ref().map(|e| self.lower_expr(e)),
+            })
+            .collect();
+
+        let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
+
+        // Set return type context for inferred enum resolution
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
+
+        let body = self.lower_expr(&f.body);
+
+        // Restore previous return type context
+        self.current_function_return_type = saved_return_type;
+
+        IrFunction {
+            name: f.name.name.clone(),
+            params,
+            return_type,
+            body,
+        }
+    }
+
+    /// Extract the type name from an AST type (for return type context)
+    fn type_name(ty: &ast::Type) -> String {
+        match ty {
+            ast::Type::Primitive(prim) => format!("{prim:?}"),
+            ast::Type::Optional(inner) => Self::type_name(inner),
+            ast::Type::Array(_) => "Array".to_string(),
+            ast::Type::Tuple(_) => "Tuple".to_string(),
+            ast::Type::Dictionary { .. } => "Dictionary".to_string(),
+            ast::Type::Closure { .. } => "Closure".to_string(),
+            ast::Type::Ident(name)
+            | ast::Type::Generic { name, .. }
+            | ast::Type::TypeParameter(name) => name.name.clone(),
+        }
+    }
+
+    fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+        params
+            .iter()
+            .map(|p| IrGenericParam {
+                name: p.name.name.clone(),
+                constraints: p
+                    .constraints
+                    .iter()
+                    .filter_map(|c| match c {
+                        GenericConstraint::Trait(ident) => self.module.trait_id(&ident.name),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn lower_field_def(&mut self, f: &ast::FieldDef) -> IrField {
+        IrField {
+            name: f.name.name.clone(),
+            ty: self.lower_type(&f.ty),
+            mutable: f.mutable,
+            optional: false,
+            default: None,
+        }
+    }
+
+    fn lower_struct_field(&mut self, f: &StructField) -> IrField {
+        IrField {
+            name: f.name.name.clone(),
+            ty: self.lower_type(&f.ty),
+            mutable: f.mutable,
+            optional: f.optional,
+            default: f.default.as_ref().map(|e| self.lower_expr(e)),
+        }
+    }
+
+    pub(super) fn lower_type(&mut self, ty: &Type) -> ResolvedType {
+        match ty {
+            Type::Primitive(p) => ResolvedType::Primitive(*p),
+
+            Type::Ident(ident) => {
+                let name = &ident.name;
+
+                // For path-qualified names like "alignment::Horizontal",
+                // try looking up just the last component
+                let lookup_name = simple_type_name(name);
+
+                // Check if this is an external type
+                if let Some(external) = self.try_external_type(lookup_name, vec![]) {
+                    return external;
+                }
+                // Otherwise try local types
+                if let Some(id) = self.module.struct_id(lookup_name) {
+                    ResolvedType::Struct(id)
+                } else if let Some(id) = self.module.trait_id(lookup_name) {
+                    ResolvedType::Trait(id)
+                } else if let Some(id) = self.module.enum_id(lookup_name) {
+                    ResolvedType::Enum(id)
+                } else {
+                    // Might be a type parameter
+                    ResolvedType::TypeParam(name.clone())
+                }
+            }
+
+            Type::Generic { name, args, .. } => {
+                let type_args: Vec<ResolvedType> =
+                    args.iter().map(|t| self.lower_type(t)).collect();
+
+                // Check if this is an external generic type
+                if let Some(external) = self.try_external_type(&name.name, type_args.clone()) {
+                    return external;
+                }
+                // Otherwise try local types
+                self.module.struct_id(&name.name).map_or_else(
+                    || ResolvedType::TypeParam(name.name.clone()),
+                    |base| ResolvedType::Generic {
+                        base,
+                        args: type_args,
+                    },
+                )
+            }
+
+            Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),
+
+            Type::Optional(inner) => ResolvedType::Optional(Box::new(self.lower_type(inner))),
+
+            Type::Tuple(fields) => ResolvedType::Tuple(
+                fields
+                    .iter()
+                    .map(|f| (f.name.name.clone(), self.lower_type(&f.ty)))
+                    .collect(),
+            ),
+
+            Type::TypeParameter(ident) => ResolvedType::TypeParam(ident.name.clone()),
+
+            Type::Dictionary { key, value } => ResolvedType::Dictionary {
+                key_ty: Box::new(self.lower_type(key)),
+                value_ty: Box::new(self.lower_type(value)),
+            },
+
+            Type::Closure { params, ret } => ResolvedType::Closure {
+                param_tys: params.iter().map(|p| self.lower_type(p)).collect(),
+                return_ty: Box::new(self.lower_type(ret)),
+            },
+        }
+    }
+
+    /// Track an external import if the given name is imported from another module.
+    /// This is used for cases where we can't create a full External type (e.g., trait implementations).
+    pub(super) fn try_track_external_import(&mut self, name: &str, expected_kind: ExternalKind) {
+        if let Some(module_path) = self.symbols.get_module_logical_path(name) {
+            let import_item = IrImportItem {
+                name: name.to_string(),
+                kind: expected_kind,
+            };
+
+            // Get source file path for IR lookup during codegen
+            let source_file = self
+                .symbols
+                .get_module_origin(name)
+                .cloned()
+                .unwrap_or_default();
+
+            self.imports_by_module
+                .entry(module_path.clone())
+                .or_insert_with(|| (Vec::new(), source_file))
+                .0
+                .push(import_item);
+        }
+    }
+
+    /// Try to create an external type reference.
+    /// Returns Some(External) if the type is imported, None if it's local.
+    pub(super) fn try_external_type(
+        &mut self,
+        name: &str,
+        type_args: Vec<ResolvedType>,
+    ) -> Option<ResolvedType> {
+        // Check if this symbol was imported from another module
+        let module_path = self.symbols.get_module_logical_path(name)?;
+        let kind = self.symbols.get_symbol_kind(name)?;
+
+        let external_kind = match kind {
+            SymbolKind::Struct => ExternalKind::Struct,
+            SymbolKind::Trait => ExternalKind::Trait,
+            SymbolKind::Enum => ExternalKind::Enum,
+            // Other kinds can't be used as types
+            SymbolKind::Impl | SymbolKind::Let | SymbolKind::Module | SymbolKind::Function => {
+                return None
+            }
+        };
+
+        // Track this import
+        let import_item = IrImportItem {
+            name: name.to_string(),
+            kind: external_kind.clone(),
+        };
+
+        // Get source file path for IR lookup during codegen
+        let source_file = self
+            .symbols
+            .get_module_origin(name)
+            .cloned()
+            .unwrap_or_default();
+
+        self.imports_by_module
+            .entry(module_path.clone())
+            .or_insert_with(|| (Vec::new(), source_file))
+            .0
+            .push(import_item);
+
+        Some(ResolvedType::External {
+            module_path: module_path.clone(),
+            name: name.to_string(),
+            kind: external_kind,
+            type_args,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lower_empty_file() -> Result<(), Box<dyn std::error::Error>> {
+        let ast = File {
+            statements: vec![],
+            span: crate::location::Span::default(),
+        };
+        let symbols = SymbolTable::new();
+        let result = lower_to_ir(&ast, &symbols);
+        if result.is_err() {
+            return Err(format!("Expected ok: {:?}", result.err()).into());
+        }
+        let module = result.map_err(|e| format!("{e:?}"))?;
+        if !module.structs.is_empty() {
+            return Err(format!("Expected empty structs, got {}", module.structs.len()).into());
+        }
+        if !module.traits.is_empty() {
+            return Err(format!("Expected empty traits, got {}", module.traits.len()).into());
+        }
+        if !module.enums.is_empty() {
+            return Err(format!("Expected empty enums, got {}", module.enums.len()).into());
+        }
+        Ok(())
+    }
+}
