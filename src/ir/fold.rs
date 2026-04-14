@@ -34,187 +34,59 @@ impl<'a> ConstantFolder<'a> {
 
     /// Fold constants in an expression, returning a potentially simplified expression.
     #[must_use]
-    #[expect(clippy::too_many_lines, reason = "large match expression — splitting would reduce clarity")]
-    #[expect(clippy::self_only_used_in_recursion, reason = "public API method; recursive implementation requires self")]
     pub fn fold_expr(&self, expr: IrExpr) -> IrExpr {
         match expr {
-            IrExpr::BinaryOp {
-                left,
-                op,
-                right,
-                ty,
-            } => {
-                // First recursively fold children
-                let left_folded = self.fold_expr(*left);
-                let right_folded = self.fold_expr(*right);
-
-                // Try to fold if both sides are literals
-                if let (
-                    IrExpr::Literal {
-                        value: left_val, ..
-                    },
-                    IrExpr::Literal {
-                        value: right_val, ..
-                    },
-                ) = (&left_folded, &right_folded)
-                {
-                    if let Some(result) = Self::fold_binary_op(left_val, op, right_val, &ty) {
-                        return result;
-                    }
-                }
-
-                // Can't fold, return with folded children
-                IrExpr::BinaryOp {
-                    left: Box::new(left_folded),
-                    op,
-                    right: Box::new(right_folded),
-                    ty,
-                }
+            IrExpr::BinaryOp { left, op, right, ty } => self.fold_binary_op_expr(*left, op, *right, ty),
+            IrExpr::UnaryOp { op, operand, ty } => self.fold_unary_op_expr(op, *operand, ty),
+            IrExpr::If { condition, then_branch, else_branch, ty } => {
+                self.fold_if_expr(*condition, *then_branch, else_branch, ty)
             }
-
-            IrExpr::UnaryOp { op, operand, ty } => {
-                // Recursively fold operand
-                let operand_folded = self.fold_expr(*operand);
-
-                // Try to fold if operand is a literal
-                if let IrExpr::Literal {
-                    value: operand_val, ..
-                } = &operand_folded
-                {
-                    if let Some(result) = Self::fold_unary_op(op, operand_val, &ty) {
-                        return result;
-                    }
-                }
-
-                // Can't fold, return with folded operand
-                IrExpr::UnaryOp {
-                    op,
-                    operand: Box::new(operand_folded),
-                    ty,
-                }
-            }
-
-            IrExpr::If {
-                condition,
-                then_branch,
-                else_branch,
-                ty,
-            } => {
-                let cond_folded = self.fold_expr(*condition);
-
-                // If condition is a constant boolean, return the appropriate branch
-                if let IrExpr::Literal {
-                    value: Literal::Boolean(b),
-                    ..
-                } = &cond_folded
-                {
-                    if *b {
-                        return self.fold_expr(*then_branch);
-                    } else if let Some(else_branch) = else_branch {
-                        return self.fold_expr(*else_branch);
-                    }
-                }
-
-                // Can't fold, return with folded children
-                IrExpr::If {
-                    condition: Box::new(cond_folded),
-                    then_branch: Box::new(self.fold_expr(*then_branch)),
-                    else_branch: else_branch.map(|e| Box::new(self.fold_expr(*e))),
-                    ty,
-                }
-            }
-
             IrExpr::Array { elements, ty } => IrExpr::Array {
                 elements: elements.into_iter().map(|e| self.fold_expr(e)).collect(),
                 ty,
             },
-
             IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
-                fields: fields
-                    .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
-                    .collect(),
+                fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
                 ty,
             },
-
-            IrExpr::StructInst {
-                struct_id,
-                type_args,
-                fields,
-                mounts,
-                ty,
-            } => IrExpr::StructInst {
-                struct_id,
-                type_args,
-                fields: fields
-                    .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
-                    .collect(),
-                mounts: mounts
-                    .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
-                    .collect(),
-                ty,
-            },
-
+            IrExpr::StructInst { struct_id, type_args, fields, mounts, ty } => {
+                IrExpr::StructInst {
+                    struct_id,
+                    type_args,
+                    fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
+                    mounts: mounts.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
+                    ty,
+                }
+            }
             IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
                 path,
-                args: args
-                    .into_iter()
-                    .map(|(name, expr)| (name, self.fold_expr(expr)))
-                    .collect(),
+                args: args.into_iter().map(|(name, expr)| (name, self.fold_expr(expr))).collect(),
                 ty,
             },
-
-            IrExpr::MethodCall {
-                receiver,
-                method,
-                args,
-                ty,
-            } => IrExpr::MethodCall {
+            IrExpr::MethodCall { receiver, method, args, ty } => IrExpr::MethodCall {
                 receiver: Box::new(self.fold_expr(*receiver)),
                 method,
-                args: args
-                    .into_iter()
-                    .map(|(name, expr)| (name, self.fold_expr(expr)))
-                    .collect(),
+                args: args.into_iter().map(|(name, expr)| (name, self.fold_expr(expr))).collect(),
                 ty,
             },
-
-            // Expressions that can't be folded further
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. }
             | IrExpr::EventMapping { .. } => expr,
-
-            // FieldAccess - fold the object expression
             IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
                 object: Box::new(self.fold_expr(*object)),
                 field,
                 ty,
             },
-
-            // Expressions with nested folding needed
-            IrExpr::For {
-                var,
-                var_ty,
-                collection,
-                body,
-                ty,
-            } => IrExpr::For {
+            IrExpr::For { var, var_ty, collection, body, ty } => IrExpr::For {
                 var,
                 var_ty,
                 collection: Box::new(self.fold_expr(*collection)),
                 body: Box::new(self.fold_expr(*body)),
                 ty,
             },
-
-            IrExpr::Match {
-                scrutinee,
-                arms,
-                ty,
-            } => IrExpr::Match {
+            IrExpr::Match { scrutinee, arms, ty } => IrExpr::Match {
                 scrutinee: Box::new(self.fold_expr(*scrutinee)),
                 arms: arms
                     .into_iter()
@@ -227,55 +99,88 @@ impl<'a> ConstantFolder<'a> {
                     .collect(),
                 ty,
             },
-
-            IrExpr::EnumInst {
+            IrExpr::EnumInst { enum_id, variant, fields, ty } => IrExpr::EnumInst {
                 enum_id,
                 variant,
-                fields,
-                ty,
-            } => IrExpr::EnumInst {
-                enum_id,
-                variant,
-                fields: fields
-                    .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
-                    .collect(),
+                fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
                 ty,
             },
-
-
             IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
-                entries: entries
-                    .into_iter()
-                    .map(|(k, v)| (self.fold_expr(k), self.fold_expr(v)))
-                    .collect(),
+                entries: entries.into_iter().map(|(k, v)| (self.fold_expr(k), self.fold_expr(v))).collect(),
                 ty,
             },
-
             IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
                 dict: Box::new(self.fold_expr(*dict)),
                 key: Box::new(self.fold_expr(*key)),
                 ty,
             },
-
-            IrExpr::Block {
-                statements,
-                result,
-                ty,
-            } => IrExpr::Block {
-                statements: statements
-                    .into_iter()
-                    .map(|stmt| stmt.map_exprs(|e| self.fold_expr(e)))
-                    .collect(),
+            IrExpr::Block { statements, result, ty } => IrExpr::Block {
+                statements: statements.into_iter().map(|stmt| stmt.map_exprs(|e| self.fold_expr(e))).collect(),
                 result: Box::new(self.fold_expr(*result)),
                 ty,
             },
-
             IrExpr::Closure { params, body, ty } => IrExpr::Closure {
                 params,
                 body: Box::new(self.fold_expr(*body)),
                 ty,
             },
+        }
+    }
+
+    /// Fold a binary operation: recursively fold children, then try constant folding.
+    fn fold_binary_op_expr(
+        &self,
+        left: IrExpr,
+        op: BinaryOperator,
+        right: IrExpr,
+        ty: ResolvedType,
+    ) -> IrExpr {
+        let left_folded = self.fold_expr(left);
+        let right_folded = self.fold_expr(right);
+        if let (
+            IrExpr::Literal { value: left_val, .. },
+            IrExpr::Literal { value: right_val, .. },
+        ) = (&left_folded, &right_folded)
+        {
+            if let Some(result) = Self::fold_binary_op(left_val, op, right_val, &ty) {
+                return result;
+            }
+        }
+        IrExpr::BinaryOp { left: Box::new(left_folded), op, right: Box::new(right_folded), ty }
+    }
+
+    /// Fold a unary operation: recursively fold the operand, then try constant folding.
+    fn fold_unary_op_expr(&self, op: UnaryOperator, operand: IrExpr, ty: ResolvedType) -> IrExpr {
+        let operand_folded = self.fold_expr(operand);
+        if let IrExpr::Literal { value: operand_val, .. } = &operand_folded {
+            if let Some(result) = Self::fold_unary_op(op, operand_val, &ty) {
+                return result;
+            }
+        }
+        IrExpr::UnaryOp { op, operand: Box::new(operand_folded), ty }
+    }
+
+    /// Fold an if expression: eliminate dead branch when condition is a constant boolean.
+    fn fold_if_expr(
+        &self,
+        condition: IrExpr,
+        then_branch: IrExpr,
+        else_branch: Option<Box<IrExpr>>,
+        ty: ResolvedType,
+    ) -> IrExpr {
+        let cond_folded = self.fold_expr(condition);
+        if let IrExpr::Literal { value: Literal::Boolean(b), .. } = &cond_folded {
+            if *b {
+                return self.fold_expr(then_branch);
+            } else if let Some(else_branch) = else_branch {
+                return self.fold_expr(*else_branch);
+            }
+        }
+        IrExpr::If {
+            condition: Box::new(cond_folded),
+            then_branch: Box::new(self.fold_expr(then_branch)),
+            else_branch: else_branch.map(|e| Box::new(self.fold_expr(*e))),
+            ty,
         }
     }
 
