@@ -82,13 +82,13 @@ pub struct QueryProvider<'a> {
 
 impl<'a> QueryProvider<'a> {
     /// Create a new query provider
-    #[must_use] 
+    #[must_use]
     pub const fn new(symbols: &'a SymbolTable) -> Self {
         Self { symbols }
     }
 
     /// Get all visible symbols as completions
-    #[must_use] 
+    #[must_use]
     pub fn get_all_completions(&self) -> Vec<CompletionCandidate> {
         let mut completions = vec![
             CompletionCandidate::new("pub", CompletionKind::Keyword),
@@ -102,22 +102,18 @@ impl<'a> QueryProvider<'a> {
 
         // Add traits (unified)
         for (name, info) in &self.symbols.traits {
-            let kind = if info.mount_fields.is_empty() {
-                CompletionKind::ModelTrait
-            } else {
-                CompletionKind::ViewTrait
-            };
-            completions.push(CompletionCandidate::new(name.clone(), kind));
+            completions.push(CompletionCandidate::new(
+                name.clone(),
+                CompletionKind::ModelTrait,
+            ));
         }
 
         // Add structs (unified)
-        for (name, info) in &self.symbols.structs {
-            let kind = if info.mount_fields.is_empty() {
-                CompletionKind::Model
-            } else {
-                CompletionKind::View
-            };
-            completions.push(CompletionCandidate::new(name.clone(), kind));
+        for name in self.symbols.structs.keys() {
+            completions.push(CompletionCandidate::new(
+                name.clone(),
+                CompletionKind::Model,
+            ));
         }
 
         // Add enums
@@ -137,7 +133,7 @@ impl<'a> QueryProvider<'a> {
     }
 
     /// Get type completions (types that can be used in type positions)
-    #[must_use] 
+    #[must_use]
     pub fn get_type_completions(&self) -> Vec<CompletionCandidate> {
         let mut completions = vec![
             CompletionCandidate::new("String", CompletionKind::PrimitiveType),
@@ -148,13 +144,11 @@ impl<'a> QueryProvider<'a> {
         ];
 
         // Add structs (they can be used as types)
-        for (name, info) in &self.symbols.structs {
-            let kind = if info.mount_fields.is_empty() {
-                CompletionKind::Model
-            } else {
-                CompletionKind::View
-            };
-            completions.push(CompletionCandidate::new(name.clone(), kind));
+        for name in self.symbols.structs.keys() {
+            completions.push(CompletionCandidate::new(
+                name.clone(),
+                CompletionKind::Model,
+            ));
         }
 
         // Add enums
@@ -163,20 +157,18 @@ impl<'a> QueryProvider<'a> {
         }
 
         // Add traits (can be used as type constraints)
-        for (name, info) in &self.symbols.traits {
-            let kind = if info.mount_fields.is_empty() {
-                CompletionKind::ModelTrait
-            } else {
-                CompletionKind::ViewTrait
-            };
-            completions.push(CompletionCandidate::new(name.clone(), kind));
+        for name in self.symbols.traits.keys() {
+            completions.push(CompletionCandidate::new(
+                name.clone(),
+                CompletionKind::ModelTrait,
+            ));
         }
 
         completions
     }
 
     /// Get hover info for a symbol by name
-    #[must_use] 
+    #[must_use]
     pub fn get_hover_for_symbol(&self, name: &str) -> Option<HoverInfo> {
         // Check traits
         if let Some(info) = self.symbols.traits.get(name) {
@@ -203,7 +195,7 @@ impl<'a> QueryProvider<'a> {
     }
 
     /// Find definition location for a symbol by name
-    #[must_use] 
+    #[must_use]
     pub fn find_definition_by_name(&self, name: &str) -> Option<DefinitionInfo> {
         // Check traits
         if let Some(info) = self.symbols.traits.get(name) {

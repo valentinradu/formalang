@@ -2,7 +2,10 @@ use crate::location::Span;
 use thiserror::Error;
 
 /// Compiler error types
-#[expect(clippy::exhaustive_enums, reason = "matched exhaustively by consumer code")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "matched exhaustively by consumer code"
+)]
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum CompilerError {
     // Lexical errors
@@ -67,23 +70,6 @@ pub enum CompilerError {
         span: Span,
     },
 
-    #[error("Unknown mounting point '{mounting_point}' for component '{component}'")]
-    UnknownMountingPoint {
-        component: String,
-        mounting_point: String,
-        span: Span,
-    },
-
-    #[error(
-        "Invalid child type '{child_type}' in mounting point '{mounting_point}' of '{component}'"
-    )]
-    InvalidMountingPointChild {
-        component: String,
-        mounting_point: String,
-        child_type: String,
-        span: Span,
-    },
-
     #[error("Component '{component}' cannot be used in this context")]
     InvalidComponentPosition {
         component: String,
@@ -96,12 +82,6 @@ pub enum CompilerError {
 
     #[error("Undefined component: {name}")]
     UndefinedComponent { name: String, span: Span },
-
-    #[error("Mounting point '{mounting_point}' cannot be on the same line as the component")]
-    MountingPointOnSameLine { mounting_point: String, span: Span },
-
-    #[error("Property '{property}' must come before mounting points")]
-    PropertyAfterMountingPoint { property: String, span: Span },
 
     // Module resolution errors
     #[error("Module not found: '{name}'")]
@@ -160,41 +140,6 @@ pub enum CompilerError {
     #[error("Field '{field}' has type {actual} but trait '{trait_name}' requires {expected}")]
     TraitFieldTypeMismatch {
         field: String,
-        trait_name: String,
-        expected: String,
-        actual: String,
-        span: Span,
-    },
-
-    #[error("Model trait '{name}' cannot have mounting points")]
-    ModelTraitWithMountingPoints { name: String, span: Span },
-
-    #[error("View trait '{name}' used in model '{model}'")]
-    ViewTraitInModel {
-        name: String,
-        model: String,
-        span: Span,
-    },
-
-    #[error("Model trait '{name}' used in view '{view}'")]
-    ModelTraitInView {
-        name: String,
-        view: String,
-        span: Span,
-    },
-
-    #[error("Missing required mounting point '{mount}' from trait '{trait_name}'")]
-    MissingTraitMountingPoint {
-        mount: String,
-        trait_name: String,
-        span: Span,
-    },
-
-    #[error(
-        "Mounting point '{mount}' has type {actual} but trait '{trait_name}' requires {expected}"
-    )]
-    TraitMountingPointTypeMismatch {
-        mount: String,
         trait_name: String,
         expected: String,
         actual: String,
@@ -321,13 +266,40 @@ pub enum CompilerError {
     #[error("Duplicate generic parameter '{param}'")]
     DuplicateGenericParam { param: String, span: Span },
 
-    // Mount field errors
-    #[error("Unknown mount field '{mount}' in struct '{struct_name}'")]
-    UnknownMount {
-        mount: String,
-        struct_name: String,
+    // Extern validation errors
+    #[error("Extern function '{function}' must not have a body")]
+    ExternFnWithBody { function: String, span: Span },
+
+    #[error("Non-extern function '{function}' must have a body")]
+    RegularFnWithoutBody { function: String, span: Span },
+
+    #[error("Extern impl block for '{name}' must not contain function bodies")]
+    ExternImplWithBody { name: String, span: Span },
+
+    #[error("Missing method '{method}' required by trait '{trait_name}'")]
+    MissingTraitMethod {
+        method: String,
+        trait_name: String,
         span: Span,
     },
+
+    #[error(
+        "Method '{method}' signature does not match trait '{trait_name}': expected {expected}, found {actual}"
+    )]
+    TraitMethodSignatureMismatch {
+        method: String,
+        trait_name: String,
+        expected: String,
+        actual: String,
+        span: Span,
+    },
+
+    // Function overload errors
+    #[error("Ambiguous call to '{function}': multiple overloads match")]
+    AmbiguousCall { function: String, span: Span },
+
+    #[error("No matching overload for '{function}' with the given arguments")]
+    NoMatchingOverload { function: String, span: Span },
 
     // Enum type inference errors
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
@@ -352,7 +324,7 @@ pub enum CompilerError {
 }
 
 impl CompilerError {
-    #[must_use] 
+    #[must_use]
     pub const fn span(&self) -> Span {
         match self {
             Self::InvalidCharacter { span, .. }
@@ -368,13 +340,9 @@ impl CompilerError {
             | Self::UnknownProperty { span, .. }
             | Self::MissingRequiredProperty { span, .. }
             | Self::InvalidPropertyValue { span, .. }
-            | Self::UnknownMountingPoint { span, .. }
-            | Self::InvalidMountingPointChild { span, .. }
             | Self::InvalidComponentPosition { span, .. }
             | Self::DuplicateDefinition { span, .. }
             | Self::UndefinedComponent { span, .. }
-            | Self::MountingPointOnSameLine { span, .. }
-            | Self::PropertyAfterMountingPoint { span, .. }
             | Self::ModuleNotFound { span, .. }
             | Self::ModuleReadError { span, .. }
             | Self::CircularImport { span, .. }
@@ -387,11 +355,6 @@ impl CompilerError {
             | Self::NotATrait { span, .. }
             | Self::MissingTraitField { span, .. }
             | Self::TraitFieldTypeMismatch { span, .. }
-            | Self::ModelTraitWithMountingPoints { span, .. }
-            | Self::ViewTraitInModel { span, .. }
-            | Self::ModelTraitInView { span, .. }
-            | Self::MissingTraitMountingPoint { span, .. }
-            | Self::TraitMountingPointTypeMismatch { span, .. }
             | Self::CircularDependency { span, .. }
             | Self::InvalidBinaryOp { span, .. }
             | Self::ForLoopNotArray { span, .. }
@@ -414,7 +377,13 @@ impl CompilerError {
             | Self::OutOfScopeTypeParameter { span, .. }
             | Self::MissingGenericArguments { span, .. }
             | Self::DuplicateGenericParam { span, .. }
-            | Self::UnknownMount { span, .. }
+            | Self::ExternFnWithBody { span, .. }
+            | Self::RegularFnWithoutBody { span, .. }
+            | Self::ExternImplWithBody { span, .. }
+            | Self::MissingTraitMethod { span, .. }
+            | Self::TraitMethodSignatureMismatch { span, .. }
+            | Self::AmbiguousCall { span, .. }
+            | Self::NoMatchingOverload { span, .. }
             | Self::CannotInferEnumType { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }

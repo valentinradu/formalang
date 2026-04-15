@@ -115,7 +115,8 @@ fn format_parse_error(error: &Rich<'_, Token>) -> String {
     use chumsky::error::RichPattern;
 
     let found = error
-        .found().map_or_else(|| "end of input".to_string(), |t| format!("{t}"));
+        .found()
+        .map_or_else(|| "end of input".to_string(), |t| format!("{t}"));
 
     let expected: Vec<String> = error
         .expected()
@@ -135,7 +136,10 @@ fn format_parse_error(error: &Rich<'_, Token>) -> String {
     if expected.is_empty() {
         format!("found {} at {}..{}", found, span.start, span.end)
     } else if expected.len() == 1 {
-        #[expect(clippy::indexing_slicing, reason = "bounds checked above: expected.len() == 1")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "bounds checked above: expected.len() == 1"
+        )]
         let first = &expected[0];
         format!(
             "found {} at {}..{}, expected {}",
@@ -162,6 +166,7 @@ where
         .repeated()
         .collect::<Vec<_>>()
         .map_with(|statements, e| File {
+            format_version: 1,
             statements,
             span: span_from_simple(e.span()),
         })
@@ -203,10 +208,12 @@ where
             let items = items.unwrap_or_else(|| {
                 // If no items specified, last segment is the item
                 path.pop().map_or_else(
-                    || UseItems::Single(Ident {
-                        name: String::new(),
-                        span: CustomSpan::default(),
-                    }),
+                    || {
+                        UseItems::Single(Ident {
+                            name: String::new(),
+                            span: CustomSpan::default(),
+                        })
+                    },
                     UseItems::Single,
                 )
             });
@@ -313,38 +320,17 @@ where
     .labelled("identifier")
 }
 
-/// Parse an invocation target: identifier or GPU type constructor
-/// Accepts regular identifiers plus vec2, vec3, vec4, ivec2, etc. for type constructors
+/// Parse an invocation target: identifier or self
 fn invocation_target_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     select! {
-        // Regular identifiers
         Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span())),
         Token::SelfKeyword = e => Ident::new("self".to_string(), span_from_simple(e.span())),
-        // GPU scalar type constructors (for casting)
-        Token::F32Type = e => Ident::new("f32".to_string(), span_from_simple(e.span())),
-        Token::I32Type = e => Ident::new("i32".to_string(), span_from_simple(e.span())),
-        Token::U32Type = e => Ident::new("u32".to_string(), span_from_simple(e.span())),
-        Token::BoolType = e => Ident::new("bool".to_string(), span_from_simple(e.span())),
-        // GPU vector type constructors
-        Token::Vec2Type = e => Ident::new("vec2".to_string(), span_from_simple(e.span())),
-        Token::Vec3Type = e => Ident::new("vec3".to_string(), span_from_simple(e.span())),
-        Token::Vec4Type = e => Ident::new("vec4".to_string(), span_from_simple(e.span())),
-        Token::IVec2Type = e => Ident::new("ivec2".to_string(), span_from_simple(e.span())),
-        Token::IVec3Type = e => Ident::new("ivec3".to_string(), span_from_simple(e.span())),
-        Token::IVec4Type = e => Ident::new("ivec4".to_string(), span_from_simple(e.span())),
-        Token::UVec2Type = e => Ident::new("uvec2".to_string(), span_from_simple(e.span())),
-        Token::UVec3Type = e => Ident::new("uvec3".to_string(), span_from_simple(e.span())),
-        Token::UVec4Type = e => Ident::new("uvec4".to_string(), span_from_simple(e.span())),
-        // GPU matrix type constructors
-        Token::Mat2Type = e => Ident::new("mat2".to_string(), span_from_simple(e.span())),
-        Token::Mat3Type = e => Ident::new("mat3".to_string(), span_from_simple(e.span())),
-        Token::Mat4Type = e => Ident::new("mat4".to_string(), span_from_simple(e.span())),
     }
-    .labelled("identifier or type constructor")
+    .labelled("identifier")
 }
 
 /// Convert a list of block statements to an Expr (Block or single expression).
@@ -389,9 +375,7 @@ const fn span_from_simple(s: SimpleSpan) -> CustomSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{
-        BindingPattern, Definition, Expr, Literal, PrimitiveType, Type,
-    };
+    use crate::ast::{BindingPattern, Definition, Expr, Literal, PrimitiveType, Type};
     use crate::lexer::Lexer;
 
     fn parse_type_str(input: &str) -> Result<Type, Vec<(String, CustomSpan)>> {
@@ -430,8 +414,8 @@ mod tests {
     #[test]
     fn test_never_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
         let input = r"
-            pub struct Empty: View {
-                mount body: Never
+            pub struct Empty {
+                body: Never
             }
         ";
         let tokens = Lexer::tokenize_all(input);
@@ -556,10 +540,9 @@ mod tests {
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
         if result.is_err() {
-            return Err(format!(
-                "Failed to parse struct with Dictionary field: : {result:?}"
-            )
-            .into());
+            return Err(
+                format!("Failed to parse struct with Dictionary field: : {result:?}").into(),
+            );
         }
 
         let file = result.map_err(|e| format!("{e:?}"))?;
@@ -657,9 +640,7 @@ mod tests {
                     | Type::Tuple(_)
                     | Type::Closure { .. }
                     | Type::TypeParameter(_) => {
-                        return Err(
-                            format!("Expected inner Dictionary type, got {value:?}").into()
-                        )
+                        return Err(format!("Expected inner Dictionary type, got {value:?}").into())
                     }
                 }
             }
@@ -712,10 +693,9 @@ mod tests {
                 | Type::Tuple(_)
                 | Type::Closure { .. }
                 | Type::TypeParameter(_) => {
-                    return Err(format!(
-                        "Expected Dictionary type inside Optional, got {inner:?}"
+                    return Err(
+                        format!("Expected Dictionary type inside Optional, got {inner:?}").into(),
                     )
-                    .into())
                 }
             },
             Type::Primitive(_)
@@ -736,10 +716,9 @@ mod tests {
     fn test_dictionary_with_custom_types() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_type_str("[UserId: UserData]");
         if result.is_err() {
-            return Err(format!(
-                "Failed to parse dictionary with custom types: : {result:?}"
-            )
-            .into());
+            return Err(
+                format!("Failed to parse dictionary with custom types: : {result:?}").into(),
+            );
         }
         let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
@@ -796,7 +775,10 @@ mod tests {
                     return Err(format!("expected {:?} == {:?}", entries.len(), 2).into());
                 }
                 // Check first entry
-                #[expect(clippy::indexing_slicing, reason = "bounds checked above: entries.len() == 2")]
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "bounds checked above: entries.len() == 2"
+                )]
                 let (first_key, first_val) = (&entries[0].0, &entries[0].1);
                 match (first_key, first_val) {
                     (Expr::Literal(Literal::String(k)), Expr::Literal(Literal::Number(v))) => {
@@ -911,9 +893,7 @@ mod tests {
             | Expr::ClosureExpr { .. }
             | Expr::LetExpr { .. }
             | Expr::MethodCall { .. }
-            | Expr::Block { .. } => {
-                return Err(format!("Expected DictAccess, got {expr:?}").into())
-            }
+            | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
         }
         Ok(())
     }
@@ -956,7 +936,8 @@ mod tests {
                         }
                         match *inner_dict {
                             Expr::Reference { path, .. } => {
-                                let first = path.first().ok_or("expected at least one path segment")?;
+                                let first =
+                                    path.first().ok_or("expected at least one path segment")?;
                                 if first.name != "data" {
                                     return Err(format!(
                                         "expected {:?} == {:?}",
@@ -1025,9 +1006,7 @@ mod tests {
             | Expr::ClosureExpr { .. }
             | Expr::LetExpr { .. }
             | Expr::MethodCall { .. }
-            | Expr::Block { .. } => {
-                return Err(format!("Expected DictAccess, got {expr:?}").into())
-            }
+            | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
         }
         Ok(())
     }
@@ -1036,19 +1015,21 @@ mod tests {
     fn test_dictionary_with_expression_key() -> Result<(), Box<dyn std::error::Error>> {
         let result = parse_expr_from_let("data[index]");
         if result.is_err() {
-            return Err(
-                format!("Failed to parse dict access with expr key: : {result:?}").into(),
-            );
+            return Err(format!("Failed to parse dict access with expr key: : {result:?}").into());
         }
         let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
                 (Expr::Reference { path: d, .. }, Expr::Reference { path: k, .. }) => {
-                    let d0 = d.first().ok_or("expected at least one segment in dict path")?;
+                    let d0 = d
+                        .first()
+                        .ok_or("expected at least one segment in dict path")?;
                     if d0.name != "data" {
                         return Err(format!("expected {:?} == {:?}", d0.name, "data").into());
                     }
-                    let k0 = k.first().ok_or("expected at least one segment in key path")?;
+                    let k0 = k
+                        .first()
+                        .ok_or("expected at least one segment in key path")?;
                     if k0.name != "index" {
                         return Err(format!("expected {:?} == {:?}", k0.name, "index").into());
                     }
@@ -1073,9 +1054,7 @@ mod tests {
             | Expr::ClosureExpr { .. }
             | Expr::LetExpr { .. }
             | Expr::MethodCall { .. }
-            | Expr::Block { .. } => {
-                return Err(format!("Expected DictAccess, got {expr:?}").into())
-            }
+            | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
         }
         Ok(())
     }
@@ -1314,7 +1293,7 @@ mod tests {
                     | Expr::MethodCall { .. }
                     | Expr::Block { .. } => {
                         return Err(
-                            format!("Expected InferredEnumInstantiation, got {body:?}").into(),
+                            format!("Expected InferredEnumInstantiation, got {body:?}").into()
                         )
                     }
                 }
@@ -1491,9 +1470,7 @@ mod tests {
         let tokens = Lexer::tokenize_all(input);
         let result = parse_file(&tokens);
         if result.is_err() {
-            return Err(
-                format!("Failed to parse struct with closure field: : {result:?}").into(),
-            );
+            return Err(format!("Failed to parse struct with closure field: : {result:?}").into());
         }
         Ok(())
     }
@@ -1838,9 +1815,7 @@ mod tests {
         // Block with let binding a literal, then a call
         let result = parse_expr_from_let("{ let v = 1 Result(value: v) }");
         if result.is_err() {
-            return Err(
-                format!("Failed to parse block let simple then call: : {result:?}").into(),
-            );
+            return Err(format!("Failed to parse block let simple then call: : {result:?}").into());
         }
         Ok(())
     }
@@ -1870,10 +1845,9 @@ mod tests {
         // Block with let binding a method call, then a reference
         let result = parse_expr_from_let("{ let v = foo.bar(1) v }");
         if result.is_err() {
-            return Err(format!(
-                "Failed to parse block let method call then ref: : {result:?}"
-            )
-            .into());
+            return Err(
+                format!("Failed to parse block let method call then ref: : {result:?}").into(),
+            );
         }
         Ok(())
     }
@@ -1884,10 +1858,9 @@ mod tests {
         // This uses the let EXPRESSION, not block statement
         let result = parse_expr_from_let("let v = foo.bar(1) v");
         if result.is_err() {
-            return Err(format!(
-                "Failed to parse let expr method call then ref: : {result:?}"
-            )
-            .into());
+            return Err(
+                format!("Failed to parse let expr method call then ref: : {result:?}").into(),
+            );
         }
         Ok(())
     }
@@ -1897,9 +1870,7 @@ mod tests {
         // Let expression with function call value, then reference body
         let result = parse_expr_from_let("let v = foo(1) v");
         if result.is_err() {
-            return Err(
-                format!("Failed to parse let expr fn call then ref: : {result:?}").into(),
-            );
+            return Err(format!("Failed to parse let expr fn call then ref: : {result:?}").into());
         }
         Ok(())
     }
@@ -1909,10 +1880,9 @@ mod tests {
         // Let expression with field access value, then reference body
         let result = parse_expr_from_let("let v = foo.bar v");
         if result.is_err() {
-            return Err(format!(
-                "Failed to parse let expr field access then ref: : {result:?}"
-            )
-            .into());
+            return Err(
+                format!("Failed to parse let expr field access then ref: : {result:?}").into(),
+            );
         }
         Ok(())
     }

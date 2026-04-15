@@ -139,7 +139,10 @@ pub trait Backend {
 }
 
 /// Error produced by a [`Pipeline`].
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Debug)]
 pub enum PipelineError<E: std::error::Error> {
     /// One or more passes failed with compiler errors.
@@ -213,7 +216,7 @@ impl std::fmt::Debug for Pipeline {
 
 impl Pipeline {
     /// Create an empty pipeline with no passes.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self { passes: Vec::new() }
     }

@@ -1,5 +1,4 @@
 pub mod ast;
-pub mod builtins;
 pub mod error;
 pub mod ir;
 pub mod lexer;
@@ -13,8 +12,8 @@ pub mod semantic;
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
 pub use ir::{
-    simple_type_name, EnumId, ExternalKind, FunctionId, IrFunction, IrFunctionParam, IrImport,
-    IrImportItem, IrModule, ResolvedType, StructId, TraitId,
+    simple_type_name, EnumId, ExternalKind, FunctionId, IrFunction, IrFunctionParam, IrFunctionSig,
+    IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
 };
 pub use lexer::{Lexer, Token};
 pub use location::{Location, Span};

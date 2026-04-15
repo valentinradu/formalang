@@ -156,7 +156,9 @@ fn test_mock_resolver_multi_segment_path() -> Result<(), Box<dyn std::error::Err
         "pub struct List { items: [String] }",
     );
 
-    resolver.resolve(&["std".to_string(), "collections".to_string()], None).map_err(|e| format!("{e:?}"))?;
+    resolver
+        .resolve(&["std".to_string(), "collections".to_string()], None)
+        .map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
@@ -372,10 +374,7 @@ fn test_module_error_clone() -> Result<(), Box<dyn std::error::Error>> {
 // Semantic Analyzer Integration Tests with Mock Resolver
 // =============================================================================
 
-fn analyze_with_mock(
-    source: &str,
-    resolver: MockModuleResolver,
-) -> Result<(), Vec<CompilerError>> {
+fn analyze_with_mock(source: &str, resolver: MockModuleResolver) -> Result<(), Vec<CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
     let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
@@ -387,10 +386,7 @@ fn analyze_with_mock(
     analyzer.analyze(&file)
 }
 
-fn analyze_with_filesystem(
-    source: &str,
-    root_dir: PathBuf,
-) -> Result<(), Vec<CompilerError>> {
+fn analyze_with_filesystem(source: &str, root_dir: PathBuf) -> Result<(), Vec<CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
     let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
@@ -535,12 +531,10 @@ struct Main {}
         return Err("assertion failed".into());
     }
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| {
-        matches!(
-            e,
-            CompilerError::ImportItemNotFound { .. }
-        )
-    }) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ImportItemNotFound { .. }))
+    {
         return Err(format!("expected ImportItemNotFound error, got: {errors:?}").into());
     }
     Ok(())
@@ -999,10 +993,9 @@ fn test_simple_self_with_stdlib() -> Result<(), Box<dyn std::error::Error>> {
     let simple_source = r#"
 use mylib::*
 
-pub struct Modal: View {
+pub struct Modal {
   isOpen: Boolean = false,
-  title: String = "test",
-  mount body: View
+  title: String = "test"
 }
 
 impl Modal {
@@ -1024,9 +1017,8 @@ fn test_minimal_self_reference() -> Result<(), Box<dyn std::error::Error>> {
     let minimal_source = r"
 use mylib::*
 
-pub struct Modal: View {
-  isOpen: Boolean = false,
-  mount body: View
+pub struct Modal {
+  isOpen: Boolean = false
 }
 
 impl Modal {

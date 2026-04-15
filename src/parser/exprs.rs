@@ -5,8 +5,8 @@ use chumsky::pratt::{infix, left, postfix, prefix};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm,
-    Pattern, UnaryOperator,
+    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, Pattern,
+    UnaryOperator,
 };
 use crate::lexer::Token;
 
@@ -35,8 +35,6 @@ where
         let literal = choice((
             select! { Token::String(s) => Expr::Literal(Literal::String(s)) },
             select! { Token::Number(n) => Expr::Literal(Literal::Number(n)) },
-            select! { Token::UnsignedInt(n) => Expr::Literal(Literal::UnsignedInt(n)) },
-            select! { Token::SignedInt(n) => Expr::Literal(Literal::SignedInt(n)) },
             select! { Token::Regex(s) => {
                 // Parse regex at parse time
                 if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
@@ -118,11 +116,7 @@ where
             // This distinguishes `Status.active` (enum) from `point.x` (field access)
             .try_map(|(path, variant), span| {
                 let type_name = path.last().map_or("", |id| id.name.as_str());
-                if type_name
-                    .chars()
-                    .next()
-                    .is_some_and(char::is_uppercase)
-                {
+                if type_name.chars().next().is_some_and(char::is_uppercase) {
                     Ok((path, variant))
                 } else {
                     Err(Rich::custom(
@@ -163,10 +157,8 @@ where
                 });
 
         // Invocation: Name(arg: value, ...) or Name<Type>(arg: value, ...)
-        // Can be struct instantiation, function call, or WGSL type constructor
-        // With optional mount points (for structs): Name(arg: value) { mount: expr, ... }
+        // Can be struct instantiation or function call.
         // Supports module-qualified paths: module::Name(...)
-        // Also supports WGSL type constructors: vec2(x, y), mat4(...)
         let invocation = invocation_target_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
@@ -182,36 +174,12 @@ where
                     .or_not(),
             )
             .then(invocation_args.clone())
-            .then(
-                // Optional mount points (only valid for struct instantiation)
-                ident_parser()
-                    .then_ignore(just(Token::Colon).labelled("':'"))
-                    .then(
-                        // Mounting block syntax: name: { ViewInst() {} ViewInst() {} }
-                        expr.clone()
-                            .repeated()
-                            .collect()
-                            .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                            .map_with(|elements, e| Expr::Array {
-                                elements,
-                                span: span_from_simple(e.span()),
-                            })
-                            // Regular expression: name: expr
-                            .or(expr.clone().labelled("value")),
-                    )
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .or_not(),
-            )
-            .map_with(|(((path, type_args), args), mounts), e| {
+            .map_with(|((path, type_args), args), e| {
                 // Keep path as Vec<Ident> for semantic analysis to resolve
                 Expr::Invocation {
                     path,
                     type_args: type_args.unwrap_or_default(),
                     args,
-                    mounts: mounts.unwrap_or_default(),
                     span: span_from_simple(e.span()),
                 }
             });

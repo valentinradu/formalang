@@ -1,27 +1,144 @@
 use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
-use crate::ast::{Definition, File, PrimitiveType, Statement, StructDef, Type};
+use crate::ast::{Definition, File, FnDef, PrimitiveType, Statement, StructDef, Type};
 use crate::error::CompilerError;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Pass 4: Validate trait implementations
-    /// Check that structs implement all required fields from their traits
+    /// Check that structs implement all required fields from their traits,
+    /// and that impl Trait for Struct blocks provide all required methods.
     pub(super) fn validate_trait_implementations(&mut self, file: &File) {
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
-                if let Definition::Struct(struct_def) = &**def {
-                    self.validate_struct_trait_implementation(struct_def);
+                match &**def {
+                    Definition::Struct(struct_def) => {
+                        self.validate_struct_trait_implementation(struct_def);
+                    }
+                    Definition::Impl(impl_def) => {
+                        if let Some(trait_ident) = &impl_def.trait_name {
+                            self.validate_impl_trait_methods(
+                                &impl_def.functions,
+                                &trait_ident.name,
+                                &impl_def.name.name,
+                                impl_def.span,
+                            );
+                        }
+                    }
+                    Definition::Trait(_)
+                    | Definition::Enum(_)
+                    | Definition::Module(_)
+                    | Definition::Function(_)
+                    | Definition::ExternType(_) => {}
                 }
             }
         }
     }
 
+    /// Check that an `impl Trait for Struct` block provides all methods declared in the trait.
+    fn validate_impl_trait_methods(
+        &mut self,
+        impl_functions: &[FnDef],
+        trait_name: &str,
+        _struct_name: &str,
+        impl_span: crate::location::Span,
+    ) {
+        // Collect all required methods from the trait (including composed traits)
+        let required_methods = self.collect_all_trait_methods(trait_name);
+
+        for (method_name, required_params, required_return) in required_methods {
+            // Find this method in the impl block
+            match impl_functions.iter().find(|f| f.name.name == method_name) {
+                None => {
+                    self.errors.push(CompilerError::MissingTraitMethod {
+                        method: method_name.clone(),
+                        trait_name: trait_name.to_string(),
+                        span: impl_span,
+                    });
+                }
+                Some(impl_fn) => {
+                    // Check signature match: param count (excluding self) and return type
+                    let impl_non_self_params: Vec<_> = impl_fn
+                        .params
+                        .iter()
+                        .filter(|p| p.name.name != "self")
+                        .collect();
+                    let required_non_self: Vec<_> = required_params
+                        .iter()
+                        .filter(|p| p.name.name != "self")
+                        .collect();
+
+                    let param_count_mismatch =
+                        impl_non_self_params.len() != required_non_self.len();
+
+                    let return_type_mismatch = match (&required_return, &impl_fn.return_type) {
+                        (Some(req_ret), Some(impl_ret)) => !Self::types_match(req_ret, impl_ret),
+                        (None, None) => false,
+                        _ => true,
+                    };
+
+                    if param_count_mismatch || return_type_mismatch {
+                        let expected = required_return
+                            .as_ref()
+                            .map(Self::type_to_string)
+                            .unwrap_or_else(|| "()".to_string());
+                        let actual = impl_fn
+                            .return_type
+                            .as_ref()
+                            .map(Self::type_to_string)
+                            .unwrap_or_else(|| "()".to_string());
+                        self.errors
+                            .push(CompilerError::TraitMethodSignatureMismatch {
+                                method: method_name.clone(),
+                                trait_name: trait_name.to_string(),
+                                expected,
+                                actual,
+                                span: impl_fn.span,
+                            });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Collect the methods declared directly in a trait (not inherited ones).
+    ///
+    /// Each `impl Trait for Struct` block must provide only the methods declared
+    /// directly in that trait. Inherited methods from composed traits are expected
+    /// to be covered by separate impl blocks for those base traits.
+    fn collect_all_trait_methods(
+        &self,
+        trait_name: &str,
+    ) -> Vec<(String, Vec<crate::ast::FnParam>, Option<Type>)> {
+        if let Some(trait_info) = self.symbols.traits.get(trait_name) {
+            trait_info
+                .methods
+                .iter()
+                .map(|m| (m.name.name.clone(), m.params.clone(), m.return_type.clone()))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Validate that a struct implements all required fields from its traits
     pub(super) fn validate_struct_trait_implementation(&mut self, struct_def: &StructDef) {
-        // For each implemented trait
-        for trait_ref in &struct_def.traits {
+        // For each implemented trait, check required fields via impl blocks
+        // (trait field validation is handled through impl Trait for Struct)
+        // Walk through trait_impls for this struct
+        let struct_name = struct_def.name.name.clone();
+        let trait_impls: Vec<String> = self
+            .symbols
+            .trait_impls
+            .get(&struct_name)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.trait_name)
+            .collect();
+
+        for trait_name in &trait_impls {
             // Get all required fields from this trait (including composed traits)
-            let required_fields = self.symbols.get_all_trait_fields(&trait_ref.name);
+            let required_fields = self.symbols.get_all_trait_fields(trait_name);
 
             // Check each required field
             for (field_name, required_type) in required_fields {
@@ -32,7 +149,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         if !Self::types_match(&struct_field.ty, &required_type) {
                             self.errors.push(CompilerError::TraitFieldTypeMismatch {
                                 field: field_name.clone(),
-                                trait_name: trait_ref.name.clone(),
+                                trait_name: trait_name.clone(),
                                 expected: Self::type_to_string(&required_type),
                                 actual: Self::type_to_string(&struct_field.ty),
                                 span: struct_field.span,
@@ -43,46 +160,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Field is missing
                         self.errors.push(CompilerError::MissingTraitField {
                             field: field_name.clone(),
-                            trait_name: trait_ref.name.clone(),
-                            span: struct_def.span,
-                        });
-                    }
-                }
-            }
-
-            // Get all required mounting points from this trait (including composed traits)
-            let required_mounts = self.symbols.get_all_trait_mounting_points(&trait_ref.name);
-
-            // Check each required mounting point
-            for (mount_name, required_type) in required_mounts {
-                match struct_def
-                    .mount_fields
-                    .iter()
-                    .find(|f| f.name.name == mount_name)
-                {
-                    Some(mount_field) => {
-                        // Mounting point exists, check type matches
-                        // Special case: `Never` type satisfies any mount point requirement.
-                        // `Never` is a terminal type indicating "no child content", used by
-                        // terminal components like Empty, EmptyShape, etc.
-                        let is_never =
-                            matches!(&mount_field.ty, Type::Primitive(PrimitiveType::Never));
-                        if !is_never && !Self::types_match(&mount_field.ty, &required_type) {
-                            self.errors
-                                .push(CompilerError::TraitMountingPointTypeMismatch {
-                                    mount: mount_name.clone(),
-                                    trait_name: trait_ref.name.clone(),
-                                    expected: Self::type_to_string(&required_type),
-                                    actual: Self::type_to_string(&mount_field.ty),
-                                    span: mount_field.span,
-                                });
-                        }
-                    }
-                    None => {
-                        // Mounting point is missing
-                        self.errors.push(CompilerError::MissingTraitMountingPoint {
-                            mount: mount_name.clone(),
-                            trait_name: trait_ref.name.clone(),
+                            trait_name: trait_name.clone(),
                             span: struct_def.span,
                         });
                     }
@@ -129,27 +207,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
-                // GPU scalar types
-                PrimitiveType::F32 => "f32".to_string(),
-                PrimitiveType::I32 => "i32".to_string(),
-                PrimitiveType::U32 => "u32".to_string(),
-                PrimitiveType::Bool => "bool".to_string(),
-                // GPU vector types (float)
-                PrimitiveType::Vec2 => "vec2".to_string(),
-                PrimitiveType::Vec3 => "vec3".to_string(),
-                PrimitiveType::Vec4 => "vec4".to_string(),
-                // GPU vector types (signed int)
-                PrimitiveType::IVec2 => "ivec2".to_string(),
-                PrimitiveType::IVec3 => "ivec3".to_string(),
-                PrimitiveType::IVec4 => "ivec4".to_string(),
-                // GPU vector types (unsigned int)
-                PrimitiveType::UVec2 => "uvec2".to_string(),
-                PrimitiveType::UVec3 => "uvec3".to_string(),
-                PrimitiveType::UVec4 => "uvec4".to_string(),
-                // GPU matrix types
-                PrimitiveType::Mat2 => "mat2".to_string(),
-                PrimitiveType::Mat3 => "mat3".to_string(),
-                PrimitiveType::Mat4 => "mat4".to_string(),
             },
             Type::Ident(ident) => ident.name.clone(),
             Type::Array(element_type) => {
@@ -194,7 +251,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 } else {
                     let param_types: Vec<String> =
                         params.iter().map(|p| Self::type_to_string(p)).collect();
-                    format!("{} -> {}", param_types.join(", "), Self::type_to_string(ret))
+                    format!(
+                        "{} -> {}",
+                        param_types.join(", "),
+                        Self::type_to_string(ret)
+                    )
                 }
             }
         }
@@ -225,21 +286,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return true;
         }
 
-        // Number is compatible with f32/i32/u32 for GPU types
-        if expected == "Number" && (actual == "f32" || actual == "i32" || actual == "u32") {
-            return true;
-        }
-        if actual == "Number" && (expected == "f32" || expected == "i32" || expected == "u32") {
-            return true;
-        }
-
-        // Boolean and bool are compatible
-        if (expected == "Boolean" && actual == "bool")
-            || (expected == "bool" && actual == "Boolean")
-        {
-            return true;
-        }
-
         false
     }
 
@@ -252,13 +298,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn type_satisfies_trait_constraint(&self, ty: &Type, trait_name: &str) -> bool {
         match ty {
             Type::Ident(ident) => {
-                // Check if struct implements the trait
-                if let Some(struct_info) = self.symbols.get_struct(&ident.name) {
-                    // Check inline traits (struct Foo: Trait)
-                    if struct_info.traits.iter().any(|t| t == trait_name) {
-                        return true;
-                    }
-                }
                 // Check trait impls (impl Trait for Struct)
                 let all_traits = self.symbols.get_all_traits_for_struct(&ident.name);
                 if all_traits.contains(&trait_name.to_string()) {
@@ -273,11 +312,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Type::Generic { name, .. } => {
                 // For generic types, check if the base type implements the trait
-                if let Some(struct_info) = self.symbols.get_struct(&name.name) {
-                    if struct_info.traits.iter().any(|t| t == trait_name) {
-                        return true;
-                    }
-                }
                 let all_traits = self.symbols.get_all_traits_for_struct(&name.name);
                 all_traits.contains(&trait_name.to_string())
             }

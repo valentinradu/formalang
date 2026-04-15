@@ -5,18 +5,18 @@ use chumsky::prelude::*;
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant,
-    FieldDef, FnDef, FnParam, FunctionDef, GenericConstraint, GenericParam, Ident, ImplDef,
-    ModuleDef, StructDef, StructField, StructPatternField, TraitDef, Type,
+    ExternTypeDef, FieldDef, FnDef, FnParam, FnSig, FunctionDef, GenericConstraint, GenericParam,
+    Ident, ImplDef, ModuleDef, StructDef, StructField, StructPatternField, TraitDef, Type,
 };
 use crate::lexer::Token;
 
-use super::span_from_simple;
+use super::block_statements_to_expr;
 use super::exprs::expr_parser;
 use super::ident_parser;
 use super::mutability_parser;
+use super::span_from_simple;
 use super::types::type_parser;
 use super::visibility_parser;
-use super::block_statements_to_expr;
 
 /// Parse a binding pattern (for let bindings)
 /// Supports: simple name, array destructuring, struct destructuring, tuple destructuring
@@ -165,17 +165,46 @@ where
         })
 }
 
+/// Parse a function signature (no body): `fn name(params) -> Type`
+pub(super) fn fn_sig_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, FnSig, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    just(Token::Fn)
+        .ignore_then(ident_parser())
+        .then(fn_params_parser())
+        .then(
+            // Optional return type: -> Type
+            just(Token::Arrow).ignore_then(type_parser()).or_not(),
+        )
+        .map_with(|((name, params), return_type), e| FnSig {
+            name,
+            params,
+            return_type,
+            span: span_from_simple(e.span()),
+        })
+}
+
 /// Parse a trait definition
 pub(super) fn trait_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, TraitDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    // Parse a field or mount field: "mount"? ident ":" Type
-    let field_or_mount = just(Token::Mount)
-        .or_not()
-        .then(field_def_parser())
-        .map(|(mount_opt, field)| (field, mount_opt.is_some()));
+    /// Local enum to distinguish methods from fields in a trait body.
+    #[derive(Clone)]
+    enum TraitItem {
+        Method(FnSig),
+        Field(FieldDef),
+    }
+
+    // Each item in a trait body is either a fn signature or a field def.
+    // Items may be separated by commas (optional) or just newline-delimited.
+    let trait_item = choice((
+        fn_sig_parser().map(TraitItem::Method),
+        field_def_parser().map(TraitItem::Field),
+    ));
 
     visibility_parser()
         .then_ignore(just(Token::Trait))
@@ -183,90 +212,63 @@ where
         .then(generic_params_parser())
         .then(trait_composition_parser())
         .then(
-            field_or_mount
-                .separated_by(just(Token::Comma))
+            trait_item
+                .separated_by(just(Token::Comma).or_not().ignored())
+                .allow_leading()
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .or_not(),
         )
-        .map_with(
-            |((((visibility, name), generics), traits), fields_with_flags), e| {
-                let fields_with_flags = fields_with_flags.unwrap_or_default();
-                let mut fields = Vec::new();
-                let mut mount_fields = Vec::new();
+        .map_with(|((((visibility, name), generics), traits), items), e| {
+            let items = items.unwrap_or_default();
+            let mut fields = Vec::new();
+            let mut methods = Vec::new();
 
-                for (field, is_mount) in fields_with_flags {
-                    if is_mount {
-                        mount_fields.push(field);
-                    } else {
-                        fields.push(field);
-                    }
+            for item in items {
+                match item {
+                    TraitItem::Method(sig) => methods.push(sig),
+                    TraitItem::Field(field) => fields.push(field),
                 }
+            }
 
-                TraitDef {
-                    visibility,
-                    name,
-                    generics,
-                    traits,
-                    fields,
-                    mount_fields,
-                    span: span_from_simple(e.span()),
-                }
-            },
-        )
+            TraitDef {
+                visibility,
+                name,
+                generics,
+                traits,
+                fields,
+                methods,
+                span: span_from_simple(e.span()),
+            }
+        })
 }
 
-/// Parse a struct definition (unified - replaces model and view)
+/// Parse a struct definition
 pub(super) fn struct_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    // Parse a field or mount field: "mount"? mut? ident ":" Type ("=" Expr)?
-    let field_or_mount = just(Token::Mount)
-        .or_not()
-        .then(struct_field_parser())
-        .map(|(mount_opt, field)| (field, mount_opt.is_some()));
-
     visibility_parser()
         .then_ignore(just(Token::Struct))
         .then(ident_parser())
         .then(generic_params_parser())
-        .then(trait_composition_parser())
         .then(
-            field_or_mount
+            struct_field_parser()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .or_not(),
         )
-        .map_with(
-            |((((visibility, name), generics), traits), fields_with_flags), e| {
-                let fields_with_flags = fields_with_flags.unwrap_or_default();
-                let mut fields = Vec::new();
-                let mut mount_fields = Vec::new();
-
-                for (field, is_mount) in fields_with_flags {
-                    if is_mount {
-                        mount_fields.push(field);
-                    } else {
-                        fields.push(field);
-                    }
-                }
-
-                StructDef {
-                    visibility,
-                    name,
-                    generics,
-                    traits,
-                    fields,
-                    mount_fields,
-                    span: span_from_simple(e.span()),
-                }
-            },
-        )
+        .map_with(|(((visibility, name), generics), fields), e| StructDef {
+            visibility,
+            name,
+            generics,
+            fields: fields.unwrap_or_default(),
+            span: span_from_simple(e.span()),
+        })
 }
 
 /// Parse a single struct field: mut? name: Type? = default
@@ -321,17 +323,123 @@ where
             name,
             generics,
             functions,
+            is_extern: false,
             span: span_from_simple(e.span()),
         })
 }
 
-/// Parse the body of an impl block (functions only)
+/// Parse an extern type declaration: `extern type Name<T>`
+pub(super) fn extern_type_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, ExternTypeDef, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    visibility_parser()
+        .then_ignore(just(Token::Extern))
+        .then_ignore(select! { Token::Ident(s) if s == "type" => () })
+        .then(ident_parser())
+        .then(generic_params_parser())
+        .map_with(|((visibility, name), generics), e| ExternTypeDef {
+            visibility,
+            name,
+            generics,
+            span: span_from_simple(e.span()),
+        })
+}
+
+/// Parse an extern function declaration: `extern fn name(params) -> Type`
+pub(super) fn extern_fn_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, FunctionDef, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    visibility_parser()
+        .then_ignore(just(Token::Extern))
+        .then_ignore(just(Token::Fn))
+        .then(ident_parser())
+        .then(fn_params_parser())
+        .then(
+            // Optional return type: -> Type
+            just(Token::Arrow).ignore_then(type_parser()).or_not(),
+        )
+        .map_with(|(((visibility, name), params), return_type), e| {
+            let span = span_from_simple(e.span());
+            FunctionDef {
+                visibility,
+                name,
+                params,
+                return_type,
+                body: None,
+                span,
+            }
+        })
+}
+
+/// Parse an extern impl block: `extern impl Trait for Name<T> { fn_sig* }`
+pub(super) fn extern_impl_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, ImplDef, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    // Parse optional "Trait for" prefix
+    let trait_for = ident_parser().then_ignore(just(Token::For)).or_not();
+
+    // Each item in extern impl is either a fn def (with body, which is invalid but
+    // needs to be parsed so semantic analysis can emit ExternImplWithBody) or a fn sig.
+    let extern_impl_item = choice((
+        fn_def_parser(),
+        fn_sig_parser().map(|sig| FnDef {
+            name: sig.name,
+            params: sig.params,
+            return_type: sig.return_type,
+            body: None,
+            span: sig.span,
+        }),
+    ));
+
+    just(Token::Extern)
+        .ignore_then(just(Token::Impl))
+        .ignore_then(trait_for)
+        .then(ident_parser())
+        .then(generic_params_parser())
+        .then(
+            extern_impl_item
+                .repeated()
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+        )
+        .map_with(|(((trait_name, name), generics), functions), e| ImplDef {
+            trait_name,
+            name,
+            generics,
+            functions,
+            is_extern: true,
+            span: span_from_simple(e.span()),
+        })
+}
+
+/// Parse the body of an impl block (functions only).
+///
+/// Accepts both full function definitions (with body) and bare signatures (without body).
+/// Functions missing a body are kept as-is so semantic analysis can emit
+/// `RegularFnWithoutBody`.
 pub(super) fn impl_body_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Vec<FnDef>, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    fn_def_parser()
+    // Full definition (with body) takes priority; fall back to bare signature.
+    let impl_item = choice((
+        fn_def_parser(),
+        fn_sig_parser().map(|sig| FnDef {
+            name: sig.name,
+            params: sig.params,
+            return_type: sig.return_type,
+            body: None,
+            span: sig.span,
+        }),
+    ));
+    impl_item
         .repeated()
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
@@ -407,37 +515,58 @@ where
                 name,
                 params,
                 return_type,
-                body,
+                body: Some(body),
                 span,
             }
         })
 }
 
-/// Parse function parameters: `(self, x: Type, y: Type = default)`
+/// Parse function parameters: `(self, x: Type, label name: Type, y: Type = default)`
+///
+/// Parameters support an optional external label: `fn foo(en name: String)` where `en` is
+/// the label used at call sites and `name` is the internal parameter name.
 pub(super) fn fn_params_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     let self_param = just(Token::SelfKeyword).map_with(|_, e| FnParam {
+        external_label: None,
         name: Ident::new("self", span_from_simple(e.span())),
         ty: None,
         default: None,
         span: span_from_simple(e.span()),
     });
 
-    let typed_param = ident_parser()
+    // `label name: Type = default` — two identifiers before the colon means external label
+    let labeled_param = ident_parser()
+        .then(ident_parser())
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
-        .map_with(|((name, ty), default), e| FnParam {
+        .map_with(|(((label, name), ty), default), e| FnParam {
+            external_label: Some(label),
             name,
             ty: Some(ty),
             default,
             span: span_from_simple(e.span()),
         });
 
-    choice((self_param, typed_param))
+    // `name: Type = default` — single identifier before the colon
+    let typed_param = ident_parser()
+        .then_ignore(just(Token::Colon))
+        .then(type_parser())
+        .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
+        .map_with(|((name, ty), default), e| FnParam {
+            external_label: None,
+            name,
+            ty: Some(ty),
+            default,
+            span: span_from_simple(e.span()),
+        });
+
+    // labeled_param must come before typed_param (longer match first)
+    choice((self_param, labeled_param, typed_param))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect()
@@ -469,7 +598,7 @@ where
                 name,
                 params,
                 return_type,
-                body,
+                body: Some(body),
                 span,
             }
         })
@@ -555,7 +684,7 @@ where
         })
 }
 
-/// Parse a definition (trait, struct, impl, enum, module, or function)
+/// Parse a definition (trait, struct, impl, enum, module, function, or extern)
 pub(super) fn definition_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Definition, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -563,6 +692,10 @@ where
 {
     recursive(|def| {
         choice((
+            // Extern variants must come before their non-extern counterparts
+            extern_type_parser().map(Definition::ExternType),
+            extern_impl_parser().map(Definition::Impl),
+            extern_fn_parser().map(|f| Definition::Function(Box::new(f))),
             trait_def_parser().map(Definition::Trait),
             struct_def_parser().map(Definition::Struct),
             impl_def_parser().map(Definition::Impl),

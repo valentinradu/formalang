@@ -196,8 +196,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         {
             Ok(result) => result,
             Err(err) => {
-                let compiler_err =
-                    Self::module_error_to_compiler_error(err, use_stmt.span, false);
+                let compiler_err = Self::module_error_to_compiler_error(err, use_stmt.span, false);
                 self.errors.push(compiler_err);
                 return;
             }
@@ -219,7 +218,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         };
 
-        self.import_use_items(&use_stmt.items, &module_symbols, &module_path, &path_segments, use_stmt.span);
+        self.import_use_items(
+            &use_stmt.items,
+            &module_symbols,
+            &module_path,
+            &path_segments,
+            use_stmt.span,
+        );
     }
 
     /// Dispatch symbol imports for all `UseItems` variants in `process_use_statement`
@@ -233,16 +238,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         match items {
             UseItems::Single(ident) => {
-                self.import_symbol(&ident.name, module_symbols, module_path, path_segments.to_vec(), span);
+                self.import_symbol(
+                    &ident.name,
+                    module_symbols,
+                    module_path,
+                    path_segments.to_vec(),
+                    span,
+                );
             }
             UseItems::Multiple(idents) => {
                 for ident in idents {
-                    self.import_symbol(&ident.name, module_symbols, module_path, path_segments.to_vec(), span);
+                    self.import_symbol(
+                        &ident.name,
+                        module_symbols,
+                        module_path,
+                        path_segments.to_vec(),
+                        span,
+                    );
                 }
             }
             UseItems::Glob => {
                 for name in module_symbols.all_public_symbols() {
-                    self.import_symbol(&name, module_symbols, module_path, path_segments.to_vec(), span);
+                    self.import_symbol(
+                        &name,
+                        module_symbols,
+                        module_path,
+                        path_segments.to_vec(),
+                        span,
+                    );
                 }
             }
         }
@@ -311,7 +334,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(current_path) = &self.current_file {
             let current_path = current_path.clone();
             let module_path_buf = module_path.to_path_buf();
-            if let Some(cycle) = self.import_graph.would_create_cycle(&current_path, &module_path_buf) {
+            if let Some(cycle) = self
+                .import_graph
+                .would_create_cycle(&current_path, &module_path_buf)
+            {
                 let mut full_cycle = cycle;
                 full_cycle.push(current_path);
                 self.errors.push(CompilerError::CircularImport {
@@ -324,7 +350,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
                 return false;
             }
-            self.import_graph.add_import(current_path, module_path.to_path_buf());
+            self.import_graph
+                .add_import(current_path, module_path.to_path_buf());
         }
         true
     }
@@ -461,8 +488,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let (source, imported_module_path) = match self.resolver.resolve(&path_segments, None) {
             Ok(result) => result,
             Err(err) => {
-                let compiler_err =
-                    Self::module_error_to_compiler_error(err, use_stmt.span, true);
+                let compiler_err = Self::module_error_to_compiler_error(err, use_stmt.span, true);
                 module_errors.push(compiler_err);
                 return;
             }
@@ -593,6 +619,33 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Function(func_def) => {
                 Self::collect_function_into(symbols, errors, func_def);
             }
+            Definition::ExternType(extern_type_def) => {
+                Self::collect_extern_type_into(symbols, errors, extern_type_def);
+            }
+        }
+    }
+
+    fn collect_extern_type_into(
+        symbols: &mut SymbolTable,
+        errors: &mut Vec<CompilerError>,
+        extern_type_def: &crate::ast::ExternTypeDef,
+    ) {
+        if let Some((kind, _)) = symbols.define_struct(
+            extern_type_def.name.name.clone(),
+            extern_type_def.visibility,
+            extern_type_def.span,
+            extern_type_def.generics.clone(),
+            vec![],
+            true,
+        ) {
+            errors.push(CompilerError::DuplicateDefinition {
+                name: format!(
+                    "{} (already defined as {})",
+                    extern_type_def.name.name,
+                    kind.as_str()
+                ),
+                span: extern_type_def.name.span,
+            });
         }
     }
 
@@ -606,11 +659,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(|f| (f.name.name.clone(), f.ty.clone()))
             .collect();
-        let mount_fields: HashMap<String, Type> = trait_def
-            .mount_fields
-            .iter()
-            .map(|f| (f.name.name.clone(), f.ty.clone()))
-            .collect();
         let composed_traits: Vec<String> =
             trait_def.traits.iter().map(|t| t.name.clone()).collect();
 
@@ -620,11 +668,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             trait_def.span,
             trait_def.generics.clone(),
             fields,
-            mount_fields,
             composed_traits,
+            trait_def.methods.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", trait_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    trait_def.name.name,
+                    kind.as_str()
+                ),
                 span: trait_def.name.span,
             });
         }
@@ -636,16 +688,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         struct_def: &crate::ast::StructDef,
     ) {
         use symbol_table::FieldInfo;
-        let traits: Vec<String> = struct_def.traits.iter().map(|t| t.name.clone()).collect();
         let fields: Vec<FieldInfo> = struct_def
             .fields
             .iter()
-            .map(|f| FieldInfo { name: f.name.name.clone(), ty: f.ty.clone() })
-            .collect();
-        let mount_fields: Vec<FieldInfo> = struct_def
-            .mount_fields
-            .iter()
-            .map(|f| FieldInfo { name: f.name.name.clone(), ty: f.ty.clone() })
+            .map(|f| FieldInfo {
+                name: f.name.name.clone(),
+                ty: f.ty.clone(),
+            })
             .collect();
 
         if let Some((kind, _)) = symbols.define_struct(
@@ -653,12 +702,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.visibility,
             struct_def.span,
             struct_def.generics.clone(),
-            traits,
             fields,
-            mount_fields,
+            false,
         ) {
             errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", struct_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    struct_def.name.name,
+                    kind.as_str()
+                ),
                 span: struct_def.name.span,
             });
         }
@@ -689,9 +741,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 generics: impl_def.generics.clone(),
                 span: impl_def.span,
             };
-            if let Some((kind, _)) = symbols.define_impl(impl_def.name.name.clone(), info) {
+            if let Some((kind, _)) =
+                symbols.define_impl(impl_def.name.name.clone(), info, impl_def.is_extern)
+            {
                 errors.push(CompilerError::DuplicateDefinition {
-                    name: format!("{} (already defined as {})", impl_def.name.name, kind.as_str()),
+                    name: format!(
+                        "{} (already defined as {})",
+                        impl_def.name.name,
+                        kind.as_str()
+                    ),
                     span: impl_def.name.span,
                 });
             }
@@ -718,7 +776,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Vec::new(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", enum_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    enum_def.name.name,
+                    kind.as_str()
+                ),
                 span: enum_def.name.span,
             });
         }
@@ -740,7 +802,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             module_symbols,
         ) {
             errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", module_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    module_def.name.name,
+                    kind.as_str()
+                ),
                 span: module_def.name.span,
             });
         }
@@ -751,10 +817,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         func_def: &crate::ast::FunctionDef,
     ) {
-        let params: Vec<(String, Option<Type>)> = func_def
+        use symbol_table::ParamInfo;
+        let params: Vec<ParamInfo> = func_def
             .params
             .iter()
-            .map(|p| (p.name.name.clone(), p.ty.clone()))
+            .map(|p| ParamInfo {
+                external_label: p.external_label.clone(),
+                name: p.name.clone(),
+                ty: p.ty.clone(),
+            })
             .collect();
 
         if let Some((kind, _)) = symbols.define_function(
@@ -765,7 +836,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.return_type.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", func_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    func_def.name.name,
+                    kind.as_str()
+                ),
                 span: func_def.name.span,
             });
         }
@@ -782,10 +857,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         use symbol_table::ImportError;
 
-        match self
-            .symbols
-            .import_symbol(name, module_symbols, module_path.to_path_buf(), logical_path)
-        {
+        match self.symbols.import_symbol(
+            name,
+            module_symbols,
+            module_path.to_path_buf(),
+            logical_path,
+        ) {
             Ok(()) => {
                 // Success
             }
@@ -894,6 +971,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
+                    Definition::ExternType(extern_type_def) => &extern_type_def.generics,
                     Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
                 };
 
@@ -985,17 +1063,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Enum(enum_def) => self.collect_definition_enum(enum_def),
             Definition::Module(module_def) => self.collect_definition_module(module_def),
             Definition::Function(func_def) => self.collect_definition_function(func_def),
+            Definition::ExternType(extern_type_def) => {
+                Self::collect_extern_type_into(
+                    &mut self.symbols,
+                    &mut self.errors,
+                    extern_type_def,
+                );
+            }
         }
     }
 
     fn collect_definition_trait(&mut self, trait_def: &crate::ast::TraitDef) {
         let fields: HashMap<String, Type> = trait_def
             .fields
-            .iter()
-            .map(|f| (f.name.name.clone(), f.ty.clone()))
-            .collect();
-        let mount_fields: HashMap<String, Type> = trait_def
-            .mount_fields
             .iter()
             .map(|f| (f.name.name.clone(), f.ty.clone()))
             .collect();
@@ -1008,11 +1088,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             trait_def.span,
             trait_def.generics.clone(),
             fields,
-            mount_fields,
             composed_traits,
+            trait_def.methods.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", trait_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    trait_def.name.name,
+                    kind.as_str()
+                ),
                 span: trait_def.name.span,
             });
         }
@@ -1020,16 +1104,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     fn collect_definition_struct(&mut self, struct_def: &crate::ast::StructDef) {
         use symbol_table::FieldInfo;
-        let traits: Vec<String> = struct_def.traits.iter().map(|t| t.name.clone()).collect();
         let fields: Vec<FieldInfo> = struct_def
             .fields
             .iter()
-            .map(|f| FieldInfo { name: f.name.name.clone(), ty: f.ty.clone() })
-            .collect();
-        let mount_fields: Vec<FieldInfo> = struct_def
-            .mount_fields
-            .iter()
-            .map(|f| FieldInfo { name: f.name.name.clone(), ty: f.ty.clone() })
+            .map(|f| FieldInfo {
+                name: f.name.name.clone(),
+                ty: f.ty.clone(),
+            })
             .collect();
 
         if let Some((kind, _)) = self.symbols.define_struct(
@@ -1037,12 +1118,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.visibility,
             struct_def.span,
             struct_def.generics.clone(),
-            traits,
             fields,
-            mount_fields,
+            false,
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", struct_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    struct_def.name.name,
+                    kind.as_str()
+                ),
                 span: struct_def.name.span,
             });
         }
@@ -1051,8 +1135,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn collect_definition_impl(&mut self, impl_def: &crate::ast::ImplDef) {
         use symbol_table::ImplInfo;
 
+        // Validate function bodies vs extern status
+        for func in &impl_def.functions {
+            if impl_def.is_extern && func.body.is_some() {
+                self.errors.push(CompilerError::ExternImplWithBody {
+                    name: impl_def.name.name.clone(),
+                    span: func.name.span,
+                });
+            } else if !impl_def.is_extern && func.body.is_none() {
+                self.errors.push(CompilerError::RegularFnWithoutBody {
+                    function: func.name.name.clone(),
+                    span: func.name.span,
+                });
+            }
+        }
+
         let type_exists = self.symbols.get_struct(&impl_def.name.name).is_some()
-            || self.symbols.get_enum_variants(&impl_def.name.name).is_some();
+            || self
+                .symbols
+                .get_enum_variants(&impl_def.name.name)
+                .is_some();
 
         if !type_exists {
             self.errors.push(CompilerError::UndefinedType {
@@ -1080,7 +1182,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.errors.push(CompilerError::DuplicateDefinition {
                     name: format!(
                         "impl {} for {} (already defined as {})",
-                        trait_ident.name, impl_def.name.name, kind.as_str()
+                        trait_ident.name,
+                        impl_def.name.name,
+                        kind.as_str()
                     ),
                     span: impl_def.span,
                 });
@@ -1091,9 +1195,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 generics: impl_def.generics.clone(),
                 span: impl_def.span,
             };
-            if let Some((kind, _)) = self.symbols.define_impl(impl_def.name.name.clone(), info) {
+            if let Some((kind, _)) =
+                self.symbols
+                    .define_impl(impl_def.name.name.clone(), info, impl_def.is_extern)
+            {
                 self.errors.push(CompilerError::DuplicateDefinition {
-                    name: format!("{} (already defined as {})", impl_def.name.name, kind.as_str()),
+                    name: format!(
+                        "{} (already defined as {})",
+                        impl_def.name.name,
+                        kind.as_str()
+                    ),
                     span: impl_def.name.span,
                 });
             }
@@ -1129,7 +1240,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Vec::new(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", enum_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    enum_def.name.name,
+                    kind.as_str()
+                ),
                 span: enum_def.name.span,
             });
         }
@@ -1147,17 +1262,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             module_symbols,
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", module_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    module_def.name.name,
+                    kind.as_str()
+                ),
                 span: module_def.name.span,
             });
         }
     }
 
     fn collect_definition_function(&mut self, func_def: &crate::ast::FunctionDef) {
-        let params: Vec<(String, Option<Type>)> = func_def
+        use symbol_table::ParamInfo;
+        let params: Vec<ParamInfo> = func_def
             .params
             .iter()
-            .map(|p| (p.name.name.clone(), p.ty.clone()))
+            .map(|p| ParamInfo {
+                external_label: p.external_label.clone(),
+                name: p.name.clone(),
+                ty: p.ty.clone(),
+            })
             .collect();
 
         if let Some((kind, _)) = self.symbols.define_function(
@@ -1168,7 +1292,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.return_type.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
-                name: format!("{} (already defined as {})", func_def.name.name, kind.as_str()),
+                name: format!(
+                    "{} (already defined as {})",
+                    func_def.name.name,
+                    kind.as_str()
+                ),
                 span: func_def.name.span,
             });
         }

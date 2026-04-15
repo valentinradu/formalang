@@ -301,34 +301,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
             )
             .with_help(format!("Available items: {available}")),
 
-        CompilerError::ViewTraitInModel { name, model, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E018")
-                .with_message(format!(
-                    "View trait '{name}' cannot be used in model '{model}'"
-                ))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("'{}' is a view trait", name.fg(Color::Red)))
-                        .with_color(Color::Red),
-                )
-                .with_help("Models can only implement model traits")
-        }
-
-        CompilerError::ModelTraitInView { name, view, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E019")
-                .with_message(format!(
-                    "Model trait '{name}' cannot be used in view '{view}'"
-                ))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!("'{}' is a model trait", name.fg(Color::Red)))
-                        .with_color(Color::Red),
-                )
-                .with_help("Views can only implement view traits")
-        }
-
         CompilerError::NotATrait {
             name, actual_kind, ..
         } => Report::build(ReportKind::Error, filename, span.start.offset)
@@ -379,47 +351,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                     .with_color(Color::Red),
             ),
 
-        CompilerError::MissingTraitMountingPoint {
-            mount, trait_name, ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E023")
-            .with_message(format!(
-                "Missing required mounting point '{mount}' from trait '{trait_name}'"
-            ))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(format!(
-                        "trait '{}' requires mounting point '{}'",
-                        trait_name.fg(Color::Blue),
-                        mount.fg(Color::Red)
-                    ))
-                    .with_color(Color::Red),
-            )
-            .with_help(format!(
-                "Add the '{mount}' mounting point to satisfy the trait requirement"
-            )),
-
-        CompilerError::TraitMountingPointTypeMismatch {
-            mount,
-            trait_name,
-            expected,
-            actual,
-            ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E024")
-            .with_message(format!("Mounting point '{mount}' type mismatch"))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(format!(
-                        "trait '{}' requires type {}, found {}",
-                        trait_name.fg(Color::Blue),
-                        expected.fg(Color::Green),
-                        actual.fg(Color::Red)
-                    ))
-                    .with_color(Color::Red),
-            )
-            .with_help(format!("Change the mounting point type to {expected}")),
-
         // Add more specific error formatting as needed
         // For errors without specific formatting, use a generic format
         CompilerError::InvalidCharacter { .. }
@@ -434,16 +365,11 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         | CompilerError::UnknownProperty { .. }
         | CompilerError::MissingRequiredProperty { .. }
         | CompilerError::InvalidPropertyValue { .. }
-        | CompilerError::UnknownMountingPoint { .. }
-        | CompilerError::InvalidMountingPointChild { .. }
         | CompilerError::InvalidComponentPosition { .. }
         | CompilerError::UndefinedComponent { .. }
-        | CompilerError::MountingPointOnSameLine { .. }
-        | CompilerError::PropertyAfterMountingPoint { .. }
         | CompilerError::ModuleReadError { .. }
         | CompilerError::PrimitiveRedefinition { .. }
         | CompilerError::UndefinedTrait { .. }
-        | CompilerError::ModelTraitWithMountingPoints { .. }
         | CompilerError::MissingField { .. }
         | CompilerError::UnknownField { .. }
         | CompilerError::AssignmentToImmutable { .. }
@@ -456,7 +382,13 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         | CompilerError::OutOfScopeTypeParameter { .. }
         | CompilerError::MissingGenericArguments { .. }
         | CompilerError::DuplicateGenericParam { .. }
-        | CompilerError::UnknownMount { .. }
+        | CompilerError::ExternFnWithBody { .. }
+        | CompilerError::RegularFnWithoutBody { .. }
+        | CompilerError::ExternImplWithBody { .. }
+        | CompilerError::MissingTraitMethod { .. }
+        | CompilerError::TraitMethodSignatureMismatch { .. }
+        | CompilerError::AmbiguousCall { .. }
+        | CompilerError::NoMatchingOverload { .. }
         | CompilerError::CannotInferEnumType { .. }
         | CompilerError::FunctionReturnTypeMismatch { .. }
         | CompilerError::ExpressionDepthExceeded { .. }
@@ -474,7 +406,7 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
 }
 
 /// Report multiple compiler errors
-#[must_use] 
+#[must_use]
 pub fn report_errors(errors: &[CompilerError], source: &str, filename: &str) -> String {
     errors
         .iter()

@@ -35,12 +35,12 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 
 Defined in `src/lib.rs`:
 
-| Function | Returns | Use case |
-|---|---|---|
-| `compile_to_ir(src)` | `Result<IrModule, Vec<CompilerError>>` | Code generation |
-| `compile(src)` | `Result<File, Vec<CompilerError>>` | Syntax analysis, tooling |
-| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>` | LSP |
-| `parse_only(src)` | `Result<File, ...>` | Parsing without validation |
+| Function                     | Returns                                                                         | Use case                   |
+| ---------------------------- | ------------------------------------------------------------------------------- | -------------------------- |
+| `compile_to_ir(src)`         | `Result<IrModule, Vec<CompilerError>>`                                          | Code generation            |
+| `compile(src)`               | `Result<File, Vec<CompilerError>>`                                              | Syntax analysis, tooling   |
+| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>`      | LSP                        |
+| `parse_only(src)`            | `Result<File, ...>`                                                             | Parsing without validation |
 
 ## Plugin System
 
@@ -64,10 +64,10 @@ Built-in passes exported from `formalang::ir`:
 
 ## Compiler Outputs
 
-| Output | Type | Use case |
-|---|---|---|
-| AST | `File` | Syntax analysis, source-level tooling, LSP |
-| IR | `IrModule` | Code generation, type-aware analysis |
+| Output | Type       | Use case                                   |
+| ------ | ---------- | ------------------------------------------ |
+| AST    | `File`     | Syntax analysis, source-level tooling, LSP |
+| IR     | `IrModule` | Code generation, type-aware analysis       |
 
 See [AST Reference](ast.md) and [IR Reference](ir.md) for details.
 

@@ -39,7 +39,7 @@ pub mod shapes {
     pub trait Drawable {
         visible: Boolean
     }
-    pub struct Circle: Drawable {
+    pub struct Circle {
         visible: Boolean,
         radius: Number
     }
@@ -62,13 +62,11 @@ pub mod shapes {
         return Err(format!("expected {:?} but got {:?}", 2, circle.fields.len()).into());
     }
 
-    let trait_id = module
-        .trait_id("shapes::Drawable")
-        .ok_or("shapes::Drawable must have an ID")?;
-
-    if !circle.traits.contains(&trait_id) {
-        return Err("shapes::Circle should implement shapes::Drawable".into());
+    // Verify the trait is present in the IR
+    if module.trait_id("shapes::Drawable").is_none() {
+        return Err("shapes::Drawable must be present in IR".into());
     }
+
     Ok(())
 }
 
@@ -118,14 +116,26 @@ struct Slider {
                 );
             }
         }
-        other @
-(IrExpr::Literal { .. } | IrExpr::StructInst { .. } | IrExpr::EnumInst { .. }
-| IrExpr::Array { .. } | IrExpr::Tuple { .. } | IrExpr::Reference { .. } |
-IrExpr::SelfFieldRef { .. } | IrExpr::FieldAccess { .. } | IrExpr::LetRef { ..
-} | IrExpr::BinaryOp { .. } | IrExpr::UnaryOp { .. } | IrExpr::If { .. } |
-IrExpr::For { .. } | IrExpr::Match { .. } | IrExpr::FunctionCall { .. } |
-IrExpr::MethodCall { .. } | IrExpr::Closure { .. } | IrExpr::DictLiteral { ..
-} | IrExpr::DictAccess { .. } | IrExpr::Block { .. }) => {
+        other @ (IrExpr::Literal { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::For { .. }
+        | IrExpr::Match { .. }
+        | IrExpr::FunctionCall { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::Closure { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. }
+        | IrExpr::Block { .. }) => {
             return Err(format!(
                 "Expected IrExpr::EventMapping for explicit enum closure, got: {other:?}"
             )
@@ -197,7 +207,7 @@ fn irmodule_enum_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error
 fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::FunctionId;
 
-    let source = "pub fn add(a: f32, b: f32) -> f32 { a + b }";
+    let source = "pub fn add(a: Number, b: Number) -> Number { a + b }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let id = module
@@ -213,7 +223,9 @@ fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::E
     }
 
     // Also test FunctionId direct indexing
-    let f = module.get_function(FunctionId(0)).ok_or("function not found")?;
+    let f = module
+        .get_function(FunctionId(0))
+        .ok_or("function not found")?;
     if f.name != "add" {
         return Err(format!("expected {:?} but got {:?}", "add", f.name).into());
     }
@@ -378,22 +390,7 @@ fn resolved_type_display_name_primitive_variants() -> Result<(), Box<dyn std::er
         (PrimitiveType::Boolean, "Boolean"),
         (PrimitiveType::Path, "Path"),
         (PrimitiveType::Regex, "Regex"),
-        (PrimitiveType::F32, "f32"),
-        (PrimitiveType::I32, "i32"),
-        (PrimitiveType::U32, "u32"),
-        (PrimitiveType::Bool, "bool"),
-        (PrimitiveType::Vec2, "vec2"),
-        (PrimitiveType::Vec3, "vec3"),
-        (PrimitiveType::Vec4, "vec4"),
-        (PrimitiveType::IVec2, "ivec2"),
-        (PrimitiveType::IVec3, "ivec3"),
-        (PrimitiveType::IVec4, "ivec4"),
-        (PrimitiveType::UVec2, "uvec2"),
-        (PrimitiveType::UVec3, "uvec3"),
-        (PrimitiveType::UVec4, "uvec4"),
-        (PrimitiveType::Mat2, "mat2"),
-        (PrimitiveType::Mat3, "mat3"),
-        (PrimitiveType::Mat4, "mat4"),
+        (PrimitiveType::Never, "Never"),
     ];
     for (prim, expected) in cases {
         let ty = ResolvedType::Primitive(prim);
@@ -522,14 +519,18 @@ fn resolved_type_display_name_closure() -> Result<(), Box<dyn std::error::Error>
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::Closure {
         param_tys: vec![
-            ResolvedType::Primitive(PrimitiveType::F32),
-            ResolvedType::Primitive(PrimitiveType::F32),
+            ResolvedType::Primitive(PrimitiveType::Number),
+            ResolvedType::Primitive(PrimitiveType::String),
         ],
-        return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::F32)),
+        return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
     };
     let name = ty.display_name(&module);
-    if name != "(f32, f32) -> f32" {
-        return Err(format!("expected {:?}, got {:?}", "(f32, f32) -> f32", name).into());
+    if name != "(Number, String) -> Boolean" {
+        return Err(format!(
+            "expected {:?}, got {:?}",
+            "(Number, String) -> Boolean", name
+        )
+        .into());
     }
     Ok(())
 }
@@ -551,7 +552,9 @@ fn simple_type_name_strips_module_prefix() -> Result<(), Box<dyn std::error::Err
     for (input, expected) in cases {
         let got = simple_type_name(input);
         if got != expected {
-            return Err(format!("simple_type_name({input:?}): expected {expected:?}, got {got:?}").into());
+            return Err(
+                format!("simple_type_name({input:?}): expected {expected:?}, got {got:?}").into(),
+            );
         }
     }
     Ok(())
@@ -839,7 +842,8 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
 }
 
 #[test]
-fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn std::error::Error>> {
+fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn std::error::Error>>
+{
     use formalang::ast::{Literal, PrimitiveType};
     use formalang::ir::{eliminate_dead_code_expr, IrExpr};
     use formalang::ResolvedType;
@@ -862,7 +866,9 @@ fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn 
     // false condition with no else: can't eliminate, keep as-is
     let result = eliminate_dead_code_expr(expr);
     if !matches!(result, IrExpr::If { .. }) {
-        return Err(format!("Expected If to be preserved when no else branch, got {result:?}").into());
+        return Err(
+            format!("Expected If to be preserved when no else branch, got {result:?}").into(),
+        );
     }
     Ok(())
 }
@@ -891,7 +897,9 @@ fn dce_eliminate_dead_code_expr_binary_op_passthrough() -> Result<(), Box<dyn st
     // DCE doesn't fold constants, just preserves BinaryOp
     let result = eliminate_dead_code_expr(expr);
     if !matches!(result, IrExpr::BinaryOp { .. }) {
-        return Err(format!("Expected BinaryOp to pass through DCE unchanged, got {result:?}").into());
+        return Err(
+            format!("Expected BinaryOp to pass through DCE unchanged, got {result:?}").into(),
+        );
     }
     Ok(())
 }
@@ -909,7 +917,10 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
     let optimized = eliminate_dead_code(&module, false);
 
     let os = optimized.structs.first().ok_or("no structs")?;
-    let default = os.fields.first().ok_or("no fields")?
+    let default = os
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -988,7 +999,10 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1016,7 +1030,10 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1044,7 +1061,10 @@ fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> 
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1072,7 +1092,10 @@ fn fold_constants_comparison_lt_becomes_bool() -> Result<(), Box<dyn std::error:
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1100,7 +1123,10 @@ fn fold_constants_comparison_ge_becomes_bool() -> Result<(), Box<dyn std::error:
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1128,7 +1154,10 @@ fn fold_constants_boolean_and() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1156,7 +1185,10 @@ fn fold_constants_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1184,7 +1216,10 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1212,7 +1247,10 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1240,7 +1278,10 @@ fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1268,7 +1309,10 @@ fn fold_constants_unary_not() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1325,7 +1369,10 @@ fn fold_constants_eq_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1353,7 +1400,10 @@ fn fold_constants_ne_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("should have default")?;
@@ -1461,10 +1511,10 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
     }
 
     let source = r"
-        struct Vec2 { x: f32, y: f32 }
+        struct Vec2 { x: Number, y: Number }
         impl Vec2 {
-            fn length(self) -> f32 { self.x + self.y }
-            fn scale(self, factor: f32) -> f32 { self.x * factor }
+            fn length(self) -> Number { self.x + self.y }
+            fn scale(self, factor: Number) -> Number { self.x * factor }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -1597,13 +1647,18 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
     let mut counter = ExprCounter(0);
     walk_block_statement(&mut counter, &stmt);
     if counter.0 != 1 {
-        return Err(format!("Expected 1 expr visited for Let statement, got {}", counter.0).into());
+        return Err(format!(
+            "Expected 1 expr visited for Let statement, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
 
 #[test]
-fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn std::error::Error>> {
+fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn std::error::Error>>
+{
     use formalang::ast::{Literal, PrimitiveType};
     use formalang::ir::{walk_block_statement, IrBlockStatement, IrExpr, IrVisitor};
     use formalang::ResolvedType;
@@ -1629,7 +1684,11 @@ fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn
     let mut counter = ExprCounter(0);
     walk_block_statement(&mut counter, &stmt);
     if counter.0 != 2 {
-        return Err(format!("Expected 2 exprs for Assign (target + value), got {}", counter.0).into());
+        return Err(format!(
+            "Expected 2 exprs for Assign (target + value), got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -1800,30 +1859,28 @@ fn compiler_error_trait_errors_display() -> Result<(), Box<dyn std::error::Error
             actual: "String".to_string(),
             span: Span::default(),
         },
-        CompilerError::ModelTraitWithMountingPoints {
-            name: "M".to_string(),
+        CompilerError::ExternFnWithBody {
+            function: "render".to_string(),
             span: Span::default(),
         },
-        CompilerError::ViewTraitInModel {
-            name: "V".to_string(),
-            model: "M".to_string(),
+        CompilerError::RegularFnWithoutBody {
+            function: "compute".to_string(),
             span: Span::default(),
         },
-        CompilerError::ModelTraitInView {
-            name: "M".to_string(),
-            view: "V".to_string(),
+        CompilerError::ExternImplWithBody {
+            name: "Canvas".to_string(),
             span: Span::default(),
         },
-        CompilerError::MissingTraitMountingPoint {
-            mount: "children".to_string(),
+        CompilerError::MissingTraitMethod {
+            method: "draw".to_string(),
             trait_name: "T".to_string(),
             span: Span::default(),
         },
-        CompilerError::TraitMountingPointTypeMismatch {
-            mount: "children".to_string(),
+        CompilerError::TraitMethodSignatureMismatch {
+            method: "draw".to_string(),
             trait_name: "T".to_string(),
-            expected: "[View]".to_string(),
-            actual: "[String]".to_string(),
+            expected: "fn draw(self) -> Number".to_string(),
+            actual: "fn draw(self) -> String".to_string(),
             span: Span::default(),
         },
     ];
@@ -1940,9 +1997,8 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             param: "T".to_string(),
             span: Span::default(),
         },
-        CompilerError::UnknownMount {
-            mount: "header".to_string(),
-            struct_name: "Card".to_string(),
+        CompilerError::AmbiguousCall {
+            function: "header".to_string(),
             span: Span::default(),
         },
         CompilerError::CannotInferEnumType {
@@ -1973,12 +2029,12 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             name: "Xyz".to_string(),
             span: Span::default(),
         },
-        CompilerError::MountingPointOnSameLine {
-            mounting_point: "header".to_string(),
+        CompilerError::NoMatchingOverload {
+            function: "header".to_string(),
             span: Span::default(),
         },
-        CompilerError::PropertyAfterMountingPoint {
-            property: "x".to_string(),
+        CompilerError::CannotInferEnumType {
+            variant: "x".to_string(),
             span: Span::default(),
         },
         CompilerError::UnknownProperty {
@@ -1996,15 +2052,13 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             message: "must be positive".to_string(),
             span: Span::default(),
         },
-        CompilerError::UnknownMountingPoint {
-            component: "Card".to_string(),
-            mounting_point: "footer".to_string(),
+        CompilerError::FunctionReturnTypeMismatch {
+            function: "foo".to_string(),
+            expected: "Number".to_string(),
+            actual: "String".to_string(),
             span: Span::default(),
         },
-        CompilerError::InvalidMountingPointChild {
-            component: "Card".to_string(),
-            mounting_point: "body".to_string(),
-            child_type: "Number".to_string(),
+        CompilerError::ExpressionDepthExceeded {
             span: Span::default(),
         },
         CompilerError::InvalidComponentPosition {
@@ -2195,7 +2249,10 @@ fn fold_constants_gt_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("default")?;
@@ -2222,7 +2279,10 @@ fn fold_constants_le_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("default")?;
@@ -2249,7 +2309,10 @@ fn fold_constants_boolean_eq() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("default")?;
@@ -2276,7 +2339,10 @@ fn fold_constants_boolean_ne() -> Result<(), Box<dyn std::error::Error>> {
     let folded = fold_constants(&module);
 
     let fs = folded.structs.first().ok_or("no structs")?;
-    let expr = fs.fields.first().ok_or("no fields")?
+    let expr = fs
+        .fields
+        .first()
+        .ok_or("no fields")?
         .default
         .as_ref()
         .ok_or("default")?;
@@ -2404,9 +2470,9 @@ fn fold_constants_method_call_in_impl() -> Result<(), Box<dyn std::error::Error>
     use formalang::ir::fold_constants;
 
     let source = r"
-        struct Vec2 { x: f32, y: f32 }
+        struct Vec2 { x: Number, y: Number }
         impl Vec2 {
-            fn len(self) -> f32 { self.x + self.y }
+            fn len(self) -> Number { self.x + self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -2496,7 +2562,11 @@ fn visitor_walk_expr_visits_if_branches() -> Result<(), Box<dyn std::error::Erro
     let mut counter = LiteralCounter(0);
     walk_expr(&mut counter, &expr);
     if counter.0 != 3 {
-        return Err(format!("Expected condition + then + else = 3 literals, got {}", counter.0).into());
+        return Err(format!(
+            "Expected condition + then + else = 3 literals, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -2655,7 +2725,8 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
-fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dyn std::error::Error>> {
+fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dyn std::error::Error>>
+{
     use formalang::ast::{Literal, PrimitiveType};
     use formalang::ir::{walk_expr, walk_expr_children, IrExpr, IrVisitor};
     use formalang::ResolvedType;
@@ -2855,7 +2926,11 @@ fn visitor_walk_expr_visits_event_mapping_no_children() -> Result<(), Box<dyn st
     walk_expr(&mut counter, &expr);
     // EventMapping has no child expressions to walk, so only 1 visit (itself)
     if counter.0 != 1 {
-        return Err(format!("EventMapping has no children, so only 1 visit, got {}", counter.0).into());
+        return Err(format!(
+            "EventMapping has no children, so only 1 visit, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -2890,7 +2965,11 @@ fn visitor_walk_expr_field_access_child() -> Result<(), Box<dyn std::error::Erro
     let mut counter = LiteralCounter(0);
     walk_expr(&mut counter, &expr);
     if counter.0 != 1 {
-        return Err(format!("Expected 1 literal from field access object, got {}", counter.0).into());
+        return Err(format!(
+            "Expected 1 literal from field access object, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -2925,7 +3004,11 @@ fn visitor_walk_expr_unary_op_child() -> Result<(), Box<dyn std::error::Error>> 
     let mut counter = LiteralCounter(0);
     walk_expr(&mut counter, &expr);
     if counter.0 != 1 {
-        return Err(format!("Expected 1 literal from unary op operand, got {}", counter.0).into());
+        return Err(format!(
+            "Expected 1 literal from unary op operand, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -2969,7 +3052,11 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
     walk_expr(&mut counter, &expr);
     // statement value (1) + result (1) = 2
     if counter.0 != 2 {
-        return Err(format!("Expected 2 literals from block (stmt + result), got {}", counter.0).into());
+        return Err(format!(
+            "Expected 2 literals from block (stmt + result), got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -3069,14 +3156,18 @@ fn visitor_walk_block_statement_expr_variant() -> Result<(), Box<dyn std::error:
     let mut counter = ExprCounter(0);
     walk_block_statement(&mut counter, &stmt);
     if counter.0 != 1 {
-        return Err(format!("Expected 1 expression from Expr statement, got {}", counter.0).into());
+        return Err(format!(
+            "Expected 1 expression from Expr statement, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
 
 #[test]
-fn visitor_walk_struct_inst_with_mounts() -> Result<(), Box<dyn std::error::Error>> {
-    // Exercises the mounts branch in walk_expr_children for StructInst
+fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
+    // Exercises the fields branch in walk_expr_children for StructInst
     use formalang::ast::{Literal, PrimitiveType};
     use formalang::ir::{walk_expr, walk_expr_children, IrExpr, IrVisitor};
     use formalang::ResolvedType;
@@ -3096,28 +3187,34 @@ fn visitor_walk_struct_inst_with_mounts() -> Result<(), Box<dyn std::error::Erro
     let expr = IrExpr::StructInst {
         struct_id: None,
         type_args: vec![],
-        fields: vec![(
-            "x".to_string(),
-            IrExpr::Literal {
-                value: Literal::Number(1.0),
-                ty: num_ty.clone(),
-            },
-        )],
-        mounts: vec![(
-            "children".to_string(),
-            IrExpr::Literal {
-                value: Literal::Number(2.0),
-                ty: num_ty,
-            },
-        )],
+        fields: vec![
+            (
+                "x".to_string(),
+                IrExpr::Literal {
+                    value: Literal::Number(1.0),
+                    ty: num_ty.clone(),
+                },
+            ),
+            (
+                "y".to_string(),
+                IrExpr::Literal {
+                    value: Literal::Number(2.0),
+                    ty: num_ty,
+                },
+            ),
+        ],
         ty: ResolvedType::TypeParam("S".to_string()),
     };
 
     let mut counter = LiteralCounter(0);
     walk_expr(&mut counter, &expr);
-    // 1 field + 1 mount = 2 literals
+    // 2 fields = 2 literals
     if counter.0 != 2 {
-        return Err(format!("Expected 2 literals (field + mount) from StructInst, got {}", counter.0).into());
+        return Err(format!(
+            "Expected 2 literals from StructInst fields, got {}",
+            counter.0
+        )
+        .into());
     }
     Ok(())
 }
@@ -3135,10 +3232,7 @@ fn dce_default_pass_has_remove_unused_structs_enabled() -> Result<(), Box<dyn st
 
 #[test]
 fn dce_eliminator_generic_type_marks_base_struct() -> Result<(), Box<dyn std::error::Error>> {
-    
     use formalang::ir::DeadCodeEliminator;
-    
-    
 
     // Create a module and test the mark_used_in_type method for Generic variant
     // We do this by compiling a source that has a generic field type
@@ -3247,9 +3341,9 @@ fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std
 
     // This exercises the impl block processing path in eliminate_dead_code
     let source = r"
-        struct V2 { x: f32, y: f32 }
+        struct V2 { x: Number, y: Number }
         impl V2 {
-            fn len(self) -> f32 { self.x + self.y }
+            fn len(self) -> Number { self.x + self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -3281,8 +3375,6 @@ fn dce_pass_name_and_default() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn irexpr_ty_covers_all_variants_via_ir() -> Result<(), Box<dyn std::error::Error>> {
-    
-
     // Array
     let source = "let arr: [Number] = [1, 2, 3]";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;

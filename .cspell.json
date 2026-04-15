@@ -76,7 +76,10 @@
     "eqeq",
     "lparen",
     "rparen",
-    "Validatable"
+    "Validatable",
+    "bodyless",
+    "serde",
+    "Serde"
   ],
   "ignorePaths": [
     "node_modules",

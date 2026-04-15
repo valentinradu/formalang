@@ -99,7 +99,7 @@ fn test_trait_multiple_conformance() -> Result<(), Box<dyn std::error::Error>> {
         trait Aged {
             age: Number
         }
-        struct Person: Named + Aged {
+        struct Person {
             name: String,
             age: Number
         }
@@ -114,7 +114,7 @@ fn test_trait_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
         trait MaybeNamed {
             name: String?
         }
-        struct User: MaybeNamed {
+        struct User {
             name: String?
         }
     ";
@@ -128,7 +128,7 @@ fn test_trait_with_array_field() -> Result<(), Box<dyn std::error::Error>> {
         trait HasItems {
             items: [String]
         }
-        struct Container: HasItems {
+        struct Container {
             items: [String]
         }
     ";
@@ -145,7 +145,7 @@ fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
         trait Extended: Base {
             name: String
         }
-        struct Entity: Extended {
+        struct Entity {
             id: Number,
             name: String
         }
@@ -359,7 +359,7 @@ fn test_invalid_comparison_types() -> Result<(), Box<dyn std::error::Error>> {
 fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container {
-            @mount content: String
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -370,9 +370,9 @@ fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Layout {
-            @mount header: String,
-            @mount main: String,
-            @mount footer: String
+            header: String,
+            main: String,
+            footer: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -383,10 +383,10 @@ fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
 fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Renderable {
-            @mount content: String
+            content: String
         }
-        struct View: Renderable {
-            @mount content: String
+        struct View {
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -420,7 +420,7 @@ fn test_struct_with_all_field_modifiers() -> Result<(), Box<dyn std::error::Erro
             required: String,
             optional: Number?,
             mut mutable: Boolean,
-            @mount content: String
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -630,7 +630,7 @@ fn test_module_with_trait_and_impl() -> Result<(), Box<dyn std::error::Error>> {
             trait Named {
                 name: String
             }
-            struct User: Named {
+            struct User {
                 name: String = "default"
             }
         }
@@ -661,17 +661,18 @@ fn test_impl_block_defaults_applied_on_instantiation() -> Result<(), Box<dyn std
 
 #[test]
 fn test_impl_block_defaults_with_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
-    // Mount fields with struct field defaults should be optional
+    // Fields with struct field defaults should be optional during instantiation
     let source = r##"
-        trait Shape {}
-        struct Rect: Shape {}
-
-        struct MyBox: Shape {
-            color: String = "#FF0000",
-            mount body: Shape = Rect()
+        struct Rect {
+            width: Number = 0
         }
-        struct Container: Shape {
-            mount content: Shape = MyBox()
+
+        struct MyBox {
+            color: String = "#FF0000",
+            body: Rect = Rect()
+        }
+        struct Container {
+            content: MyBox = MyBox()
         }
     "##;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -722,11 +723,11 @@ fn test_impl_block_defaults_nested_instantiation() -> Result<(), Box<dyn std::er
 fn test_function_return_type_valid_f32() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Vec2 {
-            x: f32,
-            y: f32
+            x: Number,
+            y: Number
         }
         impl Vec2 {
-            fn length_squared(self) -> f32 {
+            fn length_squared(self) -> Number {
                 self.x * self.x + self.y * self.y
             }
         }

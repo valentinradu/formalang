@@ -65,8 +65,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Enum(_)
                     | Definition::Impl(_)
                     | Definition::Module(_)
-                    | Definition::Function(_) => {
-                        // Enums, impl blocks, modules, and standalone functions
+                    | Definition::Function(_)
+                    | Definition::ExternType(_) => {
+                        // Enums, impl blocks, modules, standalone functions, and extern types
                         // don't create type dependencies directly
                     }
                 }
@@ -183,12 +184,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Invocation { args, mounts, .. } => {
+            Expr::Invocation { args, .. } => {
                 for (_, arg_expr) in args {
                     self.collect_let_references(arg_expr, refs);
-                }
-                for (_, mount_expr) in mounts {
-                    self.collect_let_references(mount_expr, refs);
                 }
             }
             Expr::EnumInstantiation { data, .. } | Expr::InferredEnumInstantiation { data, .. } => {
@@ -203,7 +201,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::UnaryOp { operand, .. } => {
                 self.collect_let_references(operand, refs);
             }
-            Expr::ForExpr { collection, body, .. } => {
+            Expr::ForExpr {
+                collection, body, ..
+            } => {
                 self.collect_let_references(collection, refs);
                 self.collect_let_references(body, refs);
             }
@@ -219,7 +219,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.collect_let_references(else_expr, refs);
                 }
             }
-            Expr::MatchExpr { scrutinee, arms, .. } => {
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => {
                 self.collect_let_references(scrutinee, refs);
                 for arm in arms {
                     self.collect_let_references(&arm.body, refs);
@@ -248,7 +250,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.collect_let_references(arg, refs);
                 }
             }
-            Expr::Block { statements, result, .. } => {
+            Expr::Block {
+                statements, result, ..
+            } => {
                 self.collect_let_references_block(statements, result, refs);
             }
         }

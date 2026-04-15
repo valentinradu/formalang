@@ -2,8 +2,8 @@ use super::module_resolver::ModuleResolver;
 use super::symbol_table::{self, SymbolTable};
 use super::type_graph::TypeGraph;
 use super::SemanticAnalyzer;
-use crate::ast::{Definition, File, Statement, StructDef, TraitDef, Type};
 use crate::ast::PrimitiveType;
+use crate::ast::{Definition, File, Statement, StructDef, TraitDef, Type};
 use crate::error::CompilerError;
 use crate::location::Span;
 use std::collections::HashMap;
@@ -112,6 +112,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     // Validate function parameter and return types
                                     self.validate_standalone_function(func_def.as_ref(), file);
                                 }
+                                Definition::ExternType(_) => {}
                             }
                         }
 
@@ -130,6 +131,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Validate standalone function parameter and return types
                         self.validate_standalone_function(func_def.as_ref(), file);
                     }
+                    Definition::ExternType(_) => {
+                        // Extern types are opaque — no inner types to validate
+                    }
                 }
             }
         }
@@ -146,11 +150,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .iter()
                         .map(|f| (f.name.name.clone(), f.ty.clone()))
                         .collect();
-                    let mount_fields: HashMap<String, Type> = trait_def
-                        .mount_fields
-                        .iter()
-                        .map(|f| (f.name.name.clone(), f.ty.clone()))
-                        .collect();
                     let composed_traits: Vec<String> =
                         trait_def.traits.iter().map(|t| t.name.clone()).collect();
                     symbols.define_trait(
@@ -159,22 +158,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         trait_def.span,
                         trait_def.generics.clone(),
                         fields,
-                        mount_fields,
                         composed_traits,
+                        trait_def.methods.clone(),
                     );
                 }
                 Definition::Struct(struct_def) => {
-                    let traits: Vec<_> = struct_def.traits.iter().map(|t| t.name.clone()).collect();
                     let fields: Vec<_> = struct_def
                         .fields
-                        .iter()
-                        .map(|f| symbol_table::FieldInfo {
-                            name: f.name.name.clone(),
-                            ty: f.ty.clone(),
-                        })
-                        .collect();
-                    let mount_fields: Vec<_> = struct_def
-                        .mount_fields
                         .iter()
                         .map(|f| symbol_table::FieldInfo {
                             name: f.name.name.clone(),
@@ -186,9 +176,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         struct_def.visibility,
                         struct_def.span,
                         struct_def.generics.clone(),
-                        traits,
                         fields,
-                        mount_fields,
+                        false,
                     );
                 }
                 Definition::Enum(enum_def) => {
@@ -206,7 +195,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         Vec::new(), // Enums don't support inline trait syntax yet
                     );
                 }
-                Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}
+                Definition::Impl(_)
+                | Definition::Module(_)
+                | Definition::Function(_)
+                | Definition::ExternType(_) => {}
             }
         }
         symbols
@@ -261,6 +253,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Validate function parameter and return types
                     self.validate_standalone_function(func_def.as_ref(), file);
                 }
+                Definition::ExternType(_) => {
+                    // Extern types are opaque — no inner types to validate
+                }
             }
         }
 
@@ -313,11 +308,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(&field.ty);
         }
 
-        // Validate mounting point types
-        for field in &trait_def.mount_fields {
-            self.validate_type(&field.ty);
-        }
-
         // Pop generic scope
         self.pop_generic_scope();
     }
@@ -327,35 +317,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Push generic scope for this definition
         self.push_generic_scope(&struct_def.generics);
 
-        // Validate trait implementations
-        for trait_ref in &struct_def.traits {
-            if self.symbols.get_trait(&trait_ref.name).is_some() {
-                // OK: trait exists
-            } else {
-                // Check if it's defined as something else
-                if self.symbols.is_struct(&trait_ref.name) || self.symbols.is_enum(&trait_ref.name)
-                {
-                    self.errors.push(CompilerError::NotATrait {
-                        name: trait_ref.name.clone(),
-                        actual_kind: "not a trait".to_string(),
-                        span: trait_ref.span,
-                    });
-                } else {
-                    self.errors.push(CompilerError::UndefinedTrait {
-                        name: trait_ref.name.clone(),
-                        span: trait_ref.span,
-                    });
-                }
-            }
-        }
-
         // Validate field types
         for field in &struct_def.fields {
-            self.validate_type(&field.ty);
-        }
-
-        // Validate mount field types
-        for field in &struct_def.mount_fields {
             self.validate_type(&field.ty);
         }
 
@@ -419,8 +382,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             || self.is_type_parameter(&ident.name)
         {
             // Valid type, trait type, or type parameter — nothing to report
-        } else if ident.name.len() == 1
-            && ident.name.chars().next().is_some_and(char::is_uppercase)
+        } else if ident.name.len() == 1 && ident.name.chars().next().is_some_and(char::is_uppercase)
         {
             self.errors.push(CompilerError::OutOfScopeTypeParameter {
                 param: ident.name.clone(),
@@ -523,22 +485,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Convert a type string to a `PrimitiveType` if applicable
     pub(super) fn string_to_primitive_type(type_name: &str) -> Option<PrimitiveType> {
         match type_name {
-            "f32" | "Number" => Some(PrimitiveType::F32),
-            "i32" => Some(PrimitiveType::I32),
-            "u32" => Some(PrimitiveType::U32),
-            "bool" | "Boolean" => Some(PrimitiveType::Bool),
-            "vec2" => Some(PrimitiveType::Vec2),
-            "vec3" => Some(PrimitiveType::Vec3),
-            "vec4" => Some(PrimitiveType::Vec4),
-            "ivec2" => Some(PrimitiveType::IVec2),
-            "ivec3" => Some(PrimitiveType::IVec3),
-            "ivec4" => Some(PrimitiveType::IVec4),
-            "uvec2" => Some(PrimitiveType::UVec2),
-            "uvec3" => Some(PrimitiveType::UVec3),
-            "uvec4" => Some(PrimitiveType::UVec4),
-            "mat2" => Some(PrimitiveType::Mat2),
-            "mat3" => Some(PrimitiveType::Mat3),
-            "mat4" => Some(PrimitiveType::Mat4),
+            "String" => Some(PrimitiveType::String),
+            "Number" => Some(PrimitiveType::Number),
+            "Boolean" => Some(PrimitiveType::Boolean),
+            "Path" => Some(PrimitiveType::Path),
+            "Regex" => Some(PrimitiveType::Regex),
+            "Never" => Some(PrimitiveType::Never),
             _ => None,
         }
     }

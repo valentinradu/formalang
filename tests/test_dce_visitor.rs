@@ -8,9 +8,9 @@
 
 use formalang::compile_to_ir;
 use formalang::ir::{
-    eliminate_dead_code, walk_block_statement, walk_expr_children, walk_module,
-    DeadCodeEliminator, EnumId, IrBlockStatement, IrEnum, IrEnumVariant, IrExpr, IrField,
-    IrFunction, IrImpl, IrLet, IrStruct, IrVisitor, StructId, TraitId,
+    eliminate_dead_code, walk_block_statement, walk_expr_children, walk_module, DeadCodeEliminator,
+    EnumId, IrBlockStatement, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrLet,
+    IrStruct, IrVisitor, StructId, TraitId,
 };
 
 // =============================================================================
@@ -146,10 +146,7 @@ fn test_dce_expr_binary_op_both_sides() -> Result<(), Box<dyn std::error::Error>
         default_val,
         IrExpr::BinaryOp { .. } | IrExpr::Literal { .. }
     ) {
-        return Err(format!(
-            "Expected BinaryOp or Literal after DCE, got {default_val:?}"
-        )
-        .into());
+        return Err(format!("Expected BinaryOp or Literal after DCE, got {default_val:?}").into());
     }
     Ok(())
 }
@@ -748,7 +745,7 @@ impl IrVisitor for CountingVisitor {
 fn test_visitor_walk_full_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub trait Shape { area: Number }
-        pub struct Circle: Shape {
+        pub struct Circle {
             area: Number,
             radius: Number
         }
@@ -1145,7 +1142,9 @@ impl IrVisitor for SelectiveVisitor {
     fn visit_module(&mut self, module: &formalang::ir::IrModule) {
         // Only visit structs, skipping everything else
         for (idx, s) in module.structs.iter().enumerate() {
-            let Ok(raw_id) = u32::try_from(idx) else { continue };
+            let Ok(raw_id) = u32::try_from(idx) else {
+                continue;
+            };
             self.visit_struct(StructId(raw_id), s);
         }
     }
@@ -1364,11 +1363,11 @@ fn test_dce_analyze_struct_in_closure() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_visitor_walk_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
-    // Structs with mount fields - visitor should visit mount field defaults
+    // Structs with multiple fields - visitor should visit all field defaults
     let source = r"
         pub struct Box {
             width: Number,
-            mount child: Number = 0
+            child: Number = 0
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;

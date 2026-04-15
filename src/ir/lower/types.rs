@@ -17,9 +17,10 @@ impl IrLowerer<'_> {
                 || {
                     self.module.enum_id(name).map_or_else(
                         || {
-                            self.module
-                                .trait_id(name)
-                                .map_or_else(|| ResolvedType::TypeParam(name.to_string()), ResolvedType::Trait)
+                            self.module.trait_id(name).map_or_else(
+                                || ResolvedType::TypeParam(name.to_string()),
+                                ResolvedType::Trait,
+                            )
                         },
                         ResolvedType::Enum,
                     )
@@ -30,7 +31,11 @@ impl IrLowerer<'_> {
     }
 
     /// Get field type from a resolved type.
-    pub(super) fn get_field_type_from_resolved(&self, ty: &ResolvedType, field_name: &str) -> ResolvedType {
+    pub(super) fn get_field_type_from_resolved(
+        &self,
+        ty: &ResolvedType,
+        field_name: &str,
+    ) -> ResolvedType {
         if let ResolvedType::Struct(id) = ty {
             if let Some(struct_def) = self.module.get_struct(*id) {
                 if let Some(field) = struct_def.fields.iter().find(|f| f.name == field_name) {
@@ -42,7 +47,11 @@ impl IrLowerer<'_> {
     }
 
     /// Get the field types of a specific variant from an enum type.
-    pub(super) fn get_variant_fields(&self, enum_ty: &ResolvedType, variant_name: &str) -> Vec<ResolvedType> {
+    pub(super) fn get_variant_fields(
+        &self,
+        enum_ty: &ResolvedType,
+        variant_name: &str,
+    ) -> Vec<ResolvedType> {
         // Handle direct enum type
         if let ResolvedType::Enum(id) = enum_ty {
             if let Some(enum_def) = self.module.get_enum(*id) {

@@ -255,7 +255,8 @@ fn test_trait_extending_enum_not_trait() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_struct_implementing_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct MyStruct: UndefinedTrait { value: Number }
+        struct MyStruct { value: Number }
+        impl UndefinedTrait for MyStruct {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -268,7 +269,8 @@ fn test_struct_implementing_undefined_trait() -> Result<(), Box<dyn std::error::
 fn test_struct_implementing_struct_as_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct NotATrait { x: Number }
-        struct MyStruct: NotATrait { value: Number }
+        struct MyStruct { value: Number }
+        impl NotATrait for MyStruct {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -369,7 +371,8 @@ fn test_impl_undefined_trait_for_struct() -> Result<(), Box<dyn std::error::Erro
 fn test_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct BadImpl: Named { name: Number }
+        struct BadImpl { name: Number }
+        impl Named for BadImpl {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -382,7 +385,8 @@ fn test_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_missing_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Shape { area: Number, perimeter: Number }
-        struct Circle: Shape { area: Number }
+        struct Circle { area: Number }
+        impl Shape for Circle {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -776,10 +780,11 @@ fn test_nested_module_with_traits_and_structs() -> Result<(), Box<dyn std::error
     let source = r"
         pub mod geometry {
             pub trait Shape { area: Number }
-            pub struct Circle: Shape {
+            pub struct Circle {
                 area: Number,
                 radius: Number
             }
+            impl Shape for Circle {}
             pub enum Orientation { horizontal, vertical }
         }
     ";
@@ -845,7 +850,11 @@ fn test_struct_self_reference_via_optional() -> Result<(), Box<dyn std::error::E
     let result = compile(source);
     // Optional self-references still trigger circular dependency detection
     if result.is_ok() {
-        return Err(format!("Optional self-reference produces CircularDependency error: {:?}", result.ok()).into());
+        return Err(format!(
+            "Optional self-reference produces CircularDependency error: {:?}",
+            result.ok()
+        )
+        .into());
     }
     Ok(())
 }
@@ -904,7 +913,11 @@ fn test_method_call_on_array() -> Result<(), Box<dyn std::error::Error>> {
     // len() on arrays is not a recognized method in the semantic analyser
     let result = compile(source);
     if result.is_ok() {
-        return Err(format!("Array len() is not a builtin method — should produce UndefinedReference: {:?}", result.ok()).into());
+        return Err(format!(
+            "Array len() is not a builtin method — should produce UndefinedReference: {:?}",
+            result.ok()
+        )
+        .into());
     }
     Ok(())
 }
@@ -972,7 +985,8 @@ fn test_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[test]
-fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn std::error::Error>> {
+fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn std::error::Error>>
+{
     let source = r"
         struct Box<T> { value: T }
         struct Config { box: Box<Number> = Box(value: 42) }
@@ -1127,18 +1141,21 @@ fn test_nested_module_type_reference() -> Result<(), Box<dyn std::error::Error>>
 }
 
 // =============================================================================
-// Function call with mounts error
+// Function call validation
 // =============================================================================
 
 #[test]
-fn test_function_call_with_mounts_error() -> Result<(), Box<dyn std::error::Error>> {
+fn test_function_call_undefined_produces_error() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(x: Number) -> Number { x }
-        struct Config { val: Number = compute(x: 1) [child: 42] }
+        struct Config { val: Number = undefinedFn(x: 1) }
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err(format!("Mounts on a function call should be rejected: {:?}", result.ok()).into());
+        return Err(format!(
+            "Calling undefined function should be rejected: {:?}",
+            result.ok()
+        )
+        .into());
     }
     Ok(())
 }
@@ -1152,10 +1169,12 @@ fn test_struct_with_multiple_valid_traits() -> Result<(), Box<dyn std::error::Er
     let source = r"
         trait Named { name: String }
         trait Sized { size: Number }
-        struct Widget: Named + Sized {
+        struct Widget {
             name: String,
             size: Number
         }
+        impl Named for Widget {}
+        impl Sized for Widget {}
     ";
     compile(source).map_err(|e| format!("Multiple trait impl: {e:?}"))?;
     Ok(())
@@ -1165,9 +1184,9 @@ fn test_struct_with_multiple_valid_traits() -> Result<(), Box<dyn std::error::Er
 fn test_struct_with_one_invalid_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct Widget: Named + UndefinedTrait {
-            name: String
-        }
+        struct Widget { name: String }
+        impl Named for Widget {}
+        impl UndefinedTrait for Widget {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1404,10 +1423,11 @@ fn test_trait_composition_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
         trait Identified: Named { id: Number }
-        struct User: Identified {
+        struct User {
             name: String,
             id: Number
         }
+        impl Identified for User {}
     ";
     compile(source).map_err(|e| format!("Trait composition: {e:?}"))?;
     Ok(())
@@ -1418,9 +1438,8 @@ fn test_struct_must_implement_composed_trait_fields() -> Result<(), Box<dyn std:
     let source = r"
         trait Named { name: String }
         trait Identified: Named { id: Number }
-        struct User: Identified {
-            id: Number
-        }
+        struct User { id: Number }
+        impl Identified for User {}
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1430,55 +1449,50 @@ fn test_struct_must_implement_composed_trait_fields() -> Result<(), Box<dyn std:
 }
 
 // =============================================================================
-// Trait with mount fields
+// Trait field requirements in impl blocks
 // =============================================================================
 
 #[test]
-fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_with_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container {
             width: Number,
-            mount content: String
+            content: String
         }
-        struct Panel: Container {
+        struct Panel {
             width: Number,
-            mount content: String
+            content: String
         }
+        impl Container for Panel {}
     ";
-    compile(source).map_err(|e| format!("Trait with mount field: {e:?}"))?;
+    compile(source).map_err(|e| format!("Trait with required field: {e:?}"))?;
     Ok(())
 }
 
 #[test]
-fn test_struct_missing_trait_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_missing_trait_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Container {
-            mount content: String
-        }
-        struct Panel: Container {
-            width: Number
-        }
+        trait Container { content: String }
+        struct Panel { width: Number }
+        impl Container for Panel {}
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected missing mount point error".into());
+        return Err("Expected missing required field error".into());
     }
     Ok(())
 }
 
 #[test]
-fn test_mount_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_field_type_mismatch_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Container {
-            mount content: String
-        }
-        struct Panel: Container {
-            mount content: Number
-        }
+        trait Container { content: String }
+        struct Panel { content: Number }
+        impl Container for Panel {}
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected mount field type mismatch error".into());
+        return Err("Expected field type mismatch error".into());
     }
     Ok(())
 }
@@ -1601,7 +1615,11 @@ fn test_range_in_for_loop() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile(source);
     // Range loops produce a type error since Range<Number> isn't [Number]
     if result.is_ok() {
-        return Err(format!("Range in for loop should produce an error: {:?}", result.ok()).into());
+        return Err(format!(
+            "Range in for loop should produce an error: {:?}",
+            result.ok()
+        )
+        .into());
     }
     Ok(())
 }
@@ -1648,7 +1666,8 @@ fn test_struct_satisfies_generic_constraint() -> Result<(), Box<dyn std::error::
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Named: Printable { label: String }
+        struct Named { label: String }
+        impl Printable for Named {}
         struct Container { item: Box<Named> }
     ";
     compile(source).map_err(|e| format!("Generic constraint satisfied: {e:?}"))?;
@@ -1669,17 +1688,19 @@ fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Method call on builtin type
+// Method call on struct type
 // =============================================================================
 
 #[test]
 fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
-    // GPU vector methods - exercises method_exists_on_type with primitives
+    // normalize is no longer a builtin — calling it produces an undefined reference error
     let source = r"
         struct Gpu { output: Number = normalize(1.0) }
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    // normalize is a builtin function — should be recognized and compile
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: normalize is not defined".into());
+    }
     Ok(())
 }
 

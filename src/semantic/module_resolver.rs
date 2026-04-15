@@ -2,7 +2,10 @@ use crate::location::Span;
 use std::path::PathBuf;
 
 /// Error types for module resolution
-#[expect(clippy::exhaustive_enums, reason = "matched exhaustively by consumer code")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "matched exhaustively by consumer code"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
     /// Module file not found
@@ -73,7 +76,7 @@ pub struct FileSystemResolver {
 
 impl FileSystemResolver {
     /// Create a new filesystem resolver with the given root directory
-    #[must_use] 
+    #[must_use]
     pub const fn new(root_dir: PathBuf) -> Self {
         Self { root_dir }
     }

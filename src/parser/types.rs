@@ -6,8 +6,8 @@ use chumsky::prelude::*;
 use crate::ast::{Ident, PrimitiveType, TupleField, Type};
 use crate::lexer::Token;
 
-use super::span_from_simple;
 use super::ident_parser;
+use super::span_from_simple;
 
 /// Parse a type expression
 #[expect(
@@ -27,25 +27,6 @@ where
             just(Token::PathType).to(Type::Primitive(PrimitiveType::Path)),
             just(Token::RegexType).to(Type::Primitive(PrimitiveType::Regex)),
             just(Token::NeverType).to(Type::Primitive(PrimitiveType::Never)),
-            // GPU scalar types
-            just(Token::F32Type).to(Type::Primitive(PrimitiveType::F32)),
-            just(Token::I32Type).to(Type::Primitive(PrimitiveType::I32)),
-            just(Token::U32Type).to(Type::Primitive(PrimitiveType::U32)),
-            just(Token::BoolType).to(Type::Primitive(PrimitiveType::Bool)),
-            // GPU vector types
-            just(Token::Vec2Type).to(Type::Primitive(PrimitiveType::Vec2)),
-            just(Token::Vec3Type).to(Type::Primitive(PrimitiveType::Vec3)),
-            just(Token::Vec4Type).to(Type::Primitive(PrimitiveType::Vec4)),
-            just(Token::IVec2Type).to(Type::Primitive(PrimitiveType::IVec2)),
-            just(Token::IVec3Type).to(Type::Primitive(PrimitiveType::IVec3)),
-            just(Token::IVec4Type).to(Type::Primitive(PrimitiveType::IVec4)),
-            just(Token::UVec2Type).to(Type::Primitive(PrimitiveType::UVec2)),
-            just(Token::UVec3Type).to(Type::Primitive(PrimitiveType::UVec3)),
-            just(Token::UVec4Type).to(Type::Primitive(PrimitiveType::UVec4)),
-            // GPU matrix types
-            just(Token::Mat2Type).to(Type::Primitive(PrimitiveType::Mat2)),
-            just(Token::Mat3Type).to(Type::Primitive(PrimitiveType::Mat3)),
-            just(Token::Mat4Type).to(Type::Primitive(PrimitiveType::Mat4)),
         ));
 
         // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments

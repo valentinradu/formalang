@@ -111,13 +111,6 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
                 walk_expr(visitor, default);
             }
         }
-        for field in &s.mount_fields {
-            visitor.visit_field(field);
-            // Walk field default expressions
-            if let Some(default) = &field.default {
-                walk_expr(visitor, default);
-            }
-        }
     }
 
     // Visit traits
@@ -128,9 +121,6 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         )]
         visitor.visit_trait(TraitId(idx as u32), t);
         for field in &t.fields {
-            visitor.visit_field(field);
-        }
-        for field in &t.mount_fields {
             visitor.visit_field(field);
         }
     }
@@ -155,7 +145,9 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         visitor.visit_impl(i);
         for f in &i.functions {
             visitor.visit_function(f);
-            walk_expr(visitor, &f.body);
+            if let Some(body) = &f.body {
+                walk_expr(visitor, body);
+            }
         }
     }
 
@@ -176,11 +168,8 @@ pub fn walk_expr<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
 /// This is called by the default `visit_expr` implementation.
 pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
     match expr {
-        IrExpr::StructInst { fields, mounts, .. } => {
+        IrExpr::StructInst { fields, .. } => {
             for (_, e) in fields {
-                walk_expr(visitor, e);
-            }
-            for (_, e) in mounts {
                 walk_expr(visitor, e);
             }
         }

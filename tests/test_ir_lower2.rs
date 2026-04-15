@@ -2,8 +2,8 @@
 //! closures, destructuring patterns, method calls on enums, `string_to_resolved_type`,
 //! block let destructuring, `lower_let_binding` patterns, module/function lowering.
 
-use formalang::ast::PrimitiveType;
 use formalang::ast::BinaryOperator;
+use formalang::ast::PrimitiveType;
 use formalang::compile_to_ir;
 use formalang::ir::{eliminate_dead_code, EventBindingSource, IrExpr, ResolvedType};
 
@@ -163,8 +163,9 @@ fn test_lower_inferred_enum_in_function() -> Result<(), Box<dyn std::error::Erro
         .iter()
         .find(|f| f.name == "get_color")
         .ok_or("get_color")?;
-    let IrExpr::EnumInst { variant, .. } = &func.body else {
-        return Err(format!("Expected EnumInst, got {:?}", func.body).into());
+    let IrExpr::EnumInst { variant, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected EnumInst, got {:?}", func.body.as_ref()).into());
     };
     if variant != "red" {
         return Err(format!("expected 'red', got '{variant}'").into());
@@ -559,8 +560,12 @@ fn test_lower_match_with_variant_bindings() -> Result<(), Box<dyn std::error::Er
         .iter()
         .find(|f| f.name == "area")
         .ok_or("area")?;
-    let IrExpr::Match { arms, .. } = &func.body else {
-        return Err(format!("Expected Match in function body, got {:?}", func.body).into());
+    let IrExpr::Match { arms, .. } = func.body.as_ref().expect("expected function body") else {
+        return Err(format!(
+            "Expected Match in function body, got {:?}",
+            func.body.as_ref()
+        )
+        .into());
     };
     if arms.is_empty() {
         return Err("expected at least one arm".into());
@@ -588,8 +593,9 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|f| f.name == "get_x")
         .ok_or("get_x")?;
-    let IrExpr::SelfFieldRef { field, .. } = &func.body else {
-        return Err(format!("Expected SelfFieldRef, got {:?}", func.body).into());
+    let IrExpr::SelfFieldRef { field, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected SelfFieldRef, got {:?}", func.body.as_ref()).into());
     };
     if field != "x" {
         return Err(format!("expected field 'x', got '{field}'").into());
@@ -618,8 +624,9 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|f| f.name == "double_increment")
         .ok_or("double_increment")?;
-    let IrExpr::MethodCall { method, .. } = &func.body else {
-        return Err(format!("Expected MethodCall, got {:?}", func.body).into());
+    let IrExpr::MethodCall { method, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected MethodCall, got {:?}", func.body.as_ref()).into());
     };
     if method != "increment" {
         return Err(format!("expected method 'increment', got '{method}'").into());
@@ -643,8 +650,8 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
     let impl_block = module.impls.first().ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     // Body should contain SelfFieldRef
-    let IrExpr::BinaryOp { left, .. } = &func.body else {
-        return Err(format!("Expected BinaryOp, got {:?}", func.body).into());
+    let IrExpr::BinaryOp { left, .. } = func.body.as_ref().expect("expected function body") else {
+        return Err(format!("Expected BinaryOp, got {:?}", func.body.as_ref()).into());
     };
     let IrExpr::SelfFieldRef { field, .. } = left.as_ref() else {
         return Err(format!("Expected SelfFieldRef on left of BinaryOp, got {left:?}").into());
@@ -670,8 +677,8 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let impl_block = module.impls.first().ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
-    let IrExpr::Reference { path, .. } = &func.body else {
-        return Err(format!("Expected Reference(self), got {:?}", func.body).into());
+    let IrExpr::Reference { path, .. } = func.body.as_ref().expect("expected function body") else {
+        return Err(format!("Expected Reference(self), got {:?}", func.body.as_ref()).into());
     };
     let first_path = path.first().ok_or("index out of bounds")?;
     if first_path != "self" {
@@ -929,8 +936,9 @@ fn test_lower_let_expr() -> Result<(), Box<dyn std::error::Error>> {
         .find(|f| f.name == "compute")
         .ok_or("compute")?;
     // The function body should be a block with a let statement
-    let IrExpr::Block { statements, .. } = &func.body else {
-        return Err(format!("Expected Block, got {:?}", func.body).into());
+    let IrExpr::Block { statements, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected Block, got {:?}", func.body.as_ref()).into());
     };
     if statements.is_empty() {
         return Err("Block should have at least one statement".into());
@@ -979,8 +987,11 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
         .find(|i| !i.functions.is_empty())
         .ok_or("impl")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
-    if !matches!(&func.body, IrExpr::Literal { .. } | IrExpr::If { .. }) {
-        return Err(format!("Unexpected body: {:?}", func.body).into());
+    if !matches!(
+        func.body.as_ref().expect("expected function body"),
+        IrExpr::Literal { .. } | IrExpr::If { .. }
+    ) {
+        return Err(format!("Unexpected body: {:?}", func.body.as_ref()).into());
     }
     Ok(())
 }
@@ -992,7 +1003,9 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_lower_builtin_function_calls() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn builtin_test() -> Number { sin(0) + cos(0) }
+        extern fn sin(x: Number) -> Number
+        extern fn cos(x: Number) -> Number
+        fn builtin_test() -> Number { sin(x: 0) + cos(x: 0) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let func = module
@@ -1002,9 +1015,13 @@ fn test_lower_builtin_function_calls() -> Result<(), Box<dyn std::error::Error>>
         .ok_or("builtin_test")?;
     let IrExpr::BinaryOp {
         left, right, op, ..
-    } = &func.body
+    } = func.body.as_ref().expect("expected function body")
     else {
-        return Err(format!("Expected BinaryOp with builtin calls, got {:?}", func.body).into());
+        return Err(format!(
+            "Expected BinaryOp with builtin calls, got {:?}",
+            func.body.as_ref()
+        )
+        .into());
     };
     if *op != BinaryOperator::Add {
         return Err(format!("expected Add op, got {op:?}").into());

@@ -369,7 +369,7 @@ fn test_empty_module() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_conforming_empty_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Empty { }
-        struct A: Empty { }
+        struct A { }
     ";
     compile(source).map_err(|e| format!("Struct conforming empty trait: {e:?}"))?;
     Ok(())
@@ -427,7 +427,7 @@ fn test_multiple_traits() -> Result<(), Box<dyn std::error::Error>> {
         trait A { a: String }
         trait B { b: Number }
         trait C { c: Boolean }
-        struct Full: A + B + C {
+        struct Full {
             a: String,
             b: Number,
             c: Boolean
@@ -507,7 +507,7 @@ fn test_module_with_all_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod full {
             trait T { x: String }
-            struct S: T { x: String }
+            struct S { x: String }
             enum E { a, b }
         }
     ";
@@ -549,7 +549,7 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
             cancelled
         }
 
-        struct Product: Identifiable {
+        struct Product {
             id: Number,
             name: String,
             price: Number,
@@ -562,7 +562,7 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
             quantity: Number
         }
 
-        struct Order: Identifiable + Timestamped {
+        struct Order {
             id: Number,
             createdAt: Number,
             updatedAt: Number,
@@ -571,7 +571,7 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
             total: Number
         }
 
-        struct Customer: Identifiable {
+        struct Customer {
             id: Number,
             name: String,
             email: String,
@@ -586,7 +586,7 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
 fn test_ui_component_model() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         trait Renderable {
-            @mount content: String
+            content: String
         }
 
         struct Text {
@@ -598,13 +598,13 @@ fn test_ui_component_model() -> Result<(), Box<dyn std::error::Error>> {
         struct Button {
             label: String,
             disabled: Boolean = false,
-            @mount onClick: String
+            onClick: String
         }
 
-        struct Card: Renderable {
+        struct Card {
             title: String,
-            @mount content: String,
-            @mount footer: String?
+            content: String,
+            footer: String?
         }
     "#;
     compile(source).map_err(|e| format!("UI component model: {e:?}"))?;

@@ -63,14 +63,14 @@ pub(super) fn fill_definition_span(def: &mut Definition, source: &str) {
         Definition::Impl(i) => fill_impl_def_spans(i, source),
         Definition::Enum(e) => fill_enum_def_spans(e, source),
         Definition::Function(f) => fill_function_def_spans(f, source),
+        Definition::ExternType(_) => {
+            // ExternType has no sub-spans to fill
+        }
     }
 }
 
 /// Fill generic parameter spans (shared by trait, struct, impl, enum).
-fn fill_generic_params_spans(
-    params: &mut [crate::ast::GenericParam],
-    source: &str,
-) {
+fn fill_generic_params_spans(params: &mut [crate::ast::GenericParam], source: &str) {
     for param in params {
         fill_span(&mut param.name.span, source);
         for constraint in &mut param.constraints {
@@ -93,19 +93,15 @@ fn fill_trait_def_spans(t: &mut crate::ast::TraitDef, source: &str) {
         fill_type_span(&mut field.ty, source);
         fill_span(&mut field.span, source);
     }
-    for mp in &mut t.mount_fields {
-        fill_span(&mut mp.name.span, source);
-        fill_type_span(&mut mp.ty, source);
-        fill_span(&mut mp.span, source);
+    for m in &mut t.methods {
+        fill_span(&mut m.name.span, source);
+        fill_span(&mut m.span, source);
     }
     fill_span(&mut t.span, source);
 }
 
 fn fill_struct_def_spans(s: &mut crate::ast::StructDef, source: &str) {
     fill_span(&mut s.name.span, source);
-    for base in &mut s.traits {
-        fill_span(&mut base.span, source);
-    }
     fill_generic_params_spans(&mut s.generics, source);
     for field in &mut s.fields {
         fill_span(&mut field.name.span, source);
@@ -114,14 +110,6 @@ fn fill_struct_def_spans(s: &mut crate::ast::StructDef, source: &str) {
             fill_expr_span(default, source);
         }
         fill_span(&mut field.span, source);
-    }
-    for mp in &mut s.mount_fields {
-        fill_span(&mut mp.name.span, source);
-        fill_type_span(&mut mp.ty, source);
-        if let Some(default) = &mut mp.default {
-            fill_expr_span(default, source);
-        }
-        fill_span(&mut mp.span, source);
     }
     fill_span(&mut s.span, source);
 }
@@ -132,6 +120,9 @@ fn fill_impl_def_spans(i: &mut crate::ast::ImplDef, source: &str) {
     for func in &mut i.functions {
         fill_span(&mut func.name.span, source);
         for p in &mut func.params {
+            if let Some(label) = &mut p.external_label {
+                fill_span(&mut label.span, source);
+            }
             fill_span(&mut p.name.span, source);
             if let Some(ty) = &mut p.ty {
                 fill_type_span(ty, source);
@@ -141,7 +132,9 @@ fn fill_impl_def_spans(i: &mut crate::ast::ImplDef, source: &str) {
         if let Some(ret) = &mut func.return_type {
             fill_type_span(ret, source);
         }
-        fill_expr_span(&mut func.body, source);
+        if let Some(body) = &mut func.body {
+            fill_expr_span(body, source);
+        }
         fill_span(&mut func.span, source);
     }
     fill_span(&mut i.span, source);
@@ -165,6 +158,9 @@ fn fill_enum_def_spans(e: &mut crate::ast::EnumDef, source: &str) {
 fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, source: &str) {
     fill_span(&mut f.name.span, source);
     for p in &mut f.params {
+        if let Some(label) = &mut p.external_label {
+            fill_span(&mut label.span, source);
+        }
         fill_span(&mut p.name.span, source);
         if let Some(ty) = &mut p.ty {
             fill_type_span(ty, source);
@@ -174,7 +170,9 @@ fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, source: &str) {
     if let Some(ret) = &mut f.return_type {
         fill_type_span(ret, source);
     }
-    fill_expr_span(&mut f.body, source);
+    if let Some(body) = &mut f.body {
+        fill_expr_span(body, source);
+    }
     fill_span(&mut f.span, source);
 }
 
@@ -215,20 +213,37 @@ pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
 pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
         Expr::Literal(_) => {}
-        Expr::Invocation { path, type_args, args, mounts, span } => {
-            fill_invocation_expr_spans(path, type_args, args, mounts, span, source);
+        Expr::Invocation {
+            path,
+            type_args,
+            args,
+            span,
+            ..
+        } => {
+            fill_invocation_expr_spans(path, type_args, args, span, source);
         }
-        Expr::EnumInstantiation { enum_name, variant, data, span } => {
+        Expr::EnumInstantiation {
+            enum_name,
+            variant,
+            data,
+            span,
+        } => {
             fill_span(&mut enum_name.span, source);
             fill_span(&mut variant.span, source);
             fill_named_expr_list_spans(data, span, source);
         }
-        Expr::InferredEnumInstantiation { variant, data, span } => {
+        Expr::InferredEnumInstantiation {
+            variant,
+            data,
+            span,
+        } => {
             fill_span(&mut variant.span, source);
             fill_named_expr_list_spans(data, span, source);
         }
         Expr::Array { elements, span } => {
-            for elem in elements { fill_expr_span(elem, source); }
+            for elem in elements {
+                fill_expr_span(elem, source);
+            }
             fill_span(span, source);
         }
         Expr::Tuple { fields, span } => {
@@ -239,10 +254,14 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_span(span, source);
         }
         Expr::Reference { path, span } => {
-            for ident in path { fill_span(&mut ident.span, source); }
+            for ident in path {
+                fill_span(&mut ident.span, source);
+            }
             fill_span(span, source);
         }
-        Expr::BinaryOp { left, right, span, .. } => {
+        Expr::BinaryOp {
+            left, right, span, ..
+        } => {
             fill_expr_span(left, source);
             fill_expr_span(right, source);
             fill_span(span, source);
@@ -251,19 +270,35 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(operand, source);
             fill_span(span, source);
         }
-        Expr::ForExpr { var, collection, body, span } => {
+        Expr::ForExpr {
+            var,
+            collection,
+            body,
+            span,
+        } => {
             fill_span(&mut var.span, source);
             fill_expr_span(collection, source);
             fill_expr_span(body, source);
             fill_span(span, source);
         }
-        Expr::IfExpr { condition, then_branch, else_branch, span } => {
+        Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
             fill_expr_span(condition, source);
             fill_expr_span(then_branch, source);
-            if let Some(else_br) = else_branch { fill_expr_span(else_br, source); }
+            if let Some(else_br) = else_branch {
+                fill_expr_span(else_br, source);
+            }
             fill_span(span, source);
         }
-        Expr::MatchExpr { scrutinee, arms, span } => {
+        Expr::MatchExpr {
+            scrutinee,
+            arms,
+            span,
+        } => {
             fill_expr_span(scrutinee, source);
             for arm in arms {
                 fill_pattern_span(&mut arm.pattern, source);
@@ -272,7 +307,10 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             }
             fill_span(span, source);
         }
-        Expr::Group { expr, span } => { fill_expr_span(expr, source); fill_span(span, source); }
+        Expr::Group { expr, span } => {
+            fill_expr_span(expr, source);
+            fill_span(span, source);
+        }
         Expr::DictLiteral { entries, span } => {
             for (key, value) in entries {
                 fill_expr_span(key, source);
@@ -285,7 +323,11 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_expr_span(key, source);
             fill_span(span, source);
         }
-        Expr::FieldAccess { object, field, span } => {
+        Expr::FieldAccess {
+            object,
+            field,
+            span,
+        } => {
             fill_expr_span(object, source);
             fill_span(&mut field.span, source);
             fill_span(span, source);
@@ -293,16 +335,34 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
         Expr::ClosureExpr { params, body, span } => {
             fill_closure_expr_spans(params, body, span, source);
         }
-        Expr::LetExpr { pattern, ty, value, body, span, .. } => {
+        Expr::LetExpr {
+            pattern,
+            ty,
+            value,
+            body,
+            span,
+            ..
+        } => {
             fill_let_expr_spans(pattern, ty, value, body, span, source);
         }
-        Expr::MethodCall { receiver, method, args, span } => {
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            span,
+        } => {
             fill_expr_span(receiver, source);
             fill_span(&mut method.span, source);
-            for arg_expr in args { fill_expr_span(arg_expr, source); }
+            for arg_expr in args {
+                fill_expr_span(arg_expr, source);
+            }
             fill_span(span, source);
         }
-        Expr::Block { statements, result, span } => {
+        Expr::Block {
+            statements,
+            result,
+            span,
+        } => {
             fill_block_expr_spans(statements, result, span, source);
         }
     }
@@ -324,19 +384,20 @@ fn fill_invocation_expr_spans(
     path: &mut [crate::ast::Ident],
     type_args: &mut [crate::ast::Type],
     args: &mut [(Option<crate::ast::Ident>, Expr)],
-    mounts: &mut [(crate::ast::Ident, Expr)],
     span: &mut crate::location::Span,
     source: &str,
 ) {
-    for ident in path { fill_span(&mut ident.span, source); }
-    for ty_arg in type_args { fill_type_span(ty_arg, source); }
-    for (arg_name, arg_expr) in args {
-        if let Some(name) = arg_name { fill_span(&mut name.span, source); }
-        fill_expr_span(arg_expr, source);
+    for ident in path {
+        fill_span(&mut ident.span, source);
     }
-    for (mount_name, mount_expr) in mounts {
-        fill_span(&mut mount_name.span, source);
-        fill_expr_span(mount_expr, source);
+    for ty_arg in type_args {
+        fill_type_span(ty_arg, source);
+    }
+    for (arg_name, arg_expr) in args {
+        if let Some(name) = arg_name {
+            fill_span(&mut name.span, source);
+        }
+        fill_expr_span(arg_expr, source);
     }
     fill_span(span, source);
 }
@@ -349,7 +410,9 @@ fn fill_closure_expr_spans(
 ) {
     for param in params {
         fill_span(&mut param.name.span, source);
-        if let Some(ty) = &mut param.ty { fill_type_span(ty, source); }
+        if let Some(ty) = &mut param.ty {
+            fill_type_span(ty, source);
+        }
         fill_span(&mut param.span, source);
     }
     fill_expr_span(body, source);
@@ -365,7 +428,9 @@ fn fill_let_expr_spans(
     source: &str,
 ) {
     fill_binding_pattern_span(pattern, source);
-    if let Some(type_ann) = ty { fill_type_span(type_ann, source); }
+    if let Some(type_ann) = ty {
+        fill_type_span(type_ann, source);
+    }
     fill_expr_span(value, source);
     fill_expr_span(body, source);
     fill_span(span, source);
@@ -379,18 +444,32 @@ fn fill_block_expr_spans(
 ) {
     for stmt in statements {
         match stmt {
-            BlockStatement::Let { pattern, ty, value, span: stmt_span, .. } => {
+            BlockStatement::Let {
+                pattern,
+                ty,
+                value,
+                span: stmt_span,
+                ..
+            } => {
                 fill_binding_pattern_span(pattern, source);
-                if let Some(type_ann) = ty { fill_type_span(type_ann, source); }
+                if let Some(type_ann) = ty {
+                    fill_type_span(type_ann, source);
+                }
                 fill_expr_span(value, source);
                 fill_span(stmt_span, source);
             }
-            BlockStatement::Assign { target, value, span: stmt_span } => {
+            BlockStatement::Assign {
+                target,
+                value,
+                span: stmt_span,
+            } => {
                 fill_expr_span(target, source);
                 fill_expr_span(value, source);
                 fill_span(stmt_span, source);
             }
-            BlockStatement::Expr(expr) => { fill_expr_span(expr, source); }
+            BlockStatement::Expr(expr) => {
+                fill_expr_span(expr, source);
+            }
         }
     }
     fill_expr_span(result, source);

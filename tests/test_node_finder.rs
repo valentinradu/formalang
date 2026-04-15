@@ -302,20 +302,21 @@ fn test_find_struct_generic_param() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_struct_trait_conformance() -> Result<(), Box<dyn std::error::Error>> {
+    // Struct-trait composition (struct S: Trait) is removed; test that trait name can still
+    // be found at its definition offset
     let source = r"
         trait Named { name: String }
-        struct User: Named { name: String }
+        struct User { name: String }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    let usages: Vec<_> = source.match_indices("Named").collect();
-    if usages.len() < 2 {
-        return Err("Expected at least 2 occurrences of Named".into());
-    }
-    let off = usages.get(1).ok_or("index out of bounds")?.0;
+    let off = source.find("Named").ok_or("Named not found")?;
     let ctx = find_node_at_offset(&file, off);
-    if !matches!(ctx.node, NodeAtPosition::Identifier(_)) {
+    if !matches!(
+        ctx.node,
+        NodeAtPosition::Identifier(_) | NodeAtPosition::TraitDef(_)
+    ) {
         return Err(format!(
-            "Expected Identifier at trait conformance, got {:?}",
+            "Expected Identifier or TraitDef at trait name, got {:?}",
             ctx.node
         )
         .into());

@@ -562,12 +562,12 @@ fn test_arrow() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_mount_keyword() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "mount";
+fn test_extern_keyword() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "extern";
     let tokens = Lexer::tokenize_all(source);
-    let has_mount = tokens.iter().any(|(t, _)| matches!(t, Token::Mount));
-    if !has_mount {
-        return Err("Expected Mount token".into());
+    let has_extern = tokens.iter().any(|(t, _)| matches!(t, Token::Extern));
+    if !has_extern {
+        return Err("Expected Extern token".into());
     }
     Ok(())
 }

@@ -400,8 +400,8 @@ fn test_trait_with_generics() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Base { base: String }
-        trait Derived: Base { derived: Number }
-        struct Impl: Derived { base: String, derived: Number }
+        trait Derived { derived: Number }
+        struct Impl { base: String, derived: Number }
     ";
     compile(source).map_err(|e| format!("Trait inheritance: {e:?}"))?;
     Ok(())
@@ -439,7 +439,7 @@ fn test_struct_with_modifiers() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Full {
             mut count: Number,
-            @mount content: String,
+            content: String,
             optional: String?,
             default: Number = 0
         }
@@ -584,7 +584,7 @@ fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
         enum Status { active, inactive }
 
         // Structs
-        struct User: Identifiable {
+        struct User {
             id: Number,
             name: String,
             status: Status
@@ -611,22 +611,21 @@ fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
-    // Mount field references to other fields use self, which is only valid in impl functions
     let source = r#"
         struct Container {
-            @mount header: String = "Container",
-            @mount content: String,
-            @mount footer: String?
+            header: String,
+            content: String,
+            footer: String?
         }
 
         struct Card {
             title: String,
-            @mount body: String
+            body: String
         }
 
         struct Button {
             label: String,
-            @mount onClick: String
+            onClick: String
         }
 
         impl Card {
@@ -754,9 +753,9 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
-    // Function calls require module::function syntax with named args
     let source = r"
-        struct A { x: Number = math::sin(angle: 1.0) }
+        fn compute(angle: Number) -> Number { angle }
+        struct A { x: Number = compute(angle: 1.0) }
     ";
     compile(source).map_err(|e| format!("Function call single arg: {e:?}"))?;
     Ok(())
@@ -764,9 +763,9 @@ fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> {
-    // Function calls require module::function syntax with named args
     let source = r"
-        struct A { x: Number = math::max(a: 1.0, b: 2.0) }
+        fn clamp(val: Number, lo: Number) -> Number { val }
+        struct A { x: Number = clamp(val: 1.0, lo: 2.0) }
     ";
     compile(source).map_err(|e| format!("Function call multiple args: {e:?}"))?;
     Ok(())
@@ -774,9 +773,11 @@ fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>> {
-    // Function calls require module::function syntax with named args
     let source = r"
-        struct A { x: Number = builtin::math::sin(angle: 1.0) }
+        mod math {
+            pub fn compute(angle: Number) -> Number { angle }
+        }
+        fn call_compute() -> Number { math::compute(angle: 1.0) }
     ";
     compile(source).map_err(|e| format!("Function call qualified path: {e:?}"))?;
     Ok(())
@@ -784,9 +785,9 @@ fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
-    // Function calls require module::function syntax with named args
     let source = r"
-        struct A { x: Number = math::sin(angle: math::cos(angle: 1.0)) }
+        fn double(x: Number) -> Number { x }
+        struct A { x: Number = double(x: double(x: 1.0)) }
     ";
     compile(source).map_err(|e| format!("Nested function calls: {e:?}"))?;
     Ok(())
@@ -794,11 +795,16 @@ fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
-    // self is only valid in impl functions
+    // Method calls on extern types are allowed
     let source = r"
-        struct A { x: Number }
+        extern type Canvas
+        extern impl Canvas {
+            fn area(self) -> Number
+        }
+        extern fn get_canvas() -> Canvas
+        struct A { x: Canvas }
         impl A {
-            fn get_abs() -> Number { self.x.abs() }
+            fn get_area() -> Number { self.x.area() }
         }
     ";
     compile(source).map_err(|e| format!("Method call: {e:?}"))?;
@@ -807,11 +813,15 @@ fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
-    // self is only valid in impl functions
     let source = r"
-        struct A { x: Number }
+        extern type Canvas
+        extern impl Canvas {
+            fn scale(self, factor: Number) -> Canvas
+        }
+        extern fn get_canvas() -> Canvas
+        struct A { x: Canvas }
         impl A {
-            fn get_clamped() -> Number { self.x.clamp(0, 100) }
+            fn get_scaled() -> Canvas { self.x.scale(factor: 2) }
         }
     ";
     compile(source).map_err(|e| format!("Method call with args: {e:?}"))?;
@@ -820,11 +830,16 @@ fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
-    // self is only valid in impl functions
     let source = r"
-        struct A { x: Number }
+        extern type Canvas
+        extern impl Canvas {
+            fn flip(self) -> Canvas
+            fn area(self) -> Number
+        }
+        extern fn get_canvas() -> Canvas
+        struct A { x: Canvas }
         impl A {
-            fn get_floored() -> Number { self.x.abs().floor() }
+            fn get_area() -> Number { self.x.flip().area() }
         }
     ";
     compile(source).map_err(|e| format!("Chained method calls: {e:?}"))?;
@@ -833,11 +848,11 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_function_and_method_mixed() -> Result<(), Box<dyn std::error::Error>> {
-    // self is only valid in impl functions
     let source = r"
+        fn process(val: Number) -> Number { val }
         struct A { x: Number }
         impl A {
-            fn get_max() -> Number { max(self.x.abs(), 0) }
+            fn compute() -> Number { process(val: self.x) }
         }
     ";
     compile(source).map_err(|e| format!("Mixed function and method calls: {e:?}"))?;

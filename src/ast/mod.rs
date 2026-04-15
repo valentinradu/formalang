@@ -11,32 +11,27 @@
 //! 2. **Semantic Analysis Phase**: The semantic analyzer looks up the name in the symbol table
 //!    to determine whether it's a struct or function:
 //!    - **Struct instantiation**: Requires named arguments (`field: value`), supports generic
-//!      type arguments and mount fields.
-//!    - **Function call**: Uses positional arguments, type arguments and mounts are rejected.
+//!      type arguments.
+//!    - **Function call**: Uses positional or named arguments; type arguments are rejected.
 //!
 //! This approach follows Rust's model where the same syntax can represent different constructs
 //! depending on what the name resolves to.
-//!
-//! # Argument Representation
-//!
-//! There are two argument representations in the AST:
-//!
-//! - [`Expr::Invocation`] uses `Vec<(Option<Ident>, Expr)>` where `Some(name)` indicates a
-//!   named argument and `None` indicates a positional argument. This allows the parser to
-//!   accept both styles, with semantic analysis enforcing that structs require named args.
-//!
-//! - [`Expr::MethodCall`] uses `Vec<Expr>` (positional only) because method calls are for
-//!   builtin methods which don't have parameter names in their signatures.
 
 use crate::location::Span;
 use serde::{Deserialize, Serialize};
 
-/// Generic type parameter (e.g., T in model Box<T>)
+/// The current AST serialization format version.
+///
+/// Embedders use this to detect incompatible AST changes. Increment when making
+/// breaking changes to any public AST type.
+pub const FORMAT_VERSION: u32 = 1;
+
+/// Generic type parameter (e.g., T in `Box<T>`)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenericParam {
     pub name: Ident,
-    pub constraints: Vec<GenericConstraint>, // e.g., [Container] for T: Container
+    pub constraints: Vec<GenericConstraint>,
     pub span: Span,
 }
 
@@ -44,15 +39,32 @@ pub struct GenericParam {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GenericConstraint {
-    Trait(Ident), // Trait bound: T: TraitName
+    Trait(Ident),
 }
 
-/// Root node representing a complete .fv file
+/// Root node representing a complete `.fv` file.
+///
+/// The `format_version` field allows embedders to detect AST format changes when
+/// using the AST as a wire format. Currently [`FORMAT_VERSION`].
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct File {
+    /// AST serialization format version. See [`FORMAT_VERSION`].
+    pub format_version: u32,
     pub statements: Vec<Statement>,
     pub span: Span,
+}
+
+impl File {
+    /// Create a new `File` with the current [`FORMAT_VERSION`].
+    #[must_use]
+    pub fn new(statements: Vec<Statement>, span: Span) -> Self {
+        Self {
+            format_version: FORMAT_VERSION,
+            statements,
+            span,
+        }
+    }
 }
 
 /// Top-level statement (use, let, or definition)
@@ -60,11 +72,11 @@ pub struct File {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     Use(UseStmt),
-    Let(Box<LetBinding>), // Boxed to reduce enum size (LetBinding is 576+ bytes)
-    Definition(Box<Definition>), // Boxed to reduce enum size (Definition is 592+ bytes)
+    Let(Box<LetBinding>),
+    Definition(Box<Definition>),
 }
 
-/// Definition (trait, struct, impl, enum, or module)
+/// Definition (trait, struct, impl, enum, module, function, or extern type)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Definition {
@@ -74,10 +86,15 @@ pub enum Definition {
     Enum(EnumDef),
     Module(ModuleDef),
     /// Standalone function definition (not inside impl block)
-    Function(Box<FunctionDef>), // Boxed to reduce enum size (FunctionDef is 592+ bytes)
+    Function(Box<FunctionDef>),
+    /// Extern opaque type declaration — no fields, no structural access
+    ExternType(ExternTypeDef),
 }
 
-/// Standalone function definition with visibility
+/// Standalone function definition with visibility.
+///
+/// `body` is `None` for `extern fn` declarations.
+/// `body` is `Some(_)` for regular functions.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDef {
@@ -85,7 +102,28 @@ pub struct FunctionDef {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub body: Expr,
+    /// `None` for `extern fn`; `Some(_)` for regular functions.
+    pub body: Option<Expr>,
+    pub span: Span,
+}
+
+/// Extern opaque type declaration.
+///
+/// Values of an extern type can only be produced by extern functions or methods
+/// that return that type.
+///
+/// # Example
+///
+/// ```formalang
+/// extern type Canvas
+/// extern type Buffer<T>
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExternTypeDef {
+    pub visibility: Visibility,
+    pub name: Ident,
+    pub generics: Vec<GenericParam>,
     pub span: Span,
 }
 
@@ -93,8 +131,8 @@ pub struct FunctionDef {
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Visibility {
-    Public,  // pub
-    Private, // default
+    Public,
+    Private,
 }
 
 /// Use statement (import items from modules)
@@ -124,35 +162,47 @@ pub struct LetBinding {
     pub visibility: Visibility,
     pub mutable: bool,
     pub pattern: BindingPattern,
-    /// Optional explicit type annotation (e.g., `let x: String = "hello"`)
     pub type_annotation: Option<Type>,
     pub value: Expr,
     pub span: Span,
 }
 
-/// Trait definition (unified - no model/view distinction)
+/// Trait definition.
+///
+/// Traits declare field requirements and method signatures. Trait inheritance
+/// (`trait A: B + C`) is supported.
+///
+/// # Example
+///
+/// ```formalang
+/// trait Shape {
+///     color: String
+///     fn area(self) -> Number
+/// }
+/// ```
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraitDef {
     pub visibility: Visibility,
     pub name: Ident,
-    pub generics: Vec<GenericParam>, // Generic parameters
-    pub traits: Vec<Ident>,          // Trait composition (A + B + C)
-    pub fields: Vec<FieldDef>,       // Regular field requirements
-    pub mount_fields: Vec<FieldDef>, // Mount field requirements
+    pub generics: Vec<GenericParam>,
+    /// Trait inheritance (`trait A: B + C`)
+    pub traits: Vec<Ident>,
+    /// Required field declarations
+    pub fields: Vec<FieldDef>,
+    /// Required method signatures (no default implementations)
+    pub methods: Vec<FnSig>,
     pub span: Span,
 }
 
-/// Struct definition (unified data and UI component type)
+/// Struct definition
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StructDef {
     pub visibility: Visibility,
     pub name: Ident,
-    pub generics: Vec<GenericParam>,    // Generic parameters
-    pub traits: Vec<Ident>,             // Implemented traits (A + B + C)
-    pub fields: Vec<StructField>,       // Regular fields
-    pub mount_fields: Vec<StructField>, // Mount fields (with mount keyword)
+    pub generics: Vec<GenericParam>,
+    pub fields: Vec<StructField>,
     pub span: Span,
 }
 
@@ -163,34 +213,57 @@ pub struct StructField {
     pub mutable: bool,
     pub name: Ident,
     pub ty: Type,
-    pub optional: bool, // true if Type?
+    pub optional: bool,
     pub default: Option<Expr>,
     pub span: Span,
 }
 
-/// Impl block definition (implementation body for structs)
+/// Impl block definition.
 ///
-/// Supports two forms:
-/// - `impl Type { ... }` - inherent implementation
-/// - `impl Trait for Type { ... }` - trait implementation
+/// - `impl Type { ... }` — inherent implementation
+/// - `impl Trait for Type { ... }` — trait implementation
+/// - `extern impl Type { ... }` — extern method declarations (bodies must all be `None`)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImplDef {
-    pub trait_name: Option<Ident>, // Trait being implemented (None for inherent impl)
-    pub name: Ident,               // Struct/enum name being implemented
-    pub generics: Vec<GenericParam>, // Type parameters
-    pub functions: Vec<FnDef>,     // Function definitions
+    pub trait_name: Option<Ident>,
+    pub name: Ident,
+    pub generics: Vec<GenericParam>,
+    pub functions: Vec<FnDef>,
+    /// When `true`, this is `extern impl`; all contained `FnDef` bodies must be `None`.
+    pub is_extern: bool,
     pub span: Span,
 }
 
-/// Function definition (inside impl blocks)
+/// Function definition (inside impl blocks).
+///
+/// `body` is `None` inside `extern impl` blocks; `Some(_)` in regular impl blocks.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnDef {
     pub name: Ident,
-    pub params: Vec<FnParam>,      // Parameters (first is typically `self`)
-    pub return_type: Option<Type>, // Return type (None = unit/void)
-    pub body: Expr,                // Function body expression
+    pub params: Vec<FnParam>,
+    pub return_type: Option<Type>,
+    /// `None` in `extern impl`; `Some(_)` in regular impl.
+    pub body: Option<Expr>,
+    pub span: Span,
+}
+
+/// Function signature (used in trait method declarations — no body).
+///
+/// # Example
+///
+/// ```formalang
+/// trait Drawable {
+///     fn draw(self) -> Boolean
+/// }
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FnSig {
+    pub name: Ident,
+    pub params: Vec<FnParam>,
+    pub return_type: Option<Type>,
     pub span: Span,
 }
 
@@ -198,9 +271,12 @@ pub struct FnDef {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnParam {
+    /// External call-site label (if specified separately from the internal name).
+    /// For `fn foo(label name: Type)`, `external_label` is `Some("label")` and `name` is `"name"`.
+    pub external_label: Option<Ident>,
     pub name: Ident,
-    pub ty: Option<Type>,      // None for `self` parameter
-    pub default: Option<Expr>, // Default value expression
+    pub ty: Option<Type>,
+    pub default: Option<Expr>,
     pub span: Span,
 }
 
@@ -210,7 +286,7 @@ pub struct FnParam {
 pub struct EnumDef {
     pub visibility: Visibility,
     pub name: Ident,
-    pub generics: Vec<GenericParam>, // Generic parameters
+    pub generics: Vec<GenericParam>,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
 }
@@ -220,7 +296,7 @@ pub struct EnumDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnumVariant {
     pub name: Ident,
-    pub fields: Vec<FieldDef>, // Named fields (empty for simple variants)
+    pub fields: Vec<FieldDef>,
     pub span: Span,
 }
 
@@ -230,11 +306,11 @@ pub struct EnumVariant {
 pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
-    pub definitions: Vec<Definition>, // Nested definitions (trait, model, view, enum, module)
+    pub definitions: Vec<Definition>,
     pub span: Span,
 }
 
-/// Field definition (used in traits)
+/// Field definition (used in traits and enum variants)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDef {
@@ -249,32 +325,28 @@ pub struct FieldDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Ident(Ident), // Type reference (trait, model, or enum)
+    Ident(Ident),
 
-    // Generic type application: Box<String> or Container<T>
     Generic {
-        name: Ident,     // The generic type name (e.g., "Box")
-        args: Vec<Self>, // Type arguments (e.g., [String])
+        name: Ident,
+        args: Vec<Self>,
         span: Span,
     },
 
-    Array(Box<Self>),       // Array type: [T]
-    Optional(Box<Self>),    // Optional type: T?
-    Tuple(Vec<TupleField>), // Named tuple type: (name1: T1, name2: T2)
+    Array(Box<Self>),
+    Optional(Box<Self>),
+    Tuple(Vec<TupleField>),
 
-    // Dictionary type: [K: V]
     Dictionary {
         key: Box<Self>,
         value: Box<Self>,
     },
 
-    // Closure type: () -> T, T -> U, or T, U -> V
     Closure {
-        params: Vec<Self>, // Parameter types (empty for () -> T)
-        ret: Box<Self>,    // Return type
+        params: Vec<Self>,
+        ret: Box<Self>,
     },
 
-    // Reference to a type parameter: T in Box<T>(value: T)
     TypeParameter(Ident),
 }
 
@@ -296,96 +368,52 @@ pub enum PrimitiveType {
     Boolean,
     Path,
     Regex,
-    /// Uninhabited type - has no values, used for terminal structs
+    /// Uninhabited type — has no values
     Never,
-
-    // GPU scalar types
-    F32,
-    I32,
-    U32,
-    Bool,
-
-    // GPU vector types (float)
-    Vec2,
-    Vec3,
-    Vec4,
-
-    // GPU vector types (signed int)
-    IVec2,
-    IVec3,
-    IVec4,
-
-    // GPU vector types (unsigned int)
-    UVec2,
-    UVec3,
-    UVec4,
-
-    // GPU matrix types
-    Mat2,
-    Mat3,
-    Mat4,
 }
 
-/// Expression (compile-time evaluated)
+/// Expression
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
-    // Literals (remain in final AST)
     Literal(Literal),
 
-    /// Invocation expression: struct instantiation or function call
-    ///
-    /// The parser cannot distinguish between `Point(x: 1)` (struct) and `max(a, b)` (function)
-    /// syntactically. Semantic analysis resolves this by looking up the name in the symbol table:
-    /// - If it's a struct → struct instantiation (requires named args, `type_args` and mounts valid)
-    /// - If it's a function → function call (uses positional args, `type_args` and mounts must be empty)
+    /// Struct instantiation or function call (disambiguated by semantic analysis)
     Invocation {
-        /// The name/path being invoked (struct name or function name)
-        /// Can be module-qualified: `module::Name`
         path: Vec<Ident>,
-        /// Generic type arguments (only valid for struct instantiation)
         type_args: Vec<Type>,
-        /// Arguments: Some(name) for named args, None for positional args
-        /// Structs require named args, functions use positional args
         args: Vec<(Option<Ident>, Self)>,
-        /// Mount field arguments (only valid for struct instantiation)
-        mounts: Vec<(Ident, Self)>,
         span: Span,
     },
 
     EnumInstantiation {
         enum_name: Ident,
         variant: Ident,
-        data: Vec<(Ident, Self)>, // Named parameters: (field_name, value)
+        data: Vec<(Ident, Self)>,
         span: Span,
     },
 
-    // Inferred enum instantiation: .variant(...) where enum type is inferred from context
     InferredEnumInstantiation {
-        variant: Ident,           // Variant name (without enum name)
-        data: Vec<(Ident, Self)>, // Named parameters: (field_name, value)
+        variant: Ident,
+        data: Vec<(Ident, Self)>,
         span: Span,
     },
 
-    // Array literal (remains in final AST)
     Array {
         elements: Vec<Self>,
         span: Span,
     },
 
-    // Tuple literal (remains in final AST)
     Tuple {
-        fields: Vec<(Ident, Self)>, // Named fields: (name1: expr1, name2: expr2)
+        fields: Vec<(Ident, Self)>,
         span: Span,
     },
 
-    // Reference (remains in final AST)
     Reference {
-        path: Vec<Ident>, // e.g., user.name or UserType::admin
+        path: Vec<Ident>,
         span: Span,
     },
 
-    // Binary operation (evaluated by evaluator crate)
     BinaryOp {
         left: Box<Self>,
         op: BinaryOperator,
@@ -393,14 +421,12 @@ pub enum Expr {
         span: Span,
     },
 
-    // Unary operation (evaluated by evaluator crate)
     UnaryOp {
         op: UnaryOperator,
         operand: Box<Self>,
         span: Span,
     },
 
-    // For expression (validated by semantic analyzer, expanded by codegen)
     ForExpr {
         var: Ident,
         collection: Box<Self>,
@@ -408,7 +434,6 @@ pub enum Expr {
         span: Span,
     },
 
-    // If expression (validated by semantic analyzer, expanded by codegen)
     IfExpr {
         condition: Box<Self>,
         then_branch: Box<Self>,
@@ -416,77 +441,61 @@ pub enum Expr {
         span: Span,
     },
 
-    // Match expression (validated by semantic analyzer, expanded by codegen)
     MatchExpr {
         scrutinee: Box<Self>,
         arms: Vec<MatchArm>,
         span: Span,
     },
 
-    // Grouped expression (parentheses)
     Group {
         expr: Box<Self>,
         span: Span,
     },
 
-    // Dictionary literal: ["key": value, "key2": value2] or [:]
     DictLiteral {
-        entries: Vec<(Self, Self)>, // Key-value pairs
+        entries: Vec<(Self, Self)>,
         span: Span,
     },
 
-    // Dictionary access: dict["key"] or dict[index]
     DictAccess {
         dict: Box<Self>,
         key: Box<Self>,
         span: Span,
     },
 
-    // Field access on arbitrary expressions: expr.field
-    // Used when the base is not a simple reference (e.g., (-chord).y, (a + b).len)
     FieldAccess {
         object: Box<Self>,
         field: Ident,
         span: Span,
     },
 
-    // Closure expression: x -> expr, x, y -> expr, () -> expr, x: T -> expr
     ClosureExpr {
-        params: Vec<ClosureParam>, // Parameters (empty for () -> expr)
+        params: Vec<ClosureParam>,
         body: Box<Self>,
         span: Span,
     },
 
-    // Let expression: let pattern = value, let pattern: Type = value, let mut pattern = value
-    // Local binding inside blocks (for, if, match, mount children)
     LetExpr {
         mutable: bool,
         pattern: BindingPattern,
-        ty: Option<Type>, // Optional type annotation
+        ty: Option<Type>,
         value: Box<Self>,
-        body: Box<Self>, // Continuation expression after the let
+        body: Box<Self>,
         span: Span,
     },
 
-    /// Method call: expr.method(arg1, arg2, ...)
-    ///
-    /// Methods are always called on a receiver expression, so there's no ambiguity
-    /// with struct instantiation. Uses positional arguments since builtins don't
-    /// have parameter names.
+    /// Method call: `expr.method(arg1, arg2, ...)`
     MethodCall {
-        receiver: Box<Self>, // The object/value to call method on
-        method: Ident,       // Method name
-        args: Vec<Self>,     // Positional arguments
+        receiver: Box<Self>,
+        method: Ident,
+        args: Vec<Self>,
         span: Span,
     },
 
-    /// Block expression: { let x = 1; let y = 2; x + y }
-    ///
-    /// A sequence of let bindings followed by a final expression.
-    /// The final expression's value becomes the block's value.
+    /// Block expression: `{ let x = 1; x + 1 }`
     Block {
         statements: Vec<BlockStatement>,
-        result: Box<Self>, // Final expression (the block's value)
+        result: Box<Self>,
         span: Span,
     },
 }
@@ -495,7 +504,6 @@ pub enum Expr {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BlockStatement {
-    /// Let binding: let x = expr or let mut x = expr
     Let {
         mutable: bool,
         pattern: BindingPattern,
@@ -503,23 +511,20 @@ pub enum BlockStatement {
         value: Expr,
         span: Span,
     },
-    /// Assignment: target = value
-    /// Target must be a mutable binding or field
     Assign {
-        target: Expr, // Reference path like `x` or `self.field`
+        target: Expr,
         value: Expr,
         span: Span,
     },
-    /// Expression statement (expression evaluated for side effects)
     Expr(Expr),
 }
 
-/// Closure parameter (name with optional type annotation)
+/// Closure parameter
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClosureParam {
     pub name: Ident,
-    pub ty: Option<Type>, // Optional type annotation
+    pub ty: Option<Type>,
     pub span: Span,
 }
 
@@ -528,9 +533,7 @@ pub struct ClosureParam {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     String(String),
-    Number(f64),      // Also used for Factor values (validated in semantic analysis)
-    UnsignedInt(u32), // GPU u32 literal with 'u' suffix
-    SignedInt(i32),   // GPU i32 literal with 'i' suffix
+    Number(f64),
     Boolean(bool),
     Regex { pattern: String, flags: String },
     Path(String),
@@ -541,33 +544,27 @@ pub enum Literal {
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinaryOperator {
-    // Arithmetic
     Add,
     Sub,
     Mul,
     Div,
     Mod,
-    // Comparison
     Lt,
     Gt,
     Le,
     Ge,
     Eq,
     Ne,
-    // Logical
     And,
     Or,
-    // Range
-    Range, // start..end
+    Range,
 }
 
 /// Unary operators
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnaryOperator {
-    /// Negation: -x
     Neg,
-    /// Logical not: !x
     Not,
 }
 
@@ -584,11 +581,7 @@ pub struct MatchArm {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pattern {
-    Variant {
-        name: Ident,
-        bindings: Vec<Ident>, // For associated data
-    },
-    /// Wildcard pattern: `_` matches anything
+    Variant { name: Ident, bindings: Vec<Ident> },
     Wildcard,
 }
 
@@ -596,19 +589,15 @@ pub enum Pattern {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BindingPattern {
-    /// Simple name binding: `let x = ...`
     Simple(Ident),
-    /// Array destructuring: `let [a, b, ...rest] = ...`
     Array {
         elements: Vec<ArrayPatternElement>,
         span: Span,
     },
-    /// Struct destructuring: `let {name, age as userAge} = ...`
     Struct {
         fields: Vec<StructPatternField>,
         span: Span,
     },
-    /// Tuple destructuring (for enum associated data): `let (a, b) = ...`
     Tuple {
         elements: Vec<Self>,
         span: Span,
@@ -619,11 +608,8 @@ pub enum BindingPattern {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ArrayPatternElement {
-    /// Named binding: `a` in `[a, b]`
     Binding(BindingPattern),
-    /// Rest pattern: `...rest` in `[a, ...rest]`
     Rest(Option<Ident>),
-    /// Wildcard (ignore): `_` in `[_, b]`
     Wildcard,
 }
 
@@ -631,9 +617,7 @@ pub enum ArrayPatternElement {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructPatternField {
-    /// Field name to destructure
     pub name: Ident,
-    /// Optional rename: `name as alias`
     pub alias: Option<Ident>,
 }
 
@@ -656,19 +640,10 @@ impl Ident {
 
 impl Expr {
     /// Get the span of an expression
-    #[must_use] 
+    #[must_use]
     pub fn span(&self) -> Span {
         match self {
-            Self::Literal(lit) => match lit {
-                Literal::Nil
-                | Literal::String(_)
-                | Literal::Number(_)
-                | Literal::UnsignedInt(_)
-                | Literal::SignedInt(_)
-                | Literal::Boolean(_)
-                | Literal::Regex { .. }
-                | Literal::Path(_) => Span::default(), // Will be set during parsing
-            },
+            Self::Literal(_) => Span::default(),
             Self::Invocation { span, .. }
             | Self::EnumInstantiation { span, .. }
             | Self::InferredEnumInstantiation { span, .. }
@@ -694,10 +669,10 @@ impl Expr {
 
 impl BinaryOperator {
     /// Get operator precedence (higher = tighter binding)
-    #[must_use] 
+    #[must_use]
     pub const fn precedence(&self) -> u8 {
         match self {
-            Self::Range => 0, // Lowest precedence
+            Self::Range => 0,
             Self::Or => 1,
             Self::And => 2,
             Self::Eq | Self::Ne => 3,
@@ -708,9 +683,9 @@ impl BinaryOperator {
     }
 
     /// Check if operator is left-associative
-    #[must_use] 
+    #[must_use]
     pub const fn is_left_associative(&self) -> bool {
-        true // All operators are left-associative in FormaLang
+        true
     }
 }
 
@@ -719,77 +694,89 @@ mod tests {
     use super::*;
     use crate::location::Span;
 
-    // =========================================================================
-    // BinaryOperator Tests
-    // =========================================================================
-
     #[test]
     fn test_binary_operator_precedence_all() -> Result<(), Box<dyn std::error::Error>> {
-        if BinaryOperator::Or.precedence() != 1 { return Err(format!("expected {:?}, got {:?}", 1, BinaryOperator::Or.precedence()).into()); }
-        if BinaryOperator::And.precedence() != 2 { return Err(format!("expected {:?}, got {:?}", 2, BinaryOperator::And.precedence()).into()); }
-        if BinaryOperator::Eq.precedence() != 3 { return Err(format!("expected {:?}, got {:?}", 3, BinaryOperator::Eq.precedence()).into()); }
-        if BinaryOperator::Ne.precedence() != 3 { return Err(format!("expected {:?}, got {:?}", 3, BinaryOperator::Ne.precedence()).into()); }
-        if BinaryOperator::Lt.precedence() != 4 { return Err(format!("expected {:?}, got {:?}", 4, BinaryOperator::Lt.precedence()).into()); }
-        if BinaryOperator::Gt.precedence() != 4 { return Err(format!("expected {:?}, got {:?}", 4, BinaryOperator::Gt.precedence()).into()); }
-        if BinaryOperator::Le.precedence() != 4 { return Err(format!("expected {:?}, got {:?}", 4, BinaryOperator::Le.precedence()).into()); }
-        if BinaryOperator::Ge.precedence() != 4 { return Err(format!("expected {:?}, got {:?}", 4, BinaryOperator::Ge.precedence()).into()); }
-        if BinaryOperator::Add.precedence() != 5 { return Err(format!("expected {:?}, got {:?}", 5, BinaryOperator::Add.precedence()).into()); }
-        if BinaryOperator::Sub.precedence() != 5 { return Err(format!("expected {:?}, got {:?}", 5, BinaryOperator::Sub.precedence()).into()); }
-        if BinaryOperator::Mul.precedence() != 6 { return Err(format!("expected {:?}, got {:?}", 6, BinaryOperator::Mul.precedence()).into()); }
-        if BinaryOperator::Div.precedence() != 6 { return Err(format!("expected {:?}, got {:?}", 6, BinaryOperator::Div.precedence()).into()); }
-        if BinaryOperator::Mod.precedence() != 6 { return Err(format!("expected {:?}, got {:?}", 6, BinaryOperator::Mod.precedence()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_binary_operator_precedence_order() -> Result<(), Box<dyn std::error::Error>> {
-        // Verify multiplicative > additive > comparison > equality > and > or
-        if BinaryOperator::Mul.precedence() <= BinaryOperator::Add.precedence() { return Err("assertion failed".into()); }
-        if BinaryOperator::Add.precedence() <= BinaryOperator::Lt.precedence() { return Err("assertion failed".into()); }
-        if BinaryOperator::Lt.precedence() <= BinaryOperator::Eq.precedence() { return Err("assertion failed".into()); }
-        if BinaryOperator::Eq.precedence() <= BinaryOperator::And.precedence() { return Err("assertion failed".into()); }
-        if BinaryOperator::And.precedence() <= BinaryOperator::Or.precedence() { return Err("assertion failed".into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_binary_operator_is_left_associative() -> Result<(), Box<dyn std::error::Error>> {
-        if !(BinaryOperator::Add.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Sub.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Mul.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Div.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Mod.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::And.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Or.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Eq.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Ne.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Lt.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Gt.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Le.is_left_associative()) { return Err("assertion failed".into()); }
-        if !(BinaryOperator::Ge.is_left_associative()) { return Err("assertion failed".into()); }
-        Ok(())
-    }
-
-    // =========================================================================
-    // Expr::span() Tests
-    // =========================================================================
-
-    #[test]
-    fn test_expr_span_literal_nil() -> Result<(), Box<dyn std::error::Error>> {
-        let expr = Expr::Literal(Literal::Nil);
-        let span = expr.span();
-        if span != Span::default() {
-            return Err(format!("Literal::Nil should return default span, got {span:?}").into());
+        if BinaryOperator::Or.precedence() != 1 {
+            return Err(format!("expected 1, got {:?}", BinaryOperator::Or.precedence()).into());
+        }
+        if BinaryOperator::And.precedence() != 2 {
+            return Err(format!("expected 2, got {:?}", BinaryOperator::And.precedence()).into());
+        }
+        if BinaryOperator::Eq.precedence() != 3 {
+            return Err(format!("expected 3, got {:?}", BinaryOperator::Eq.precedence()).into());
+        }
+        if BinaryOperator::Ne.precedence() != 3 {
+            return Err(format!("expected 3, got {:?}", BinaryOperator::Ne.precedence()).into());
+        }
+        if BinaryOperator::Lt.precedence() != 4 {
+            return Err(format!("expected 4, got {:?}", BinaryOperator::Lt.precedence()).into());
+        }
+        if BinaryOperator::Gt.precedence() != 4 {
+            return Err(format!("expected 4, got {:?}", BinaryOperator::Gt.precedence()).into());
+        }
+        if BinaryOperator::Le.precedence() != 4 {
+            return Err(format!("expected 4, got {:?}", BinaryOperator::Le.precedence()).into());
+        }
+        if BinaryOperator::Ge.precedence() != 4 {
+            return Err(format!("expected 4, got {:?}", BinaryOperator::Ge.precedence()).into());
+        }
+        if BinaryOperator::Add.precedence() != 5 {
+            return Err(format!("expected 5, got {:?}", BinaryOperator::Add.precedence()).into());
+        }
+        if BinaryOperator::Sub.precedence() != 5 {
+            return Err(format!("expected 5, got {:?}", BinaryOperator::Sub.precedence()).into());
+        }
+        if BinaryOperator::Mul.precedence() != 6 {
+            return Err(format!("expected 6, got {:?}", BinaryOperator::Mul.precedence()).into());
+        }
+        if BinaryOperator::Div.precedence() != 6 {
+            return Err(format!("expected 6, got {:?}", BinaryOperator::Div.precedence()).into());
+        }
+        if BinaryOperator::Mod.precedence() != 6 {
+            return Err(format!("expected 6, got {:?}", BinaryOperator::Mod.precedence()).into());
         }
         Ok(())
     }
 
     #[test]
-    fn test_expr_span_literal_other() -> Result<(), Box<dyn std::error::Error>> {
-        let expr = Expr::Literal(Literal::String("test".to_string()));
-        let span = expr.span();
-        if span != Span::default() {
-            return Err(format!("Literal::String should return default span, got {span:?}").into());
+    fn test_binary_operator_precedence_order() -> Result<(), Box<dyn std::error::Error>> {
+        if BinaryOperator::Mul.precedence() <= BinaryOperator::Add.precedence() {
+            return Err("mul > add".into());
+        }
+        if BinaryOperator::Add.precedence() <= BinaryOperator::Lt.precedence() {
+            return Err("add > lt".into());
+        }
+        if BinaryOperator::Lt.precedence() <= BinaryOperator::Eq.precedence() {
+            return Err("lt > eq".into());
+        }
+        if BinaryOperator::Eq.precedence() <= BinaryOperator::And.precedence() {
+            return Err("eq > and".into());
+        }
+        if BinaryOperator::And.precedence() <= BinaryOperator::Or.precedence() {
+            return Err("and > or".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_operator_is_left_associative() -> Result<(), Box<dyn std::error::Error>> {
+        if !BinaryOperator::Add.is_left_associative() {
+            return Err("Add".into());
+        }
+        if !BinaryOperator::Mul.is_left_associative() {
+            return Err("Mul".into());
+        }
+        if !BinaryOperator::Or.is_left_associative() {
+            return Err("Or".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_expr_span_literal() -> Result<(), Box<dyn std::error::Error>> {
+        let expr = Expr::Literal(Literal::Nil);
+        if expr.span() != Span::default() {
+            return Err("Literal should return default span".into());
         }
         Ok(())
     }
@@ -798,204 +785,23 @@ mod tests {
     fn test_expr_span_invocation() -> Result<(), Box<dyn std::error::Error>> {
         let test_span = Span::from_range(10, 20);
         let expr = Expr::Invocation {
-            path: vec![Ident {
-                name: "Test".to_string(),
-                span: Span::default(),
-            }],
+            path: vec![Ident::new("Test", Span::default())],
             type_args: vec![],
             args: vec![],
-            mounts: vec![],
             span: test_span,
         };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
+        if expr.span() != test_span {
+            return Err(format!("expected {test_span:?}, got {:?}", expr.span()).into());
+        }
         Ok(())
     }
 
     #[test]
-    fn test_expr_span_enum_instantiation() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(5, 15);
-        let expr = Expr::EnumInstantiation {
-            enum_name: Ident {
-                name: "Status".to_string(),
-                span: Span::default(),
-            },
-            variant: Ident {
-                name: "active".to_string(),
-                span: Span::default(),
-            },
-            data: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(0, 5);
-        let expr = Expr::InferredEnumInstantiation {
-            variant: Ident {
-                name: "red".to_string(),
-                span: Span::default(),
-            },
-            data: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_array() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(100, 200);
-        let expr = Expr::Array {
-            elements: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_tuple() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(50, 60);
-        let expr = Expr::Tuple {
-            fields: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_reference() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(30, 40);
-        let expr = Expr::Reference {
-            path: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_binary_op() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(70, 80);
-        let expr = Expr::BinaryOp {
-            left: Box::new(Expr::Literal(Literal::Number(1.0))),
-            op: BinaryOperator::Add,
-            right: Box::new(Expr::Literal(Literal::Number(2.0))),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_for_expr() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(90, 100);
-        let expr = Expr::ForExpr {
-            var: Ident {
-                name: "x".to_string(),
-                span: Span::default(),
-            },
-            collection: Box::new(Expr::Array {
-                elements: vec![],
-                span: Span::default(),
-            }),
-            body: Box::new(Expr::Literal(Literal::Nil)),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_if_expr() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(110, 120);
-        let expr = Expr::IfExpr {
-            condition: Box::new(Expr::Literal(Literal::Boolean(true))),
-            then_branch: Box::new(Expr::Literal(Literal::Nil)),
-            else_branch: None,
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_match_expr() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(130, 140);
-        let expr = Expr::MatchExpr {
-            scrutinee: Box::new(Expr::Literal(Literal::Nil)),
-            arms: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_group() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(150, 160);
-        let expr = Expr::Group {
-            expr: Box::new(Expr::Literal(Literal::Number(42.0))),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(210, 220);
-        let expr = Expr::DictLiteral {
-            entries: vec![],
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_dict_access() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(230, 240);
-        let expr = Expr::DictAccess {
-            dict: Box::new(Expr::Literal(Literal::Nil)),
-            key: Box::new(Expr::Literal(Literal::String("key".to_string()))),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_closure() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(250, 260);
-        let expr = Expr::ClosureExpr {
-            params: vec![],
-            body: Box::new(Expr::Literal(Literal::Number(0.0))),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
-        Ok(())
-    }
-
-    #[test]
-    fn test_expr_span_let_expr() -> Result<(), Box<dyn std::error::Error>> {
-        let test_span = Span::from_range(270, 280);
-        let expr = Expr::LetExpr {
-            mutable: false,
-            pattern: BindingPattern::Simple(Ident {
-                name: "x".to_string(),
-                span: Span::default(),
-            }),
-            ty: None,
-            value: Box::new(Expr::Literal(Literal::Number(42.0))),
-            body: Box::new(Expr::Literal(Literal::Nil)),
-            span: test_span,
-        };
-        if expr.span() != test_span { return Err(format!("expected {:?}, got {:?}", test_span, expr.span()).into()); }
+    fn test_file_new_sets_format_version() -> Result<(), Box<dyn std::error::Error>> {
+        let file = File::new(vec![], Span::default());
+        if file.format_version != FORMAT_VERSION {
+            return Err(format!("expected {FORMAT_VERSION}, got {}", file.format_version).into());
+        }
         Ok(())
     }
 }

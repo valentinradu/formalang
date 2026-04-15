@@ -70,8 +70,8 @@ fn test_error_report_missing_trait_field() -> Result<(), Box<dyn std::error::Err
         trait Named {
             name: String
         }
-        struct User: Named {
-            age: Number
+        impl Named for NonexistentStruct {
+            fn name() -> String { }
         }
     ";
     let result = compile_and_report(source, "test.fv");
@@ -84,7 +84,7 @@ fn test_error_report_missing_trait_field() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_error_report_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct User: NonexistentTrait {
+        trait Derived: NonexistentTrait {
             name: String
         }
     ";
@@ -454,10 +454,10 @@ fn test_error_display_module_not_found() -> Result<(), Box<dyn std::error::Error
     };
     let display = format!("{error}");
     if !(display.contains("missing_module") || display.contains("Module")) {
-        return Err(
-            format!("expected display to contain 'missing_module' or 'Module', got: {display}")
-                .into(),
-        );
+        return Err(format!(
+            "expected display to contain 'missing_module' or 'Module', got: {display}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -485,10 +485,10 @@ fn test_error_display_circular_dependency() -> Result<(), Box<dyn std::error::Er
     };
     let display = format!("{error}");
     if !(display.contains("Circular") || display.contains("dependency")) {
-        return Err(
-            format!("expected display to contain 'Circular' or 'dependency', got: {display}")
-                .into(),
-        );
+        return Err(format!(
+            "expected display to contain 'Circular' or 'dependency', got: {display}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -501,12 +501,10 @@ fn test_error_display_undefined_reference_again() -> Result<(), Box<dyn std::err
     };
     let display = format!("{error}");
     if !(display.contains("missing_field") || display.contains("reference")) {
-        return Err(
-            format!(
-                "expected display to contain 'missing_field' or 'reference', got: {display}"
-            )
-            .into(),
-        );
+        return Err(format!(
+            "expected display to contain 'missing_field' or 'reference', got: {display}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -520,12 +518,10 @@ fn test_error_display_unknown_property() -> Result<(), Box<dyn std::error::Error
     };
     let display = format!("{error}");
     if !(display.contains("invalid_prop") || display.contains("property")) {
-        return Err(
-            format!(
-                "expected display to contain 'invalid_prop' or 'property', got: {display}"
-            )
-            .into(),
-        );
+        return Err(format!(
+            "expected display to contain 'invalid_prop' or 'property', got: {display}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -713,7 +709,7 @@ fn test_valid_complex_source() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
 
-        struct User: Named {
+        struct User {
             name: String = "default user",
             age: Number
         }
@@ -809,9 +805,7 @@ fn test_report_error_missing_trait_field() -> Result<(), Box<dyn std::error::Err
     let source = "struct User: Named { age: Number }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("name") || report.contains("E008")) {
-        return Err(
-            format!("expected report to contain 'name' or 'E008', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'name' or 'E008', got: {report}").into());
     }
     Ok(())
 }
@@ -828,9 +822,7 @@ fn test_report_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::erro
     let source = "struct Test: Typed { value: String }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("value") || report.contains("E009")) {
-        return Err(
-            format!("expected report to contain 'value' or 'E009', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'value' or 'E009', got: {report}").into());
     }
     Ok(())
 }
@@ -846,9 +838,7 @@ fn test_report_error_invalid_binary_op() -> Result<(), Box<dyn std::error::Error
     let source = "let x = \"a\" + 1";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("Add") || report.contains("E010")) {
-        return Err(
-            format!("expected report to contain 'Add' or 'E010', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'Add' or 'E010', got: {report}").into());
     }
     Ok(())
 }
@@ -862,9 +852,7 @@ fn test_report_error_for_loop_not_array() -> Result<(), Box<dyn std::error::Erro
     let source = "for x in text { x }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("array") || report.contains("E011")) {
-        return Err(
-            format!("expected report to contain 'array' or 'E011', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'array' or 'E011', got: {report}").into());
     }
     Ok(())
 }
@@ -894,9 +882,7 @@ fn test_report_error_match_not_enum() -> Result<(), Box<dyn std::error::Error>> 
     let source = "match text { }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("enum") || report.contains("E013")) {
-        return Err(
-            format!("expected report to contain 'enum' or 'E013', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'enum' or 'E013', got: {report}").into());
     }
     Ok(())
 }
@@ -926,9 +912,7 @@ fn test_report_error_duplicate_match_arm() -> Result<(), Box<dyn std::error::Err
     let source = "match status { .active: \"yes\", .active: \"no\" }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("active") || report.contains("E015")) {
-        return Err(
-            format!("expected report to contain 'active' or 'E015', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'active' or 'E015', got: {report}").into());
     }
     Ok(())
 }
@@ -942,9 +926,7 @@ fn test_report_error_private_import() -> Result<(), Box<dyn std::error::Error>> 
     let source = "use utils::Helper";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("Helper") || report.contains("E016")) {
-        return Err(
-            format!("expected report to contain 'Helper' or 'E016', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'Helper' or 'E016', got: {report}").into());
     }
     Ok(())
 }
@@ -968,34 +950,30 @@ fn test_report_error_import_item_not_found() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
-fn test_report_error_view_trait_in_model() -> Result<(), Box<dyn std::error::Error>> {
-    let error = CompilerError::ViewTraitInModel {
-        name: "Renderable".to_string(),
-        model: "User".to_string(),
+fn test_report_error_extern_fn_with_body() -> Result<(), Box<dyn std::error::Error>> {
+    let error = CompilerError::ExternFnWithBody {
+        function: "render".to_string(),
         span: Span::default(),
     };
-    let source = "struct User: Renderable { }";
+    let source = "extern fn render() { }";
     let report = report_error(&error, source, "test.fv");
-    if !(report.contains("Renderable") || report.contains("E018")) {
-        return Err(
-            format!("expected report to contain 'Renderable' or 'E018', got: {report}").into(),
-        );
+    if !(report.contains("render") || report.contains("E999")) {
+        return Err(format!("expected report to contain 'render' or 'E999', got: {report}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_report_error_model_trait_in_view() -> Result<(), Box<dyn std::error::Error>> {
-    let error = CompilerError::ModelTraitInView {
-        name: "Serializable".to_string(),
-        view: "Card".to_string(),
+fn test_report_error_regular_fn_without_body() -> Result<(), Box<dyn std::error::Error>> {
+    let error = CompilerError::RegularFnWithoutBody {
+        function: "compute".to_string(),
         span: Span::default(),
     };
-    let source = "struct Card: Serializable { @mount x: String }";
+    let source = "fn compute() -> Number";
     let report = report_error(&error, source, "test.fv");
-    if !(report.contains("Serializable") || report.contains("E019")) {
+    if !(report.contains("compute") || report.contains("E999")) {
         return Err(
-            format!("expected report to contain 'Serializable' or 'E019', got: {report}").into(),
+            format!("expected report to contain 'compute' or 'E999', got: {report}").into(),
         );
     }
     Ok(())
@@ -1011,9 +989,7 @@ fn test_report_error_not_a_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Test: User { }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("User") || report.contains("E020")) {
-        return Err(
-            format!("expected report to contain 'User' or 'E020', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'User' or 'E020', got: {report}").into());
     }
     Ok(())
 }
@@ -1046,46 +1022,36 @@ fn test_report_error_variant_arity_mismatch() -> Result<(), Box<dyn std::error::
     let source = "Option.some";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("some") || report.contains("E022")) {
-        return Err(
-            format!("expected report to contain 'some' or 'E022', got: {report}").into(),
-        );
+        return Err(format!("expected report to contain 'some' or 'E022', got: {report}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_report_error_missing_trait_mounting_point() -> Result<(), Box<dyn std::error::Error>> {
-    let error = CompilerError::MissingTraitMountingPoint {
-        mount: "content".to_string(),
-        trait_name: "Renderable".to_string(),
+fn test_report_error_extern_impl_with_body() -> Result<(), Box<dyn std::error::Error>> {
+    let error = CompilerError::ExternImplWithBody {
+        name: "Canvas".to_string(),
         span: Span::default(),
     };
-    let source = "struct View: Renderable { }";
+    let source = "extern impl Canvas { fn draw(self) { 42 } }";
     let report = report_error(&error, source, "test.fv");
-    if !(report.contains("content") || report.contains("E023")) {
-        return Err(
-            format!("expected report to contain 'content' or 'E023', got: {report}").into(),
-        );
+    if !(report.contains("Canvas") || report.contains("E999")) {
+        return Err(format!("expected report to contain 'Canvas' or 'E999', got: {report}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_report_error_trait_mounting_point_type_mismatch() -> Result<(), Box<dyn std::error::Error>>
-{
-    let error = CompilerError::TraitMountingPointTypeMismatch {
-        mount: "content".to_string(),
-        trait_name: "Renderable".to_string(),
-        expected: "View".to_string(),
-        actual: "String".to_string(),
+fn test_report_error_missing_trait_method() -> Result<(), Box<dyn std::error::Error>> {
+    let error = CompilerError::MissingTraitMethod {
+        method: "draw".to_string(),
+        trait_name: "Drawable".to_string(),
         span: Span::default(),
     };
-    let source = "struct Test: Renderable { @mount content: String }";
+    let source = "struct View: Drawable { }";
     let report = report_error(&error, source, "test.fv");
-    if !(report.contains("content") || report.contains("E024")) {
-        return Err(
-            format!("expected report to contain 'content' or 'E024', got: {report}").into(),
-        );
+    if !(report.contains("draw") || report.contains("E999")) {
+        return Err(format!("expected report to contain 'draw' or 'E999', got: {report}").into());
     }
     Ok(())
 }

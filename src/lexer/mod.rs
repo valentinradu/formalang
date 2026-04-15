@@ -12,7 +12,7 @@ pub struct Lexer<'source> {
 }
 
 impl<'source> Lexer<'source> {
-    #[must_use] 
+    #[must_use]
     pub fn new(source: &'source str) -> Self {
         Self {
             lexer: Token::lexer(source),
@@ -35,14 +35,14 @@ impl<'source> Lexer<'source> {
     }
 
     /// Get current span
-    #[must_use] 
+    #[must_use]
     pub fn span(&self) -> Span {
         let range = self.lexer.span();
         Span::from_range(range.start, range.end)
     }
 
     /// Tokenize entire source (useful for testing and debugging)
-    #[must_use] 
+    #[must_use]
     pub fn tokenize_all(source: &'source str) -> Vec<(Token, Span)> {
         let mut lexer = Self::new(source);
         let mut tokens = Vec::new();

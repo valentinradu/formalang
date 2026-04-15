@@ -12,8 +12,8 @@ use formalang::compile;
 fn test_view_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Card {
-            @mount header: String,
-            @mount content: String
+            header: String,
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("View with mount should compile: {e:?}"))?;
@@ -36,8 +36,8 @@ fn test_model_without_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Layout {
-            @mount header: String,
-            @mount footer: String
+            header: String,
+            footer: String
         }
     ";
     compile(source).map_err(|e| format!("View trait with mount should compile: {e:?}"))?;
@@ -651,7 +651,7 @@ fn test_struct_conforming_to_trait() -> Result<(), Box<dyn std::error::Error>> {
         trait Displayable {
             label: String
         }
-        struct Item: Displayable {
+        struct Item {
             label: String
         }
     ";
@@ -665,7 +665,7 @@ fn test_trait_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
         trait MaybeNamed {
             name: String?
         }
-        struct Item: MaybeNamed {
+        struct Item {
             name: String?
         }
     ";
@@ -682,7 +682,7 @@ fn test_multiple_trait_conformance() -> Result<(), Box<dyn std::error::Error>> {
         trait Aged {
             age: Number
         }
-        struct Person: Named + Aged {
+        struct Person {
             name: String,
             age: Number
         }
@@ -712,7 +712,7 @@ fn test_full_application_model() -> Result<(), Box<dyn std::error::Error>> {
             guest
         }
 
-        struct User: Identifiable + Named {
+        struct User {
             id: Number,
             name: String = "User Profile",
             role: UserRole,
@@ -741,13 +741,13 @@ fn test_view_component_model() -> Result<(), Box<dyn std::error::Error>> {
         struct Button {
             label: String,
             disabled: Boolean = false,
-            @mount onClick: String = "click"
+            onClick: String = "click"
         }
 
         struct Card {
             title: String,
-            @mount content: String = "content",
-            @mount footer: String?
+            content: String = "content",
+            footer: String?
         }
     "#;
     compile(source).map_err(|e| format!("View component model: {e:?}"))?;

@@ -80,14 +80,18 @@ mod tests {
     #[test]
     fn test_new_graph_is_empty() -> Result<(), Box<dyn std::error::Error>> {
         let graph = ImportGraph::new();
-        if !graph.edges.is_empty() { return Err("assertion failed".into()); }
+        if !graph.edges.is_empty() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 
     #[test]
     fn test_default_creates_empty_graph() -> Result<(), Box<dyn std::error::Error>> {
         let graph = ImportGraph::default();
-        if !graph.edges.is_empty() { return Err("assertion failed".into()); }
+        if !graph.edges.is_empty() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 
@@ -142,7 +146,9 @@ mod tests {
 
         // Adding c -> a should not create a cycle
         let c = PathBuf::from("c.forma");
-        if graph.would_create_cycle(&c, &a).is_some() { return Err("assertion failed".into()); }
+        if graph.would_create_cycle(&c, &a).is_some() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 
@@ -187,7 +193,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::many_single_char_names, reason = "graph node names a-e are conventional")]
+    #[expect(
+        clippy::many_single_char_names,
+        reason = "graph node names a-e are conventional"
+    )]
     fn test_no_false_positive_for_diamond() -> Result<(), Box<dyn std::error::Error>> {
         let mut graph = ImportGraph::new();
         let a = PathBuf::from("a.forma");
@@ -204,7 +213,9 @@ mod tests {
         // This is a DAG, not a cycle
         // Adding e -> a should not detect a cycle
         let e = PathBuf::from("e.forma");
-        if graph.would_create_cycle(&e, &a).is_some() { return Err("assertion failed".into()); }
+        if graph.would_create_cycle(&e, &a).is_some() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 
@@ -221,7 +232,9 @@ mod tests {
 
         // Adding d -> c should not create a cycle
         let d = PathBuf::from("d.forma");
-        if graph.would_create_cycle(&d, &c).is_some() { return Err("assertion failed".into()); }
+        if graph.would_create_cycle(&d, &c).is_some() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 
@@ -241,7 +254,9 @@ mod tests {
 
         // d importing a would create cycles through both paths
         let cycle = graph.would_create_cycle(&d, &a);
-        if cycle.is_none() { return Err("assertion failed".into()); }
+        if cycle.is_none() {
+            return Err("assertion failed".into());
+        }
         Ok(())
     }
 }

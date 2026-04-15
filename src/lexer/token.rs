@@ -1,7 +1,10 @@
 use logos::Logos;
 
 /// Token types for `FormaLang` lexer
-#[expect(clippy::exhaustive_enums, reason = "token enum is matched exhaustively by the parser")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "token enum is matched exhaustively by the parser"
+)]
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\n\r]+")] // Skip whitespace
 #[logos(skip r"//[^\n]*")] // Skip line comments
@@ -26,8 +29,8 @@ pub enum Token {
     Let,
     #[token("mut")]
     Mut,
-    #[token("mount")]
-    Mount,
+    #[token("extern")]
+    Extern,
     #[token("match")]
     Match,
     #[token("for")]
@@ -65,62 +68,10 @@ pub enum Token {
     #[token("Never")]
     NeverType,
 
-    // GPU primitive types
-    #[token("f32")]
-    F32Type,
-    #[token("i32")]
-    I32Type,
-    #[token("u32")]
-    U32Type,
-    #[token("bool")]
-    BoolType,
-
-    // Vector types
-    #[token("vec2")]
-    Vec2Type,
-    #[token("vec3")]
-    Vec3Type,
-    #[token("vec4")]
-    Vec4Type,
-    #[token("ivec2")]
-    IVec2Type,
-    #[token("ivec3")]
-    IVec3Type,
-    #[token("ivec4")]
-    IVec4Type,
-    #[token("uvec2")]
-    UVec2Type,
-    #[token("uvec3")]
-    UVec3Type,
-    #[token("uvec4")]
-    UVec4Type,
-
-    // Matrix types
-    #[token("mat2")]
-    Mat2Type,
-    #[token("mat3")]
-    Mat3Type,
-    #[token("mat4")]
-    Mat4Type,
-
     // Literals
     #[regex(r#""([^"\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
     #[regex(r#""""([^\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#, |lex| parse_multiline_string(lex.slice()))]
     String(String),
-
-    // Unsigned integer literal with 'u' suffix: 1u, 42u
-    #[regex(r"[0-9]+u", |lex| {
-        let s = lex.slice();
-        s.strip_suffix('u').and_then(|n| n.parse::<u32>().ok())
-    })]
-    UnsignedInt(u32),
-
-    // Signed integer literal with 'i' suffix: 1i, -42i
-    #[regex(r"-?[0-9]+i", |lex| {
-        let s = lex.slice();
-        s.strip_suffix('i').and_then(|n| n.parse::<i32>().ok())
-    })]
-    SignedInt(i32),
 
     #[regex(r"-?[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
     Number(f64),
@@ -261,7 +212,7 @@ fn process_escapes(s: &str) -> String {
 }
 
 /// Helper to parse regex string into pattern and flags
-#[must_use] 
+#[must_use]
 pub fn parse_regex(s: &str) -> Option<(String, String)> {
     let content = s.strip_prefix("r/")?;
     let last_slash = content.rfind('/')?;
@@ -272,7 +223,7 @@ pub fn parse_regex(s: &str) -> Option<(String, String)> {
 }
 
 impl Token {
-    #[must_use] 
+    #[must_use]
     pub const fn is_keyword(&self) -> bool {
         matches!(
             self,
@@ -285,7 +236,7 @@ impl Token {
                 | Self::Pub
                 | Self::Let
                 | Self::Mut
-                | Self::Mount
+                | Self::Extern
                 | Self::Match
                 | Self::For
                 | Self::In
@@ -299,7 +250,7 @@ impl Token {
         )
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn is_type_keyword(&self) -> bool {
         matches!(
             self,
@@ -309,26 +260,10 @@ impl Token {
                 | Self::PathType
                 | Self::RegexType
                 | Self::NeverType
-                | Self::F32Type
-                | Self::I32Type
-                | Self::U32Type
-                | Self::BoolType
-                | Self::Vec2Type
-                | Self::Vec3Type
-                | Self::Vec4Type
-                | Self::IVec2Type
-                | Self::IVec3Type
-                | Self::IVec4Type
-                | Self::UVec2Type
-                | Self::UVec3Type
-                | Self::UVec4Type
-                | Self::Mat2Type
-                | Self::Mat3Type
-                | Self::Mat4Type
         )
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Trait => "trait",
@@ -340,7 +275,7 @@ impl Token {
             Self::Pub => "pub",
             Self::Let => "let",
             Self::Mut => "mut",
-            Self::Mount => "mount",
+            Self::Extern => "extern",
             Self::Match => "match",
             Self::For => "for",
             Self::In => "in",
@@ -358,22 +293,6 @@ impl Token {
             Self::PathType => "Path",
             Self::RegexType => "Regex",
             Self::NeverType => "Never",
-            Self::F32Type => "f32",
-            Self::I32Type => "i32",
-            Self::U32Type => "u32",
-            Self::BoolType => "bool",
-            Self::Vec2Type => "vec2",
-            Self::Vec3Type => "vec3",
-            Self::Vec4Type => "vec4",
-            Self::IVec2Type => "ivec2",
-            Self::IVec3Type => "ivec3",
-            Self::IVec4Type => "ivec4",
-            Self::UVec2Type => "uvec2",
-            Self::UVec3Type => "uvec3",
-            Self::UVec4Type => "uvec4",
-            Self::Mat2Type => "mat2",
-            Self::Mat3Type => "mat3",
-            Self::Mat4Type => "mat4",
             Self::Dot => ".",
             Self::Colon => ":",
             Self::DoubleColon => "::",
@@ -406,13 +325,9 @@ impl Token {
             Self::LBracket => "[",
             Self::RBracket => "]",
             Self::Eof => "<eof>",
-            Self::String(_)
-            | Self::UnsignedInt(_)
-            | Self::SignedInt(_)
-            | Self::Number(_)
-            | Self::Regex(_)
-            | Self::Path(_)
-            | Self::Ident(_) => "<complex token>",
+            Self::String(_) | Self::Number(_) | Self::Regex(_) | Self::Path(_) | Self::Ident(_) => {
+                "<complex token>"
+            }
         }
     }
 }
@@ -423,8 +338,6 @@ impl std::fmt::Display for Token {
             // For literal tokens, show descriptive names
             Self::String(_) => write!(f, "string"),
             Self::Number(_) => write!(f, "number"),
-            Self::UnsignedInt(_) => write!(f, "unsigned int"),
-            Self::SignedInt(_) => write!(f, "signed int"),
             Self::Regex(_) => write!(f, "regex"),
             Self::Path(_) => write!(f, "path"),
             Self::Ident(_) => write!(f, "identifier"),
@@ -438,7 +351,7 @@ impl std::fmt::Display for Token {
             | Self::Pub
             | Self::Let
             | Self::Mut
-            | Self::Mount
+            | Self::Extern
             | Self::Match
             | Self::For
             | Self::In
@@ -456,22 +369,6 @@ impl std::fmt::Display for Token {
             | Self::PathType
             | Self::RegexType
             | Self::NeverType
-            | Self::F32Type
-            | Self::I32Type
-            | Self::U32Type
-            | Self::BoolType
-            | Self::Vec2Type
-            | Self::Vec3Type
-            | Self::Vec4Type
-            | Self::IVec2Type
-            | Self::IVec3Type
-            | Self::IVec4Type
-            | Self::UVec2Type
-            | Self::UVec3Type
-            | Self::UVec4Type
-            | Self::Mat2Type
-            | Self::Mat3Type
-            | Self::Mat4Type
             | Self::Dot
             | Self::Colon
             | Self::DoubleColon

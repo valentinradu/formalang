@@ -18,7 +18,12 @@ fn test_lsp_position_to_offset_first_line() -> Result<(), Box<dyn std::error::Er
     let source = "let x = 1";
     let pos = LspPosition::new(0, 0);
     if LspPosition::to_offset(source, pos) != 0 {
-        return Err(format!("expected {:?} but got {:?}", 0, LspPosition::to_offset(source, pos)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            0,
+            LspPosition::to_offset(source, pos)
+        )
+        .into());
     }
     Ok(())
 }
@@ -28,7 +33,12 @@ fn test_lsp_position_to_offset_middle_of_line() -> Result<(), Box<dyn std::error
     let source = "let x = 1";
     let pos = LspPosition::new(0, 4);
     if LspPosition::to_offset(source, pos) != 4 {
-        return Err(format!("expected {:?} but got {:?}", 4, LspPosition::to_offset(source, pos)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            4,
+            LspPosition::to_offset(source, pos)
+        )
+        .into());
     }
     Ok(())
 }
@@ -847,7 +857,10 @@ fn test_find_node_at_offset_nested_struct() -> Result<(), Box<dyn std::error::Er
     }
 
     // Second usage is as field type
-    let field_type_offset = inner_usages.get(1).ok_or("out of bounds: inner_usages[1]")?.0;
+    let field_type_offset = inner_usages
+        .get(1)
+        .ok_or("out of bounds: inner_usages[1]")?
+        .0;
     let context = find_node_at_offset(&file, field_type_offset);
 
     if !(found_specific_node(&context)) {
@@ -881,28 +894,27 @@ fn test_find_node_at_offset_trait_conformance() -> Result<(), Box<dyn std::error
         trait Named {
             name: String
         }
-        struct User: Named {
+        struct User {
             name: String
         }
     ";
     let result = compile_with_analyzer(source);
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
 
-    // Find "Named" in conformance list
+    // Find "Named" in the trait definition
     let named_usages: Vec<_> = source.match_indices("Named").collect();
-    if named_usages.len() < 2 {
-        return Err(format!(
-            "Expected at least 2 'Named' usages, got {}",
-            named_usages.len()
-        )
-        .into());
+    if named_usages.is_empty() {
+        return Err("Expected at least 1 'Named' usage".into());
     }
 
-    let conformance_offset = named_usages.get(1).ok_or("out of bounds: named_usages[1]")?.0;
-    let context = find_node_at_offset(&file, conformance_offset);
+    let trait_offset = named_usages
+        .first()
+        .ok_or("out of bounds: named_usages[0]")?
+        .0;
+    let context = find_node_at_offset(&file, trait_offset);
 
     if !(found_specific_node(&context)) {
-        return Err("Should find node at trait conformance position".into());
+        return Err("Should find node at trait definition position".into());
     }
     Ok(())
 }
@@ -1005,10 +1017,18 @@ fn test_lsp_position_line_content() -> Result<(), Box<dyn std::error::Error>> {
     let line2 = get_line_at_position(source, pos2);
 
     if line1 != "struct First { a: String }" {
-        return Err(format!("expected {:?} but got {:?}", "struct First { a: String }", line1).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "struct First { a: String }", line1
+        )
+        .into());
     }
     if line2 != "struct Second { b: Number }" {
-        return Err(format!("expected {:?} but got {:?}", "struct Second { b: Number }", line2).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "struct Second { b: Number }", line2
+        )
+        .into());
     }
     Ok(())
 }
@@ -1068,11 +1088,10 @@ fn test_position_to_offset_consistency() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_query_provider_view_completion() -> Result<(), Box<dyn std::error::Error>> {
-    // View is a struct with mount field
     let source = r"
         struct Card {
             title: String,
-            mount content: String
+            content: String
         }
     ";
     let result = compile_with_analyzer(source);
@@ -1080,7 +1099,7 @@ fn test_query_provider_view_completion() -> Result<(), Box<dyn std::error::Error
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
 
-    // Should include Card as a View completion
+    // Should include Card as a completion
     let has_card = completions.iter().any(|c| c.label == "Card");
     if !(has_card) {
         return Err("Should have Card completion".into());
@@ -1090,10 +1109,9 @@ fn test_query_provider_view_completion() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_query_provider_view_trait_completion() -> Result<(), Box<dyn std::error::Error>> {
-    // View trait has mount field
     let source = r"
         trait Container {
-            mount content: String
+            content: String
         }
     ";
     let result = compile_with_analyzer(source);
@@ -1101,7 +1119,7 @@ fn test_query_provider_view_trait_completion() -> Result<(), Box<dyn std::error:
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_all_completions();
 
-    // Should include Container as a ViewTrait completion
+    // Should include Container as a completion
     let has_container = completions.iter().any(|c| c.label == "Container");
     if !(has_container) {
         return Err("Should have Container completion".into());
@@ -1117,7 +1135,7 @@ fn test_query_provider_type_completions_with_view() -> Result<(), Box<dyn std::e
         }
         struct View {
             title: String,
-            mount body: String
+            body: String
         }
     ";
     let result = compile_with_analyzer(source);

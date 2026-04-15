@@ -76,7 +76,7 @@ fn test_trait_single_field() -> Result<(), Box<dyn std::error::Error>> {
         trait Identifiable {
             id: String
         }
-        struct User: Identifiable {
+        struct User {
             id: String,
             name: String
         }
@@ -92,7 +92,7 @@ fn test_trait_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
             id: String,
             createdAt: Number
         }
-        struct Document: Entity {
+        struct Document {
             id: String,
             createdAt: Number,
             title: String
@@ -106,10 +106,10 @@ fn test_trait_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container {
-            mount content: String
+            content: String
         }
-        struct Box: Container {
-            mount content: String
+        struct Box {
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -118,16 +118,14 @@ fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_error_trait_missing_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+    // Verify that a trait referencing an undefined type in a field causes an error
     let source = r"
         trait Container {
-            mount content: String
-        }
-        struct Box: Container {
-            content: String
+            content: NonexistentType
         }
     ";
     let result = compile(source);
-    // Should fail because mount field is required
+    // Should fail because NonexistentType is undefined
     if result.is_ok() {
         return Err("assertion failed".into());
     }
@@ -350,7 +348,7 @@ fn test_module_with_trait() -> Result<(), Box<dyn std::error::Error>> {
             trait Serializable {
                 data: String
             }
-            struct Json: Serializable {
+            struct Json {
                 data: String
             }
         }
@@ -440,13 +438,13 @@ fn test_complex_form() -> Result<(), Box<dyn std::error::Error>> {
             isValid: Boolean
         }
 
-        struct TextField: Validatable {
+        struct TextField {
             value: String,
             placeholder: String?,
             isValid: Boolean = true
         }
 
-        struct NumberField: Validatable {
+        struct NumberField {
             value: Number,
             min: Number?,
             max: Number?,
@@ -455,7 +453,7 @@ fn test_complex_form() -> Result<(), Box<dyn std::error::Error>> {
 
         struct Form {
             title: String,
-            mount fields: [Validatable] = for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
+            fields: [TextField] = for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
