@@ -381,10 +381,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let simple_name = name.rsplit("::").next().unwrap_or(name);
         let overloads: &[_] = {
             let direct = self.symbols.get_function_overloads(name);
-            if !direct.is_empty() {
-                direct
-            } else {
+            if direct.is_empty() {
                 self.symbols.get_function_overloads(simple_name)
+            } else {
+                direct
             }
         };
 
@@ -458,28 +458,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             })
             .collect();
 
-        let all_labeled = call_labels.iter().all(|l| l.is_some());
-        let none_labeled = call_labels.iter().all(|l| l.is_none());
+        let all_labeled = call_labels.iter().all(Option::is_some);
+        let none_labeled = call_labels.iter().all(Option::is_none);
 
         if all_labeled && !call_labels.is_empty() {
             // Mode A: match by label set
             let call_label_set: Vec<&str> =
                 call_labels.iter().filter_map(|l| l.as_deref()).collect();
-            let param_label_set: Vec<&str> = param_labels.iter().map(|s| s.as_str()).collect();
+            let param_label_set: Vec<&str> = param_labels.iter().map(String::as_str).collect();
             call_label_set == param_label_set
         } else if none_labeled && !args.is_empty() {
             // Mode B: match by first-argument type
             let first_arg_type = args
                 .first()
-                .map(|(_, expr)| self.infer_type(expr, file))
-                .unwrap_or_else(|| "Unknown".to_string());
+                .map_or_else(|| "Unknown".to_string(), |(_, expr)| self.infer_type(expr, file));
 
             let first_param_type = params
                 .iter()
                 .find(|p| p.name.name != "self")
                 .and_then(|p| p.ty.as_ref())
-                .map(Self::type_to_string)
-                .unwrap_or_else(|| "Unknown".to_string());
+                .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
 
             // Unknown means we can't tell — accept it (conservative)
             first_arg_type == "Unknown"
@@ -492,6 +490,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Resolve a qualified function path like `math::compute` by traversing module symbol tables.
+    #[expect(clippy::indexing_slicing, reason = "parts length checked above")]
     fn resolve_qualified_function(&self, name: &str) -> bool {
         let parts: Vec<&str> = name.splitn(2, "::").collect();
         if parts.len() != 2 {

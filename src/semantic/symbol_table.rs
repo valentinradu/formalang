@@ -246,7 +246,7 @@ impl SymbolTable {
     /// regular `impl T` block. Both are allowed to coexist for the same type.
     pub fn define_impl(
         &mut self,
-        struct_name: String,
+        struct_name: &str,
         info: ImplInfo,
         is_extern: bool,
     ) -> Option<(SymbolKind, Span)> {
@@ -254,7 +254,7 @@ impl SymbolTable {
         let key = if is_extern {
             format!("{struct_name}::extern")
         } else {
-            struct_name.clone()
+            struct_name.to_string()
         };
 
         // Check if an impl of the same kind already exists
@@ -263,7 +263,7 @@ impl SymbolTable {
         }
 
         // Mark struct as having (at least one) impl
-        if let Some(struct_info) = self.structs.get_mut(&struct_name) {
+        if let Some(struct_info) = self.structs.get_mut(struct_name) {
             struct_info.has_impl = true;
         }
 

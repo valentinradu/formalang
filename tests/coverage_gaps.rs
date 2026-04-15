@@ -2,7 +2,7 @@
 //!
 //! Targets: AST helpers, Token parsing, `ImportGraph`, semantic edge cases
 
-use formalang::compile;
+use formalang::{compile, CompilerError};
 
 // =============================================================================
 // AST Span Tests - Exercise Expr::span() for all variants
@@ -354,8 +354,14 @@ fn test_error_duplicate_generic_param() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         struct Bad<T, T> { x: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected DuplicateGenericParam error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::DuplicateGenericParam { param, .. } if param == "T"));
+    if !has_error {
+        return Err(format!("expected DuplicateGenericParam for 'T', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -365,8 +371,16 @@ fn test_error_unknown_generic_constraint() -> Result<(), Box<dyn std::error::Err
     let source = r"
         struct Bad<T: UnknownTrait> { x: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedTrait error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "UnknownTrait"),
+    );
+    if !has_error {
+        return Err(
+            format!("expected UndefinedTrait for 'UnknownTrait', got: {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -377,8 +391,14 @@ fn test_error_struct_as_trait_constraint() -> Result<(), Box<dyn std::error::Err
         struct NotATrait { x: String }
         struct Bad<T: NotATrait> { x: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedTrait error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "NotATrait"),
+    );
+    if !has_error {
+        return Err(format!("expected UndefinedTrait for 'NotATrait', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -401,8 +421,14 @@ fn test_error_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
         struct Box<T> { value: T }
         struct Container { box: Box<String, Number> }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected GenericArityMismatch error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::GenericArityMismatch { name, .. } if name == "Box"),
+    );
+    if !has_error {
+        return Err(format!("expected GenericArityMismatch for 'Box', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -635,8 +661,14 @@ fn test_error_duplicate_module() -> Result<(), Box<dyn std::error::Error>> {
         mod ui { struct A { x: String } }
         mod ui { struct B { y: Number } }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected DuplicateDefinition error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::DuplicateDefinition { .. }));
+    if !has_error {
+        return Err(format!("expected DuplicateDefinition, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -648,8 +680,14 @@ fn test_error_struct_as_composed_trait() -> Result<(), Box<dyn std::error::Error
         struct NotATrait { x: String }
         trait MyTrait: NotATrait { y: Number }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected NotATrait error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::NotATrait { .. }));
+    if !has_error {
+        return Err(format!("expected NotATrait, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -661,8 +699,14 @@ fn test_error_enum_as_composed_trait() -> Result<(), Box<dyn std::error::Error>>
         enum NotATrait { a, b }
         trait MyTrait: NotATrait { y: Number }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected NotATrait error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::NotATrait { .. }));
+    if !has_error {
+        return Err(format!("expected NotATrait, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -673,8 +717,14 @@ fn test_error_undefined_composed_trait() -> Result<(), Box<dyn std::error::Error
     let source = r"
         trait MyTrait: UndefinedTrait { x: String }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedTrait error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedTrait { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedTrait, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -703,8 +753,14 @@ fn test_error_module_path_undefined_type() -> Result<(), Box<dyn std::error::Err
         }
         struct App { btn: ui::NonExistent }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedType error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedType, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -714,8 +770,14 @@ fn test_error_undefined_module_in_path() -> Result<(), Box<dyn std::error::Error
     let source = r"
         struct App { btn: nonexistent::Button }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedType error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedType, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -730,8 +792,16 @@ fn test_error_out_of_scope_type_param() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         struct Container { x: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected OutOfScopeTypeParameter error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::OutOfScopeTypeParameter { param, .. } if param == "T"),
+    );
+    if !has_error {
+        return Err(
+            format!("expected OutOfScopeTypeParameter for 'T', got: {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -795,8 +865,14 @@ fn test_error_impl_for_undefined_struct() -> Result<(), Box<dyn std::error::Erro
     let source = r"
         impl NonExistent {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedType error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedType, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -808,8 +884,14 @@ fn test_error_duplicate_impl() -> Result<(), Box<dyn std::error::Error>> {
         impl A {}
         impl A {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected DuplicateDefinition error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::DuplicateDefinition { .. }));
+    if !has_error {
+        return Err(format!("expected DuplicateDefinition, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -823,8 +905,14 @@ fn test_error_duplicate_enum_variant() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         enum Status { active, pending, active }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected DuplicateDefinition error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::DuplicateDefinition { .. }));
+    if !has_error {
+        return Err(format!("expected DuplicateDefinition, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -839,8 +927,14 @@ fn test_error_duplicate_let_binding() -> Result<(), Box<dyn std::error::Error>> 
         let x = 1
         let x = 2
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected DuplicateDefinition error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::DuplicateDefinition { .. }));
+    if !has_error {
+        return Err(format!("expected DuplicateDefinition, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -874,8 +968,14 @@ fn test_error_generic_constraint_is_struct() -> Result<(), Box<dyn std::error::E
         struct NotATrait { x: String }
         struct Wrapper<T: NotATrait> { item: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedTrait error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedTrait { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedTrait, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -885,8 +985,14 @@ fn test_error_generic_constraint_is_undefined() -> Result<(), Box<dyn std::error
     let source = r"
         struct Wrapper<T: NonExistentTrait> { item: T }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedTrait error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedTrait { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedTrait, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -990,8 +1096,14 @@ fn test_error_struct_missing_generic_args() -> Result<(), Box<dyn std::error::Er
         struct Box<T> { value: T }
         struct Container { box: Box<String> = Box(value: "test") }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected MissingGenericArguments error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingGenericArguments { .. }));
+    if !has_error {
+        return Err(format!("expected MissingGenericArguments, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1002,8 +1114,14 @@ fn test_error_struct_extra_generic_args() -> Result<(), Box<dyn std::error::Erro
         struct Simple { x: String }
         struct Container { s: Simple = Simple<String>(x: "test") }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected GenericArityMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::GenericArityMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected GenericArityMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1014,8 +1132,14 @@ fn test_error_struct_wrong_generic_arity() -> Result<(), Box<dyn std::error::Err
         struct Pair<A, B> { a: A, b: B }
         struct Container { pair: Pair<String, Number> = Pair<String>(a: "x", b: 1) }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected GenericArityMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::GenericArityMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected GenericArityMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1026,8 +1150,14 @@ fn test_error_struct_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1, y: 2, z: 3) }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UnknownField error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::UnknownField { field, .. } if field == "z"),
+    );
+    if !has_error {
+        return Err(format!("expected UnknownField for 'z', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1038,35 +1168,18 @@ fn test_error_struct_missing_field() -> Result<(), Box<dyn std::error::Error>> {
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1) }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected MissingField error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::MissingField { field, .. } if field == "y"),
+    );
+    if !has_error {
+        return Err(format!("expected MissingField for 'y', got: {errors:?}").into());
     }
     Ok(())
 }
 
-#[test]
-fn test_error_struct_unknown_mount() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        struct Box { label: String }
-        struct App { box: Box = Box(label: "test") { nonexistent: "value" } }
-    "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_error_struct_missing_mount() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        struct Box { label: String, @mount content: String }
-        struct App { box: Box = Box(label: "test") }
-    "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
-    }
-    Ok(())
-}
 
 // =============================================================================
 // Enum Instantiation Error Tests
@@ -1126,8 +1239,16 @@ fn test_generic_type_argument_validation() -> Result<(), Box<dyn std::error::Err
         struct Box<T> { value: T }
         struct Container { box: Box<UndefinedType> }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedType error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "UndefinedType"),
+    );
+    if !has_error {
+        return Err(
+            format!("expected UndefinedType for 'UndefinedType', got: {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -1237,11 +1358,16 @@ fn test_error_enum_variant_without_data() -> Result<(), Box<dyn std::error::Erro
     // Providing data to a variant that has no fields
     let source = r#"
         enum Status { ok, error }
-        struct Response { status: Status }
-        impl Response { status: Status.ok(msg: "test") }
+        struct Response { status: Status = Status.ok(msg: "test") }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected EnumVariantWithoutData error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::EnumVariantWithoutData { .. }));
+    if !has_error {
+        return Err(format!("expected EnumVariantWithoutData, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1251,11 +1377,16 @@ fn test_error_enum_variant_requires_data() -> Result<(), Box<dyn std::error::Err
     // Not providing data to a variant that requires fields
     let source = r"
         enum Message { text(content: String) }
-        struct Logger { msg: Message }
-        impl Logger { msg: Message.text }
+        struct Logger { msg: Message = Message.text }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected EnumVariantRequiresData error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::EnumVariantRequiresData { .. }));
+    if !has_error {
+        return Err(format!("expected EnumVariantRequiresData, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1265,11 +1396,16 @@ fn test_error_enum_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     // Missing a required field in enum variant
     let source = r#"
         enum User { profile(name: String, age: Number) }
-        struct App { user: User }
-        impl App { user: User.profile(name: "Bob") }
+        struct App { user: User = User.profile(name: "Bob") }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected MissingField error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingField { .. }));
+    if !has_error {
+        return Err(format!("expected MissingField, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1279,11 +1415,16 @@ fn test_error_enum_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
     // Providing an unknown field to enum variant
     let source = r#"
         enum User { profile(name: String) }
-        struct App { user: User }
-        impl App { user: User.profile(name: "Bob", unknown: "x") }
+        struct App { user: User = User.profile(name: "Bob", unknown: "x") }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UnknownField error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { .. }));
+    if !has_error {
+        return Err(format!("expected UnknownField, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1293,11 +1434,16 @@ fn test_error_enum_unknown_variant() -> Result<(), Box<dyn std::error::Error>> {
     // Using an unknown variant
     let source = r"
         enum Status { ok, error }
-        struct Response { status: Status }
-        impl Response { status: Status.unknown }
+        struct Response { status: Status = Status.unknown }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UnknownEnumVariant error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownEnumVariant { .. }));
+    if !has_error {
+        return Err(format!("expected UnknownEnumVariant, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1306,39 +1452,16 @@ fn test_error_enum_unknown_variant() -> Result<(), Box<dyn std::error::Error>> {
 fn test_error_undefined_enum() -> Result<(), Box<dyn std::error::Error>> {
     // Using an enum that doesn't exist
     let source = r"
-        struct Response { status: String }
-        impl Response { status: NonExistent.ok }
+        struct Response { status: String = NonExistent.ok }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
-    }
-    Ok(())
-}
-
-// =============================================================================
-// Trait Mount Field Error Tests
-// =============================================================================
-
-#[test]
-fn test_error_missing_trait_mount() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        trait Container { @mount content: String }
-        struct Box: Container { label: String }
-    ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_error_trait_mount_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        trait Container { @mount content: String }
-        struct Box: Container { @mount content: Number }
-    ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected UndefinedType error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { .. }));
+    if !has_error {
+        return Err(format!("expected UndefinedType, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1351,10 +1474,19 @@ fn test_error_trait_mount_type_mismatch() -> Result<(), Box<dyn std::error::Erro
 fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Nameable { name: String }
-        struct Person: Nameable { age: Number }
+        struct Person { age: Number }
+        impl Nameable for Person {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected MissingTraitField error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name"),
+    );
+    if !has_error {
+        return Err(
+            format!("expected MissingTraitField for 'name', got: {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -1363,10 +1495,19 @@ fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Identifiable { id: Number }
-        struct Item: Identifiable { id: String }
+        struct Item { id: String }
+        impl Identifiable for Item {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "id"),
+    );
+    if !has_error {
+        return Err(
+            format!("expected TraitFieldTypeMismatch for 'id', got: {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -1381,8 +1522,14 @@ fn test_error_circular_type_dependency() -> Result<(), Box<dyn std::error::Error
         struct A { b: B }
         struct B { a: A }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected CircularDependency error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::CircularDependency { .. }));
+    if !has_error {
+        return Err(format!("expected CircularDependency, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1393,8 +1540,14 @@ fn test_error_circular_trait_dependency() -> Result<(), Box<dyn std::error::Erro
         trait A: B { x: String }
         trait B: A { y: Number }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected CircularDependency error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::CircularDependency { .. }));
+    if !has_error {
+        return Err(format!("expected CircularDependency, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1419,10 +1572,17 @@ fn test_valid_indirect_dependency() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Items { list: [String] }
-        struct Bag: Items { list: [Number] }
+        struct Bag { list: [Number] }
+        impl Items for Bag {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1431,10 +1591,17 @@ fn test_type_mismatch_array() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait MaybeValue { value: String? }
-        struct Box: MaybeValue { value: Number? }
+        struct MaybeBox { value: Number? }
+        impl MaybeValue for MaybeBox {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1444,10 +1611,17 @@ fn test_type_mismatch_generic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container<T> { item: T }
         trait Holder { box: Container<String> }
-        struct MyHolder: Holder { box: Container<Number> }
+        struct MyHolder { box: Container<Number> }
+        impl Holder for MyHolder {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1456,10 +1630,17 @@ fn test_type_mismatch_generic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Pair { coords: (x: Number, y: Number) }
-        struct Point: Pair { coords: (a: String, b: String) }
+        struct Point { coords: (a: String, b: String) }
+        impl Pair for Point {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1468,10 +1649,17 @@ fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Handler { callback: String -> Number }
-        struct MyHandler: Handler { callback: Number -> String }
+        struct MyHandler { callback: Number -> String }
+        impl Handler for MyHandler {}
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitFieldTypeMismatch error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }));
+    if !has_error {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1533,11 +1721,16 @@ fn test_generic_constraint_validation_full() -> Result<(), Box<dyn std::error::E
 fn test_error_invalid_binary_op_types() -> Result<(), Box<dyn std::error::Error>> {
     // Can't add string and number directly
     let source = r#"
-        struct A { x: Boolean }
-        impl A { x: "hello" + 123 }
+        struct A { x: Boolean = "hello" + 123 }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source)
+        .err()
+        .ok_or("expected InvalidBinaryOp error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }));
+    if !has_error {
+        return Err(format!("expected InvalidBinaryOp, got: {errors:?}").into());
     }
     Ok(())
 }

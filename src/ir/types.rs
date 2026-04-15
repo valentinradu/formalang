@@ -62,7 +62,7 @@ pub struct IrStruct {
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 
-    /// Whether this struct is an extern (opaque) type defined outside FormaLang
+    /// Whether this struct is an extern (opaque) type defined outside `FormaLang`
     pub is_extern: bool,
 }
 
@@ -239,7 +239,7 @@ pub struct IrFunction {
     /// Function body expression (None for extern functions)
     pub body: Option<IrExpr>,
 
-    /// Whether this function is extern (no body, defined outside FormaLang)
+    /// Whether this function is extern (no body, defined outside `FormaLang`)
     pub is_extern: bool,
 }
 

@@ -57,18 +57,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 Some(impl_fn) => {
                     // Check signature match: param count (excluding self) and return type
-                    let impl_non_self_params: Vec<_> = impl_fn
+                    let param_count_mismatch = impl_fn
                         .params
                         .iter()
                         .filter(|p| p.name.name != "self")
-                        .collect();
-                    let required_non_self: Vec<_> = required_params
-                        .iter()
-                        .filter(|p| p.name.name != "self")
-                        .collect();
-
-                    let param_count_mismatch =
-                        impl_non_self_params.len() != required_non_self.len();
+                        .count()
+                        != required_params
+                            .iter()
+                            .filter(|p| p.name.name != "self")
+                            .count();
 
                     let return_type_mismatch = match (&required_return, &impl_fn.return_type) {
                         (Some(req_ret), Some(impl_ret)) => !Self::types_match(req_ret, impl_ret),
@@ -79,13 +76,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     if param_count_mismatch || return_type_mismatch {
                         let expected = required_return
                             .as_ref()
-                            .map(Self::type_to_string)
-                            .unwrap_or_else(|| "()".to_string());
+                            .map_or_else(|| "()".to_string(), Self::type_to_string);
                         let actual = impl_fn
                             .return_type
                             .as_ref()
-                            .map(Self::type_to_string)
-                            .unwrap_or_else(|| "()".to_string());
+                            .map_or_else(|| "()".to_string(), Self::type_to_string);
                         self.errors
                             .push(CompilerError::TraitMethodSignatureMismatch {
                                 method: method_name.clone(),
@@ -109,15 +104,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         trait_name: &str,
     ) -> Vec<(String, Vec<crate::ast::FnParam>, Option<Type>)> {
-        if let Some(trait_info) = self.symbols.traits.get(trait_name) {
+        self.symbols.traits.get(trait_name).map_or_else(Vec::new, |trait_info| {
             trait_info
                 .methods
                 .iter()
                 .map(|m| (m.name.name.clone(), m.params.clone(), m.return_type.clone()))
                 .collect()
-        } else {
-            Vec::new()
-        }
+        })
     }
 
     /// Validate that a struct implements all required fields from its traits

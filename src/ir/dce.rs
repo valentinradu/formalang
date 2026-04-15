@@ -234,6 +234,7 @@ impl<'a> DeadCodeEliminator<'a> {
 /// Eliminate dead code from an expression.
 ///
 /// This removes unreachable branches based on constant conditions.
+#[expect(clippy::too_many_lines, reason = "exhaustive match over all IrExpr variants")]
 pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
     use crate::ast::Literal;
     match expr {

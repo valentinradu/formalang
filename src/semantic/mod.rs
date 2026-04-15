@@ -742,7 +742,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span: impl_def.span,
             };
             if let Some((kind, _)) =
-                symbols.define_impl(impl_def.name.name.clone(), info, impl_def.is_extern)
+                symbols.define_impl(&impl_def.name.name, info, impl_def.is_extern)
             {
                 errors.push(CompilerError::DuplicateDefinition {
                     name: format!(
@@ -1197,7 +1197,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             };
             if let Some((kind, _)) =
                 self.symbols
-                    .define_impl(impl_def.name.name.clone(), info, impl_def.is_extern)
+                    .define_impl(&impl_def.name.name, info, impl_def.is_extern)
             {
                 self.errors.push(CompilerError::DuplicateDefinition {
                     name: format!(

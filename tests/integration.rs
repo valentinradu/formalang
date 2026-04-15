@@ -871,7 +871,7 @@ fn test_block_comments() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_content_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container {
             content: String
@@ -882,7 +882,7 @@ fn test_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Layout {
             header: String,
