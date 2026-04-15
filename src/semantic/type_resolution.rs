@@ -2,7 +2,6 @@ use super::module_resolver::ModuleResolver;
 use super::symbol_table::{self, SymbolTable};
 use super::type_graph::TypeGraph;
 use super::SemanticAnalyzer;
-use crate::ast::PrimitiveType;
 use crate::ast::{Definition, File, Statement, StructDef, TraitDef, Type};
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -480,19 +479,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         None // Type is valid
-    }
-
-    /// Convert a type string to a `PrimitiveType` if applicable
-    pub(super) fn string_to_primitive_type(type_name: &str) -> Option<PrimitiveType> {
-        match type_name {
-            "String" => Some(PrimitiveType::String),
-            "Number" => Some(PrimitiveType::Number),
-            "Boolean" => Some(PrimitiveType::Boolean),
-            "Path" => Some(PrimitiveType::Path),
-            "Regex" => Some(PrimitiveType::Regex),
-            "Never" => Some(PrimitiveType::Never),
-            _ => None,
-        }
     }
 
     /// Add type dependencies from a type to the graph

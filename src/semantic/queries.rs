@@ -101,7 +101,7 @@ impl<'a> QueryProvider<'a> {
         ];
 
         // Add traits (unified)
-        for (name, info) in &self.symbols.traits {
+        for name in self.symbols.traits.keys() {
             completions.push(CompletionCandidate::new(
                 name.clone(),
                 CompletionKind::ModelTrait,

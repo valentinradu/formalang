@@ -63,8 +63,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         path: &[crate::ast::Ident],
         type_args: &[crate::ast::Type],
-        args: &[(Option<crate::ast::Ident>, Expr)],
-        file: &File,
+        _args: &[(Option<crate::ast::Ident>, Expr)],
+        _file: &File,
     ) -> String {
         let name = path
             .iter()

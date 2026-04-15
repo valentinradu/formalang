@@ -677,11 +677,6 @@ impl<'ast> NodeFinder<'ast> {
         }
     }
 
-    /// Visit a mount field (same as struct field, just kept for clarity)
-    fn visit_mount_field(&mut self, field: &'ast StructField) {
-        self.visit_struct_field(field);
-    }
-
     /// Visit a type
     fn visit_type(&mut self, ty: &'ast Type) {
         match ty {

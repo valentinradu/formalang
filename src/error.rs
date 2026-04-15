@@ -267,15 +267,19 @@ pub enum CompilerError {
     DuplicateGenericParam { param: String, span: Span },
 
     // Extern validation errors
+    /// An `extern fn` declaration includes a body, which is not allowed.
     #[error("Extern function '{function}' must not have a body")]
     ExternFnWithBody { function: String, span: Span },
 
+    /// A non-extern function is missing its body expression.
     #[error("Non-extern function '{function}' must have a body")]
     RegularFnWithoutBody { function: String, span: Span },
 
+    /// An `extern impl` block contains at least one function with a body.
     #[error("Extern impl block for '{name}' must not contain function bodies")]
     ExternImplWithBody { name: String, span: Span },
 
+    /// A trait implementation is missing a method required by the trait.
     #[error("Missing method '{method}' required by trait '{trait_name}'")]
     MissingTraitMethod {
         method: String,
@@ -283,6 +287,7 @@ pub enum CompilerError {
         span: Span,
     },
 
+    /// A method's signature in an impl block does not match the trait's declaration.
     #[error(
         "Method '{method}' signature does not match trait '{trait_name}': expected {expected}, found {actual}"
     )]
@@ -295,9 +300,11 @@ pub enum CompilerError {
     },
 
     // Function overload errors
+    /// More than one overload of a function matches the call arguments.
     #[error("Ambiguous call to '{function}': multiple overloads match")]
     AmbiguousCall { function: String, span: Span },
 
+    /// No overload of a function matches the call arguments.
     #[error("No matching overload for '{function}' with the given arguments")]
     NoMatchingOverload { function: String, span: Span },
 
