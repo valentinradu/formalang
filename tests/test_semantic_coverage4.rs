@@ -3,6 +3,7 @@
 use formalang::compile;
 use formalang::compile_with_resolver;
 use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
+use formalang::CompilerError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -505,298 +506,47 @@ fn test_function_with_regex_return_type() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
-fn test_function_return_type_mismatch_f32() -> Result<(), Box<dyn std::error::Error>> {
-    // Return type is f32, body returns a string — exercises GPU type in type_to_string
+fn test_function_return_type_mismatch_number_vs_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        fn wrong() -> f32 { "not f32" }
+        fn wrong() -> Number { "not a number" }
     "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err("Expected f32/String mismatch".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }))
+    {
+        return Err(format!("expected FunctionReturnTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_function_return_type_mismatch_vec3() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> vec3 { "not vec3" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err("Expected vec3/String mismatch".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_mat4() -> Result<(), Box<dyn std::error::Error>> {
+fn test_function_return_type_mismatch_string_vs_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn wrong() -> mat4 { 42 }
+        fn wrong() -> String { 42 }
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err("Expected mat4/Number mismatch".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }))
+    {
+        return Err(format!("expected FunctionReturnTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_function_return_type_mismatch_i32() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> i32 { "hello" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for i32: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_u32() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> u32 { "hello" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for u32: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_bool() -> Result<(), Box<dyn std::error::Error>> {
+fn test_function_return_type_mismatch_boolean_vs_number() -> Result<(), Box<dyn std::error::Error>>
+{
     let source = r"
-        fn wrong() -> bool { 42 }
+        fn wrong() -> Boolean { 42 }
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for bool: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_ivec2() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> ivec2 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for ivec2: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_ivec3() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> ivec3 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for ivec3: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_ivec4() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> ivec4 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for ivec4: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_uvec2() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> uvec2 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for uvec2: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_uvec3() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> uvec3 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for uvec3: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_uvec4() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> uvec4 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for uvec4: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_vec2() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> vec2 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for vec2: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_vec4() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> vec4 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for vec4: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_mat2() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> mat2 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for mat2: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_function_return_type_mismatch_mat3() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        fn wrong() -> mat3 { "nope" }
-    "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for mat3: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }))
+    {
+        return Err(format!("expected FunctionReturnTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1160,32 +910,43 @@ fn test_closure_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error:
 }
 
 // =============================================================================
-// Trait field type mismatch with GPU types — exercises type_to_string for GPU types
-// in error message generation
+// Trait field type mismatch — exercises type_to_string in error message generation
 // =============================================================================
 
 #[test]
-fn test_trait_field_type_mismatch_with_gpu_type() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_field_type_mismatch_with_optional_type() -> Result<(), Box<dyn std::error::Error>> {
+    // Trait requires String? field; struct has Number — exercises optional type
+    // display in TraitFieldTypeMismatch error message.
     let source = r"
-        trait GpuNode { position: vec3 }
-        struct BadGpuNode: GpuNode { position: Number }
+        trait Nullable { value: String? }
+        struct BadNullable { value: Number }
+        impl Nullable for BadNullable {}
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err("Expected trait field mismatch with GPU type".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }))
+    {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }
 
 #[test]
-fn test_trait_field_type_mismatch_with_mat4() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_field_type_mismatch_with_array_type() -> Result<(), Box<dyn std::error::Error>> {
+    // Trait requires [String] field; struct has Number — exercises array type
+    // display in TraitFieldTypeMismatch error message.
     let source = r"
-        trait Transform { matrix: mat4 }
-        struct BadTransform: Transform { matrix: Number }
+        trait Collection { items: [String] }
+        struct BadCollection { items: Number }
+        impl Collection for BadCollection {}
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err("Expected trait field mismatch with mat4".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }))
+    {
+        return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
     }
     Ok(())
 }

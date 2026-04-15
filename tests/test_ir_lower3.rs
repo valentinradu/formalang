@@ -535,7 +535,7 @@ fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>>
 // =============================================================================
 
 #[test]
-fn test_lower_vec3_constructor() -> Result<(), Box<dyn std::error::Error>> {
+fn test_lower_function_call_lowering() -> Result<(), Box<dyn std::error::Error>> {
     // Test that a function call to another named function lowers to IrExpr::FunctionCall.
     // (Vec3/vec3 were GPU-type constructors removed with the old codegen backend.)
     let source = r"
