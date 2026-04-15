@@ -13,7 +13,7 @@ pub struct Location {
 }
 
 impl Location {
-    #[must_use] 
+    #[must_use]
     pub const fn new(offset: usize, line: usize, column: usize) -> Self {
         Self {
             offset,
@@ -22,7 +22,7 @@ impl Location {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn start() -> Self {
         Self {
             offset: 0,
@@ -47,12 +47,12 @@ pub struct Span {
 }
 
 impl Span {
-    #[must_use] 
+    #[must_use]
     pub const fn new(start: Location, end: Location) -> Self {
         Self { start, end }
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn single(location: Location) -> Self {
         Self {
             start: location,
@@ -61,7 +61,7 @@ impl Span {
     }
 
     /// Combine two spans into one that covers both
-    #[must_use] 
+    #[must_use]
     pub const fn merge(self, other: Self) -> Self {
         Self {
             start: if self.start.offset < other.start.offset {
@@ -79,7 +79,7 @@ impl Span {
 
     /// Create a span from byte offsets (for logos compatibility)
     /// Note: This creates a span with line=0, column=0. Use `from_range_with_source` to compute actual positions.
-    #[must_use] 
+    #[must_use]
     pub const fn from_range(start: usize, end: usize) -> Self {
         Self {
             start: Location {
@@ -96,7 +96,7 @@ impl Span {
     }
 
     /// Create a span from byte offsets with proper line/column calculation
-    #[must_use] 
+    #[must_use]
     pub fn from_range_with_source(start: usize, end: usize, source: &str) -> Self {
         Self {
             start: offset_to_location(start, source),
@@ -106,7 +106,7 @@ impl Span {
 }
 
 /// Convert a byte offset to a Location with line and column information
-#[must_use] 
+#[must_use]
 pub fn offset_to_location(offset: usize, source: &str) -> Location {
     let mut line: usize = 1;
     let mut column: usize = 1;
@@ -135,7 +135,7 @@ pub fn offset_to_location(offset: usize, source: &str) -> Location {
 }
 
 /// Fill in line/column information for a span given the source text
-#[must_use] 
+#[must_use]
 pub fn fill_span_positions(span: Span, source: &str) -> Span {
     Span {
         start: offset_to_location(span.start.offset, source),

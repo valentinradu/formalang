@@ -38,8 +38,8 @@ pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, 
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
 pub use types::{
-    ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrGenericParam,
-    IrImpl, IrLet, IrStruct, IrTrait,
+    ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
+    IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait,
 };
 pub use visitor::{
     walk_block_statement, walk_expr, walk_expr_children, walk_module, walk_module_children,
@@ -64,7 +64,10 @@ use crate::location::Span;
 /// let struct_def = &module.structs[id.0 as usize];
 /// assert_eq!(struct_def.name, "User");
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct StructId(pub u32);
 
@@ -80,7 +83,10 @@ pub struct StructId(pub u32);
 /// let trait_def = &module.traits[id.0 as usize];
 /// assert_eq!(trait_def.name, "Named");
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct TraitId(pub u32);
 
@@ -96,7 +102,10 @@ pub struct TraitId(pub u32);
 /// let enum_def = &module.enums[id.0 as usize];
 /// assert_eq!(enum_def.name, "Status");
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct EnumId(pub u32);
 
@@ -106,13 +115,16 @@ pub struct EnumId(pub u32);
 /// ```
 /// use formalang::compile_to_ir;
 ///
-/// let source = "pub fn add(a: f32, b: f32) -> f32 { a + b }";
+/// let source = "pub fn add(a: Number, b: Number) -> Number { a + b }";
 /// let module = compile_to_ir(source).unwrap();
 /// let id = formalang::FunctionId(0);
 /// let func_def = &module.functions[id.0 as usize];
 /// assert_eq!(func_def.name, "add");
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FunctionId(pub u32);
 
@@ -120,7 +132,10 @@ pub struct FunctionId(pub u32);
 ///
 /// Used to distinguish between different definition types when referencing
 /// types from other modules.
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExternalKind {
     /// External struct type
@@ -135,7 +150,10 @@ pub enum ExternalKind {
 ///
 /// Tracks which types were imported from external modules, enabling code
 /// generators to emit proper import statements in target languages.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrImport {
     /// Logical module path (e.g., `["utils", "helpers"]`)
@@ -151,7 +169,10 @@ pub struct IrImport {
 }
 
 /// A single imported item from a module.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrImportItem {
     /// Name of the imported type
@@ -165,7 +186,10 @@ pub struct IrImportItem {
 /// Unlike AST types which use string names, resolved types use IDs that
 /// directly reference definitions. This eliminates the need for symbol
 /// table lookups during code generation.
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
@@ -337,43 +361,43 @@ pub struct IrModule {
 
 impl IrModule {
     /// Create a new empty IR module.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Look up a struct by ID. Returns `None` if the ID is out of bounds.
-    #[must_use] 
+    #[must_use]
     pub fn get_struct(&self, id: StructId) -> Option<&IrStruct> {
         self.structs.get(id.0 as usize)
     }
 
     /// Look up a trait by ID. Returns `None` if the ID is out of bounds.
-    #[must_use] 
+    #[must_use]
     pub fn get_trait(&self, id: TraitId) -> Option<&IrTrait> {
         self.traits.get(id.0 as usize)
     }
 
     /// Look up an enum by ID. Returns `None` if the ID is out of bounds.
-    #[must_use] 
+    #[must_use]
     pub fn get_enum(&self, id: EnumId) -> Option<&IrEnum> {
         self.enums.get(id.0 as usize)
     }
 
     /// Look up a struct ID by name.
-    #[must_use] 
+    #[must_use]
     pub fn struct_id(&self, name: &str) -> Option<StructId> {
         self.struct_names.get(name).copied()
     }
 
     /// Look up a trait ID by name.
-    #[must_use] 
+    #[must_use]
     pub fn trait_id(&self, name: &str) -> Option<TraitId> {
         self.trait_names.get(name).copied()
     }
 
     /// Look up an enum ID by name.
-    #[must_use] 
+    #[must_use]
     pub fn enum_id(&self, name: &str) -> Option<EnumId> {
         self.enum_names.get(name).copied()
     }
@@ -445,7 +469,7 @@ impl IrModule {
     }
 
     /// Check if a let binding exists.
-    #[must_use] 
+    #[must_use]
     pub fn has_let(&self, name: &str) -> bool {
         self.let_names.contains_key(name)
     }
@@ -464,7 +488,7 @@ impl IrModule {
     }
 
     /// Look up a function ID by name.
-    #[must_use] 
+    #[must_use]
     pub fn function_id(&self, name: &str) -> Option<FunctionId> {
         self.function_names.get(name).copied()
     }
@@ -549,7 +573,7 @@ impl ResolvedType {
     ///
     /// Useful for error messages and debugging. For code generation,
     /// prefer pattern matching on the variants directly.
-    #[must_use] 
+    #[must_use]
     pub fn display_name(&self, module: &IrModule) -> String {
         match self {
             Self::Primitive(p) => match p {
@@ -559,27 +583,6 @@ impl ResolvedType {
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
-                // GPU scalar types
-                PrimitiveType::F32 => "f32".to_string(),
-                PrimitiveType::I32 => "i32".to_string(),
-                PrimitiveType::U32 => "u32".to_string(),
-                PrimitiveType::Bool => "bool".to_string(),
-                // GPU vector types (float)
-                PrimitiveType::Vec2 => "vec2".to_string(),
-                PrimitiveType::Vec3 => "vec3".to_string(),
-                PrimitiveType::Vec4 => "vec4".to_string(),
-                // GPU vector types (signed int)
-                PrimitiveType::IVec2 => "ivec2".to_string(),
-                PrimitiveType::IVec3 => "ivec3".to_string(),
-                PrimitiveType::IVec4 => "ivec4".to_string(),
-                // GPU vector types (unsigned int)
-                PrimitiveType::UVec2 => "uvec2".to_string(),
-                PrimitiveType::UVec3 => "uvec3".to_string(),
-                PrimitiveType::UVec4 => "uvec4".to_string(),
-                // GPU matrix types
-                PrimitiveType::Mat2 => "mat2".to_string(),
-                PrimitiveType::Mat3 => "mat3".to_string(),
-                PrimitiveType::Mat4 => "mat4".to_string(),
             },
             Self::Struct(id) => module
                 .get_struct(*id)
@@ -600,9 +603,10 @@ impl ResolvedType {
                 format!("({})", fields_str.join(", "))
             }
             Self::Generic { base, args } => {
-                let base_name = module
-                    .get_struct(*base)
-                    .map_or_else(|| format!("<invalid-struct-{}>", base.0), |s| s.name.clone());
+                let base_name = module.get_struct(*base).map_or_else(
+                    || format!("<invalid-struct-{}>", base.0),
+                    |s| s.name.clone(),
+                );
                 let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))
             }
@@ -651,7 +655,7 @@ impl ResolvedType {
 
 impl Visibility {
     /// Check if this visibility is public.
-    #[must_use] 
+    #[must_use]
     pub const fn is_public(&self) -> bool {
         matches!(self, Self::Public)
     }
@@ -670,7 +674,7 @@ impl Visibility {
 /// assert_eq!(simple_type_name("alignment::Horizontal"), "Horizontal");
 /// assert_eq!(simple_type_name("Button"), "Button");
 /// ```
-#[must_use] 
+#[must_use]
 pub fn simple_type_name(name: &str) -> &str {
     name.rsplit("::").next().unwrap_or(name)
 }

@@ -4,17 +4,17 @@ mod expr;
 mod types;
 
 use crate::ast::{
-    self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
-    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef,
-    Type,
+    self, BindingPattern, Definition, EnumDef, ExternTypeDef, File, FnDef, FunctionDef,
+    GenericConstraint, ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef,
+    StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
 
 use super::{
     simple_type_name, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction,
-    IrFunctionParam, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet, IrModule, IrStruct,
-    IrTrait, ResolvedType, TraitId,
+    IrFunctionParam, IrFunctionSig, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet,
+    IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
 use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
@@ -214,8 +214,10 @@ impl<'a> IrLowerer<'a> {
         let value_expr = self.lower_expr(&let_binding.value);
         for field in fields {
             let field_name = field.name.name.clone();
-            let binding_name =
-                field.alias.as_ref().map_or_else(|| field_name.clone(), |a| a.name.clone());
+            let binding_name = field
+                .alias
+                .as_ref()
+                .map_or_else(|| field_name.clone(), |a| a.name.clone());
             let field_ty = self.get_field_type_from_resolved(value_expr.ty(), &field_name);
             self.module.add_let(IrLet {
                 name: binding_name,
@@ -254,9 +256,10 @@ impl<'a> IrLowerer<'a> {
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_simple_binding_name(element) {
-                let ty = tuple_types
-                    .get(i)
-                    .map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |(_, t)| t.clone());
+                let ty = tuple_types.get(i).map_or_else(
+                    || ResolvedType::TypeParam("Unknown".to_string()),
+                    |(_, t)| t.clone(),
+                );
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "tuple destructuring indices are small source-code positions that fit exactly in f64 mantissa"
@@ -278,7 +281,9 @@ impl<'a> IrLowerer<'a> {
     /// Extract binding name from an array pattern element
     fn extract_binding_name(element: &ast::ArrayPatternElement) -> Option<String> {
         match element {
-            ast::ArrayPatternElement::Binding(pattern) => Self::extract_simple_binding_name(pattern),
+            ast::ArrayPatternElement::Binding(pattern) => {
+                Self::extract_simple_binding_name(pattern)
+            }
             ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
             ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => None,
         }
@@ -301,15 +306,6 @@ impl<'a> IrLowerer<'a> {
             if let Some(struct_info) = self.symbols.structs.get(&struct_name) {
                 // Check regular fields
                 if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
-                    let ty = field.ty.clone();
-                    return self.lower_type(&ty);
-                }
-                // Check mount fields
-                if let Some(field) = struct_info
-                    .mount_fields
-                    .iter()
-                    .find(|f| f.name == field_name)
-                {
                     let ty = field.ty.clone();
                     return self.lower_type(&ty);
                 }
@@ -397,7 +393,7 @@ impl<'a> IrLowerer<'a> {
                     visibility: trait_info.visibility,
                     composed_traits: Vec::new(),
                     fields: Vec::new(),
-                    mount_fields: Vec::new(),
+                    methods: Vec::new(),
                     generic_params: Vec::new(),
                 },
             ) {
@@ -472,19 +468,6 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        // Convert mount_fields from StructInfo to IrField
-        let mount_fields: Vec<IrField> = struct_info
-            .mount_fields
-            .iter()
-            .map(|f| IrField {
-                name: f.name.clone(),
-                ty: self.lower_type(&f.ty),
-                mutable: false,
-                optional: false,
-                default: None,
-            })
-            .collect();
-
         // Convert trait names to trait IDs
         // Use get_all_traits_for_struct to include both inline traits and impl blocks
         let all_trait_names = self.symbols.get_all_traits_for_struct(name);
@@ -503,8 +486,8 @@ impl<'a> IrLowerer<'a> {
                 visibility: struct_info.visibility,
                 traits,
                 fields,
-                mount_fields,
                 generic_params,
+                is_extern: struct_info.is_extern,
             },
         ) {
             self.errors.push(e);
@@ -524,7 +507,7 @@ impl<'a> IrLowerer<'a> {
                         visibility: t.visibility,
                         composed_traits: Vec::new(),
                         fields: Vec::new(),
-                        mount_fields: Vec::new(),
+                        methods: Vec::new(),
                         generic_params: Vec::new(),
                     },
                 ) {
@@ -540,8 +523,8 @@ impl<'a> IrLowerer<'a> {
                         visibility: s.visibility,
                         traits: Vec::new(),
                         fields: Vec::new(),
-                        mount_fields: Vec::new(),
                         generic_params: Vec::new(),
+                        is_extern: false,
                     },
                 ) {
                     self.errors.push(e);
@@ -556,6 +539,22 @@ impl<'a> IrLowerer<'a> {
                         visibility: e.visibility,
                         variants: Vec::new(),
                         generic_params: Vec::new(),
+                    },
+                ) {
+                    self.errors.push(e);
+                }
+            }
+            Definition::ExternType(ext) => {
+                let name = ext.name.name.clone();
+                if let Err(e) = self.module.add_struct(
+                    name,
+                    IrStruct {
+                        name: ext.name.name.clone(),
+                        visibility: ext.visibility,
+                        traits: Vec::new(),
+                        fields: Vec::new(),
+                        generic_params: Vec::new(),
+                        is_extern: true,
                     },
                 ) {
                     self.errors.push(e);
@@ -578,6 +577,7 @@ impl<'a> IrLowerer<'a> {
             Definition::Enum(e) => self.lower_enum(e),
             Definition::Impl(i) => self.lower_impl(i),
             Definition::Function(f) => self.lower_function(f.as_ref()),
+            Definition::ExternType(ext) => self.lower_extern_type(ext),
             Definition::Module(m) => {
                 // Lower nested definitions within the module
                 self.lower_module(&m.name.name, &m.definitions);
@@ -621,6 +621,9 @@ impl<'a> IrLowerer<'a> {
                     // Functions in modules
                     self.lower_function(f.as_ref());
                 }
+                Definition::ExternType(ext) => {
+                    self.lower_extern_type(ext);
+                }
                 Definition::Module(m) => {
                     // Recursively process nested modules
                     self.lower_module(&m.name.name, &m.definitions);
@@ -651,22 +654,21 @@ impl<'a> IrLowerer<'a> {
 
         let generic_params = self.lower_generic_params(&t.generics);
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
-        let mount_fields: Vec<IrField> = t
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_field_def(f))
-            .collect();
+        let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
         // Update the trait in place
         // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from trait_id() guarantees valid index"
+        )]
         let trait_def = &mut self.module.traits[id.0 as usize];
         trait_def.name = qualified_name;
         trait_def.visibility = t.visibility;
         trait_def.composed_traits = composed_traits;
         trait_def.generic_params = generic_params;
         trait_def.fields = fields;
-        trait_def.mount_fields = mount_fields;
+        trait_def.methods = methods;
     }
 
     /// Lower struct with module prefix
@@ -701,22 +703,20 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|f| self.lower_struct_field(f))
             .collect();
-        let mount_fields: Vec<IrField> = s
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_struct_field(f))
-            .collect();
 
         // Update the struct in place
         // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from struct_id() guarantees valid index"
+        )]
         let struct_def = &mut self.module.structs[id.0 as usize];
         struct_def.name = qualified_name;
         struct_def.visibility = s.visibility;
         struct_def.traits = traits;
         struct_def.generic_params = generic_params;
         struct_def.fields = fields;
-        struct_def.mount_fields = mount_fields;
+        struct_def.is_extern = false;
     }
 
     /// Lower enum with module prefix
@@ -752,7 +752,10 @@ impl<'a> IrLowerer<'a> {
 
         // Update the enum in place
         // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from enum_id() guarantees valid index"
+        )]
         let enum_def = &mut self.module.enums[id.0 as usize];
         enum_def.name = qualified_name;
         enum_def.visibility = e.visibility;
@@ -779,19 +782,18 @@ impl<'a> IrLowerer<'a> {
 
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
 
-        let mount_fields: Vec<IrField> = t
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_field_def(f))
-            .collect();
+        let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
         // Update the trait in place
         // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from trait_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from trait_id() guarantees valid index"
+        )]
         let trait_def = &mut self.module.traits[id.0 as usize];
         trait_def.composed_traits = composed_traits;
         trait_def.fields = fields;
-        trait_def.mount_fields = mount_fields;
+        trait_def.methods = methods;
         trait_def.generic_params = generic_params;
     }
 
@@ -823,20 +825,17 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_struct_field(f))
             .collect();
 
-        let mount_fields: Vec<IrField> = s
-            .mount_fields
-            .iter()
-            .map(|f| self.lower_struct_field(f))
-            .collect();
-
         // Update the struct in place
         // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from struct_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from struct_id() guarantees valid index"
+        )]
         let struct_def = &mut self.module.structs[id.0 as usize];
         struct_def.traits = traits;
         struct_def.fields = fields;
-        struct_def.mount_fields = mount_fields;
         struct_def.generic_params = generic_params;
+        struct_def.is_extern = false;
     }
 
     fn lower_enum(&mut self, e: &EnumDef) {
@@ -861,7 +860,10 @@ impl<'a> IrLowerer<'a> {
 
         // Update the enum in place
         // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(clippy::indexing_slicing, reason = "id obtained from enum_id() guarantees valid index")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from enum_id() guarantees valid index"
+        )]
         let enum_def = &mut self.module.enums[id.0 as usize];
         enum_def.variants = variants;
         enum_def.generic_params = generic_params;
@@ -918,7 +920,8 @@ impl<'a> IrLowerer<'a> {
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
-        let body = self.lower_expr(&f.body);
+        let body = f.body.as_ref().map(|b| self.lower_expr(b));
+        let is_extern = body.is_none();
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
@@ -930,6 +933,7 @@ impl<'a> IrLowerer<'a> {
                 params,
                 return_type,
                 body,
+                is_extern,
             },
         ) {
             self.errors.push(e);
@@ -953,7 +957,8 @@ impl<'a> IrLowerer<'a> {
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
-        let body = self.lower_expr(&f.body);
+        let body = f.body.as_ref().map(|b| self.lower_expr(b));
+        let is_extern = body.is_none();
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
@@ -963,7 +968,45 @@ impl<'a> IrLowerer<'a> {
             params,
             return_type,
             body,
+            is_extern,
         }
+    }
+
+    fn lower_fn_sig(&mut self, sig: &ast::FnSig) -> IrFunctionSig {
+        let params: Vec<IrFunctionParam> = sig
+            .params
+            .iter()
+            .map(|p| IrFunctionParam {
+                name: p.name.name.clone(),
+                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
+                default: p.default.as_ref().map(|e| self.lower_expr(e)),
+            })
+            .collect();
+
+        let return_type = sig.return_type.as_ref().map(|t| self.lower_type(t));
+
+        IrFunctionSig {
+            name: sig.name.name.clone(),
+            params,
+            return_type,
+        }
+    }
+
+    fn lower_extern_type(&mut self, ext: &ExternTypeDef) {
+        let Some(id) = self.module.struct_id(&ext.name.name) else {
+            return;
+        };
+
+        let generic_params = self.lower_generic_params(&ext.generics);
+
+        // Update the struct in place
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "id obtained from struct_id() guarantees valid index"
+        )]
+        let struct_def = &mut self.module.structs[id.0 as usize];
+        struct_def.generic_params = generic_params;
+        struct_def.is_extern = true;
     }
 
     /// Extract the type name from an AST type (for return type context)
@@ -1170,6 +1213,7 @@ mod tests {
         let ast = File {
             statements: vec![],
             span: crate::location::Span::default(),
+            format_version: 1,
         };
         let symbols = SymbolTable::new();
         let result = lower_to_ir(&ast, &symbols);

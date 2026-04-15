@@ -11,19 +11,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Literal(lit) => match lit {
                 Literal::String(_) => "String".to_string(),
                 Literal::Number(_) => "Number".to_string(),
-                Literal::UnsignedInt(_) => "u32".to_string(),
-                Literal::SignedInt(_) => "i32".to_string(),
                 Literal::Boolean(_) => "Boolean".to_string(),
                 Literal::Regex { .. } => "Regex".to_string(),
                 Literal::Path(_) => "Path".to_string(),
                 Literal::Nil => "nil".to_string(),
             },
-            Expr::Array { elements, .. } => {
-                elements.first().map_or_else(
-                    || "[Unknown]".to_string(),
-                    |first| format!("[{}]", self.infer_type(first, file)),
-                )
-            }
+            Expr::Array { elements, .. } => elements.first().map_or_else(
+                || "[Unknown]".to_string(),
+                |first| format!("[{}]", self.infer_type(first, file)),
+            ),
             Expr::Tuple { fields, .. } => {
                 let field_types: Vec<String> = fields
                     .iter()
@@ -47,9 +43,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             },
             Expr::ForExpr { body, .. } => format!("[{}]", self.infer_type(body, file)),
             Expr::IfExpr { then_branch, .. } => self.infer_type(then_branch, file),
-            Expr::MatchExpr { arms, .. } => arms
-                .first()
-                .map_or_else(|| "Unknown".to_string(), |arm| self.infer_type(&arm.body, file)),
+            Expr::MatchExpr { arms, .. } => arms.first().map_or_else(
+                || "Unknown".to_string(),
+                |arm| self.infer_type(&arm.body, file),
+            ),
             Expr::Group { expr, .. } => self.infer_type(expr, file),
             Expr::DictLiteral { .. } => "Dictionary".to_string(),
             Expr::DictAccess { .. } | Expr::FieldAccess { .. } | Expr::MethodCall { .. } => {
@@ -80,19 +77,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if type_args.is_empty() {
                 name
             } else {
-                let arg_types: Vec<String> =
-                    type_args.iter().map(|ty| Self::type_to_string(ty)).collect();
+                let arg_types: Vec<String> = type_args
+                    .iter()
+                    .map(|ty| Self::type_to_string(ty))
+                    .collect();
                 format!("{}<{}>", name, arg_types.join(", "))
             }
-        } else if crate::builtins::BuiltinRegistry::global().is_builtin(&name) {
-            // Builtin function — resolve return type from argument types
-            let arg_types: Vec<String> = args
-                .iter()
-                .map(|(_, expr)| self.infer_type(expr, file))
-                .collect();
-            crate::builtins::BuiltinRegistry::global()
-                .resolve_return_type(&name, &arg_types)
-                .unwrap_or_else(|| "Number".to_string())
         } else if let Some(func_info) = self.symbols.get_function(&name) {
             // User-defined standalone function — return its declared return type
             func_info
@@ -113,11 +103,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if let Some(ref struct_name) = self.current_impl_struct {
                     if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                         for field in &struct_info.fields {
-                            if field.name == *field_name {
-                                return Self::type_to_string(&field.ty);
-                            }
-                        }
-                        for field in &struct_info.mount_fields {
                             if field.name == *field_name {
                                 return Self::type_to_string(&field.ty);
                             }
@@ -144,17 +129,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             return Self::type_to_string(&field.ty);
                         }
                     }
-                    for field in &struct_info.mount_fields {
-                        if field.name == *name {
-                            return Self::type_to_string(&field.ty);
-                        }
-                    }
                 }
             }
         }
-        // Multi-segment path or unresolved — fall back to last segment name
-        path.last()
-            .map_or_else(|| "Unknown".to_string(), |ident| ident.name.clone())
+        // Multi-segment path or unresolved — cannot determine type statically
+        "Unknown".to_string()
     }
 
     /// Infer the result type of a binary operator expression

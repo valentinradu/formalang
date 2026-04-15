@@ -148,11 +148,7 @@ fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::E
     }
     let first_struct = result.structs.first().ok_or("index out of bounds")?;
     if first_struct.name != "Visible" {
-        return Err(format!(
-            "expected {:?} but got {:?}",
-            "Visible", first_struct.name
-        )
-        .into());
+        return Err(format!("expected {:?} but got {:?}", "Visible", first_struct.name).into());
     }
     Ok(())
 }
@@ -291,9 +287,7 @@ fn pipeline_emit_wraps_backend_errors_as_pipeline_backend_error(
                 return Err(format!("Expected intentional error message, got {}", e.0).into());
             }
         }
-        other => {
-            return Err(format!("Expected PipelineError::BackendError, got {other:?}").into())
-        }
+        other => return Err(format!("Expected PipelineError::BackendError, got {other:?}").into()),
     }
     Ok(())
 }
@@ -502,7 +496,7 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
 
     let source = r"
         trait Named { name: String }
-        struct User: Named { name: String }
+        struct User { name: String }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let (struct_count, trait_count) = Pipeline::new()

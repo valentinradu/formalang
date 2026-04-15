@@ -1,4 +1,4 @@
-use crate::ast::{GenericParam, Type, Visibility};
+use crate::ast::{FnSig, GenericParam, Type, Visibility};
 use crate::location::Span;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -18,8 +18,8 @@ pub struct SymbolTable {
     pub enums: HashMap<String, EnumInfo>,
     /// Let bindings with type information
     pub lets: HashMap<String, LetInfo>,
-    /// Standalone functions
-    pub functions: HashMap<String, FunctionInfo>,
+    /// Standalone functions (multiple overloads per name allowed)
+    pub functions: HashMap<String, Vec<FunctionInfo>>,
     /// Modules with nested symbol tables
     pub modules: HashMap<String, ModuleInfo>,
     /// Track which module each symbol came from (None = current module)
@@ -28,7 +28,7 @@ pub struct SymbolTable {
     module_logical_paths: HashMap<String, Vec<String>>,
 }
 
-/// Information about a trait with field and mounting point requirements
+/// Information about a trait with field requirements
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TraitInfo {
@@ -38,10 +38,10 @@ pub struct TraitInfo {
     pub generics: Vec<GenericParam>,
     /// Required fields (name -> type)
     pub fields: HashMap<String, Type>,
-    /// Required mounting points (name -> type)
-    pub mount_fields: HashMap<String, Type>,
     /// Trait composition list (trait names this trait extends)
     pub composed_traits: Vec<String>,
+    /// Required method signatures declared in the trait body
+    pub methods: Vec<FnSig>,
 }
 
 /// Information about a let binding with type
@@ -54,7 +54,7 @@ pub struct LetInfo {
     pub inferred_type: Option<String>,
 }
 
-/// Information about a struct (unified, replaces `ModelInfo` and `ViewInfo`)
+/// Information about a struct
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct StructInfo {
@@ -62,14 +62,12 @@ pub struct StructInfo {
     pub span: Span,
     /// Generic parameters
     pub generics: Vec<GenericParam>,
-    /// Implemented trait names
-    pub traits: Vec<String>,
     /// Regular fields
     pub fields: Vec<FieldInfo>,
-    /// Mount fields
-    pub mount_fields: Vec<FieldInfo>,
     /// Track if impl block exists
     pub has_impl: bool,
+    /// True if this is an extern (opaque) type
+    pub is_extern: bool,
 }
 
 /// Information about a field
@@ -127,14 +125,24 @@ pub struct ModuleInfo {
     pub symbols: SymbolTable,
 }
 
+/// Information about a single parameter in a function (stored in symbol table)
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ParamInfo {
+    /// External call-site label (if specified separately from the internal name)
+    pub external_label: Option<crate::ast::Ident>,
+    pub name: crate::ast::Ident,
+    pub ty: Option<Type>,
+}
+
 /// Information about a standalone function
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct FunctionInfo {
     pub visibility: Visibility,
     pub span: Span,
-    /// Parameter names and types (None type for `self` parameter)
-    pub params: Vec<(String, Option<Type>)>,
+    /// Parameter information including external labels
+    pub params: Vec<ParamInfo>,
     /// Return type (None for unit/void)
     pub return_type: Option<Type>,
 }
@@ -153,7 +161,7 @@ pub enum SymbolKind {
 }
 
 impl SymbolTable {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             traits: HashMap::new(),
@@ -169,10 +177,10 @@ impl SymbolTable {
         }
     }
 
-    /// Define a trait (unified)
+    /// Define a trait
     #[expect(
         clippy::too_many_arguments,
-        reason = "all parameters are distinct and required by the symbol table schema"
+        reason = "trait definition has many independent fields"
     )]
     pub fn define_trait(
         &mut self,
@@ -181,8 +189,8 @@ impl SymbolTable {
         span: Span,
         generics: Vec<GenericParam>,
         fields: HashMap<String, Type>,
-        mount_fields: HashMap<String, Type>,
         composed_traits: Vec<String>,
+        methods: Vec<FnSig>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -196,27 +204,22 @@ impl SymbolTable {
                 span,
                 generics,
                 fields,
-                mount_fields,
                 composed_traits,
+                methods,
             },
         );
         None
     }
 
-    /// Define a struct (unified)
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "all parameters are distinct and required by the symbol table schema"
-    )]
+    /// Define a struct
     pub fn define_struct(
         &mut self,
         name: String,
         visibility: Visibility,
         span: Span,
         generics: Vec<GenericParam>,
-        traits: Vec<String>,
         fields: Vec<FieldInfo>,
-        mount_fields: Vec<FieldInfo>,
+        is_extern: bool,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -229,32 +232,42 @@ impl SymbolTable {
                 visibility,
                 span,
                 generics,
-                traits,
                 fields,
-                mount_fields,
                 has_impl: false,
+                is_extern,
             },
         );
         None
     }
 
-    /// Define an impl block
+    /// Define an impl block.
+    ///
+    /// `is_extern` distinguishes `extern impl T` (no function bodies) from a
+    /// regular `impl T` block. Both are allowed to coexist for the same type.
     pub fn define_impl(
         &mut self,
         struct_name: String,
         info: ImplInfo,
+        is_extern: bool,
     ) -> Option<(SymbolKind, Span)> {
-        // Check if impl already exists
-        if let Some(existing) = self.impls.get(&struct_name) {
+        // Use a distinct key so extern impl and regular impl can coexist.
+        let key = if is_extern {
+            format!("{struct_name}::extern")
+        } else {
+            struct_name.clone()
+        };
+
+        // Check if an impl of the same kind already exists
+        if let Some(existing) = self.impls.get(&key) {
             return Some((SymbolKind::Impl, existing.span));
         }
 
-        // Mark struct as having impl
+        // Mark struct as having (at least one) impl
         if let Some(struct_info) = self.structs.get_mut(&struct_name) {
             struct_info.has_impl = true;
         }
 
-        self.impls.insert(struct_name, info);
+        self.impls.insert(key, info);
         None
     }
 
@@ -305,17 +318,12 @@ impl SymbolTable {
         Ok(())
     }
 
-    /// Get all traits implemented by a struct (both inline and via impl blocks)
-    #[must_use] 
+    /// Get all traits implemented by a struct (via impl Trait for Struct blocks)
+    #[must_use]
     pub fn get_all_traits_for_struct(&self, struct_name: &str) -> Vec<String> {
         let mut traits = Vec::new();
 
-        // Get inline traits from struct definition (struct Foo: TraitA + TraitB)
-        if let Some(struct_info) = self.structs.get(struct_name) {
-            traits.extend(struct_info.traits.iter().cloned());
-        }
-
-        // Get traits from trait impl blocks (impl Trait for Foo)
+        // Get traits from trait impl blocks (impl Trait for Struct)
         if let Some(impls) = self.trait_impls.get(struct_name) {
             for impl_info in impls {
                 if !traits.contains(&impl_info.trait_name) {
@@ -356,7 +364,7 @@ impl SymbolTable {
     }
 
     /// Get all traits implemented by an enum (from : Trait syntax and impl Trait for Enum)
-    #[must_use] 
+    #[must_use]
     pub fn get_all_traits_for_enum(&self, enum_name: &str) -> Vec<String> {
         let mut all_traits = Vec::new();
 
@@ -378,7 +386,7 @@ impl SymbolTable {
     }
 
     /// Get enum variants
-    #[must_use] 
+    #[must_use]
     pub fn get_enum_variants(&self, name: &str) -> Option<&HashMap<String, (usize, Span)>> {
         self.enums.get(name).map(|info| &info.variants)
     }
@@ -406,36 +414,52 @@ impl SymbolTable {
         None
     }
 
-    /// Define a standalone function
+    /// Define a standalone function. Multiple definitions with the same name are
+    /// stored as overloads; only conflicts with non-function symbols are rejected.
     pub fn define_function(
         &mut self,
         name: String,
         visibility: Visibility,
         span: Span,
-        params: Vec<(String, Option<Type>)>,
+        params: Vec<ParamInfo>,
         return_type: Option<Type>,
     ) -> Option<(SymbolKind, Span)> {
-        // Check for duplicates across all symbol types
-        if let Some(existing) = self.find_any(&name) {
-            return Some(existing);
+        // Only check for conflicts with non-function symbols
+        if let Some(info) = self.traits.get(&name) {
+            return Some((SymbolKind::Trait, info.span));
+        }
+        if let Some(info) = self.structs.get(&name) {
+            return Some((SymbolKind::Struct, info.span));
+        }
+        if let Some(info) = self.enums.get(&name) {
+            return Some((SymbolKind::Enum, info.span));
+        }
+        if let Some(info) = self.lets.get(&name) {
+            return Some((SymbolKind::Let, info.span));
+        }
+        if let Some(info) = self.modules.get(&name) {
+            return Some((SymbolKind::Module, info.span));
         }
 
-        self.functions.insert(
-            name,
-            FunctionInfo {
-                visibility,
-                span,
-                params,
-                return_type,
-            },
-        );
+        self.functions.entry(name).or_default().push(FunctionInfo {
+            visibility,
+            span,
+            params,
+            return_type,
+        });
         None
     }
 
-    /// Get function info by name
-    #[must_use] 
+    /// Get the first function overload by name (for backward compatibility)
+    #[must_use]
     pub fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
-        self.functions.get(name)
+        self.functions.get(name).and_then(|v| v.first())
+    }
+
+    /// Get all overloads for a function name
+    #[must_use]
+    pub fn get_function_overloads(&self, name: &str) -> &[FunctionInfo] {
+        self.functions.get(name).map_or(&[], |v| v.as_slice())
     }
 
     /// Define a module
@@ -470,14 +494,14 @@ impl SymbolTable {
     }
 
     /// Get the inferred type of a let binding
-    #[must_use] 
+    #[must_use]
     pub fn get_let_type(&self, name: &str) -> Option<&str> {
         self.lets
             .get(name)
             .and_then(|info| info.inferred_type.as_deref())
     }
 
-    /// Find a symbol in any table
+    /// Find a symbol in any table (functions are excluded — they allow overloads)
     fn find_any(&self, name: &str) -> Option<(SymbolKind, Span)> {
         if let Some(info) = self.traits.get(name) {
             return Some((SymbolKind::Trait, info.span));
@@ -494,9 +518,6 @@ impl SymbolTable {
         if let Some(info) = self.lets.get(name) {
             return Some((SymbolKind::Let, info.span));
         }
-        if let Some(info) = self.functions.get(name) {
-            return Some((SymbolKind::Function, info.span));
-        }
         if let Some(info) = self.modules.get(name) {
             return Some((SymbolKind::Module, info.span));
         }
@@ -504,19 +525,19 @@ impl SymbolTable {
     }
 
     /// Get trait info
-    #[must_use] 
+    #[must_use]
     pub fn get_trait(&self, name: &str) -> Option<&TraitInfo> {
         self.traits.get(name)
     }
 
     /// Get struct info
-    #[must_use] 
+    #[must_use]
     pub fn get_struct(&self, name: &str) -> Option<&StructInfo> {
         self.structs.get(name)
     }
 
     /// Get struct info, supporting module-qualified names like "`fill::Solid`"
-    #[must_use] 
+    #[must_use]
     pub fn get_struct_qualified(&self, name: &str) -> Option<&StructInfo> {
         // Try direct lookup first
         if let Some(info) = self.structs.get(name) {
@@ -534,7 +555,7 @@ impl SymbolTable {
     }
 
     /// Get enum info, supporting module-qualified names like "`fill::PatternRepeat`"
-    #[must_use] 
+    #[must_use]
     pub fn get_enum_qualified(&self, name: &str) -> Option<&EnumInfo> {
         // Try direct lookup first
         if let Some(info) = self.enums.get(name) {
@@ -552,31 +573,31 @@ impl SymbolTable {
     }
 
     /// Check if a name is a struct
-    #[must_use] 
+    #[must_use]
     pub fn is_struct(&self, name: &str) -> bool {
         self.structs.contains_key(name)
     }
 
     /// Check if a name is an enum
-    #[must_use] 
+    #[must_use]
     pub fn is_enum(&self, name: &str) -> bool {
         self.enums.contains_key(name)
     }
 
     /// Check if a name is a let binding
-    #[must_use] 
+    #[must_use]
     pub fn is_let(&self, name: &str) -> bool {
         self.lets.contains_key(name)
     }
 
     /// Check if a name is a type (struct or enum)
-    #[must_use] 
+    #[must_use]
     pub fn is_type(&self, name: &str) -> bool {
         self.structs.contains_key(name) || self.enums.contains_key(name)
     }
 
     /// Get all required fields from a trait (including composed traits)
-    #[must_use] 
+    #[must_use]
     pub fn get_all_trait_fields(&self, name: &str) -> HashMap<String, Type> {
         let mut all_fields = HashMap::new();
 
@@ -592,25 +613,6 @@ impl SymbolTable {
         }
 
         all_fields
-    }
-
-    /// Get all required mounting points from a trait (including composed traits)
-    #[must_use] 
-    pub fn get_all_trait_mounting_points(&self, name: &str) -> HashMap<String, Type> {
-        let mut all_mounts = HashMap::new();
-
-        if let Some(trait_info) = self.get_trait(name) {
-            // Add mounting points from composed traits first
-            for composed_trait in &trait_info.composed_traits {
-                let composed_mounts = self.get_all_trait_mounting_points(composed_trait);
-                all_mounts.extend(composed_mounts);
-            }
-
-            // Add mounting points from this trait
-            all_mounts.extend(trait_info.mount_fields.clone());
-        }
-
-        all_mounts
     }
 
     /// Import a symbol from another module
@@ -697,8 +699,11 @@ impl SymbolTable {
                 }
             }
             SymbolKind::Function => {
-                if let Some(func_info) = module_table.functions.get(name) {
-                    self.functions.insert(name.to_string(), func_info.clone());
+                if let Some(overloads) = module_table.functions.get(name) {
+                    self.functions
+                        .entry(name.to_string())
+                        .or_default()
+                        .extend(overloads.iter().cloned());
                 }
             }
             SymbolKind::Module => {
@@ -729,7 +734,7 @@ impl SymbolTable {
     }
 
     /// Get generic parameters for a type (trait, struct, or enum)
-    #[must_use] 
+    #[must_use]
     pub fn get_generics(&self, type_name: &str) -> Option<Vec<GenericParam>> {
         // Check traits
         if let Some(info) = self.traits.get(type_name) {
@@ -750,13 +755,13 @@ impl SymbolTable {
     }
 
     /// Check if a name is a trait
-    #[must_use] 
+    #[must_use]
     pub fn is_trait(&self, name: &str) -> bool {
         self.traits.contains_key(name)
     }
 
     /// Get all public symbols in this table
-    #[must_use] 
+    #[must_use]
     pub fn all_public_symbols(&self) -> Vec<String> {
         let mut symbols = Vec::new();
 
@@ -803,7 +808,7 @@ impl SymbolTable {
     ///
     /// * `Some(&PathBuf)` - The filesystem path of the module the symbol was imported from
     /// * `None` - The symbol is local or not found
-    #[must_use] 
+    #[must_use]
     pub fn get_module_origin(&self, name: &str) -> Option<&PathBuf> {
         self.module_origins.get(name).and_then(|opt| opt.as_ref())
     }
@@ -821,13 +826,13 @@ impl SymbolTable {
     ///
     /// * `Some(&Vec<String>)` - The logical module path (e.g., `["utils", "helpers"]`)
     /// * `None` - The symbol is local or not found
-    #[must_use] 
+    #[must_use]
     pub fn get_module_logical_path(&self, name: &str) -> Option<&Vec<String>> {
         self.module_logical_paths.get(name)
     }
 
     /// Get the kind of a symbol (struct, trait, enum, etc.)
-    #[must_use] 
+    #[must_use]
     pub fn get_symbol_kind(&self, name: &str) -> Option<SymbolKind> {
         if self.structs.contains_key(name) {
             Some(SymbolKind::Struct)
@@ -861,7 +866,7 @@ pub enum ImportError {
 }
 
 impl SymbolKind {
-    #[must_use] 
+    #[must_use]
     pub const fn as_str(&self) -> &str {
         match self {
             Self::Trait => "trait",

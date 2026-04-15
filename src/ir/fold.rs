@@ -27,7 +27,7 @@ pub struct ConstantFolder<'a> {
 
 impl<'a> ConstantFolder<'a> {
     /// Create a new constant folder.
-    #[must_use] 
+    #[must_use]
     pub const fn new(module: &'a IrModule) -> Self {
         Self { _module: module }
     }
@@ -36,37 +36,64 @@ impl<'a> ConstantFolder<'a> {
     #[must_use]
     pub fn fold_expr(&self, expr: IrExpr) -> IrExpr {
         match expr {
-            IrExpr::BinaryOp { left, op, right, ty } => self.fold_binary_op_expr(*left, op, *right, ty),
+            IrExpr::BinaryOp {
+                left,
+                op,
+                right,
+                ty,
+            } => self.fold_binary_op_expr(*left, op, *right, ty),
             IrExpr::UnaryOp { op, operand, ty } => self.fold_unary_op_expr(op, *operand, ty),
-            IrExpr::If { condition, then_branch, else_branch, ty } => {
-                self.fold_if_expr(*condition, *then_branch, else_branch, ty)
-            }
+            IrExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ty,
+            } => self.fold_if_expr(*condition, *then_branch, else_branch, ty),
             IrExpr::Array { elements, ty } => IrExpr::Array {
                 elements: elements.into_iter().map(|e| self.fold_expr(e)).collect(),
                 ty,
             },
             IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
-                fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
+                fields: fields
+                    .into_iter()
+                    .map(|(n, e)| (n, self.fold_expr(e)))
+                    .collect(),
                 ty,
             },
-            IrExpr::StructInst { struct_id, type_args, fields, mounts, ty } => {
-                IrExpr::StructInst {
-                    struct_id,
-                    type_args,
-                    fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
-                    mounts: mounts.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
-                    ty,
-                }
-            }
+            IrExpr::StructInst {
+                struct_id,
+                type_args,
+                fields,
+                ty,
+            } => IrExpr::StructInst {
+                struct_id,
+                type_args,
+                fields: fields
+                    .into_iter()
+                    .map(|(n, e)| (n, self.fold_expr(e)))
+                    .collect(),
+                ty,
+            },
             IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
                 path,
-                args: args.into_iter().map(|(name, expr)| (name, self.fold_expr(expr))).collect(),
+                args: args
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.fold_expr(expr)))
+                    .collect(),
                 ty,
             },
-            IrExpr::MethodCall { receiver, method, args, ty } => IrExpr::MethodCall {
+            IrExpr::MethodCall {
+                receiver,
+                method,
+                args,
+                ty,
+            } => IrExpr::MethodCall {
                 receiver: Box::new(self.fold_expr(*receiver)),
                 method,
-                args: args.into_iter().map(|(name, expr)| (name, self.fold_expr(expr))).collect(),
+                args: args
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.fold_expr(expr)))
+                    .collect(),
                 ty,
             },
             IrExpr::Literal { .. }
@@ -79,14 +106,24 @@ impl<'a> ConstantFolder<'a> {
                 field,
                 ty,
             },
-            IrExpr::For { var, var_ty, collection, body, ty } => IrExpr::For {
+            IrExpr::For {
+                var,
+                var_ty,
+                collection,
+                body,
+                ty,
+            } => IrExpr::For {
                 var,
                 var_ty,
                 collection: Box::new(self.fold_expr(*collection)),
                 body: Box::new(self.fold_expr(*body)),
                 ty,
             },
-            IrExpr::Match { scrutinee, arms, ty } => IrExpr::Match {
+            IrExpr::Match {
+                scrutinee,
+                arms,
+                ty,
+            } => IrExpr::Match {
                 scrutinee: Box::new(self.fold_expr(*scrutinee)),
                 arms: arms
                     .into_iter()
@@ -99,14 +136,25 @@ impl<'a> ConstantFolder<'a> {
                     .collect(),
                 ty,
             },
-            IrExpr::EnumInst { enum_id, variant, fields, ty } => IrExpr::EnumInst {
+            IrExpr::EnumInst {
                 enum_id,
                 variant,
-                fields: fields.into_iter().map(|(n, e)| (n, self.fold_expr(e))).collect(),
+                fields,
+                ty,
+            } => IrExpr::EnumInst {
+                enum_id,
+                variant,
+                fields: fields
+                    .into_iter()
+                    .map(|(n, e)| (n, self.fold_expr(e)))
+                    .collect(),
                 ty,
             },
             IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
-                entries: entries.into_iter().map(|(k, v)| (self.fold_expr(k), self.fold_expr(v))).collect(),
+                entries: entries
+                    .into_iter()
+                    .map(|(k, v)| (self.fold_expr(k), self.fold_expr(v)))
+                    .collect(),
                 ty,
             },
             IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
@@ -114,8 +162,15 @@ impl<'a> ConstantFolder<'a> {
                 key: Box::new(self.fold_expr(*key)),
                 ty,
             },
-            IrExpr::Block { statements, result, ty } => IrExpr::Block {
-                statements: statements.into_iter().map(|stmt| stmt.map_exprs(|e| self.fold_expr(e))).collect(),
+            IrExpr::Block {
+                statements,
+                result,
+                ty,
+            } => IrExpr::Block {
+                statements: statements
+                    .into_iter()
+                    .map(|stmt| stmt.map_exprs(|e| self.fold_expr(e)))
+                    .collect(),
                 result: Box::new(self.fold_expr(*result)),
                 ty,
             },
@@ -138,26 +193,42 @@ impl<'a> ConstantFolder<'a> {
         let left_folded = self.fold_expr(left);
         let right_folded = self.fold_expr(right);
         if let (
-            IrExpr::Literal { value: left_val, .. },
-            IrExpr::Literal { value: right_val, .. },
+            IrExpr::Literal {
+                value: left_val, ..
+            },
+            IrExpr::Literal {
+                value: right_val, ..
+            },
         ) = (&left_folded, &right_folded)
         {
             if let Some(result) = Self::fold_binary_op(left_val, op, right_val, &ty) {
                 return result;
             }
         }
-        IrExpr::BinaryOp { left: Box::new(left_folded), op, right: Box::new(right_folded), ty }
+        IrExpr::BinaryOp {
+            left: Box::new(left_folded),
+            op,
+            right: Box::new(right_folded),
+            ty,
+        }
     }
 
     /// Fold a unary operation: recursively fold the operand, then try constant folding.
     fn fold_unary_op_expr(&self, op: UnaryOperator, operand: IrExpr, ty: ResolvedType) -> IrExpr {
         let operand_folded = self.fold_expr(operand);
-        if let IrExpr::Literal { value: operand_val, .. } = &operand_folded {
+        if let IrExpr::Literal {
+            value: operand_val, ..
+        } = &operand_folded
+        {
             if let Some(result) = Self::fold_unary_op(op, operand_val, &ty) {
                 return result;
             }
         }
-        IrExpr::UnaryOp { op, operand: Box::new(operand_folded), ty }
+        IrExpr::UnaryOp {
+            op,
+            operand: Box::new(operand_folded),
+            ty,
+        }
     }
 
     /// Fold an if expression: eliminate dead branch when condition is a constant boolean.
@@ -169,7 +240,11 @@ impl<'a> ConstantFolder<'a> {
         ty: ResolvedType,
     ) -> IrExpr {
         let cond_folded = self.fold_expr(condition);
-        if let IrExpr::Literal { value: Literal::Boolean(b), .. } = &cond_folded {
+        if let IrExpr::Literal {
+            value: Literal::Boolean(b),
+            ..
+        } = &cond_folded
+        {
             if *b {
                 return self.fold_expr(then_branch);
             } else if let Some(else_branch) = else_branch {
@@ -218,8 +293,6 @@ impl<'a> ConstantFolder<'a> {
                         Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
                         Literal::String(_)
                         | Literal::Number(_)
-                        | Literal::UnsignedInt(_)
-                        | Literal::SignedInt(_)
                         | Literal::Regex { .. }
                         | Literal::Path(_)
                         | Literal::Nil => ty.clone(),
@@ -272,11 +345,7 @@ impl<'a> ConstantFolder<'a> {
         }
     }
 
-    fn fold_unary_op(
-        op: UnaryOperator,
-        operand: &Literal,
-        ty: &ResolvedType,
-    ) -> Option<IrExpr> {
+    fn fold_unary_op(op: UnaryOperator, operand: &Literal, ty: &ResolvedType) -> Option<IrExpr> {
         match operand {
             // Numeric negation
             Literal::Number(n) => {
@@ -300,12 +369,7 @@ impl<'a> ConstantFolder<'a> {
                     None
                 }
             }
-            Literal::String(_)
-            | Literal::UnsignedInt(_)
-            | Literal::SignedInt(_)
-            | Literal::Regex { .. }
-            | Literal::Path(_)
-            | Literal::Nil => None,
+            Literal::String(_) | Literal::Regex { .. } | Literal::Path(_) | Literal::Nil => None,
         }
     }
 }
@@ -313,7 +377,7 @@ impl<'a> ConstantFolder<'a> {
 /// Fold constants in an entire IR module.
 ///
 /// This creates a new module with constant expressions folded.
-#[must_use] 
+#[must_use]
 pub fn fold_constants(module: &IrModule) -> IrModule {
     let folder = ConstantFolder::new(module);
     let mut result = module.clone();
@@ -321,7 +385,7 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
     // Fold constants in impl block expressions
     for impl_block in &mut result.impls {
         for func in &mut impl_block.functions {
-            func.body = folder.fold_expr(func.body.clone());
+            func.body = func.body.take().map(|body| folder.fold_expr(body));
         }
     }
 
@@ -349,12 +413,15 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
 /// [`IrPass`]: crate::pipeline::IrPass
 /// [`Pipeline`]: crate::pipeline::Pipeline
 #[derive(Debug)]
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 pub struct ConstantFoldingPass;
 
 impl ConstantFoldingPass {
     /// Create a new constant folding pass.
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
@@ -390,8 +457,14 @@ mod tests {
         let folded = fold_constants(&module);
 
         // Check the default was folded
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -416,8 +489,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -442,8 +521,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // 2 + 3 * 4 = 2 + 12 = 14
@@ -469,8 +554,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -495,8 +586,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -521,8 +618,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -547,8 +650,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {
@@ -620,8 +729,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
 
-        let struct_def = folded.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = folded
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         if let IrExpr::Literal {

@@ -1,8 +1,7 @@
 use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
 use crate::ast::{
-    BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File, PrimitiveType,
-    Statement, StructDef, Type,
+    BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File, Statement, StructDef,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -42,7 +41,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Trait(_)
                     | Definition::Enum(_)
                     | Definition::Module(_)
-                    | Definition::Function(_) => {}
+                    | Definition::Function(_)
+                    | Definition::ExternType(_) => {}
                 },
                 Statement::Use(_) => {}
             }
@@ -57,16 +57,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(default_expr, file);
             }
         }
-        // Validate mount field defaults
-        for field in &struct_def.mount_fields {
-            if let Some(default_expr) = &field.default {
-                self.validate_expr(default_expr, file);
-            }
-        }
     }
 
     /// Validate a single expression (recursively)
-    #[expect(clippy::too_many_lines, reason = "dispatcher match over 18+ Expr variants; each arm is a single call")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "dispatcher match over 18+ Expr variants; each arm is a single call"
+    )]
     pub(super) fn validate_expr(&mut self, expr: &Expr, file: &File) {
         // Check recursion depth to prevent stack overflow
         const MAX_EXPR_DEPTH: usize = 500;
@@ -97,10 +94,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 path,
                 type_args,
                 args,
-                mounts,
                 span,
             } => {
-                self.validate_expr_invocation(path, type_args, args, mounts, *span, file);
+                self.validate_expr_invocation(path, type_args, args, *span, file);
             }
             Expr::EnumInstantiation {
                 enum_name,
@@ -118,7 +114,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(data_expr, file);
                 }
             }
-            Expr::BinaryOp { left, op, right, span } => {
+            Expr::BinaryOp {
+                left,
+                op,
+                right,
+                span,
+            } => {
                 self.validate_expr(left, file);
                 self.validate_expr(right, file);
                 self.validate_binary_op(left, *op, right, *span, file);
@@ -126,7 +127,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::UnaryOp { operand, .. } => {
                 self.validate_expr(operand, file);
             }
-            Expr::ForExpr { var, collection, body, span } => {
+            Expr::ForExpr {
+                var,
+                collection,
+                body,
+                span,
+            } => {
                 self.validate_expr(collection, file);
                 let mut scope = HashSet::new();
                 scope.insert(var.name.clone());
@@ -135,7 +141,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.loop_var_scopes.pop();
                 self.validate_for_loop(collection, *span, file);
             }
-            Expr::IfExpr { condition, then_branch, else_branch, span } => {
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+                span,
+            } => {
                 self.validate_expr(condition, file);
                 self.validate_expr(then_branch, file);
                 if let Some(else_expr) = else_branch {
@@ -143,7 +154,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 self.validate_if_condition(condition, *span, file);
             }
-            Expr::MatchExpr { scrutinee, arms, span } => {
+            Expr::MatchExpr {
+                scrutinee,
+                arms,
+                span,
+            } => {
                 self.validate_expr(scrutinee, file);
                 for arm in arms {
                     self.validate_expr(&arm.body, file);
@@ -168,10 +183,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::LetExpr { .. } => {
                 self.validate_expr_let(expr, file);
             }
-            Expr::MethodCall { receiver, method, args, span } => {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                span,
+            } => {
                 self.validate_expr_method_call(receiver, method, args, *span, file);
             }
-            Expr::Block { statements, result, .. } => {
+            Expr::Block {
+                statements, result, ..
+            } => {
                 self.validate_expr_block(statements, result, file);
             }
         }
@@ -180,12 +202,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a reference expression (path lookup)
-    fn validate_expr_reference(
-        &mut self,
-        path: &[crate::ast::Ident],
-        span: Span,
-        _file: &File,
-    ) {
+    fn validate_expr_reference(&mut self, path: &[crate::ast::Ident], span: Span, _file: &File) {
         if path.first().is_some_and(|p| p.name == "self") {
             if self.current_impl_struct.is_none() {
                 self.errors.push(CompilerError::UndefinedReference {
@@ -202,11 +219,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if let Some(ref struct_name) = self.current_impl_struct {
                     if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                         for field in &struct_info.fields {
-                            if field.name == *field_name {
-                                return;
-                            }
-                        }
-                        for field in &struct_info.mount_fields {
                             if field.name == *field_name {
                                 return;
                             }
@@ -253,11 +265,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             return;
                         }
                     }
-                    for field in &struct_info.mount_fields {
-                        if field.name == *name {
-                            return;
-                        }
-                    }
                 }
                 self.errors.push(CompilerError::UndefinedReference {
                     name: name.clone(),
@@ -273,7 +280,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         path: &[crate::ast::Ident],
         type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
-        mounts: &[(crate::ast::Ident, Expr)],
         span: Span,
         file: &File,
     ) {
@@ -286,18 +292,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for (_, arg_expr) in args {
             self.validate_expr(arg_expr, file);
         }
-        for (_, mount_expr) in mounts {
-            self.validate_expr(mount_expr, file);
-        }
         for type_arg in type_args {
             self.validate_type(type_arg);
         }
 
         let is_struct = self.symbols.get_struct_qualified(&name).is_some();
         if is_struct {
-            self.validate_expr_invocation_struct(&name, type_args, args, mounts, span, file);
+            self.validate_expr_invocation_struct(&name, type_args, args, span, file);
         } else {
-            self.validate_expr_invocation_function(&name, type_args, mounts, span);
+            self.validate_expr_invocation_function(&name, type_args, args, span, file);
         }
     }
 
@@ -307,15 +310,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         name: &str,
         type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
-        mounts: &[(crate::ast::Ident, Expr)],
         span: Span,
         file: &File,
     ) {
         let named_args: Vec<(crate::ast::Ident, Expr)> = args
             .iter()
-            .filter_map(|(name_opt, expr)| {
-                name_opt.as_ref().map(|n| (n.clone(), expr.clone()))
-            })
+            .filter_map(|(name_opt, expr)| name_opt.as_ref().map(|n| (n.clone(), expr.clone())))
             .collect();
 
         for (i, (name_opt, arg_expr)) in args.iter().enumerate() {
@@ -355,17 +355,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             });
         }
 
-        self.validate_struct_fields(name, &named_args, mounts, span, file);
-        self.validate_struct_mutability(name, &named_args, mounts, file, span);
+        self.validate_struct_fields(name, &named_args, span, file);
+        self.validate_struct_mutability(name, &named_args, file, span);
     }
 
-    /// Validate a function call invocation
+    /// Validate a function call invocation, performing overload resolution when multiple
+    /// overloads exist for the same name.
     fn validate_expr_invocation_function(
         &mut self,
         name: &str,
         type_args: &[crate::ast::Type],
-        mounts: &[(crate::ast::Ident, Expr)],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
         span: Span,
+        file: &File,
     ) {
         if !type_args.is_empty() {
             self.errors.push(CompilerError::GenericArityMismatch {
@@ -375,24 +377,143 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             });
         }
-        if let Some(first_mount) = mounts.first() {
-            self.errors.push(CompilerError::UnknownMount {
-                mount: first_mount.0.name.clone(),
-                struct_name: name.to_string(),
-                span: first_mount.0.span,
-            });
-        }
 
         let simple_name = name.rsplit("::").next().unwrap_or(name);
-        let is_builtin = crate::builtins::BuiltinRegistry::global().is_builtin(simple_name);
-        let is_user_function = self.symbols.get_function(name).is_some()
-            || self.symbols.get_function(simple_name).is_some();
+        let overloads: &[_] = {
+            let direct = self.symbols.get_function_overloads(name);
+            if !direct.is_empty() {
+                direct
+            } else {
+                self.symbols.get_function_overloads(simple_name)
+            }
+        };
 
-        if !is_builtin && !is_user_function {
-            self.errors.push(CompilerError::UndefinedType {
-                name: format!("function '{name}'"),
-                span,
-            });
+        match overloads.len() {
+            0 => {
+                // Check qualified path before reporting undefined
+                if !self.resolve_qualified_function(name) {
+                    self.errors.push(CompilerError::UndefinedType {
+                        name: format!("function '{name}'"),
+                        span,
+                    });
+                }
+            }
+            1 => {
+                // Single overload — always valid
+            }
+            _ => {
+                // Multiple overloads: resolve by argument labels or first-arg type
+                let call_labels: Vec<Option<String>> = args
+                    .iter()
+                    .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
+                    .collect();
+
+                let matching: Vec<_> = overloads
+                    .iter()
+                    .filter(|overload| self.overload_matches(overload, &call_labels, args, file))
+                    .collect();
+
+                match matching.len() {
+                    0 => {
+                        self.errors.push(CompilerError::NoMatchingOverload {
+                            function: name.rsplit("::").next().unwrap_or(name).to_string(),
+                            span,
+                        });
+                    }
+                    1 => {
+                        // Resolved to a unique overload — valid
+                    }
+                    _ => {
+                        self.errors.push(CompilerError::AmbiguousCall {
+                            function: name.rsplit("::").next().unwrap_or(name).to_string(),
+                            span,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check whether a single overload matches the given call arguments.
+    ///
+    /// Resolution order:
+    /// 1. If all call arguments have labels, match by label set.
+    /// 2. If no call arguments have labels, try to match by first-argument type.
+    fn overload_matches(
+        &self,
+        overload: &crate::semantic::symbol_table::FunctionInfo,
+        call_labels: &[Option<String>],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        file: &File,
+    ) -> bool {
+        let params = &overload.params;
+        // Collect overload parameter labels (external_label if set, else param name)
+        let param_labels: Vec<String> = params
+            .iter()
+            .filter(|p| p.name.name != "self")
+            .map(|p| {
+                p.external_label
+                    .as_ref()
+                    .map_or_else(|| p.name.name.clone(), |l| l.name.clone())
+            })
+            .collect();
+
+        let all_labeled = call_labels.iter().all(|l| l.is_some());
+        let none_labeled = call_labels.iter().all(|l| l.is_none());
+
+        if all_labeled && !call_labels.is_empty() {
+            // Mode A: match by label set
+            let call_label_set: Vec<&str> =
+                call_labels.iter().filter_map(|l| l.as_deref()).collect();
+            let param_label_set: Vec<&str> = param_labels.iter().map(|s| s.as_str()).collect();
+            call_label_set == param_label_set
+        } else if none_labeled && !args.is_empty() {
+            // Mode B: match by first-argument type
+            let first_arg_type = args
+                .first()
+                .map(|(_, expr)| self.infer_type(expr, file))
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let first_param_type = params
+                .iter()
+                .find(|p| p.name.name != "self")
+                .and_then(|p| p.ty.as_ref())
+                .map(Self::type_to_string)
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            // Unknown means we can't tell — accept it (conservative)
+            first_arg_type == "Unknown"
+                || first_param_type == "Unknown"
+                || self.type_strings_compatible(&first_param_type, &first_arg_type)
+        } else {
+            // Mixed or empty args — accept (fallback)
+            true
+        }
+    }
+
+    /// Resolve a qualified function path like `math::compute` by traversing module symbol tables.
+    fn resolve_qualified_function(&self, name: &str) -> bool {
+        let parts: Vec<&str> = name.splitn(2, "::").collect();
+        if parts.len() != 2 {
+            return false;
+        }
+        let (module_name, rest) = (parts[0], parts[1]);
+        if let Some(module_info) = self.symbols.modules.get(module_name) {
+            // Recurse into nested module paths
+            if rest.contains("::") {
+                let parts2: Vec<&str> = rest.splitn(2, "::").collect();
+                if parts2.len() == 2 {
+                    let (sub_module, fn_name) = (parts2[0], parts2[1]);
+                    if let Some(sub_mod) = module_info.symbols.modules.get(sub_module) {
+                        return sub_mod.symbols.get_function(fn_name).is_some();
+                    }
+                }
+                false
+            } else {
+                module_info.symbols.get_function(rest).is_some()
+            }
+        } else {
+            false
         }
     }
 
@@ -419,7 +540,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate a let expression
     fn validate_expr_let(&mut self, expr: &Expr, file: &File) {
-        let Expr::LetExpr { mutable, pattern, ty, value, body, span } = expr else {
+        let Expr::LetExpr {
+            mutable,
+            pattern,
+            ty,
+            value,
+            body,
+            span,
+        } = expr
+        else {
             return;
         };
         if let Some(type_ann) = ty {
@@ -429,7 +558,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_destructuring_pattern(pattern, value, *span, file);
         for binding in collect_bindings_from_pattern(pattern) {
             let inferred_ty = self.infer_type(value, file);
-            self.local_let_bindings.insert(binding.name, (inferred_ty, *mutable));
+            self.local_let_bindings
+                .insert(binding.name, (inferred_ty, *mutable));
         }
         self.validate_expr(body, file);
     }
@@ -457,26 +587,30 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a block expression (statements + result)
-    fn validate_expr_block(
-        &mut self,
-        statements: &[BlockStatement],
-        result: &Expr,
-        file: &File,
-    ) {
+    fn validate_expr_block(&mut self, statements: &[BlockStatement], result: &Expr, file: &File) {
         for stmt in statements {
             match stmt {
-                BlockStatement::Let { mutable, pattern, value, ty, .. } => {
+                BlockStatement::Let {
+                    mutable,
+                    pattern,
+                    value,
+                    ty,
+                    ..
+                } => {
                     self.validate_expr(value, file);
-                    let ty_str = ty.as_ref().map_or_else(
-                        || self.infer_type(value, file),
-                        |t| Self::type_to_string(t),
-                    );
+                    let ty_str = ty
+                        .as_ref()
+                        .map_or_else(|| self.infer_type(value, file), |t| Self::type_to_string(t));
                     for binding in collect_bindings_from_pattern(pattern) {
                         self.local_let_bindings
                             .insert(binding.name, (ty_str.clone(), *mutable));
                     }
                 }
-                BlockStatement::Assign { target, value, span } => {
+                BlockStatement::Assign {
+                    target,
+                    value,
+                    span,
+                } => {
                     self.validate_expr(target, file);
                     self.validate_expr(value, file);
                     if !self.is_expr_mutable(target, file) {
@@ -492,27 +626,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_expr(result, file);
     }
 
-    /// Validate that struct instantiation respects mutability requirements
     /// Validate struct field requirements: all required fields must be provided, no unknown fields
     pub(super) fn validate_struct_fields(
         &mut self,
         struct_name: &str,
         args: &[(crate::ast::Ident, Expr)],
-        mounts: &[(crate::ast::Ident, Expr)],
         span: Span,
         file: &File,
     ) {
         // Find the struct definition in current file or module cache
         // Clone necessary data to avoid borrow checker issues
-        let (field_names, mount_field_names, required_fields, required_mounts) = {
+        let (field_names, required_fields) = {
             if let Some(def) = self.find_struct_def_in_files(struct_name, file) {
                 let field_names: Vec<String> =
                     def.fields.iter().map(|f| f.name.name.clone()).collect();
-                let mount_field_names: Vec<String> = def
-                    .mount_fields
-                    .iter()
-                    .map(|f| f.name.name.clone())
-                    .collect();
 
                 let required_fields: Vec<String> = def
                     .fields
@@ -524,36 +651,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .map(|f| f.name.name.clone())
                     .collect();
 
-                let required_mounts: Vec<String> = def
-                    .mount_fields
-                    .iter()
-                    .filter(|f| {
-                        // Mount fields with inline defaults are optional
-                        if f.default.is_some() {
-                            return false;
-                        }
-                        // Mount fields of type `Never` are always optional since
-                        // they can never have a value (used by terminal types like Empty)
-                        if matches!(&f.ty, Type::Primitive(PrimitiveType::Never)) {
-                            return false;
-                        }
-                        true
-                    })
-                    .map(|f| f.name.name.clone())
-                    .collect();
-
-                (
-                    field_names,
-                    mount_field_names,
-                    required_fields,
-                    required_mounts,
-                )
+                (field_names, required_fields)
             } else {
                 return; // Struct not found, skip validation
             }
         };
 
-        // Now we can safely borrow self.errors mutably
         // Check all provided regular fields exist
         for (arg_name, _) in args {
             if !field_names.contains(&arg_name.name) {
@@ -565,33 +668,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
-        // Check all provided mount fields exist
-        for (mount_name, _) in mounts {
-            if !mount_field_names.contains(&mount_name.name) {
-                self.errors.push(CompilerError::UnknownMount {
-                    mount: mount_name.name.clone(),
-                    struct_name: struct_name.to_string(),
-                    span: mount_name.span,
-                });
-            }
-        }
-
         // Check all required regular fields are provided
         for field_name in required_fields {
             if !args.iter().any(|(name, _)| name.name == field_name) {
                 self.errors.push(CompilerError::MissingField {
                     field: field_name,
-                    type_name: struct_name.to_string(),
-                    span,
-                });
-            }
-        }
-
-        // Check all required mount fields are provided
-        for mount_name in required_mounts {
-            if !mounts.iter().any(|(name, _)| name.name == mount_name) {
-                self.errors.push(CompilerError::MissingField {
-                    field: mount_name,
                     type_name: struct_name.to_string(),
                     span,
                 });
@@ -636,7 +717,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &mut self,
         struct_name: &str,
         args: &[(crate::ast::Ident, Expr)],
-        mounts: &[(crate::ast::Ident, Expr)],
         file: &File,
         span: Span,
     ) {
@@ -657,23 +737,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 if field.mutable && !self.is_expr_mutable(arg_expr, file) {
                                     self.errors.push(CompilerError::MutabilityMismatch {
                                         param: arg_name.name.clone(),
-                                        span,
-                                    });
-                                }
-                            }
-                        }
-                        // Check each mount field argument
-                        for (mount_name, mount_expr) in mounts {
-                            // Find the corresponding mount field in the struct
-                            if let Some(field) = struct_def
-                                .mount_fields
-                                .iter()
-                                .find(|f| f.name.name == mount_name.name)
-                            {
-                                // If mount field is mutable, check that the mount expression is mutable
-                                if field.mutable && !self.is_expr_mutable(mount_expr, file) {
-                                    self.errors.push(CompilerError::MutabilityMismatch {
-                                        param: mount_name.name.clone(),
                                         span,
                                     });
                                 }
@@ -1108,22 +1171,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .insert(param.name.name.clone(), (ty_str, true));
         }
 
-        // Validate the function body expression
-        self.validate_expr(&func.body, file);
+        // Validate the function body expression (only if body exists)
+        if let Some(body) = &func.body {
+            self.validate_expr(body, file);
 
-        // If there's a declared return type, check it matches the body type
-        if let Some(declared_return_type) = &func.return_type {
-            let body_type = self.infer_type(&func.body, file);
-            let expected_type = Self::type_to_string(declared_return_type);
+            // If there's a declared return type, check it matches the body type
+            if let Some(declared_return_type) = &func.return_type {
+                let body_type = self.infer_type(body, file);
+                let expected_type = Self::type_to_string(declared_return_type);
 
-            // Check if types are compatible
-            if !self.type_strings_compatible(&expected_type, &body_type) {
-                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
-                    function: func.name.name.clone(),
-                    expected: expected_type,
-                    actual: body_type,
-                    span: func.name.span,
-                });
+                // Check if types are compatible
+                if !self.type_strings_compatible(&expected_type, &body_type) {
+                    self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                        function: func.name.name.clone(),
+                        expected: expected_type,
+                        actual: body_type,
+                        span: func.name.span,
+                    });
+                }
             }
         }
 
@@ -1160,22 +1225,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(return_type);
         }
 
-        // Validate the function body expression
-        self.validate_expr(&func.body, file);
+        // Validate the function body if present
+        if let Some(body) = &func.body {
+            self.validate_expr(body, file);
 
-        // If there's a declared return type, check it matches the body type
-        if let Some(declared_return_type) = &func.return_type {
-            let body_type = self.infer_type(&func.body, file);
-            let expected_type = Self::type_to_string(declared_return_type);
+            // If there's a declared return type, check it matches the body type
+            if let Some(declared_return_type) = &func.return_type {
+                let body_type = self.infer_type(body, file);
+                let expected_type = Self::type_to_string(declared_return_type);
 
-            // Check if types are compatible
-            if !self.type_strings_compatible(&expected_type, &body_type) {
-                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
-                    function: func.name.name.clone(),
-                    expected: expected_type,
-                    actual: body_type,
-                    span: func.name.span,
-                });
+                // Check if types are compatible
+                if !self.type_strings_compatible(&expected_type, &body_type) {
+                    self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                        function: func.name.name.clone(),
+                        expected: expected_type,
+                        actual: body_type,
+                        span: func.name.span,
+                    });
+                }
             }
         }
 
@@ -1185,9 +1252,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Check if a method exists on a given type
     ///
-    /// Handles:
-    /// 1. Builtin methods on primitive types (`vec3.normalize()`, `mat4.transpose()`, etc.)
-    /// 2. User-defined methods in impl blocks
+    /// Handles user-defined methods in impl blocks.
     pub(super) fn method_exists_on_type(
         &self,
         type_name: &str,
@@ -1196,49 +1261,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) -> bool {
         // Skip validation for unknown types (chained method calls where we can't infer intermediate types)
         if type_name == "Unknown" || type_name.contains("Unknown") {
-            return true;
-        }
-
-        // Check if it's a primitive GPU type with builtin methods
-        if let Some(prim) = Self::string_to_primitive_type(type_name) {
-            if crate::builtins::resolve_method_type(prim, method_name).is_some() {
-                return true;
-            }
-        }
-
-        // Check if the method is a common builtin that works on numbers/vectors
-        // This handles chained calls where type inference might not propagate correctly
-        let common_builtins = [
-            "abs",
-            "sign",
-            "floor",
-            "ceil",
-            "round",
-            "trunc",
-            "fract",
-            "sin",
-            "cos",
-            "tan",
-            "asin",
-            "acos",
-            "atan",
-            "exp",
-            "log",
-            "sqrt",
-            "pow",
-            "min",
-            "max",
-            "clamp",
-            "normalize",
-            "length",
-            "distance",
-            "dot",
-            "cross",
-            "saturate",
-            "radians",
-            "degrees",
-        ];
-        if common_builtins.contains(&method_name) {
             return true;
         }
 
@@ -1257,12 +1279,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                 }
-            }
-            // Also check if there's an impl in the symbol table
-            if self.symbols.impls.contains_key(type_name) {
-                // The impl exists, but we need to check for the method
-                // For now, if we find an impl, we assume the method might exist
-                // (the impl block methods aren't stored in the symbol table currently)
             }
         }
 

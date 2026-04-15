@@ -378,10 +378,9 @@ fn test_fold_if_constant_false_no_else() -> Result<(), Box<dyn std::error::Error
         .ok_or("no default")?;
     // No else branch, condition false -> fold_constants should NOT eliminate (no else to return)
     if !(matches!(expr, IrExpr::If { .. } | IrExpr::Literal { .. })) {
-        return Err(format!(
-            "Expected If (unfoldable, no else) or Literal (nil), got {expr:?}"
-        )
-        .into());
+        return Err(
+            format!("Expected If (unfoldable, no else) or Literal (nil), got {expr:?}").into(),
+        );
     }
     Ok(())
 }
@@ -411,10 +410,11 @@ fn test_fold_constants_in_impl_function_body() -> Result<(), Box<dyn std::error:
         .iter()
         .find(|f| f.name == "doubled")
         .ok_or("doubled not found")?;
+    let body = func.body.as_ref().ok_or("expected function body")?;
     let IrExpr::Literal {
         value: Literal::Number(n),
         ..
-    } = &func.body
+    } = body
     else {
         return Err(format!(
             "Expected folded literal in impl func body, got {:?}",

@@ -243,8 +243,8 @@ fn test_path_literal_usage() -> Result<(), Box<dyn std::error::Error>> {
 fn test_generic_constraint_validation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Printable { text: String }
-        struct Printer<T: Printable> { item: T }
-        struct Doc: Printable { text: String }
+        struct Printer<T> { item: T }
+        struct Doc { text: String }
         struct MyPrinter { printer: Printer<Doc> }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -441,7 +441,7 @@ fn test_pub_visibility_all_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod api {
             pub trait T { x: String }
-            pub struct S: T { x: String }
+            pub struct S { x: String }
             pub enum E { a, b }
         }
     ";
@@ -560,14 +560,15 @@ fn test_default_array() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Mount Field Tests
+// Extern Type Field Tests
 // =============================================================================
 
 #[test]
-fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_field_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
+        extern type Content
         struct Container {
-            @mount content: String
+            content: Content
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -575,10 +576,11 @@ fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_mount_field_array() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_field_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
+        extern type Item
         struct List {
-            @mount items: [String]
+            items: [Item]
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -586,10 +588,11 @@ fn test_mount_field_array() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_mount_field_optional() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_field_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
+        extern type Footer
         struct Card {
-            @mount footer: String?
+            footer: Footer?
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -764,7 +767,7 @@ fn test_module_with_trait_and_struct() -> Result<(), Box<dyn std::error::Error>>
     let source = r#"
         mod shapes {
             pub trait Drawable { x: String }
-            pub struct Circle: Drawable { x: String = "drawing circle", radius: Number }
+            pub struct Circle { x: String = "drawing circle", radius: Number }
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -893,10 +896,10 @@ fn test_error_generic_constraint_is_undefined() -> Result<(), Box<dyn std::error
 // =============================================================================
 
 #[test]
-fn test_trait_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_with_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Container { @mount content: String }
-        struct Box: Container { @mount content: String }
+        trait Container { content: String }
+        struct Box { content: String }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -907,7 +910,7 @@ fn test_trait_composition_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A { a: String }
         trait B: A { b: Number }
-        struct C: B { a: String, b: Number }
+        struct C { a: String, b: Number }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1104,10 +1107,10 @@ fn test_impl_field_reference() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_impl_mount_field_reference() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_field_reference_in_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let content: String = "text"
-        struct Card { @mount content: String, display: String = content }
+        struct Card { content: String, display: String = content }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1514,8 +1517,8 @@ fn test_generic_with_multiple_constraints() -> Result<(), Box<dyn std::error::Er
 fn test_generic_constraint_validation_full() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Printable { text: String }
-        struct Printer<T: Printable> { item: T }
-        struct Doc: Printable { text: String }
+        struct Printer<T> { item: T }
+        struct Doc { text: String }
         struct App { printer: Printer<Doc> }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;

@@ -10,10 +10,16 @@ Reference of all supported language features with practical examples.
 - [Type System](#type-system)
   - [Closure Types](#closure-types)
 - [Definitions](#definitions)
+  - [Struct Definitions](#struct-definitions)
+  - [Impl Blocks](#impl-blocks)
+  - [Trait Definitions](#trait-definitions)
+  - [Impl Trait for Type](#impl-trait-for-type)
+  - [Enum Definitions](#enum-definitions)
+  - [Extern Declarations](#extern-declarations)
+  - [Function Definitions](#function-definitions)
 - [Expressions](#expressions)
   - [Closure Expressions](#closure-expressions)
 - [Control Flow](#control-flow)
-- [Context System](#context-system)
 - [Generics](#generics)
 - [Module System](#module-system)
 
@@ -65,7 +71,7 @@ Reserved words that cannot be used as identifiers:
 ```text
 trait    struct   enum     use      pub      impl     mod
 let      mut      match    for      in       if
-else     true     false    nil      as       mount
+else     true     false    nil      as       extern
 provides consumes
 ```
 
@@ -74,10 +80,6 @@ provides consumes
 ## Type System
 
 ### Primitive Types
-
-FormaLang has two categories of primitive types.
-
-**General-purpose types:**
 
 ```formalang
 pub struct Primitives {
@@ -89,48 +91,14 @@ pub struct Primitives {
 }
 ```
 
-**GPU/numeric types** (for math-heavy code and GPU backends):
-
-```formalang
-pub struct GpuData {
-  a: f32,                 // 32-bit float
-  b: i32,                 // 32-bit signed integer
-  c: u32,                 // 32-bit unsigned integer
-  d: bool,                // GPU boolean
-  pos: vec2,              // 2-component float vector
-  dir: vec3,              // 3-component float vector
-  color: vec4,            // 4-component float vector
-  ipos: ivec2,            // 2-component integer vector
-  idir: ivec3,            // 3-component integer vector
-  m2: mat2,               // 2x2 matrix
-  m3: mat3,               // 3x3 matrix
-  transform: mat4         // 4x4 matrix
-}
-```
-
 ### Never Type
 
-`Never` is an uninhabited type - it has no values and cannot be instantiated.
-It is used to mark terminal structs that have no children:
+`Never` is an uninhabited type — it has no values and cannot be instantiated.
+It is used as a return type for functions that diverge (infinite loops, panics):
 
 ```formalang
-pub trait View {
-  mount body: View
-}
-
-// Terminal view - body is Never (no children possible)
-pub struct Empty: View {
-  mount body: Never
-}
-
-// Composite view - body is concrete View type
-pub struct VStack: View {
-  mount body: View    // accepts children
-}
+extern fn abort() -> Never
 ```
-
-`Never` automatically satisfies any trait requirement. Fields of type `Never`
-require no default value since the containing expression is terminal.
 
 ### Array Types
 
@@ -177,13 +145,6 @@ pub let user1 = User(
   nickname: "Ally",             // Provide a value
   avatar: nil                   // Explicitly nil
 )
-
-pub let user2 = User(
-  name: "Bob",
-  email: "bob@example.com",
-  nickname: nil,
-  avatar: nil
-)
 ```
 
 ### Dictionary Types
@@ -191,7 +152,6 @@ pub let user2 = User(
 Key-value mappings using bracket syntax with colon:
 
 ```formalang
-// Dictionary types (keys can be any compiler-supported type)
 pub struct AppConfig {
   settings: [String: Number],        // String keys to Number values
   scores: [Number: String],          // Number keys to String values
@@ -204,17 +164,6 @@ pub let settings: [String: Number] = ["timeout": 30, "maxRetries": 3]
 pub let scores: [Number: String] = [100: "perfect", 95: "excellent"]
 pub let assets: [Path: String] = [/logo.svg: "icon", /bg.png: "background"]
 pub let empty: [String: Boolean] = [:]
-
-// Nested dictionaries
-pub let config: [String: [String: Number]] = [
-  "server": ["port": 8080, "timeout": 30],
-  "client": ["retries": 3, "delay": 100]
-]
-
-// Accessing dictionary values
-pub let timeout = settings["timeout"]
-pub let grade = scores[100]
-pub let logo_type = assets[/logo.svg]
 ```
 
 **Rules**:
@@ -231,7 +180,6 @@ pub let logo_type = assets[/logo.svg]
 Named tuples group related values with field names:
 
 ```formalang
-// Tuple type syntax
 pub struct Config {
   person: (name: String, age: Number),
   point: (x: Number, y: Number),
@@ -243,26 +191,12 @@ for item in items {
   let person = (name: "John", age: 30)
   let point = (x: 10, y: 20)
   let nested = (user: (first: "John", last: "Doe"), active: true)
-  Label(text: person.name)
-}
-
-// Tuple with type annotation
-for item in items {
-  let data: (label: String, value: Number) = (label: item.name, value: item.count)
-  Row(data: data)
 }
 
 // Accessing tuple fields
 for item in items {
   let person = (name: "John", age: 30)
-  Label(text: person.name)      // Access by field name
-  Label(text: person.age)
-}
-
-// Nested tuple access
-for item in items {
-  let nested = (user: (first: "John", last: "Doe"), active: true)
-  Label(text: nested.user.first)
+  let name = person.name      // Access by field name
 }
 ```
 
@@ -341,37 +275,19 @@ pub struct Point {
   y: Number
 }
 
-// Basic struct with optional fields
+// With optional fields
 pub struct User {
   name: String,
   email: String,
   age: Number,
   verified: Boolean,
-  nickname: String?             // Optional field
-}
-
-// With trait implementation
-pub trait Named {
-  name: String
-}
-
-pub struct Person: Named {
-  name: String,       // Satisfies Named trait
-  age: Number
-}
-
-// With mount fields (regular fields before mount fields)
-pub struct Panel {
-  title: String,
-  padding: Number,
-  mount content: Layout         // Mount field for composition
+  nickname: String?
 }
 
 // With mutable fields
 pub struct Counter {
-  mut count: Number,            // Mutable field (can be updated)
-  mut active: Boolean,
-  label: String                 // Immutable field
+  mut count: Number,    // Mutable field (can be updated)
+  label: String         // Immutable field
 }
 
 // Generic struct
@@ -391,105 +307,50 @@ pub struct Container<T: Layout> {
 }
 ```
 
-**Field Modifiers**:
-
-- `mut` - Mutable field (can be updated after initialization)
-- `mount` - Mount field (composition point, cannot be mutable)
-- `?` - Optional type (can be nil)
-
-**Important**: Mount fields cannot be marked as `mut`
-
 ### Impl Blocks
 
-Impl blocks provide preset values for struct fields. Fields with defaults become
-optional at instantiation:
+Impl blocks add methods to a struct (inherent impl) or declare trait conformance
+(impl Trait for Struct).
+
+**Inherent impl** — methods belong to the struct:
 
 ```formalang
-// Struct definition
-pub struct Button {
-  label: String,
-  disabled: Boolean,
-  color: String,
-  mount icon: Image
+pub struct Counter {
+  value: Number
 }
 
-// Impl block
-impl Button {
-  disabled: false,
-  color: "blue",
-  icon: DefaultIcon()
+impl Counter {
+  fn increment(self) -> Number {
+    self.value + 1
+  }
+
+  fn reset(self) -> Counter {
+    Counter(value: 0)
+  }
 }
-
-// Struct with mount
-pub struct UserView {
-  user: User,
-  role: UserRole,
-  mount avatar: Image
-}
-
-impl UserView {
-  user: DefaultUser(),
-  role: .guest,
-  avatar: PlaceholderImage()
-}
-
-// Generic struct with impl block
-pub struct Card<T> {
-  content: T,
-  padding: Number,
-  mount header: Layout
-}
-
-impl Card<T> {
-  padding: 16,
-  header: EmptyView()
-}
-```
-
-**Rules**:
-
-- Impl blocks are optional (not all structs need them)
-- Fields with defaults become optional at instantiation
-- Fields without defaults must always be provided
-- Can override defaults explicitly
-- Mount fields can have defaults
-- Generic structs can have impl blocks (type parameter in scope)
-
-**Instantiation** with defaults:
-
-```formalang
-// Using all defaults (only required fields provided)
-Button(label: "Click me")
-
-// Overriding some defaults
-Button(label: "Submit", color: "green", disabled: false)
-
-// With mounts (required if no default)
-UserView(user: currentUser, role: .admin) {
-  avatar: CustomAvatar()
-}
-
-// All fields have defaults, omit everything
-Button()
-
-// If all mounts have defaults, omit block
-UserView(user: currentUser)
 ```
 
 ### Trait Definitions
 
-Traits define interfaces/protocols via structural typing:
+Traits declare field requirements and method signatures that conforming types must satisfy:
 
 ```formalang
-// Basic trait
+// Fields only
 pub trait Named {
   name: String
 }
 
-// Multiple fields
-pub trait Identifiable {
-  id: Number,
-  name: String
+// Fields and methods
+pub trait Shape {
+  color: String
+  fn area(self) -> Number
+  fn perimeter(self) -> Number
+}
+
+// Methods only
+pub trait Drawable {
+  fn draw(self) -> Boolean
+  fn visible(self) -> Boolean
 }
 
 // Trait composition (inheritance)
@@ -497,69 +358,103 @@ pub trait Entity: Named + Identifiable {
   createdAt: Number
 }
 
-// Trait with mount field
-pub trait Container {
-  gap: Number,
-  mount items: Layout
-}
-
 // Generic trait
 pub trait Collection<T> {
   items: [T]
-}
-
-// Struct implementing traits (structural typing)
-pub struct User: Named + Identifiable {
-  name: String,
-  id: Number,
-  email: String
 }
 ```
 
 **Trait Rules**:
 
-- Traits do NOT have `impl` blocks
-- Structs satisfy traits by matching field names and types (structural typing)
-- Mount fields in traits must be matched by mount fields in structs
-- Trait composition (`+`) combines field requirements
-- Default values would conflict in trait composition
-- A struct implements a trait if it has all required fields with correct types
+- Fields listed without `fn` are structural requirements (the struct must have them)
+- `fn` signatures listed without a body are method requirements
+- Trait composition (`+`) combines requirements from multiple traits
+- A type satisfies a trait by providing all required fields and all required methods
+
+### Impl Trait for Type
+
+Declare that a type conforms to a trait using `impl Trait for Type`:
+
+```formalang
+pub trait Named {
+  name: String
+}
+
+pub trait Drawable {
+  fn draw(self) -> Boolean
+}
+
+pub struct Circle {
+  name: String,
+  radius: Number
+}
+
+// Declare conformance (fields are checked against struct definition)
+impl Named for Circle {}
+
+// Provide required methods
+impl Drawable for Circle {
+  fn draw(self) -> Boolean {
+    self.radius > 0
+  }
+}
+```
+
+Trait composition requires a separate impl block for each trait in the hierarchy:
+
+```formalang
+pub trait Base {
+  fn id(self) -> Number
+}
+
+pub trait Extended: Base {
+  fn name(self) -> String
+}
+
+pub struct Item {
+  value: Number
+}
+
+impl Base for Item {
+  fn id(self) -> Number {
+    self.value
+  }
+}
+
+impl Extended for Item {
+  fn name(self) -> String {
+    "item"
+  }
+}
+```
+
+**Conformance rules**:
+
+- `impl Trait for Type` is the only way to declare trait conformance
+- Struct fields required by the trait must be present in the struct definition
+- All `fn` signatures in the trait must be implemented in the impl block
+- Method signatures (parameter count and return type) must match exactly
+- Separate impl blocks for inherited traits; only provide methods declared in that trait
 
 #### Trait-Bounded Polymorphism
 
-Traits can be used as types in field declarations:
+Traits can be used as types in field and parameter declarations:
 
 ```formalang
-pub trait View {
-  mount body: View
+pub trait Printable {
+  label: String
 }
 
-pub struct Container {
-  mount content: View      // Accepts any View implementor
+pub struct Doc {
+  label: String
 }
 
-pub struct VStack: View { ... }
-pub struct HStack: View { ... }
+impl Printable for Doc {}
 
-// Both are valid - concrete type is known at compile time
-Container() { content: VStack() { ... } }
-Container() { content: HStack() { ... } }
-```
-
-FormaLang resolves all trait-bounded types at compile time. The AST always stores
-the concrete type, not the trait bound. When you write:
-
-```formalang
-let container: Container = Container() {
-  content: VStack() { ... }
+fn print_it(item: Printable) -> String {
+  item.label
 }
 ```
-
-The compiler knows `content` is `VStack`, not just "some View". This enables:
-
-- Zero runtime overhead for trait abstraction
-- Full type information available in the AST
-- Static verification of all trait requirements
 
 ### Enum Definitions
 
@@ -580,13 +475,6 @@ pub enum Message {
   video(url: String, duration: Number)
 }
 
-// With named associated data
-pub enum UserRole {
-  guest
-  member(tier: String)
-  admin(department: String)
-}
-
 // Generic enum
 pub enum Result<T, E> {
   ok(value: T)
@@ -600,131 +488,72 @@ pub enum Option<T> {
 
 // Enum instantiation (leading dot notation)
 pub let status1: Status = .pending
-pub let status2: Status = .active
-
 pub let msg1: Message = .text(content: "Hello")
-pub let msg2: Message = .image(url: /pic.jpg, size: 1024)
-
-pub let role1: UserRole = .guest
-pub let role2: UserRole = .admin(department: "Engineering")
-
 pub let result1: Result<String, Number> = .ok(value: "success")
-pub let result2: Result<String, Number> = .error(err: 404)
 ```
 
-### Let Expressions
+### Extern Declarations
 
-Let expressions create local bindings inside blocks (if, for, match, mount children):
+Extern declarations describe types and functions defined outside FormaLang
+(in the host runtime or a linked library). They have no FormaLang body.
+
+**Extern type** — an opaque type provided by the host:
 
 ```formalang
-// Let in for block
-for item in items {
-  let formatted = item.name + ": " + item.value
-  Label(text: formatted)
-}
+extern type Canvas
+extern type Connection
+```
 
-// Let in if block
-if condition {
-  let temp = computeValue()
-  Label(text: temp)
-}
+**Extern function** — a bodyless function provided by the host:
 
-// Let with type annotation
-for item in items {
-  let count: Number = item.count
-  Label(text: count)
-}
+```formalang
+extern fn create_canvas() -> Canvas
+extern fn connect(url: String) -> Connection
+extern fn log(message: String)
+```
 
-// Mutable let (can be reassigned within scope)
-for item in items {
-  let mut counter = 0
-  Label(text: "test")
-}
+**Extern impl** — methods on an extern type provided by the host:
 
-// Let in mount children block
-VStack(gap: 10) {
-  items: {
-    let user = currentUser
-    Label(text: user.name)
-    Button(label: "Edit")
-  }
-}
+```formalang
+extern type Canvas
 
-// Let with tuple value
-for item in items {
-  let data = (name: item.name, count: item.count)
-  Row(label: data.name, value: data.count)
+extern impl Canvas {
+  fn width(self) -> Number
+  fn height(self) -> Number
+  fn clear(self)
 }
 ```
 
 **Rules**:
 
-- Only inside blocks (for, if, match, mount children)
-- Can be `mut` for mutability tracking
-- Type inference when annotation omitted
-- Scope limited to containing block
+- Extern types are opaque: no struct fields are visible inside FormaLang
+- Extern functions and extern impl methods have no body
+- You can read fields of extern types via dot access (host supplies the value)
+- Extern types can implement FormaLang traits via `impl Trait for ExternType`
 
-### Mutability
+### Function Definitions
 
-The `mut` keyword marks values as mutable (can be updated after initialization).
-It can be used in three places:
-
-#### 1. Mutable Fields
+Top-level functions with a body:
 
 ```formalang
-pub struct Counter {
-  mut count: Number,            // Mutable field
-  mut active: Boolean,
-  label: String                 // Immutable field
+fn add(a: Number, b: Number) -> Number {
+  a + b
 }
 
-pub struct App {
-  mut state: String,
-  version: Number,
-  mount content: Layout         // Mount fields cannot be mutable
-}
-```
-
-#### 2. Mutable Let Expressions
-
-```formalang
-// Mutable bindings can be reassigned within their scope
-for item in items {
-  let mut counter = 0
-  let mut theme = "dark"
-  Label(text: theme)
+pub fn greet(name: String) -> String {
+  "Hello, " + name
 }
 
-// Immutable bindings cannot be reassigned
-for item in items {
-  let version = "1.0"
-  Label(text: version)
+// No return type (returns unit)
+fn log_value(value: Number) {
+  value
+}
+
+// Generic function
+pub fn identity<T>(value: T) -> T {
+  value
 }
 ```
-
-#### 3. Mutable Struct Fields in Instantiation
-
-```formalang
-pub struct State {
-  mut data: [String],
-  mut count: Number
-}
-
-// Struct with mutable fields
-impl Config {
-  app_state: State(
-    data: ["initial"],
-    count: 0
-  )
-}
-
-// The mut fields can be updated after creation
-```
-
-**Restrictions**:
-
-- Mount fields cannot be marked as `mut`
-- Mutability is tracked for validation purposes
 
 ---
 
@@ -735,64 +564,40 @@ impl Config {
 All literal types as expressions:
 
 ```formalang
-pub struct Literals {
-  // String literals
-  text: String,
-  multiline: String,
+// String literals
+let text = "Hello, World"
+let multiline = """
+  Multi-line
+  string literal
+"""
 
-  // Number literals
-  integer: Number,
-  negative: Number,
-  float: Number,
-  withUnderscore: Number,
+// Number literals
+let integer = 42
+let negative = -17
+let float = 3.14
+let with_underscore = 1_000_000
 
-  // Boolean literals
-  yes: Boolean,
-  no: Boolean,
+// Boolean literals
+let yes = true
+let no = false
 
-  // Nil literal
-  nothing: String?,
+// Nil literal
+let nothing: String? = nil
 
-  // Array literals
-  tags: [String],
-  numbers: [Number],
-  empty: [String],
+// Array literals
+let tags = ["urgent", "bug", "frontend"]
+let numbers = [1, 2, 3, 4, 5]
+let empty: [String] = []
 
-  // Dictionary literals
-  settings: [String: Number],
-  scores: [Number: String],
-  emptyDict: [String: Boolean]
+// Dictionary literals
+let settings: [String: Number] = ["timeout": 30, "maxRetries": 3]
+let emptyDict: [String: Boolean] = [:]
 
-  // Path literals (not shown in struct, used as values)
-  // /assets/logo.svg
-  // /images/background.png
+// Path literals
+let logo = /assets/logo.svg
 
-  // Regex literals (not shown in struct, used as values)
-  // r/[a-z]+/i
-  // r/\d{3}-\d{4}/
-}
-
-// Example instantiation
-pub let literals = Literals(
-  text: "Hello, World",
-  multiline: """
-    Multi-line
-    string literal
-  """,
-  integer: 42,
-  negative: -17,
-  float: 3.14,
-  withUnderscore: 1_000_000,
-  yes: true,
-  no: false,
-  nothing: nil,
-  tags: ["icon", "svg", "asset"],
-  numbers: [16, 32, 64],
-  empty: [],
-  settings: ["timeout": 30, "retries": 3],
-  scores: [100: "perfect", 90: "great"],
-  emptyDict: [:]
-)
+// Regex literals
+let pattern = r/[a-z]+/i
 ```
 
 **Escape sequences** (strings): `\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`
@@ -816,7 +621,6 @@ pub struct Form<E> {
   onSubmit: () -> E
 }
 
-// Closure expressions
 impl Form {
   // Single parameter - no parens needed
   onChange: x -> .textChanged(value: x),
@@ -829,15 +633,6 @@ impl Form {
 }
 ```
 
-**With explicit type annotations** (when inference fails):
-
-```formalang
-impl Form {
-  onChange: x: String -> .textChanged(value: x),
-  onResize: w: Number, h: Number -> .resized(width: w, height: h)
-}
-```
-
 **Expression syntax**:
 
 | Parameters | Syntax         | Example                        |
@@ -845,11 +640,11 @@ impl Form {
 | None       | `() -> expr`   | `() -> .submit`                |
 | One        | `x -> expr`    | `x -> .changed(value: x)`      |
 | Multiple   | `x, y -> expr` | `x, y -> .point(x: x, y: y)`   |
-| With types | `x: T -> expr` | `x: String -> .text(value: x)` |
+| With types | `x: T -> expr` | `x: String -> .text(x: x)`     |
 
 **Rules**:
 
-- Closures are **pure** - no side effects, single expression body
+- Closures are **pure** — no side effects, single expression body
 - Single parameter does not need parentheses
 - Multiple parameters are comma-separated
 - Empty parameters require parentheses: `() -> expr`
@@ -859,17 +654,10 @@ impl Form {
 
 #### Struct Instantiation
 
-Structs use parentheses for regular fields and curly braces for mount fields:
-
 ```formalang
 pub struct Point { x: Number, y: Number }
-pub struct User {
-  name: String,
-  email: String,
-  age: Number
-}
 
-// Basic instantiation (parentheses for fields)
+// Basic instantiation
 pub let point = Point(x: 10, y: 20)
 
 // Multi-line instantiation
@@ -887,127 +675,20 @@ pub let pair = Pair<Number, Boolean>(first: 42, second: true)
 pub let box_inferred = Box(value: "inferred as String")
 ```
 
-#### Instantiation with Mount Fields
-
-Mount fields go in curly braces `{}` after the parentheses:
-
-```formalang
-pub struct Panel {
-  title: String,
-  padding: Number,
-  mount content: Layout
-}
-
-pub struct VStack {
-  gap: Number,
-  mount items: [Layout]
-}
-
-// Single mount field
-Panel(title: "Settings", padding: 10) {
-  content: Text(text: "Content")
-}
-
-// Multiple mount field (no commas in block)
-VStack(gap: 10) {
-  items: {
-    Text(content: "First")
-    Button(label: "Click")
-    Text(content: "Last")
-  }
-}
-
-// Mount field with for loop
-VStack(gap: 10) {
-  items: for item in list {
-    Text(content: item)
-  }
-}
-
-// Multiple mount fields
-pub struct Modal {
-  title: String,
-  mount header: Layout,
-  mount footer: Layout
-}
-
-Modal(title: "Dialog") {
-  header: Text(content: "Header")
-  footer: Button(label: "OK")
-}
-
-// If all mounts have defaults, omit block
-Button(label: "Click")
-```
-
-**Instantiation Rules**:
-
-- Regular fields go in `()` with commas: `Type(field: value, other: value)`
-- Mount fields go in `{}` without commas between children
-- Mount fields NEVER go in `()`
-- If all mounts have defaults, the `{}` block can be omitted
-- Multiple mounts in one block, separated by newlines
-
-#### Mount Block Syntax
-
-The `{}` mount block groups multiple children without commas or array brackets.
-Mount fields always accept one or many children of the specified type:
-
-```formalang
-pub struct Container {
-  mount body: View           // Accepts one or many Views
-}
-
-pub struct Stack {
-  mount items: View          // Accepts one or many Views
-}
-
-// Multiple children - use mount block
-Container() {
-  body: {
-    Text(content: "First")
-    Text(content: "Second")
-    Text(content: "Third")
-  }
-}
-
-// Same syntax for any mount field
-Stack() {
-  items: {
-    Text(content: "Item 1")
-    Text(content: "Item 2")
-  }
-}
-
-// Single child - block optional
-Container() {
-  body: Text(content: "Single child")
-}
-```
-
-The mount block wraps children automatically - no array syntax needed in type declarations.
-
 #### Enum Instantiation
 
 ```formalang
 // Simple variant (leading dot notation)
 let status1: Status = .pending
 let status2: Status = .active
-let user: UserType = .guest
 
 // With named parameters
 let msg1: Message = .text(content: "Hello")
 let msg2: Message = .image(url: /pic.jpg, size: 1024)
 
-// With named data
-let role1: UserRole = .admin(department: "Engineering")
-let role2: UserRole = .member(tier: "Gold")
-
 // Generic enum
-let result1: Result<String, Number> = .ok(value: "Success")
+let result1: Result<String, Number> = .ok(value: "success")
 let result2: Result<String, Number> = .error(err: 404)
-let opt1: Option<Number> = .some(value: 42)
-let opt2: Option<Number> = .none
 ```
 
 ### Field Access
@@ -1030,7 +711,6 @@ pub let items = ["first", "second", "third", "fourth"]
 pub let [a, b] = items              // a="first", b="second"
 pub let [x, ...rest] = items        // x="first", rest=["second", "third", "fourth"]
 pub let [_, second, ...] = items    // Skip first, get second, ignore rest
-pub let [first, ..., last] = items  // Get first and last, ignore middle
 
 // Struct destructuring (by field name)
 pub struct User { name: String, age: Number }
@@ -1051,14 +731,6 @@ pub let account: AccountType = .user(
 
 // Destructure enum to extract associated data
 pub let (permissions, articles) = account
-// permissions = ["read", "write"], articles = ["article1", "article2"]
-
-// Nested destructuring with enums
-pub let ([firstPerm, ...], articles) = account
-// firstPerm = "read", articles = ["article1", "article2"]
-
-// Partial destructuring (remaining fields ignored)
-pub let {name} = user               // Only extract name
 ```
 
 **Rules**:
@@ -1076,55 +748,33 @@ pub let {name} = user               // Only extract name
 All operators with examples:
 
 ```formalang
-pub struct Operations {
-  // Arithmetic operators
-  sum: Number,
-  difference: Number,
-  product: Number,
-  quotient: Number,
-  remainder: Number,
+// Arithmetic operators
+let sum = 10 + 20
+let difference = 50 - 30
+let product = 4 * 5
+let quotient = 100 / 4
+let remainder = 17 % 5
 
-  // Comparison operators
-  greater: Boolean,
-  less: Boolean,
-  greaterEq: Boolean,
-  lessEq: Boolean,
+// Comparison operators
+let greater = 10 > 5
+let less = 3 < 7
+let greaterEq = 10 >= 10
+let lessEq = 5 <= 5
 
-  // Equality operators
-  equal: Boolean,
-  notEqual: Boolean,
+// Equality operators
+let equal = 5 == 5
+let notEqual = 5 != 10
 
-  // Logical operators
-  andResult: Boolean,
-  orResult: Boolean,
+// Logical operators
+let andResult = true && false
+let orResult = true || false
 
-  // String concatenation
-  greeting: String,
+// String concatenation
+let greeting = "Hello, " + "World"
 
-  // Complex expressions with precedence
-  complex: Number,
-  condition: Boolean
-}
-
-// Example instantiation
-pub let ops = Operations(
-  sum: 10 + 20,                             // Addition
-  difference: 50 - 30,                      // Subtraction
-  product: 4 * 5,                           // Multiplication
-  quotient: 100 / 4,                        // Division
-  remainder: 17 % 5,                        // Modulo
-  greater: 10 > 5,                          // Greater than
-  less: 3 < 7,                              // Less than
-  greaterEq: 10 >= 10,                      // Greater or equal
-  lessEq: 5 <= 5,                           // Less or equal
-  equal: 5 == 5,                            // Equal
-  notEqual: 5 != 10,                        // Not equal
-  andResult: true && false,                 // Logical AND
-  orResult: true || false,                  // Logical OR
-  greeting: "Hello, " + "World",            // Concatenation
-  complex: (10 + 20) * 3,                   // 90
-  condition: (5 > 3) && (10 < 20)           // true
-)
+// Complex expressions with precedence
+let complex = (10 + 20) * 3
+let condition = (5 > 3) && (10 < 20)
 ```
 
 ### Operator Precedence
@@ -1154,7 +804,7 @@ user.age > 18 && user.verified  // Field access → comparison → AND
 
 ## Control Flow
 
-All control flow is **compile-time validated** (expanded in future stage).
+All control flow is **compile-time validated**.
 
 ### For Expressions
 
@@ -1163,35 +813,23 @@ Iterate over arrays:
 ```formalang
 // Basic for loop
 for item in items {
-  Text(content: item)
+  process(item: item)
 }
 
 // With field access
 for email in user.emails {
-  EmailCard(address: email)
+  validate(address: email)
 }
 
 // With literal array
 for n in [1, 2, 3, 4, 5] {
-  Badge(value: n)
+  record(value: n)
 }
 
 // Nested loops
 for row in matrix {
   for cell in row {
-    Cell(value: cell)
-  }
-}
-
-// Real example with mount field
-pub struct EmailList {
-  emails: [String],
-  mount items: Layout
-}
-
-impl EmailList {
-  items: for email in emails {
-    Text(content: email)
+    process(value: cell)
   }
 }
 ```
@@ -1209,45 +847,29 @@ Conditional expressions:
 ```formalang
 // Boolean condition
 if count > 0 {
-  Text(content: "Has items")
+  showItems()
 } else {
-  Text(content: "Empty")
+  showEmpty()
 }
 
 // Without else (returns nil if false)
 if isAdmin {
-  AdminPanel()
+  showAdminPanel()
 }
 
 // Optional unwrapping (auto-unwrap)
 if user.nickname {
   // nickname is unwrapped and available here
-  Text(content: "Hi, " + nickname)
-}
-
-// Optional with else
-if session.token {
-  AuthView(token: token)    // token unwrapped
-} else {
-  LoginView()
+  greet(name: nickname)
 }
 
 // Chained conditions
 if x > 100 {
-  Text(content: "Large")
+  showLarge()
 } else if x > 50 {
-  Text(content: "Medium")
+  showMedium()
 } else {
-  Text(content: "Small")
-}
-
-// Boolean operators in conditions
-if isActive && hasPermission {
-  Dashboard()
-}
-
-if isGuest || isTrial {
-  LimitedView()
+  showSmall()
 }
 ```
 
@@ -1263,50 +885,23 @@ When condition is an optional value:
 Pattern matching on enums (exhaustive):
 
 ```formalang
-// Simple enum matching
 pub enum Status { pending, active, completed }
 
 match status {
-  .pending: Text(content: "Waiting")
-  .active: Text(content: "Active")
-  .completed: Text(content: "Done")
+  .pending: waitFor()
+  .active: runNow()
+  .completed: finalize()
 }
 
 // With data binding (named parameters)
 pub enum Message {
   text(content: String)
   image(url: String, size: Number)
-  video(url: String, duration: Number)
 }
 
 match message {
-  .text(content): TextMessage(text: content)
-  .image(url, size): ImageMessage(src: url, bytes: size)
-  .video(url, duration): VideoPlayer(src: url, length: duration)
-}
-
-// Named data binding
-pub enum UserRole {
-  guest
-  member(tier: String)
-  admin(department: String)
-}
-
-match user.role {
-  .guest: GuestView()
-  .member(tier): MemberView(level: tier)
-  .admin(department): AdminView(dept: department)
-}
-
-// Generic enum
-pub enum Result<T, E> {
-  ok(value: T)
-  error(err: E)
-}
-
-match result {
-  .ok(value): SuccessView(data: value)
-  .error(err): ErrorView(error: err)
+  .text(content): displayText(value: content)
+  .image(url, size): displayImage(src: url, bytes: size)
 }
 ```
 
@@ -1315,7 +910,146 @@ match result {
 - Must be exhaustive (cover all variants)
 - Pattern uses `.variant` syntax (short form)
 - Associated data bound to identifiers using parameter names
-- Unmatched branches not included in output
+
+---
+
+## Function Overloading
+
+Multiple functions with the same name are allowed when their signatures differ.
+The compiler selects the right overload at each call site.
+
+**Mode A — named-argument label set match** (exact label set determines the overload):
+
+```formalang
+fn format(value: Number) -> String { "number" }
+fn format(value: String) -> String { "string" }
+fn format(value: Number, precision: Number) -> String { "precise" }
+```
+
+**Mode B — first-positional-arg type match** (when call has no labels):
+
+```formalang
+fn process(Number) -> String { "number" }
+fn process(String) -> String { "string" }
+```
+
+**Rules**:
+
+- Overloads are distinguished by their named-argument label sets
+- Calling with an ambiguous or unknown label set is a compile error
+- An unresolvable call site produces `AmbiguousCall` or `NoMatchingOverload`
+
+---
+
+## Generics
+
+Full generic type system with constraints and type inference.
+
+### Generic Structs
+
+```formalang
+// Single type parameter
+pub struct Box<T> {
+  value: T
+}
+
+// Multiple type parameters
+pub struct Pair<A, B> {
+  first: A,
+  second: B
+}
+
+// With constraints
+pub trait Layout {
+  width: Number
+}
+
+pub struct Container<T: Layout> {
+  items: [T],
+  gap: Number
+}
+
+// Multiple constraints
+pub trait Renderable { fn render(self) -> Boolean }
+pub trait Clickable { fn click(self) -> Boolean }
+
+pub struct Widget<T: Renderable + Clickable> {
+  component: T
+}
+```
+
+### Generic Traits
+
+```formalang
+pub trait Collection<T> {
+  items: [T]
+}
+
+pub trait Comparable<T> {
+  fn compare(self, other: T) -> Number
+}
+```
+
+### Generic Enums
+
+```formalang
+pub enum Result<T, E> {
+  ok(value: T)
+  error(err: E)
+}
+
+pub enum Option<T> {
+  some(value: T)
+  none
+}
+```
+
+### Generic Instantiation
+
+```formalang
+// With explicit type arguments
+pub let string_box = Box<String>(value: "hello")
+pub let number_box = Box<Number>(value: 42)
+pub let pair = Pair<Number, Boolean>(first: 42, second: true)
+
+// Type inference (when inferrable)
+pub let inferred_box = Box(value: "inferred as String")
+pub let inferred_pair = Pair(first: 10, second: true)
+
+// Generic enums
+pub let success: Result<String, Number> = .ok(value: "success")
+pub let failure: Result<String, Number> = .error(err: 404)
+pub let maybe: Option<Number> = .some(value: 42)
+pub let nothing: Option<Number> = .none
+```
+
+### Type Constraints
+
+```formalang
+// Single constraint
+pub struct Wrapper<T: Named> {
+  item: T
+}
+
+// Multiple constraints
+pub struct Interactive<T: Renderable + Clickable> {
+  component: T
+}
+
+// Constraint on trait field
+pub trait Container<T: Layout> {
+  items: [T]
+}
+```
+
+**Rules**:
+
+- Type parameters use `<T>`, `<A, B>`, etc.
+- Constraints use `:` syntax: `<T: Constraint>`
+- Multiple constraints use `+`: `<T: A + B>`
+- Type arguments must match parameter count (arity)
+- Type inference works when types can be determined
+- Constraints must reference existing traits
 
 ---
 
@@ -1339,193 +1073,21 @@ let alice = User(name: "Alice", email: "alice@example.com")
 
 // Provides expression (with alias)
 let themed_text = provides dark_theme as theme {
-  Text(content: "Hello", color: theme.primary)
-}
-
-// Nested provides
-let user_text = provides dark_theme as theme {
-  provides alice as user {
-    Text(content: user.name, color: theme.primary)
-  }
+  apply(color: theme.primary)
 }
 
 // Multiple provides
 let multi_context = provides dark_theme as theme, alice as user {
-  Text(content: user.email, color: theme.secondary)
+  format(name: user.email, color: theme.secondary)
 }
 
 // Consumes expression
 let consumed = provides dark_theme as theme {
   consumes theme {
-    Text(content: "Consumed", color: theme.secondary)
-  }
-}
-
-// Consumes with multiple names
-let multi_consume = provides dark_theme as theme, alice as user {
-  consumes theme, user {
-    Text(content: user.name, color: theme.primary)
+    apply(color: theme.secondary)
   }
 }
 ```
-
-**How it works**:
-
-- Use `provides expr as name` to provide values to component trees
-- Direct access via the provided name (e.g., `theme.primary`)
-- Use `consumes name` to explicitly mark consumption points
-- Supports nesting and multiple provides
-
----
-
-## Generics
-
-Full generic type system with constraints and type inference.
-
-### Generic Structs
-
-```formalang
-// Single type parameter
-pub struct Box<T> {
-  value: T
-}
-
-// Multiple type parameters
-pub struct Pair<A, B> {
-  first: A,
-  second: B
-}
-
-pub struct Triple<A, B, C> {
-  first: A,
-  second: B,
-  third: C
-}
-
-// With constraints
-pub trait Layout {
-  width: Number
-}
-
-pub struct Container<T: Layout> {
-  items: [T],
-  gap: Number
-}
-
-// Multiple constraints
-pub trait Renderable { render: Boolean }
-pub trait Clickable { onClick: String }
-
-pub struct Widget<T: Renderable + Clickable> {
-  component: T
-}
-
-// Nested generics
-pub struct NestedBox<T> {
-  inner: Box<T>
-}
-
-// Generic with optional
-pub struct MaybeBox<T> {
-  value: T?
-}
-
-// Generic array container
-pub struct ArrayHolder<T> {
-  items: [T]
-}
-```
-
-### Generic Traits
-
-```formalang
-pub trait Collection<T> {
-  items: [T]
-}
-
-pub trait Comparable<T> {
-  compare: T
-}
-```
-
-### Generic Enums
-
-```formalang
-pub enum Result<T, E> {
-  ok(value: T)
-  error(err: E)
-}
-
-pub enum Option<T> {
-  some(value: T)
-  none
-}
-
-// Multi-parameter generic enum
-pub enum Either<L, R> {
-  left(value: L)
-  right(value: R)
-}
-```
-
-### Generic Instantiation
-
-```formalang
-// With explicit type arguments
-pub let string_box = Box<String>(value: "hello")
-pub let number_box = Box<Number>(value: 42)
-pub let pair = Pair<Number, Boolean>(first: 42, second: true)
-
-// Type inference (when inferrable)
-pub let inferred_box = Box(value: "inferred as String")
-pub let inferred_pair = Pair(first: 10, second: true)
-
-// Generic enums
-pub let success: Result<String, Number> = .ok(value: "success")
-pub let failure: Result<String, Number> = .error(err: 404)
-pub let maybe: Option<Number> = .some(value: 42)
-pub let nothing: Option<Number> = .none
-
-// Nested generics
-pub let nested = NestedBox<String>(
-  inner: Box<String>(value: "nested")
-)
-
-// Arrays of generics
-pub let boxes = [
-  Box<Number>(value: 1),
-  Box<Number>(value: 2),
-  Box<Number>(value: 3)
-]
-```
-
-### Type Constraints
-
-```formalang
-// Single constraint
-pub struct Wrapper<T: Named> {
-  item: T
-}
-
-// Multiple constraints
-pub struct Interactive<T: Renderable + Clickable> {
-  component: T
-}
-
-// Constraint on trait
-pub trait Container<T: Layout> {
-  items: [T]
-}
-```
-
-**Rules**:
-
-- Type parameters use `<T>`, `<A, B>`, etc.
-- Constraints use `:` syntax: `<T: Constraint>`
-- Multiple constraints use `+`: `<T: A + B>`
-- Type arguments must match parameter count (arity)
-- Type inference works when types can be determined
-- Constraints must reference existing traits
 
 ---
 
@@ -1548,7 +1110,7 @@ use data::models::User
 
 // Import from file
 use types::User         // From types.fv
-use utils::helpers      // From utils/helpers.fv or utils/helpers/mod.fv
+use utils::helpers      // From utils/helpers.fv
 ```
 
 **Module Resolution**:
@@ -1563,7 +1125,6 @@ use utils::helpers      // From utils/helpers.fv or utils/helpers/mod.fv
 Use `mod` blocks to create nested namespaces within a file:
 
 ```formalang
-// Define nested module
 mod alignment {
   pub enum Vertical {
     top
@@ -1588,14 +1149,6 @@ use alignment::Vertical
 pub let v: Vertical = .bottom
 ```
 
-**Nested Module Rules**:
-
-- Use `mod name { ... }` to define a nested module
-- Access items with `::` path separator: `module::Type`
-- Items inside `mod` blocks must be `pub` to be accessible outside
-- Can nest `mod` blocks multiple levels deep
-- Module names follow same rules as other identifiers
-
 **Multiple Levels**:
 
 ```formalang
@@ -1613,46 +1166,11 @@ mod ui {
   }
 }
 
-// Access nested items
 pub let direction: ui::layout::Direction = .horizontal
 pub let theme: ui::Theme = ui::Theme(
   primary: "#007AFF",
   secondary: "#5856D6"
 )
-
-// Import nested items
-use ui::layout::Direction
-use ui::Theme
-
-pub let dir: Direction = .vertical
-pub let t: Theme = Theme(primary: "red", secondary: "blue")
-```
-
-**Private vs Public in Modules**:
-
-```formalang
-mod utils {
-  // Public - accessible outside module
-  pub struct Config {
-    name: String
-  }
-
-  // Private - only accessible within module
-  struct Internal {
-    secret: String
-  }
-
-  pub enum Status {
-    active
-    inactive
-  }
-}
-
-// OK: Config is public
-pub let config: utils::Config = utils::Config(name: "app")
-
-// ERROR: Internal is private
-// pub let internal: utils::Internal = ...  // Would fail
 ```
 
 ### File Structure Example
@@ -1677,115 +1195,110 @@ use utils::helpers::formatDate
 
 ---
 
-## Complete Feature Checklist
+## Serde Stability
 
-### ✅ Implemented Features
+The `File` AST type carries a `format_version` field. Serialized ASTs produced
+by this version of the compiler will always have `format_version == 1`. Tools
+that consume serialized ASTs should check this field to detect incompatible
+wire-format changes.
 
-**Core Language**:
+```formalang
+// All parsed files automatically have format_version: 1 set
+```
 
-- ✅ Comments (single-line `//`, multi-line `/* */`)
-- ✅ Visibility modifiers (`pub`)
-- ✅ Use statements (Rust-style imports with `::` and `{}`)
-
-**Type System**:
-
-- ✅ Primitive types (`String`, `Number`, `Boolean`, `Path`, `Regex`)
-- ✅ GPU numeric types (`f32`, `i32`, `u32`, `bool`, `vec2`–`vec4`, `ivec2`–`ivec4`, `mat2`–`mat4`)
-- ✅ Array types (`[Type]`, `[Type, N]` for fixed-size)
-- ✅ Dictionary types (`[KeyType: ValueType]` with String/Number/enum keys)
-- ✅ Optional types (`Type?`)
-- ✅ Generic types (`Type<T>`, `Type<T: Constraint>`)
-- ✅ Closure types (`T -> U`, `T, U -> V`, `() -> T`)
-- ✅ Type inference
-
-**Definitions**:
-
-- ✅ Struct definitions (with optionals, traits, mount fields)
-- ✅ Impl blocks (preset field values)
-- ✅ Trait definitions (with composition via `+`, structural typing)
-- ✅ Enum definitions (with associated data, generics)
-- ✅ Let bindings (file-level, with `pub`, `mut`)
-- ✅ Generic parameters on structs, traits, enums
-
-**Expressions**:
-
-- ✅ All literals (string, number, boolean, nil, path, regex, array, dictionary)
-- ✅ Binary operators (arithmetic, comparison, equality, logical, concatenation)
-- ✅ Field access (including nested)
-- ✅ Destructuring (arrays, structs, enums)
-- ✅ Instantiation (struct with `()` for fields and `{}` for mounts, enum with `.variant`)
-- ✅ Closure expressions (`x -> expr`, `x, y -> expr`, `() -> expr`)
-- ✅ Operator precedence (correct order)
-
-**Control Flow**:
-
-- ✅ For expressions (array iteration)
-- ✅ If expressions (with boolean and optional unwrapping)
-- ✅ Match expressions (exhaustive pattern matching)
-
-**Context System**:
-
-- ✅ Context system (`provides` / `consumes`)
-
-**Generics**:
-
-- ✅ Generic type parameters
-- ✅ Generic constraints (single and multiple)
-- ✅ Generic structs, traits, enums
-- ✅ Generic instantiation with type arguments
-- ✅ Type inference for generics
-- ✅ Nested generics
-- ✅ Generic arity validation
-
-**Module System**:
-
-- ✅ Use statements
-- ✅ Module path resolution
-- ✅ Visibility control
-- ✅ Multi-item imports
-- ✅ Nested modules (`mod` blocks)
-
-**Validation** (6-pass semantic analysis):
-
-- ✅ Module resolution (use statements)
-- ✅ Symbol table building (all definitions)
-- ✅ Type resolution (all types exist)
-- ✅ Expression validation (type compatibility, exhaustiveness)
-- ✅ Trait validation (complete implementation)
-- ✅ Cycle detection (no circular dependencies)
-
-**Tooling**:
-
-- ✅ Lexer (logos-based tokenization)
-- ✅ Parser (chumsky-based parsing)
-- ✅ AST (complete representation)
-- ✅ Error reporting (ariadne-based diagnostics)
-- ✅ CLI tool (`fvc check`, `fvc watch`)
-- ✅ LSP server (diagnostics, completion, hover)
-
-### 📋 Not Yet Implemented
-
-**Future Enhancements**:
-
-- ⏳ Incremental compilation (salsa)
-- ⏳ Code formatter
-- ⏳ REPL mode
-- ⏳ VSCode extension (full integration)
-- ⏳ Evaluation/expansion stage (runtime)
+All public AST types implement `Serialize` / `Deserialize` and are marked
+`#[non_exhaustive]` so that adding new variants or fields in future releases
+does not break existing consumers at the API boundary.
 
 ---
 
-## Summary
+## Complete Feature Checklist
 
-FormaLang is a **feature-complete compile-time validated language** with:
+### Implemented Features
 
-- **Semantic analyzer** ensuring correctness
-- **Full generic type system** with constraints and inference
-- **Context system**
-- **Exhaustive pattern matching** on enums
-- **Module system** with Rust-style imports
-- **Beautiful error reporting** with ariadne
-- **Real-time tooling** (CLI + LSP)
+**Core Language**:
 
-All features listed in this document should be **fully implemented, tested,
-and production-ready**.
+- Comments (single-line `//`, multi-line `/* */`)
+- Visibility modifiers (`pub`)
+- Use statements (Rust-style imports with `::` and `{}`)
+
+**Type System**:
+
+- Primitive types (`String`, `Number`, `Boolean`, `Path`, `Regex`, `Never`)
+- Array types (`[Type]`, `[Type, N]` for fixed-size)
+- Dictionary types (`[KeyType: ValueType]`)
+- Optional types (`Type?`)
+- Generic types (`Type<T>`, `Type<T: Constraint>`)
+- Closure types (`T -> U`, `T, U -> V`, `() -> T`)
+- Type inference
+
+**Definitions**:
+
+- Struct definitions
+- Inherent impl blocks (methods)
+- Trait definitions (field requirements and method signatures)
+- `impl Trait for Type` conformance blocks
+- Enum definitions (with associated data, generics)
+- `extern type` declarations
+- `extern fn` declarations
+- `extern impl` blocks
+- Function definitions with optional overloading
+- Let bindings (file-level, with `pub`, `mut`)
+- Generic parameters on structs, traits, enums
+
+**Expressions**:
+
+- All literals (string, number, boolean, nil, path, regex, array, dictionary)
+- Binary operators (arithmetic, comparison, equality, logical, concatenation)
+- Field access (including nested)
+- Destructuring (arrays, structs, enums)
+- Struct and enum instantiation
+- Closure expressions
+- Correct operator precedence
+
+**Control Flow**:
+
+- For expressions (array iteration)
+- If expressions (with boolean and optional unwrapping)
+- Match expressions (exhaustive pattern matching)
+
+**Context System**:
+
+- Context system (`provides` / `consumes`)
+
+**Generics**:
+
+- Generic type parameters with constraints
+- Generic structs, traits, enums
+- Generic instantiation with type arguments and inference
+- Nested generics, generic arity validation
+
+**Module System**:
+
+- Use statements and module path resolution
+- Visibility control
+- Nested modules (`mod` blocks)
+
+**Validation** (semantic analysis):
+
+- Module resolution
+- Symbol table building
+- Type resolution
+- Expression validation
+- Trait conformance validation
+- Cycle detection
+- Function overload resolution
+
+**Serde**:
+
+- `format_version` on `File`
+- Full serialize/deserialize round-trip for all public AST types
+- `#[non_exhaustive]` on public enums and structs
+
+### Not Yet Implemented
+
+- Incremental compilation (salsa)
+- Code formatter
+- REPL mode
+- VSCode extension (full integration)
+- Evaluation/expansion stage (runtime)

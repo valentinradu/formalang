@@ -87,7 +87,8 @@ fn parse_stdlib_path(args: &[String]) -> Option<PathBuf> {
 fn resolve_base_dir(input_path: &str, stdlib_path: Option<PathBuf>) -> PathBuf {
     stdlib_path.unwrap_or_else(|| {
         PathBuf::from(input_path)
-            .parent().map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
+            .parent()
+            .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
     })
 }
 

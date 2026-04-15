@@ -16,7 +16,10 @@ use super::{EnumId, ResolvedType, StructId};
 /// - `Literal { value: Literal::Number(_), ty }` → `ty` is `ResolvedType::Primitive(Number)`
 /// - `BinaryOp { op: Eq, .. }` → `ty` is `ResolvedType::Primitive(Boolean)`
 /// - `For { .. }` → `ty` is `ResolvedType::Array(body_type)`
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Debug)]
 pub enum IrExpr {
     /// Literal value (string, number, boolean, etc.)
@@ -36,8 +39,6 @@ pub enum IrExpr {
         type_args: Vec<ResolvedType>,
         /// Regular field arguments
         fields: Vec<(String, Self)>,
-        /// Mount field arguments
-        mounts: Vec<(String, Self)>,
         /// Resolved type (the struct type or External)
         ty: ResolvedType,
     },
@@ -277,7 +278,10 @@ pub enum IrExpr {
 }
 
 /// A statement within a block expression.
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Debug)]
 pub enum IrBlockStatement {
     /// Let binding: `let x = expr` or `let mut x = expr`
@@ -336,7 +340,10 @@ impl IrBlockStatement {
 /// A field binding in an event mapping.
 ///
 /// Maps an enum variant field to a source.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct EventFieldBinding {
     /// The field name in the enum variant
@@ -346,7 +353,10 @@ pub struct EventFieldBinding {
 }
 
 /// Source of a value in an event mapping field binding.
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Debug)]
 pub enum EventBindingSource {
     /// References the event mapping parameter: `x -> .changed(value: x)`
@@ -356,7 +366,10 @@ pub enum EventBindingSource {
 }
 
 /// A match arm: `Variant(bindings) => body` or `_ => body`
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrMatchArm {
     /// Variant name being matched (empty string for wildcard)
@@ -374,7 +387,7 @@ pub struct IrMatchArm {
 
 impl IrExpr {
     /// Get the resolved type of this expression.
-    #[must_use] 
+    #[must_use]
     pub const fn ty(&self) -> &ResolvedType {
         match self {
             Self::Literal { ty, .. }

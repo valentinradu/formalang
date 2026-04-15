@@ -281,7 +281,7 @@ fn test_mount_with_array() -> Result<(), Box<dyn std::error::Error>> {
             value: String
         }
         struct Container {
-            mount items: [Item]
+            items: [Item]
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -295,7 +295,7 @@ fn test_mount_with_trait() -> Result<(), Box<dyn std::error::Error>> {
             content: String
         }
         struct View {
-            mount body: Renderable
+            body: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

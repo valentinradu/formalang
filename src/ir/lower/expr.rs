@@ -5,7 +5,6 @@ use crate::ast::{
     self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Expr, Literal,
     PrimitiveType, UnaryOperator,
 };
-use crate::builtins::resolve_method_type;
 use crate::ir::{
     EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType,
 };
@@ -17,27 +16,43 @@ impl IrLowerer<'_> {
                 value: lit.clone(),
                 ty: Self::literal_type(lit),
             },
-            Expr::Invocation { path, type_args, args, mounts, .. } => {
-                self.lower_invocation(path, type_args, args, mounts)
-            }
-            Expr::EnumInstantiation { enum_name, variant, data, .. } => {
-                self.lower_enum_instantiation(&enum_name.name, &variant.name, data)
-            }
+            Expr::Invocation {
+                path,
+                type_args,
+                args,
+                ..
+            } => self.lower_invocation(path, type_args, args),
+            Expr::EnumInstantiation {
+                enum_name,
+                variant,
+                data,
+                ..
+            } => self.lower_enum_instantiation(&enum_name.name, &variant.name, data),
             Expr::InferredEnumInstantiation { variant, data, .. } => {
                 self.lower_inferred_enum_instantiation(&variant.name, data)
             }
             Expr::Array { elements, .. } => self.lower_array_expr(elements),
             Expr::Tuple { fields, .. } => self.lower_tuple_expr(fields),
             Expr::Reference { path, .. } => self.lower_reference(path),
-            Expr::BinaryOp { left, op, right, .. } => self.lower_binary_op_expr(left, *op, right),
+            Expr::BinaryOp {
+                left, op, right, ..
+            } => self.lower_binary_op_expr(left, *op, right),
             Expr::UnaryOp { op, operand, .. } => self.lower_unary_op_expr(*op, operand),
-            Expr::IfExpr { condition, then_branch, else_branch, .. } => {
-                self.lower_if_expr(condition, then_branch, else_branch.as_deref())
-            }
-            Expr::ForExpr { var, collection, body, .. } => {
-                self.lower_for_expr(var, collection, body)
-            }
-            Expr::MatchExpr { scrutinee, arms, .. } => self.lower_match_expr(scrutinee, arms),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => self.lower_if_expr(condition, then_branch, else_branch.as_deref()),
+            Expr::ForExpr {
+                var,
+                collection,
+                body,
+                ..
+            } => self.lower_for_expr(var, collection, body),
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => self.lower_match_expr(scrutinee, arms),
             Expr::Group { expr, .. } => self.lower_expr(expr),
             Expr::LetExpr { body, .. } => self.lower_expr(body),
             Expr::DictLiteral { entries, .. } => self.lower_dict_literal(entries),
@@ -46,12 +61,21 @@ impl IrLowerer<'_> {
             Expr::FieldAccess { object, field, .. } => {
                 let object_ir = self.lower_expr(object);
                 let ty = self.resolve_field_type(object_ir.ty(), &field.name);
-                IrExpr::FieldAccess { object: Box::new(object_ir), field: field.name.clone(), ty }
+                IrExpr::FieldAccess {
+                    object: Box::new(object_ir),
+                    field: field.name.clone(),
+                    ty,
+                }
             }
-            Expr::MethodCall { receiver, method, args, .. } => {
-                self.lower_method_call(receiver, &method.name, args)
-            }
-            Expr::Block { statements, result, .. } => self.lower_block_expr(statements, result),
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+                ..
+            } => self.lower_method_call(receiver, &method.name, args),
+            Expr::Block {
+                statements, result, ..
+            } => self.lower_block_expr(statements, result),
         }
     }
 
@@ -60,9 +84,12 @@ impl IrLowerer<'_> {
         path: &[crate::ast::Ident],
         type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
-        mounts: &[(crate::ast::Ident, Expr)],
     ) -> IrExpr {
-        let name = path.iter().map(|id| id.name.as_str()).collect::<Vec<_>>().join("::");
+        let name = path
+            .iter()
+            .map(|id| id.name.as_str())
+            .collect::<Vec<_>>()
+            .join("::");
         let type_args_resolved: Vec<ResolvedType> =
             type_args.iter().map(|t| self.lower_type(t)).collect();
 
@@ -70,44 +97,59 @@ impl IrLowerer<'_> {
             let ty = if type_args_resolved.is_empty() {
                 ResolvedType::Struct(id)
             } else {
-                ResolvedType::Generic { base: id, args: type_args_resolved.clone() }
+                ResolvedType::Generic {
+                    base: id,
+                    args: type_args_resolved.clone(),
+                }
             };
             let named_fields: Vec<(String, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
-                    name_opt.as_ref().map(|n| (n.name.clone(), self.lower_expr(expr)))
+                    name_opt
+                        .as_ref()
+                        .map(|n| (n.name.clone(), self.lower_expr(expr)))
                 })
                 .collect();
             IrExpr::StructInst {
                 struct_id: Some(id),
                 type_args: type_args_resolved,
                 fields: named_fields,
-                mounts: mounts.iter().map(|(n, e)| (n.name.clone(), self.lower_expr(e))).collect(),
                 ty,
             }
-        } else if let Some(external_ty) = self.try_external_type(&name, type_args_resolved.clone()) {
+        } else if let Some(external_ty) = self.try_external_type(&name, type_args_resolved.clone())
+        {
             let named_fields: Vec<(String, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
-                    name_opt.as_ref().map(|n| (n.name.clone(), self.lower_expr(expr)))
+                    name_opt
+                        .as_ref()
+                        .map(|n| (n.name.clone(), self.lower_expr(expr)))
                 })
                 .collect();
             IrExpr::StructInst {
                 struct_id: None,
                 type_args: type_args_resolved,
                 fields: named_fields,
-                mounts: mounts.iter().map(|(n, e)| (n.name.clone(), self.lower_expr(e))).collect(),
                 ty: external_ty,
             }
         } else {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
             let lowered_args: Vec<(Option<String>, IrExpr)> = args
                 .iter()
-                .map(|(name_opt, expr)| (name_opt.as_ref().map(|n| n.name.clone()), self.lower_expr(expr)))
+                .map(|(name_opt, expr)| {
+                    (
+                        name_opt.as_ref().map(|n| n.name.clone()),
+                        self.lower_expr(expr),
+                    )
+                })
                 .collect();
             let fn_name = path_strs.last().map_or("", std::string::String::as_str);
             let ty = self.resolve_function_return_type(fn_name, &lowered_args);
-            IrExpr::FunctionCall { path: path_strs, args: lowered_args, ty }
+            IrExpr::FunctionCall {
+                path: path_strs,
+                args: lowered_args,
+                ty,
+            }
         }
     }
 
@@ -129,7 +171,10 @@ impl IrLowerer<'_> {
         IrExpr::EnumInst {
             enum_id,
             variant: variant.to_string(),
-            fields: data.iter().map(|(n, e)| (n.name.clone(), self.lower_expr(e))).collect(),
+            fields: data
+                .iter()
+                .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                .collect(),
             ty,
         }
     }
@@ -144,10 +189,11 @@ impl IrLowerer<'_> {
             |return_type_name| {
                 self.module.enum_id(&return_type_name).map_or_else(
                     || {
-                        self.try_external_type(&return_type_name, vec![]).map_or_else(
-                            || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
-                            |external_ty| (None, external_ty),
-                        )
+                        self.try_external_type(&return_type_name, vec![])
+                            .map_or_else(
+                                || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
+                                |external_ty| (None, external_ty),
+                            )
                     },
                     |id| (Some(id), ResolvedType::Enum(id)),
                 )
@@ -156,65 +202,103 @@ impl IrLowerer<'_> {
         IrExpr::EnumInst {
             enum_id,
             variant: variant.to_string(),
-            fields: data.iter().map(|(n, e)| (n.name.clone(), self.lower_expr(e))).collect(),
+            fields: data
+                .iter()
+                .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                .collect(),
             ty,
         }
     }
 
     fn lower_array_expr(&mut self, elements: &[Expr]) -> IrExpr {
         let lowered: Vec<IrExpr> = elements.iter().map(|e| self.lower_expr(e)).collect();
-        let elem_ty = lowered
-            .first()
-            .map_or_else(|| ResolvedType::TypeParam("UnknownElement".to_string()), |e| e.ty().clone());
-        IrExpr::Array { elements: lowered, ty: ResolvedType::Array(Box::new(elem_ty)) }
+        let elem_ty = lowered.first().map_or_else(
+            || ResolvedType::TypeParam("UnknownElement".to_string()),
+            |e| e.ty().clone(),
+        );
+        IrExpr::Array {
+            elements: lowered,
+            ty: ResolvedType::Array(Box::new(elem_ty)),
+        }
     }
 
     fn lower_tuple_expr(&mut self, fields: &[(crate::ast::Ident, Expr)]) -> IrExpr {
-        let lowered: Vec<(String, IrExpr)> =
-            fields.iter().map(|(n, e)| (n.name.clone(), self.lower_expr(e))).collect();
-        let tuple_types: Vec<(String, ResolvedType)> =
-            lowered.iter().map(|(n, e)| (n.clone(), e.ty().clone())).collect();
-        IrExpr::Tuple { fields: lowered, ty: ResolvedType::Tuple(tuple_types) }
+        let lowered: Vec<(String, IrExpr)> = fields
+            .iter()
+            .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+            .collect();
+        let tuple_types: Vec<(String, ResolvedType)> = lowered
+            .iter()
+            .map(|(n, e)| (n.clone(), e.ty().clone()))
+            .collect();
+        IrExpr::Tuple {
+            fields: lowered,
+            ty: ResolvedType::Tuple(tuple_types),
+        }
     }
 
     fn lower_reference(&mut self, path: &[crate::ast::Ident]) -> IrExpr {
         let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
 
         // Check for self.field pattern — bounds verified by len() == 2 check
-        #[expect(clippy::indexing_slicing, reason = "len == 2 check above guarantees indices 0 and 1")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "len == 2 check above guarantees indices 0 and 1"
+        )]
         if path_strs.len() == 2 && path_strs[0] == "self" {
             let field_name = &path_strs[1];
             let ty = self.resolve_self_field_type(field_name);
-            return IrExpr::SelfFieldRef { field: field_name.clone(), ty };
+            return IrExpr::SelfFieldRef {
+                field: field_name.clone(),
+                ty,
+            };
         }
 
         // Check for bare "self" in impl context — bounds verified by len() == 1 check
-        #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "len == 1 check above guarantees index 0"
+        )]
         if path_strs.len() == 1 && path_strs[0] == "self" {
             if let Some(ref impl_name) = self.current_impl_struct {
                 let ty = self.resolve_impl_self_type(impl_name);
-                return IrExpr::Reference { path: path_strs, ty };
+                return IrExpr::Reference {
+                    path: path_strs,
+                    ty,
+                };
             }
         }
 
         // Check for module-level let binding reference
         if path_strs.len() == 1 {
-            #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "len == 1 check above guarantees index 0"
+            )]
             let name = &path_strs[0];
             if let Some(let_type) = self.symbols.get_let_type(name) {
                 let ty = self.string_to_resolved_type(let_type);
-                return IrExpr::LetRef { name: name.clone(), ty };
+                return IrExpr::LetRef {
+                    name: name.clone(),
+                    ty,
+                };
             }
         }
 
         let ty = if path_strs.len() == 1 {
-            #[expect(clippy::indexing_slicing, reason = "len == 1 check above guarantees index 0")]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "len == 1 check above guarantees index 0"
+            )]
             let t = ResolvedType::TypeParam(path_strs[0].clone());
             t
         } else {
             ResolvedType::TypeParam(path_strs.join("."))
         };
-        IrExpr::Reference { path: path_strs, ty }
+        IrExpr::Reference {
+            path: path_strs,
+            ty,
+        }
     }
 
     fn lower_binary_op_expr(&mut self, left: &Expr, op: BinaryOperator, right: &Expr) -> IrExpr {
@@ -236,7 +320,12 @@ impl IrLowerer<'_> {
             | BinaryOperator::Mod
             | BinaryOperator::Range => left_ir.ty().clone(),
         };
-        IrExpr::BinaryOp { left: Box::new(left_ir), op, right: Box::new(right_ir), ty }
+        IrExpr::BinaryOp {
+            left: Box::new(left_ir),
+            op,
+            right: Box::new(right_ir),
+            ty,
+        }
     }
 
     fn lower_unary_op_expr(&mut self, op: UnaryOperator, operand: &Expr) -> IrExpr {
@@ -245,7 +334,11 @@ impl IrLowerer<'_> {
             UnaryOperator::Not => ResolvedType::Primitive(PrimitiveType::Boolean),
             UnaryOperator::Neg => operand_ir.ty().clone(),
         };
-        IrExpr::UnaryOp { op, operand: Box::new(operand_ir), ty }
+        IrExpr::UnaryOp {
+            op,
+            operand: Box::new(operand_ir),
+            ty,
+        }
     }
 
     fn lower_if_expr(
@@ -313,15 +406,22 @@ impl IrLowerer<'_> {
                 }
             })
             .collect();
-        let ty = arms_ir
-            .first()
-            .map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |a| a.body.ty().clone());
-        IrExpr::Match { scrutinee: Box::new(scrutinee_ir), arms: arms_ir, ty }
+        let ty = arms_ir.first().map_or_else(
+            || ResolvedType::TypeParam("Unknown".to_string()),
+            |a| a.body.ty().clone(),
+        );
+        IrExpr::Match {
+            scrutinee: Box::new(scrutinee_ir),
+            arms: arms_ir,
+            ty,
+        }
     }
 
     fn lower_dict_literal(&mut self, entries: &[(Expr, Expr)]) -> IrExpr {
-        let lowered_entries: Vec<(IrExpr, IrExpr)> =
-            entries.iter().map(|(k, v)| (self.lower_expr(k), self.lower_expr(v))).collect();
+        let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
+            .iter()
+            .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
+            .collect();
         let ty = if let Some((k, v)) = lowered_entries.first() {
             ResolvedType::Dictionary {
                 key_ty: Box::new(k.ty().clone()),
@@ -333,7 +433,10 @@ impl IrLowerer<'_> {
                 value_ty: Box::new(ResolvedType::TypeParam("V".to_string())),
             }
         };
-        IrExpr::DictLiteral { entries: lowered_entries, ty }
+        IrExpr::DictLiteral {
+            entries: lowered_entries,
+            ty,
+        }
     }
 
     fn lower_dict_access(&mut self, dict: &Expr, key: &Expr) -> IrExpr {
@@ -354,18 +457,19 @@ impl IrLowerer<'_> {
             | ResolvedType::EventMapping { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam("DictValue".to_string()),
         };
-        IrExpr::DictAccess { dict: Box::new(dict_ir), key: Box::new(key_ir), ty }
+        IrExpr::DictAccess {
+            dict: Box::new(dict_ir),
+            key: Box::new(key_ir),
+            ty,
+        }
     }
 
-    fn lower_method_call(
-        &mut self,
-        receiver: &Expr,
-        method_name: &str,
-        args: &[Expr],
-    ) -> IrExpr {
+    fn lower_method_call(&mut self, receiver: &Expr, method_name: &str, args: &[Expr]) -> IrExpr {
         let receiver_ir = self.lower_expr(receiver);
-        let lowered_args: Vec<(Option<String>, IrExpr)> =
-            args.iter().map(|expr| (None, self.lower_expr(expr))).collect();
+        let lowered_args: Vec<(Option<String>, IrExpr)> = args
+            .iter()
+            .map(|expr| (None, self.lower_expr(expr)))
+            .collect();
         let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name);
         IrExpr::MethodCall {
             receiver: Box::new(receiver_ir),
@@ -376,14 +480,20 @@ impl IrLowerer<'_> {
     }
 
     fn lower_block_expr(&mut self, statements: &[BlockStatement], result: &Expr) -> IrExpr {
-        let ir_statements: Vec<IrBlockStatement> =
-            statements.iter().map(|stmt| self.lower_block_statement(stmt)).collect();
+        let ir_statements: Vec<IrBlockStatement> = statements
+            .iter()
+            .map(|stmt| self.lower_block_statement(stmt))
+            .collect();
         let ir_result = self.lower_expr(result);
         let ty = ir_result.ty().clone();
         if ir_statements.is_empty() {
             return ir_result;
         }
-        IrExpr::Block { statements: ir_statements, result: Box::new(ir_result), ty }
+        IrExpr::Block {
+            statements: ir_statements,
+            result: Box::new(ir_result),
+            ty,
+        }
     }
 
     /// Lower an AST block statement to an IR block statement.
@@ -414,7 +524,8 @@ impl IrLowerer<'_> {
                     BindingPattern::Struct { fields, .. } => {
                         // For struct destructuring, use first field name or placeholder
                         fields
-                            .first().map_or_else(|| "_struct".to_string(), |f| f.name.name.clone())
+                            .first()
+                            .map_or_else(|| "_struct".to_string(), |f| f.name.name.clone())
                     }
                     BindingPattern::Array { elements, .. } => {
                         // For array destructuring, use first binding name or placeholder
@@ -461,8 +572,6 @@ impl IrLowerer<'_> {
         match lit {
             Literal::String(_) => ResolvedType::Primitive(PrimitiveType::String),
             Literal::Number(_) => ResolvedType::Primitive(PrimitiveType::Number),
-            Literal::UnsignedInt(_) => ResolvedType::Primitive(PrimitiveType::U32),
-            Literal::SignedInt(_) => ResolvedType::Primitive(PrimitiveType::I32),
             Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
             Literal::Path(_) => ResolvedType::Primitive(PrimitiveType::Path),
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),
@@ -472,29 +581,13 @@ impl IrLowerer<'_> {
 
     /// Resolve the type of a field access on an expression.
     ///
-    /// Handles:
-    /// 1. Vector component access (vec2.x, vec3.y, etc.) -> f32/i32/u32
-    /// 2. Struct field access -> field type
-    pub(super) fn resolve_field_type(&self, object_ty: &ResolvedType, field_name: &str) -> ResolvedType {
+    /// Handles struct field access by looking up the field in the struct definition.
+    pub(super) fn resolve_field_type(
+        &self,
+        object_ty: &ResolvedType,
+        field_name: &str,
+    ) -> ResolvedType {
         match object_ty {
-            // Vector component access
-            ResolvedType::Primitive(PrimitiveType::Vec2 | PrimitiveType::Vec3 |
-PrimitiveType::Vec4) => match field_name {
-                "x" | "y" | "z" | "w" | "r" | "g" | "b" | "a" => {
-                    ResolvedType::Primitive(PrimitiveType::F32)
-                }
-                _ => ResolvedType::TypeParam(field_name.to_string()),
-            },
-            ResolvedType::Primitive(PrimitiveType::IVec2 | PrimitiveType::IVec3 |
-PrimitiveType::IVec4) => match field_name {
-                "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::I32),
-                _ => ResolvedType::TypeParam(field_name.to_string()),
-            },
-            ResolvedType::Primitive(PrimitiveType::UVec2 | PrimitiveType::UVec3 |
-PrimitiveType::UVec4) => match field_name {
-                "x" | "y" | "z" | "w" => ResolvedType::Primitive(PrimitiveType::U32),
-                _ => ResolvedType::TypeParam(field_name.to_string()),
-            },
             // Struct field access
             ResolvedType::Struct(struct_id) => {
                 if let Some(struct_def) = self.module.get_struct(*struct_id) {
@@ -524,21 +617,12 @@ PrimitiveType::UVec4) => match field_name {
 
     /// Resolve the return type of a method call.
     ///
-    /// Handles:
-    /// 1. Builtin methods on GPU types (e.g., `vec3.normalize()` -> Vec3)
-    /// 2. User-defined methods in impl blocks
+    /// Looks up user-defined methods in impl blocks.
     pub(super) fn resolve_method_return_type(
         &self,
         receiver_ty: &ResolvedType,
         method_name: &str,
     ) -> ResolvedType {
-        // Try builtin method resolution for primitive types
-        if let ResolvedType::Primitive(prim) = receiver_ty {
-            if let Some(return_prim) = resolve_method_type(*prim, method_name) {
-                return ResolvedType::Primitive(return_prim);
-            }
-        }
-
         // Try to find method in impl blocks for struct types
         if let ResolvedType::Struct(struct_id) = receiver_ty {
             for impl_block in &self.module.impls {
@@ -549,7 +633,10 @@ PrimitiveType::UVec4) => match field_name {
                             return func
                                 .return_type
                                 .clone()
-                                .unwrap_or_else(|| func.body.ty().clone());
+                                .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                                .unwrap_or_else(|| {
+                                    ResolvedType::TypeParam(format!("{method_name}Result"))
+                                });
                         }
                     }
                 }
@@ -565,7 +652,10 @@ PrimitiveType::UVec4) => match field_name {
                             return func
                                 .return_type
                                 .clone()
-                                .unwrap_or_else(|| func.body.ty().clone());
+                                .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                                .unwrap_or_else(|| {
+                                    ResolvedType::TypeParam(format!("{method_name}Result"))
+                                });
                         }
                     }
                 }
@@ -580,8 +670,7 @@ PrimitiveType::UVec4) => match field_name {
     ///
     /// Handles:
     /// 1. User-defined standalone functions in `IrModule::functions`
-    /// 2. Builtin functions (math, WGSL intrinsics, etc.)
-    /// 3. Falls back to void for unknown functions
+    /// 2. Falls back to Never for unknown functions
     pub(super) fn resolve_function_return_type(
         &self,
         fn_name: &str,
@@ -594,107 +683,13 @@ PrimitiveType::UVec4) => match field_name {
                 return func
                     .return_type
                     .clone()
-                    .unwrap_or_else(|| func.body.ty().clone());
+                    .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                    .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
             }
-        }
-
-        // Check builtin functions registry
-        if let Some(return_ty) = Self::resolve_builtin_function_type(fn_name) {
-            return return_ty;
         }
 
         // Fallback: void type for unknown functions
         ResolvedType::Primitive(PrimitiveType::Never)
-    }
-
-    /// Resolve the return type of a builtin function.
-    ///
-    /// Returns the appropriate type for common builtin/intrinsic functions.
-    fn resolve_builtin_function_type(fn_name: &str) -> Option<ResolvedType> {
-        use PrimitiveType::{Number, Vec2, Vec3, Vec4, IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Mat2, Mat3, Mat4, I32, U32, Boolean};
-
-        // Math functions (return same type as input, typically f32)
-        let math_float_fns = [
-            "sin",
-            "cos",
-            "tan",
-            "asin",
-            "acos",
-            "atan",
-            "sinh",
-            "cosh",
-            "tanh",
-            "exp",
-            "exp2",
-            "log",
-            "log2",
-            "sqrt",
-            "inverseSqrt",
-            "abs",
-            "sign",
-            "floor",
-            "ceil",
-            "round",
-            "trunc",
-            "fract",
-            "saturate",
-            "radians",
-            "degrees",
-        ];
-        if math_float_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        // Two-argument math functions
-        let math_binary_fns = ["pow", "min", "max", "step", "mod", "atan2"];
-        if math_binary_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        // Vector constructors
-        match fn_name {
-            "vec2" => return Some(ResolvedType::Primitive(Vec2)),
-            "vec3" => return Some(ResolvedType::Primitive(Vec3)),
-            "vec4" => return Some(ResolvedType::Primitive(Vec4)),
-            "ivec2" => return Some(ResolvedType::Primitive(IVec2)),
-            "ivec3" => return Some(ResolvedType::Primitive(IVec3)),
-            "ivec4" => return Some(ResolvedType::Primitive(IVec4)),
-            "uvec2" => return Some(ResolvedType::Primitive(UVec2)),
-            "uvec3" => return Some(ResolvedType::Primitive(UVec3)),
-            "uvec4" => return Some(ResolvedType::Primitive(UVec4)),
-            "mat2" => return Some(ResolvedType::Primitive(Mat2)),
-            "mat3" => return Some(ResolvedType::Primitive(Mat3)),
-            "mat4" => return Some(ResolvedType::Primitive(Mat4)),
-            _ => {}
-        }
-
-        // Type casts
-        match fn_name {
-            "f32" | "float" => return Some(ResolvedType::Primitive(Number)),
-            "i32" | "int" => return Some(ResolvedType::Primitive(I32)),
-            "u32" | "uint" => return Some(ResolvedType::Primitive(U32)),
-            "bool" => return Some(ResolvedType::Primitive(Boolean)),
-            _ => {}
-        }
-
-        // Vector operations that return scalars
-        match fn_name {
-            "length" | "distance" | "dot" => return Some(ResolvedType::Primitive(Number)),
-            _ => {}
-        }
-
-        // Vector operations that return vectors (input-dependent, approximate as Vec3)
-        let vec_to_vec_fns = ["normalize", "cross", "reflect", "refract", "faceforward"];
-        if vec_to_vec_fns.contains(&fn_name) {
-            return Some(ResolvedType::Primitive(Vec3));
-        }
-
-        // Mix/lerp returns same type as input
-        if fn_name == "mix" || fn_name == "lerp" || fn_name == "smoothstep" || fn_name == "clamp" {
-            return Some(ResolvedType::Primitive(Number));
-        }
-
-        None
     }
 
     /// Lower a closure expression.
@@ -718,9 +713,10 @@ PrimitiveType::UVec4) => match field_name {
         let lowered_params: Vec<(String, ResolvedType)> = params
             .iter()
             .map(|p| {
-                let ty =
-                    p.ty.as_ref()
-                        .map_or_else(|| ResolvedType::TypeParam("Unknown".to_string()), |t| self.lower_type(t));
+                let ty = p.ty.as_ref().map_or_else(
+                    || ResolvedType::TypeParam("Unknown".to_string()),
+                    |t| self.lower_type(t),
+                );
                 (p.name.name.clone(), ty)
             })
             .collect();
@@ -842,7 +838,10 @@ PrimitiveType::UVec4) => match field_name {
     }
 
     /// Resolve enum type for event mapping, returning (`enum_id`, `resolved_type`).
-    fn resolve_event_enum_type(&self, enum_name: &str) -> (Option<super::super::EnumId>, ResolvedType) {
+    fn resolve_event_enum_type(
+        &self,
+        enum_name: &str,
+    ) -> (Option<super::super::EnumId>, ResolvedType) {
         self.module.enum_id(enum_name).map_or_else(
             || (None, ResolvedType::TypeParam(enum_name.to_string())),
             |enum_id| (Some(enum_id), ResolvedType::Enum(enum_id)),
@@ -862,7 +861,10 @@ PrimitiveType::UVec4) => match field_name {
                 let source = match value {
                     // Field references the parameter: `value: x`
                     // path[0] is bounds-safe: guarded by path.len() == 1 in the match guard
-                    #[expect(clippy::indexing_slicing, reason = "len == 1 guard above guarantees index 0")]
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "len == 1 guard above guarantees index 0"
+                    )]
                     Expr::Reference { path, .. }
                         if path.len() == 1 && param_name.is_some_and(|p| path[0].name == p) =>
                     {
@@ -889,12 +891,10 @@ PrimitiveType::UVec4) => match field_name {
                     | Expr::ClosureExpr { .. }
                     | Expr::LetExpr { .. }
                     | Expr::MethodCall { .. }
-                    | Expr::Block { .. } => {
-                        param_name.map_or(
-                            EventBindingSource::Literal(Literal::Nil),
-                            |p| EventBindingSource::Param(p.to_string()),
-                        )
-                    }
+                    | Expr::Block { .. } => param_name
+                        .map_or(EventBindingSource::Literal(Literal::Nil), |p| {
+                            EventBindingSource::Param(p.to_string())
+                        }),
                 };
 
                 EventFieldBinding {

@@ -113,8 +113,9 @@ fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>>
         .iter()
         .find(|f| f.name == "get_x")
         .ok_or("get_x not found")?;
-    let IrExpr::SelfFieldRef { field, .. } = &get_x.body else {
-        return Err(format!("Expected SelfFieldRef, got {:?}", get_x.body).into());
+    let IrExpr::SelfFieldRef { field, .. } = get_x.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected SelfFieldRef, got {:?}", get_x.body.as_ref()).into());
     };
     if field != "x" {
         return Err(format!("Expected field 'x', got '{field}'").into());
@@ -143,8 +144,9 @@ fn test_lower_block_let_with_struct_field_access() -> Result<(), Box<dyn std::er
         .iter()
         .find(|f| f.name == "compute")
         .ok_or("compute not found")?;
-    let IrExpr::Block { statements, .. } = &func.body else {
-        return Err(format!("Expected Block, got {:?}", func.body).into());
+    let IrExpr::Block { statements, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected Block, got {:?}", func.body.as_ref()).into());
     };
     if statements.len() < 2 {
         return Err(format!("Expected at least 2 statements, got {}", statements.len()).into());
@@ -280,8 +282,9 @@ fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::E
     let impl_block = module.impls.first().ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
     // Body should be x + y (BinaryOp of two SelfFieldRefs)
-    let IrExpr::BinaryOp { left, right, .. } = &func.body else {
-        return Err(format!("Expected BinaryOp, got {:?}", func.body).into());
+    let IrExpr::BinaryOp { left, right, .. } = func.body.as_ref().expect("expected function body")
+    else {
+        return Err(format!("Expected BinaryOp, got {:?}", func.body.as_ref()).into());
     };
     let IrExpr::SelfFieldRef { field: lf, .. } = left.as_ref() else {
         return Err(format!("Expected SelfFieldRef for left, got {left:?}").into());
@@ -492,8 +495,10 @@ fn test_lower_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
+        extern fn sin(x: Number) -> Number
+        extern fn cos(x: Number) -> Number
         fn compute() -> Number {
-            sin(1) + cos(1)
+            sin(x: 1) + cos(x: 1)
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -505,9 +510,13 @@ fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>>
     // Should produce BinaryOp(FunctionCall(sin), FunctionCall(cos))
     let IrExpr::BinaryOp {
         left, right, op, ..
-    } = &func.body
+    } = func.body.as_ref().expect("expected function body")
     else {
-        return Err(format!("Expected BinaryOp from math calls, got {:?}", func.body).into());
+        return Err(format!(
+            "Expected BinaryOp from math calls, got {:?}",
+            func.body.as_ref()
+        )
+        .into());
     };
     if *op != BinaryOperator::Add {
         return Err(format!("sin + cos should use Add operator, got {op:?}").into());
@@ -540,7 +549,8 @@ fn test_lower_vec3_constructor() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|f| f.name == "make_result")
         .ok_or("make_result function should be in IR")?;
-    let IrExpr::FunctionCall { path, .. } = &func.body else {
+    let IrExpr::FunctionCall { path, .. } = func.body.as_ref().expect("expected function body")
+    else {
         return Err(format!(
             "make_result body should be a FunctionCall, got {:?}",
             func.body

@@ -4,11 +4,18 @@
 //! Used for LSP features like hover, go-to-definition, completion, etc.
 
 use super::position::span_contains_offset;
-use crate::ast::{UseStmt, LetBinding, TraitDef, StructDef, EnumDef, EnumVariant, FieldDef, StructField, Type, Expr, Ident, ImplDef, ModuleDef, FunctionDef, FnDef, FnParam, File, Statement, UseItems, BindingPattern, ArrayPatternElement, Definition};
+use crate::ast::{
+    ArrayPatternElement, BindingPattern, Definition, EnumDef, EnumVariant, Expr, FieldDef, File,
+    FnDef, FnParam, FunctionDef, Ident, ImplDef, LetBinding, ModuleDef, Statement, StructDef,
+    StructField, TraitDef, Type, UseItems, UseStmt,
+};
 use crate::location::Span;
 
 /// Result of finding a node at a position
-#[expect(clippy::exhaustive_enums, reason = "matched exhaustively by consumer code")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "matched exhaustively by consumer code"
+)]
 #[derive(Debug, Clone)]
 pub enum NodeAtPosition<'ast> {
     /// Top-level file (no specific node found)
@@ -85,7 +92,7 @@ pub struct PositionContext<'ast> {
 
 impl<'ast> PositionContext<'ast> {
     /// Find the enclosing definition (trait, struct, enum, impl, module, function)
-    #[must_use] 
+    #[must_use]
     pub fn enclosing_definition(&self) -> Option<&NodeAtPosition<'ast>> {
         self.parents.iter().find(|node| {
             matches!(
@@ -102,7 +109,7 @@ impl<'ast> PositionContext<'ast> {
     }
 
     /// Check if we're inside an expression context
-    #[must_use] 
+    #[must_use]
     pub fn is_in_expression(&self) -> bool {
         matches!(self.node, NodeAtPosition::Expression(_))
             || self
@@ -112,14 +119,14 @@ impl<'ast> PositionContext<'ast> {
     }
 
     /// Check if we're in a type position
-    #[must_use] 
+    #[must_use]
     pub const fn is_in_type_position(&self) -> bool {
         matches!(self.node, NodeAtPosition::Type(_))
     }
 }
 
 /// Find the node at a given byte offset in the file
-#[must_use] 
+#[must_use]
 pub fn find_node_at_offset(file: &File, offset: usize) -> PositionContext<'_> {
     let mut finder = NodeFinder {
         offset,
@@ -344,6 +351,9 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
+            Definition::ExternType(_) => {
+                // ExternType definitions don't contain sub-nodes to visit
+            }
         }
     }
 
@@ -383,18 +393,6 @@ impl<'ast> NodeFinder<'ast> {
             }
         }
 
-        // Check mount fields
-        for field in &trait_def.mount_fields {
-            if span_contains_offset(&field.span, self.offset) {
-                self.parents.push(NodeAtPosition::FieldDef(field));
-                self.visit_field_def(field);
-                self.parents.pop();
-                if self.found_node.is_some() {
-                    return;
-                }
-            }
-        }
-
         // If no specific node found, return the trait def itself
         if self.found_node.is_none() {
             self.found_node = Some(NodeAtPosition::TraitDef(trait_def));
@@ -417,31 +415,11 @@ impl<'ast> NodeFinder<'ast> {
             }
         }
 
-        // Check trait implementations
-        for trait_ref in &struct_def.traits {
-            if span_contains_offset(&trait_ref.span, self.offset) {
-                self.found_node = Some(NodeAtPosition::Identifier(trait_ref));
-                return;
-            }
-        }
-
         // Check regular fields
         for field in &struct_def.fields {
             if span_contains_offset(&field.span, self.offset) {
                 self.parents.push(NodeAtPosition::StructField(field));
                 self.visit_struct_field(field);
-                self.parents.pop();
-                if self.found_node.is_some() {
-                    return;
-                }
-            }
-        }
-
-        // Check mount fields
-        for field in &struct_def.mount_fields {
-            if span_contains_offset(&field.span, self.offset) {
-                self.parents.push(NodeAtPosition::MountField(field));
-                self.visit_mount_field(field);
                 self.parents.pop();
                 if self.found_node.is_some() {
                     return;
@@ -588,8 +566,10 @@ impl<'ast> NodeFinder<'ast> {
             }
         }
 
-        // Check body expression
-        self.visit_expr(&func_def.body);
+        // Check body expression (only if function has a body)
+        if let Some(ref body) = func_def.body {
+            self.visit_expr(body);
+        }
 
         // If no specific node found, return the fn def itself
         if self.found_node.is_none() {
@@ -656,8 +636,10 @@ impl<'ast> NodeFinder<'ast> {
             }
         }
 
-        // Check body expression
-        self.visit_expr(&func_def.body);
+        // Check body expression (only if function has a body)
+        if let Some(ref body) = func_def.body {
+            self.visit_expr(body);
+        }
 
         // If no specific node found, return the function def itself
         if self.found_node.is_none() {
@@ -800,7 +782,12 @@ impl<'ast> NodeFinder<'ast> {
                     self.visit_expr(right);
                 }
             }
-            Expr::ForExpr { var, collection, body, .. } => {
+            Expr::ForExpr {
+                var,
+                collection,
+                body,
+                ..
+            } => {
                 if span_contains_offset(&var.span, self.offset) {
                     self.found_node = Some(NodeAtPosition::Identifier(var));
                 } else {
@@ -810,7 +797,12 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
-            Expr::IfExpr { condition, then_branch, else_branch, .. } => {
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 self.visit_expr(condition);
                 if self.found_node.is_none() {
                     self.visit_expr(then_branch);
@@ -821,7 +813,9 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
-            Expr::MatchExpr { scrutinee, arms, .. } => {
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => {
                 self.visit_expr(scrutinee);
                 if self.found_node.is_none() {
                     for arm in arms {

@@ -26,7 +26,7 @@ pub struct DeadCodeEliminator<'a> {
 
 impl<'a> DeadCodeEliminator<'a> {
     /// Create a new dead code eliminator.
-    #[must_use] 
+    #[must_use]
     pub fn new(module: &'a IrModule) -> Self {
         Self {
             module,
@@ -45,7 +45,9 @@ impl<'a> DeadCodeEliminator<'a> {
 
             // Check expressions in functions
             for func in &impl_block.functions {
-                self.mark_used_in_expr(&func.body);
+                if let Some(body) = &func.body {
+                    self.mark_used_in_expr(body);
+                }
             }
         }
 
@@ -59,20 +61,17 @@ impl<'a> DeadCodeEliminator<'a> {
             for field in &s.fields {
                 self.mark_used_in_type(&field.ty);
             }
-            for field in &s.mount_fields {
-                self.mark_used_in_type(&field.ty);
-            }
         }
     }
 
     /// Check if a struct is used.
-    #[must_use] 
+    #[must_use]
     pub fn is_struct_used(&self, id: StructId) -> bool {
         self.used_structs.contains(&id)
     }
 
     /// Get the set of used struct IDs.
-    #[must_use] 
+    #[must_use]
     pub const fn used_structs(&self) -> &HashSet<StructId> {
         &self.used_structs
     }
@@ -125,41 +124,67 @@ impl<'a> DeadCodeEliminator<'a> {
     /// Mark structs used in an expression.
     fn mark_used_in_expr(&mut self, expr: &IrExpr) {
         match expr {
-            IrExpr::StructInst { struct_id, fields, mounts, .. } => {
-                if let Some(id) = struct_id { self.used_structs.insert(*id); }
-                for (_, e) in fields { self.mark_used_in_expr(e); }
-                for (_, e) in mounts { self.mark_used_in_expr(e); }
+            IrExpr::StructInst {
+                struct_id, fields, ..
+            } => {
+                if let Some(id) = struct_id {
+                    self.used_structs.insert(*id);
+                }
+                for (_, e) in fields {
+                    self.mark_used_in_expr(e);
+                }
             }
             IrExpr::BinaryOp { left, right, .. } => {
                 self.mark_used_in_expr(left);
                 self.mark_used_in_expr(right);
             }
             IrExpr::UnaryOp { operand, .. } => self.mark_used_in_expr(operand),
-            IrExpr::If { condition, then_branch, else_branch, .. } => {
+            IrExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 self.mark_used_in_expr(condition);
                 self.mark_used_in_expr(then_branch);
-                if let Some(else_b) = else_branch { self.mark_used_in_expr(else_b); }
+                if let Some(else_b) = else_branch {
+                    self.mark_used_in_expr(else_b);
+                }
             }
             IrExpr::Array { elements, .. } => {
-                for e in elements { self.mark_used_in_expr(e); }
+                for e in elements {
+                    self.mark_used_in_expr(e);
+                }
             }
             IrExpr::Tuple { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-                for (_, e) in fields { self.mark_used_in_expr(e); }
+                for (_, e) in fields {
+                    self.mark_used_in_expr(e);
+                }
             }
-            IrExpr::For { collection, body, .. } => {
+            IrExpr::For {
+                collection, body, ..
+            } => {
                 self.mark_used_in_expr(collection);
                 self.mark_used_in_expr(body);
             }
-            IrExpr::Match { scrutinee, arms, .. } => {
+            IrExpr::Match {
+                scrutinee, arms, ..
+            } => {
                 self.mark_used_in_expr(scrutinee);
-                for arm in arms { self.mark_used_in_expr(&arm.body); }
+                for arm in arms {
+                    self.mark_used_in_expr(&arm.body);
+                }
             }
             IrExpr::FunctionCall { args, .. } => {
-                for (_, arg) in args { self.mark_used_in_expr(arg); }
+                for (_, arg) in args {
+                    self.mark_used_in_expr(arg);
+                }
             }
             IrExpr::MethodCall { receiver, args, .. } => {
                 self.mark_used_in_expr(receiver);
-                for (_, arg) in args { self.mark_used_in_expr(arg); }
+                for (_, arg) in args {
+                    self.mark_used_in_expr(arg);
+                }
             }
             IrExpr::DictLiteral { entries, .. } => {
                 for (k, v) in entries {
@@ -171,8 +196,12 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.mark_used_in_expr(dict);
                 self.mark_used_in_expr(key);
             }
-            IrExpr::Block { statements, result, .. } => {
-                for stmt in statements { self.mark_used_in_block_statement(stmt); }
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                for stmt in statements {
+                    self.mark_used_in_block_statement(stmt);
+                }
                 self.mark_used_in_expr(result);
             }
             IrExpr::Literal { .. }
@@ -208,9 +237,18 @@ impl<'a> DeadCodeEliminator<'a> {
 pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
     use crate::ast::Literal;
     match expr {
-        IrExpr::If { condition, then_branch, else_branch, ty } => {
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ty,
+        } => {
             let cond = eliminate_dead_code_expr(*condition);
-            if let IrExpr::Literal { value: Literal::Boolean(b), .. } = &cond {
+            if let IrExpr::Literal {
+                value: Literal::Boolean(b),
+                ..
+            } = &cond
+            {
                 if *b {
                     return eliminate_dead_code_expr(*then_branch);
                 } else if let Some(else_b) = else_branch {
@@ -224,7 +262,12 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 ty,
             }
         }
-        IrExpr::BinaryOp { left, op, right, ty } => IrExpr::BinaryOp {
+        IrExpr::BinaryOp {
+            left,
+            op,
+            right,
+            ty,
+        } => IrExpr::BinaryOp {
             left: Box::new(eliminate_dead_code_expr(*left)),
             op,
             right: Box::new(eliminate_dead_code_expr(*right)),
@@ -235,48 +278,90 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             ty,
         },
         IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
-            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
+            fields: fields
+                .into_iter()
+                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
+                .collect(),
             ty,
         },
-        IrExpr::StructInst { struct_id, type_args, fields, mounts, ty } => IrExpr::StructInst {
+        IrExpr::StructInst {
             struct_id,
             type_args,
-            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
-            mounts: mounts.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
+            fields,
+            ty,
+        } => IrExpr::StructInst {
+            struct_id,
+            type_args,
+            fields: fields
+                .into_iter()
+                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
+                .collect(),
             ty,
         },
-        IrExpr::For { var, var_ty, collection, body, ty } => IrExpr::For {
+        IrExpr::For {
+            var,
+            var_ty,
+            collection,
+            body,
+            ty,
+        } => IrExpr::For {
             var,
             var_ty,
             collection: Box::new(eliminate_dead_code_expr(*collection)),
             body: Box::new(eliminate_dead_code_expr(*body)),
             ty,
         },
-        IrExpr::Match { scrutinee, arms, ty } => IrExpr::Match {
+        IrExpr::Match {
+            scrutinee,
+            arms,
+            ty,
+        } => IrExpr::Match {
             scrutinee: Box::new(eliminate_dead_code_expr(*scrutinee)),
-            arms: arms.into_iter().map(|arm| crate::ir::IrMatchArm {
-                variant: arm.variant,
-                is_wildcard: arm.is_wildcard,
-                bindings: arm.bindings,
-                body: eliminate_dead_code_expr(arm.body),
-            }).collect(),
+            arms: arms
+                .into_iter()
+                .map(|arm| crate::ir::IrMatchArm {
+                    variant: arm.variant,
+                    is_wildcard: arm.is_wildcard,
+                    bindings: arm.bindings,
+                    body: eliminate_dead_code_expr(arm.body),
+                })
+                .collect(),
             ty,
         },
         IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
             path,
-            args: args.into_iter().map(|(name, e)| (name, eliminate_dead_code_expr(e))).collect(),
+            args: args
+                .into_iter()
+                .map(|(name, e)| (name, eliminate_dead_code_expr(e)))
+                .collect(),
             ty,
         },
-        IrExpr::MethodCall { receiver, method, args, ty } => IrExpr::MethodCall {
+        IrExpr::MethodCall {
+            receiver,
+            method,
+            args,
+            ty,
+        } => IrExpr::MethodCall {
             receiver: Box::new(eliminate_dead_code_expr(*receiver)),
             method,
-            args: args.into_iter().map(|(name, e)| (name, eliminate_dead_code_expr(e))).collect(),
+            args: args
+                .into_iter()
+                .map(|(name, e)| (name, eliminate_dead_code_expr(e)))
+                .collect(),
             ty,
         },
-        IrExpr::EnumInst { enum_id, variant, fields, ty } => IrExpr::EnumInst {
+        IrExpr::EnumInst {
             enum_id,
             variant,
-            fields: fields.into_iter().map(|(n, e)| (n, eliminate_dead_code_expr(e))).collect(),
+            fields,
+            ty,
+        } => IrExpr::EnumInst {
+            enum_id,
+            variant,
+            fields: fields
+                .into_iter()
+                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
+                .collect(),
             ty,
         },
         IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
@@ -291,8 +376,15 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             key: Box::new(eliminate_dead_code_expr(*key)),
             ty,
         },
-        IrExpr::Block { statements, result, ty } => IrExpr::Block {
-            statements: statements.into_iter().map(|stmt| stmt.map_exprs(eliminate_dead_code_expr)).collect(),
+        IrExpr::Block {
+            statements,
+            result,
+            ty,
+        } => IrExpr::Block {
+            statements: statements
+                .into_iter()
+                .map(|stmt| stmt.map_exprs(eliminate_dead_code_expr))
+                .collect(),
             result: Box::new(eliminate_dead_code_expr(*result)),
             ty,
         },
@@ -312,14 +404,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
 /// This removes:
 /// - Unreachable branches in expressions
 /// - Unused struct definitions (when `remove_unused_structs` is true)
-#[must_use] 
+#[must_use]
 pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> IrModule {
     let mut result = module.clone();
 
     // Process expressions in impl blocks
     for impl_block in &mut result.impls {
         for func in &mut impl_block.functions {
-            func.body = eliminate_dead_code_expr(func.body.clone());
+            func.body = func.body.take().map(eliminate_dead_code_expr);
         }
     }
 
@@ -358,7 +450,10 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
 /// [`IrPass`]: crate::pipeline::IrPass
 /// [`Pipeline`]: crate::pipeline::Pipeline
 #[derive(Debug)]
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 pub struct DeadCodeEliminationPass {
     /// When `true`, structs that are never referenced are removed.
     pub remove_unused_structs: bool,
@@ -366,7 +461,7 @@ pub struct DeadCodeEliminationPass {
 
 impl DeadCodeEliminationPass {
     /// Create a pass with `remove_unused_structs` enabled.
-    #[must_use] 
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             remove_unused_structs: true,
@@ -404,8 +499,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = optimized
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 1
@@ -431,8 +532,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = optimized
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // The if should be eliminated, leaving just 2
@@ -542,8 +649,14 @@ mod tests {
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let optimized = eliminate_dead_code(&module, false);
 
-        let struct_def = optimized.structs.first().ok_or("expected at least one struct")?;
-        let field = struct_def.fields.first().ok_or("expected at least one field")?;
+        let struct_def = optimized
+            .structs
+            .first()
+            .ok_or("expected at least one struct")?;
+        let field = struct_def
+            .fields
+            .first()
+            .ok_or("expected at least one field")?;
         let expr = field.default.as_ref().ok_or("expected default expr")?;
 
         // Outer true -> inner expression

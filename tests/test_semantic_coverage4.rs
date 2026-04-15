@@ -495,11 +495,7 @@ fn test_function_with_regex_return_type() -> Result<(), Box<dyn std::error::Erro
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err(format!(
-            "expected ParseError for regex literal: {:?}",
-            result.ok()
-        )
-        .into());
+        return Err(format!("expected ParseError for regex literal: {:?}", result.ok()).into());
     }
     let err = format!("{:?}", result.err());
     if !err.contains("ParseError") {
@@ -852,12 +848,13 @@ fn test_type_parameter_satisfies_its_own_constraint() -> Result<(), Box<dyn std:
 
 #[test]
 fn test_generic_type_satisfies_constraint() -> Result<(), Box<dyn std::error::Error>> {
-    // Generic base type that satisfies the constraint via traits
+    // Generic base type that satisfies the constraint via impl block
     let source = r"
         trait Printable { label: String }
         struct Box<T> { value: T }
         struct Container<T: Printable> { item: T }
-        struct Widget: Printable { label: String }
+        struct Widget { label: String }
+        impl Printable for Widget {}
         struct Config { c: Container<Widget> }
     ";
     compile(source).map_err(|e| format!("Generic satisfies constraint: {e:?}"))?;
@@ -1101,7 +1098,8 @@ fn test_type_to_string_generic_with_no_args_in_mismatch() -> Result<(), Box<dyn 
     let source = r#"
         struct Box<T> { value: T }
         trait Named { name: String }
-        struct Widget: Named { name: String }
+        struct Widget { name: String }
+        impl Named for Widget {}
         fn wrong() -> Box<Widget> { "not a box" }
     "#;
     let result = compile(source);

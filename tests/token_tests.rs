@@ -20,7 +20,7 @@ fn test_token_is_keyword_true() -> Result<(), Box<dyn std::error::Error>> {
         Token::Pub,
         Token::Let,
         Token::Mut,
-        Token::Mount,
+        Token::Extern,
         Token::Match,
         Token::For,
         Token::In,
@@ -125,7 +125,7 @@ fn test_token_as_str_keywords() -> Result<(), Box<dyn std::error::Error>> {
         (Token::Pub, "pub"),
         (Token::Let, "let"),
         (Token::Mut, "mut"),
-        (Token::Mount, "mount"),
+        (Token::Extern, "extern"),
         (Token::Match, "match"),
         (Token::For, "for"),
         (Token::In, "in"),
@@ -247,7 +247,10 @@ fn test_token_display_literals() -> Result<(), Box<dyn std::error::Error>> {
         (format!("{}", Token::Number(42.0)), "number"),
         (format!("{}", Token::Regex("r/test/".to_string())), "regex"),
         (format!("{}", Token::Path("usr/bin".to_string())), "path"),
-        (format!("{}", Token::Ident("name".to_string())), "identifier"),
+        (
+            format!("{}", Token::Ident("name".to_string())),
+            "identifier",
+        ),
     ];
     for (got, expected) in cases {
         if got != expected {
@@ -428,7 +431,9 @@ fn test_mod_keyword_in_context() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("First token should be Module keyword, got {first:?}").into());
     }
 
-    let second = token_types.get(1).ok_or("token list has fewer than 2 elements")?;
+    let second = token_types
+        .get(1)
+        .ok_or("token list has fewer than 2 elements")?;
     if !matches!(second, Token::Ident(s) if s == "utils") {
         return Err(format!("Second token should be identifier 'utils', got {second:?}").into());
     }

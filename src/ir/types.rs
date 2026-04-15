@@ -15,7 +15,10 @@ use super::{EnumId, IrExpr, ResolvedType, StructId, TraitId};
 /// let primaryColor: Color = .hex(value: "#2563EB")
 /// let headingFont: Font = Font(family: "Inter", size: 24)
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrLet {
     /// The binding name
@@ -38,7 +41,10 @@ pub struct IrLet {
 ///
 /// Structs are the primary data type in `FormaLang`, representing both
 /// data models and UI components.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrStruct {
     /// The struct name
@@ -53,17 +59,20 @@ pub struct IrStruct {
     /// Regular fields
     pub fields: Vec<IrField>,
 
-    /// Mount fields (UI container slots)
-    pub mount_fields: Vec<IrField>,
-
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Whether this struct is an extern (opaque) type defined outside FormaLang
+    pub is_extern: bool,
 }
 
 /// A trait definition in the IR.
 ///
 /// Traits define interfaces that structs can implement.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrTrait {
     /// The trait name
@@ -78,17 +87,48 @@ pub struct IrTrait {
     /// Required fields
     pub fields: Vec<IrField>,
 
-    /// Required mount fields
-    pub mount_fields: Vec<IrField>,
+    /// Required method signatures
+    pub methods: Vec<IrFunctionSig>,
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 }
 
+/// A function signature in the IR (without a body).
+///
+/// Used for trait method declarations that define the interface
+/// without providing an implementation.
+///
+/// # Example
+///
+/// ```formalang
+/// trait Drawable {
+///     fn draw(self) -> String
+/// }
+/// ```
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Clone, Debug)]
+pub struct IrFunctionSig {
+    /// Function name
+    pub name: String,
+
+    /// Parameters (first is typically `self`)
+    pub params: Vec<IrFunctionParam>,
+
+    /// Return type (None = unit/void)
+    pub return_type: Option<ResolvedType>,
+}
+
 /// An enum definition in the IR.
 ///
 /// Enums are sum types with named variants, optionally carrying data.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrEnum {
     /// The enum name
@@ -105,7 +145,10 @@ pub struct IrEnum {
 }
 
 /// An enum variant.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrEnumVariant {
     /// The variant name
@@ -116,7 +159,10 @@ pub struct IrEnumVariant {
 }
 
 /// Target of an impl block - either a struct or enum.
-#[expect(clippy::exhaustive_enums, reason = "IR types are matched exhaustively by code generators")]
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImplTarget {
     /// Impl for a struct
@@ -128,7 +174,10 @@ pub enum ImplTarget {
 /// An impl block in the IR.
 ///
 /// Impl blocks provide methods for a struct or enum.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrImpl {
     /// The struct or enum this impl is for
@@ -140,7 +189,7 @@ pub struct IrImpl {
 
 impl IrImpl {
     /// Get the struct ID if this impl is for a struct.
-    #[must_use] 
+    #[must_use]
     pub const fn struct_id(&self) -> Option<StructId> {
         match self.target {
             ImplTarget::Struct(id) => Some(id),
@@ -149,7 +198,7 @@ impl IrImpl {
     }
 
     /// Get the enum ID if this impl is for an enum.
-    #[must_use] 
+    #[must_use]
     pub const fn enum_id(&self) -> Option<EnumId> {
         match self.target {
             ImplTarget::Struct(_) => None,
@@ -167,12 +216,15 @@ impl IrImpl {
 ///
 /// ```formalang
 /// impl Vec2 {
-///     fn length(self) -> f32 {
-///         sqrt(self.x * self.x + self.y * self.y)
+///     fn length(self) -> Number {
+///         self.x * self.x + self.y * self.y
 ///     }
 /// }
 /// ```
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrFunction {
     /// Function name
@@ -184,12 +236,18 @@ pub struct IrFunction {
     /// Return type (None = unit/void)
     pub return_type: Option<ResolvedType>,
 
-    /// Function body expression
-    pub body: IrExpr,
+    /// Function body expression (None for extern functions)
+    pub body: Option<IrExpr>,
+
+    /// Whether this function is extern (no body, defined outside FormaLang)
+    pub is_extern: bool,
 }
 
 /// A function parameter in the IR.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrFunctionParam {
     /// Parameter name
@@ -205,7 +263,10 @@ pub struct IrFunctionParam {
 /// A field definition.
 ///
 /// Used in structs, traits, and enum variants.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrField {
     /// Field name
@@ -225,7 +286,10 @@ pub struct IrField {
 }
 
 /// A generic type parameter.
-#[expect(clippy::exhaustive_structs, reason = "IR types are constructed directly by consumer code")]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
 #[derive(Clone, Debug)]
 pub struct IrGenericParam {
     /// Parameter name (e.g., "T")

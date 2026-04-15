@@ -91,10 +91,14 @@ The root node representing a complete `.fv` source file.
 
 ```rust
 pub struct File {
+    pub format_version: u32,        // Always FORMAT_VERSION (currently 1)
     pub statements: Vec<Statement>,
     pub span: Span,
 }
 ```
+
+`format_version` is set automatically by the parser. Tools that deserialize
+serialized ASTs should check this field to detect wire-format incompatibilities.
 
 #### Statement
 
@@ -120,6 +124,7 @@ pub enum Definition {
     Enum(EnumDef),
     Module(ModuleDef),
     Function(Box<FunctionDef>),
+    ExternType(ExternTypeDef),
 }
 ```
 
@@ -177,9 +182,9 @@ pub struct TraitDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
-    pub traits: Vec<Ident>,           // Trait composition (A + B + C)
-    pub fields: Vec<FieldDef>,        // Required fields
-    pub mount_fields: Vec<FieldDef>,  // Required mount fields
+    pub traits: Vec<Ident>,    // Trait composition (A + B + C)
+    pub fields: Vec<FieldDef>, // Required fields
+    pub methods: Vec<FnSig>,   // Required method signatures
     pub span: Span,
 }
 ```
@@ -191,12 +196,13 @@ pub struct StructDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
-    pub traits: Vec<Ident>,              // Implemented traits
-    pub fields: Vec<StructField>,        // Regular fields
-    pub mount_fields: Vec<StructField>,  // Mount fields
+    pub fields: Vec<StructField>, // Regular fields
     pub span: Span,
 }
 ```
+
+Trait conformance is declared separately via `impl Trait for Type` blocks —
+not inline on the struct definition.
 
 #### StructField
 
@@ -226,7 +232,8 @@ pub struct FieldDef {
 
 ### Impl Blocks
 
-Implementation body for structs. Supports both inherent implementations and trait implementations.
+Implementation body for structs. Supports inherent implementations, trait
+implementations, and extern impl blocks.
 
 ```rust
 pub struct ImplDef {
@@ -234,6 +241,7 @@ pub struct ImplDef {
     pub name: Ident,                  // Struct/enum being implemented
     pub generics: Vec<GenericParam>,
     pub functions: Vec<FnDef>,        // Method definitions
+    pub is_extern: bool,              // true for `extern impl` blocks
     pub span: Span,
 }
 ```
@@ -247,7 +255,20 @@ pub struct FnDef {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub body: Expr,
+    pub body: Option<Expr>,    // None for extern fn / extern impl methods
+    pub span: Span,
+}
+```
+
+#### FnSig
+
+A signature-only function declaration (no body). Used in trait method declarations.
+
+```rust
+pub struct FnSig {
+    pub name: Ident,
+    pub params: Vec<FnParam>,
+    pub return_type: Option<Type>,
     pub span: Span,
 }
 ```
@@ -271,7 +292,20 @@ pub struct FunctionDef {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub body: Expr,
+    pub body: Option<Expr>,    // None for `extern fn` declarations
+    pub span: Span,
+}
+```
+
+### Extern Type Declarations
+
+Opaque types provided by the host runtime.
+
+```rust
+pub struct ExternTypeDef {
+    pub visibility: Visibility,
+    pub name: Ident,
+    pub generics: Vec<GenericParam>,
     pub span: Span,
 }
 ```
@@ -366,21 +400,12 @@ pub enum Type {
 
 ```rust
 pub enum PrimitiveType {
-    // CPU types
     String,
     Number,
     Boolean,
     Path,
     Regex,
-    // GPU types
-    F32,
-    I32,
-    U32,
-    Bool,
-    Vec2, Vec3, Vec4,
-    IVec2, IVec3, IVec4,
-    UVec2, UVec3, UVec4,
-    Mat2, Mat3, Mat4,
+    Never,
 }
 ```
 
@@ -405,10 +430,9 @@ pub enum Expr {
     /// Unified invocation: struct instantiation or function call
     /// Semantic analysis determines which based on the name
     Invocation {
-        path: Vec<Ident>,              // Name/path being invoked
-        type_args: Vec<Type>,          // Generic type arguments
+        path: Vec<Ident>,                 // Name/path being invoked
+        type_args: Vec<Type>,             // Generic type arguments
         args: Vec<(Option<Ident>, Expr)>, // Named or positional args
-        mounts: Vec<(Ident, Expr)>,    // Mount field arguments
         span: Span,
     },
 
@@ -559,6 +583,8 @@ pub enum Literal {
     Regex { pattern: String, flags: String },
     Path(String),
     Nil,
+    // Note: integer types (i32, u32) and GPU numeric types are not primitive
+    // literals in FormaLang — use Number for all numeric values
 }
 ```
 
@@ -701,21 +727,19 @@ File
         ├── visibility: Public
         ├── name: "User"
         ├── generics: []
-        ├── traits: []
-        ├── fields:
-        │   ├── [0] StructField
-        │   │   ├── mutable: false
-        │   │   ├── name: "name"
-        │   │   ├── ty: Type::Primitive(String)
-        │   │   ├── optional: false
-        │   │   └── default: None
-        │   └── [1] StructField
-        │       ├── mutable: false
-        │       ├── name: "age"
-        │       ├── ty: Type::Primitive(Number)
-        │       ├── optional: false
-        │       └── default: None
-        └── mount_fields: []
+        └── fields:
+            ├── [0] StructField
+            │   ├── mutable: false
+            │   ├── name: "name"
+            │   ├── ty: Type::Primitive(String)
+            │   ├── optional: false
+            │   └── default: None
+            └── [1] StructField
+                ├── mutable: false
+                ├── name: "age"
+                ├── ty: Type::Primitive(Number)
+                ├── optional: false
+                └── default: None
 ```
 
 ### Enum with Variants
@@ -783,7 +807,7 @@ File
 │       │   └── [0] FieldDef
 │       │       ├── name: "items"
 │       │       └── ty: Type::Array(Type::Primitive(String))
-│       └── mount_fields: []
+│       └── methods: []
 │
 └── statements[1]: Statement::Definition
     └── Definition::Struct
@@ -794,17 +818,15 @@ File
         │       ├── name: "T"
         │       └── constraints:
         │           └── [0] GenericConstraint::Trait("Container")
-        ├── traits: []
-        ├── fields:
-        │   ├── [0] StructField
-        │   │   ├── name: "content"
-        │   │   ├── ty: Type::TypeParameter("T")
-        │   │   └── optional: false
-        │   └── [1] StructField
-        │       ├── name: "label"
-        │       ├── ty: Type::Optional(Type::Primitive(String))
-        │       └── optional: true
-        └── mount_fields: []
+        └── fields:
+            ├── [0] StructField
+            │   ├── name: "content"
+            │   ├── ty: Type::TypeParameter("T")
+            │   └── optional: false
+            └── [1] StructField
+                ├── name: "label"
+                ├── ty: Type::Optional(Type::Primitive(String))
+                └── optional: true
 ```
 
 ### Impl Block with Functions

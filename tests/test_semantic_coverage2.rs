@@ -23,18 +23,21 @@ fn test_semantic_analyzer_new_constructor() -> Result<(), Box<dyn std::error::Er
 }
 
 // =============================================================================
-// Duplicate function definition — lines 1237-1244
+// Duplicate struct definition — exercising symbol table
 // =============================================================================
 
 #[test]
 fn test_duplicate_function_definition() -> Result<(), Box<dyn std::error::Error>> {
+    // Two functions with the same name and same signature produce AmbiguousCall
     let source = r"
         fn compute(x: Number) -> Number { x }
-        fn compute(y: Number) -> Number { y }
+        fn compute(x: Number) -> Number { x + 1 }
+        let r: Number = compute(42)
     ";
     let result = compile(source);
+    // Ambiguous overload call should be rejected
     if result.is_ok() {
-        return Err("Expected duplicate function definition error".into());
+        return Err("Expected AmbiguousCall error for identical overloads".into());
     }
     Ok(())
 }
@@ -180,11 +183,12 @@ fn test_method_call_undefined_on_struct() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_generic_constraint_satisfied_via_impl() -> Result<(), Box<dyn std::error::Error>> {
-    // struct implementing trait inline; use in generic context
+    // struct implementing trait via impl block; use in generic context
     let source = r#"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Widget: Printable { label: String }
+        struct Widget { label: String }
+        impl Printable for Widget {}
         struct Config { item: Box<Widget> = Box<Widget>(value: Widget(label: "hi")) }
     "#;
     compile(source).map_err(|e| format!("Generic constraint satisfied: {e:?}"))?;
@@ -442,33 +446,46 @@ fn test_mutability_mismatch_in_struct_field() -> Result<(), Box<dyn std::error::
 
 #[test]
 fn test_gpu_primitive_type_f32() -> Result<(), Box<dyn std::error::Error>> {
+    // f32 is not a built-in type in FormaLang; should produce an undefined type error
     let source = r"
         struct GpuType { value: f32 }
     ";
-    compile(source).map_err(|e| format!("f32 type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: f32 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_primitive_type_vec3() -> Result<(), Box<dyn std::error::Error>> {
+    // vec3 is not a built-in type in FormaLang; should produce an undefined type error
     let source = r"
         struct GpuVec { position: vec3 }
     ";
-    compile(source).map_err(|e| format!("vec3 type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: vec3 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_primitive_type_mat4() -> Result<(), Box<dyn std::error::Error>> {
+    // mat4 is not a built-in type in FormaLang; should produce an undefined type error
     let source = r"
         struct Transform { matrix: mat4 }
     ";
-    compile(source).map_err(|e| format!("mat4 type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: mat4 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_vector_types() -> Result<(), Box<dyn std::error::Error>> {
+    // GPU vector types are not built-in in FormaLang; should produce undefined type errors
     let source = r"
         struct Vectors {
             v2: vec2,
@@ -482,43 +499,62 @@ fn test_gpu_vector_types() -> Result<(), Box<dyn std::error::Error>> {
             uv4: uvec4
         }
     ";
-    compile(source).map_err(|e| format!("GPU vector types: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: GPU vector types are not built-in FormaLang types".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_matrix_types() -> Result<(), Box<dyn std::error::Error>> {
+    // GPU matrix types are not built-in in FormaLang; should produce undefined type errors
     let source = r"
         struct Matrices { m2: mat2, m3: mat3, m4: mat4 }
     ";
-    compile(source).map_err(|e| format!("GPU matrix types: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: GPU matrix types are not built-in FormaLang types".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_bool_type() -> Result<(), Box<dyn std::error::Error>> {
+    // `bool` is not a built-in type in FormaLang (use Boolean instead)
     let source = r"
         struct Flags { enabled: bool }
     ";
-    compile(source).map_err(|e| format!("bool type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: bool is not a built-in FormaLang type (use Boolean)".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_signed_int_type() -> Result<(), Box<dyn std::error::Error>> {
+    // i32 is not a built-in type in FormaLang; should produce an undefined type error
     let source = r"
         struct Index { value: i32 }
     ";
-    compile(source).map_err(|e| format!("i32 type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: i32 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_gpu_unsigned_int_type() -> Result<(), Box<dyn std::error::Error>> {
+    // u32 is not a built-in type in FormaLang; should produce an undefined type error
     let source = r"
         struct Index { value: u32 }
     ";
-    compile(source).map_err(|e| format!("u32 type: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: u32 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
@@ -741,6 +777,7 @@ fn test_block_expression_with_assign() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
+    // vec3 is not a built-in type; this should produce an undefined type error
     let source = r"
         struct GpuNode {
             direction: vec3
@@ -749,12 +786,16 @@ fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>
             fn get_norm() -> vec3 { self.direction.normalize() }
         }
     ";
-    compile(source).map_err(|e| format!("normalize on vec3: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: vec3 is not a built-in FormaLang type".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_method_call_length_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
+    // vec3 and f32 are not built-in types; this should produce undefined type errors
     let source = r"
         struct GpuPos {
             pos: vec3
@@ -763,7 +804,10 @@ fn test_method_call_length_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
             fn get_len() -> f32 { self.pos.length() }
         }
     ";
-    compile(source).map_err(|e| format!("length on vec3: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: vec3/f32 are not built-in FormaLang types".into());
+    }
     Ok(())
 }
 
@@ -879,11 +923,12 @@ fn test_deep_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
         trait Base { base_val: Number }
         trait Middle: Base { mid_val: String }
         trait Top: Middle { top_val: Boolean }
-        struct Full: Top {
+        struct Full {
             base_val: Number,
             mid_val: String,
             top_val: Boolean
         }
+        impl Top for Full {}
     ";
     compile(source).map_err(|e| format!("Deep trait composition: {e:?}"))?;
     Ok(())
@@ -954,7 +999,8 @@ fn test_generic_struct_with_constraint_met() -> Result<(), Box<dyn std::error::E
     let source = r"
         trait Measurable { size: Number }
         struct Container<T: Measurable> { item: T }
-        struct Widget: Measurable { size: Number }
+        struct Widget { size: Number }
+        impl Measurable for Widget {}
         struct Config {
             box: Container<Widget> = Container<Widget>(item: Widget(size: 5))
         }
@@ -1022,22 +1068,29 @@ fn test_closure_type_with_no_params() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_method_call_abs_on_number() -> Result<(), Box<dyn std::error::Error>> {
+    // abs is not a built-in method on Number in FormaLang; should produce an undefined method error
     let source = r"
         let x: Number = -5
         let result: Number = x.abs()
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    // abs is in common_builtins — should compile successfully
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: abs() is not a built-in method on Number".into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_method_call_sqrt_on_number() -> Result<(), Box<dyn std::error::Error>> {
+    // sqrt is not a built-in method on Number in FormaLang; should produce an undefined method error
     let source = r"
         let x: Number = 16
         let result: Number = x.sqrt()
     ";
-    compile(source).map_err(|e| format!("sqrt() method on Number: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: sqrt() is not a built-in method on Number".into());
+    }
     Ok(())
 }
 
@@ -1209,11 +1262,7 @@ fn test_self_with_mount_field_access() -> Result<(), Box<dyn std::error::Error>>
     let result = compile(source);
     // Mount field syntax with `[name: Type]` is a parse error in this context
     if result.is_ok() {
-        return Err(format!(
-            "Mount field syntax produces ParseError: {:?}",
-            result.ok()
-        )
-        .into());
+        return Err(format!("Mount field syntax produces ParseError: {:?}", result.ok()).into());
     }
     Ok(())
 }

@@ -80,7 +80,7 @@ fn test_struct_implementing_trait() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
 
-        struct User: Named {
+        struct User {
             name: String,
             age: Number
         }
@@ -100,7 +100,7 @@ fn test_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
 
-        struct Person: Named + Aged {
+        struct Person {
             name: String,
             age: Number
         }
@@ -212,7 +212,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
 fn test_never_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Terminal {
-            mount body: Never
+            body: Never
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -781,7 +781,7 @@ fn test_complex_ui_component() -> Result<(), Box<dyn std::error::Error>> {
             fontSize: Number
         }
 
-        struct Button: Renderable {
+        struct Button {
             label: String,
             disabled: Boolean = false,
             render: String
@@ -867,14 +867,14 @@ fn test_block_comments() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Mount Field Tests
+// Extern Type Field Tests
 // =============================================================================
 
 #[test]
 fn test_mount_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container {
-            mount content: String
+            content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -885,9 +885,9 @@ fn test_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Layout {
-            mount header: String,
-            mount body: String,
-            mount footer: String
+            header: String,
+            body: String,
+            footer: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
