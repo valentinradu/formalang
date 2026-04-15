@@ -3,6 +3,7 @@
 //! Tests that exercise error detection and validation paths
 
 use formalang::compile;
+use formalang::CompilerError;
 
 // =============================================================================
 // Type Error Tests
@@ -67,9 +68,17 @@ fn test_undefined_type_in_generic() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A: Unknown { }";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let source = r"
+        struct A { x: String }
+        impl Unknown for A { }
+    ";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let found = errors.iter().any(|e| {
+        matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "Unknown")
+            || matches!(e, CompilerError::UndefinedType { name, .. } if name == "Unknown")
+    });
+    if !found {
+        return Err(format!("Expected UndefinedTrait or UndefinedType for 'Unknown': {errors:?}").into());
     }
     Ok(())
 }
@@ -134,10 +143,12 @@ fn test_duplicate_let() -> Result<(), Box<dyn std::error::Error>> {
 fn test_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct User: Named { age: Number }
+        struct User { age: Number }
+        impl Named for User { }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name")) {
+        return Err(format!("Expected MissingTraitField for 'name': {errors:?}").into());
     }
     Ok(())
 }
@@ -146,10 +157,12 @@ fn test_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_wrong_trait_field_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct User: Named { name: Number }
+        struct User { name: Number }
+        impl Named for User { }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "name")) {
+        return Err(format!("Expected TraitFieldTypeMismatch for 'name': {errors:?}").into());
     }
     Ok(())
 }
@@ -158,10 +171,12 @@ fn test_wrong_trait_field_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_missing_multiple_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Full { a: String, b: Number }
-        struct Empty: Full { }
+        struct Empty { }
+        impl Full for Empty { }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::MissingTraitField { .. })) {
+        return Err(format!("Expected MissingTraitField: {errors:?}").into());
     }
     Ok(())
 }
@@ -170,10 +185,16 @@ fn test_missing_multiple_trait_fields() -> Result<(), Box<dyn std::error::Error>
 fn test_not_a_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Helper { x: String }
-        struct User: Helper { x: String }
+        struct User { x: String }
+        impl Helper for User { }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    let found = errors.iter().any(|e| {
+        matches!(e, CompilerError::NotATrait { name, .. } if name == "Helper")
+            || matches!(e, CompilerError::UndefinedType { name, .. } if name == "Helper")
+    });
+    if !found {
+        return Err(format!("Expected NotATrait or UndefinedType for 'Helper': {errors:?}").into());
     }
     Ok(())
 }
@@ -185,11 +206,11 @@ fn test_not_a_trait() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_add_boolean_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Boolean }
-        impl A { true + false }
+        struct A { x: Number = true + false }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -197,11 +218,11 @@ fn test_add_boolean_boolean() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_subtract_string_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: String }
-        impl A { "a" - "b" }
+        struct A { x: Number = "a" - "b" }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -209,11 +230,11 @@ fn test_subtract_string_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_multiply_string_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: String }
-        impl A { "a" * 2 }
+        struct A { x: Number = "a" * 2 }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -221,11 +242,11 @@ fn test_multiply_string_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_divide_boolean_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Boolean }
-        impl A { true / 2 }
+        struct A { x: Number = true / 2 }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -233,11 +254,11 @@ fn test_divide_boolean_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_and_number_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number }
-        impl A { 1 && 2 }
+        struct A { x: Boolean = 1 && 2 }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -245,11 +266,11 @@ fn test_and_number_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_or_string_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: String }
-        impl A { "a" || "b" }
+        struct A { x: Boolean = "a" || "b" }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -261,23 +282,27 @@ fn test_or_string_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_if_condition_not_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: String }
-        impl A { if "string" { "yes" } else { "no" } }
+        struct A {
+            x: Number = if "string" { 1 } else { 0 }
+        }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+        return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
 }
 
 #[test]
 fn test_if_condition_number() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        struct A { x: Number }
-        impl A { if 42 { "yes" } else { "no" } }
-    "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let source = r"
+        struct A {
+            x: Number = if 42 { 1 } else { 0 }
+        }
+    ";
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+        return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
 }
@@ -285,11 +310,13 @@ fn test_if_condition_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: String }
-        impl A { for x in "not an array" { x } }
+        struct A {
+            x: String = for x in "not an array" { x }
+        }
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+        return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
 }
@@ -297,11 +324,13 @@ fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_for_on_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number }
-        impl A { for x in 42 { x } }
+        struct A {
+            x: Number = for x in 42 { x }
+        }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+        return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
 }
@@ -314,11 +343,11 @@ fn test_for_on_number() -> Result<(), Box<dyn std::error::Error>> {
 fn test_unknown_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Status { active, inactive }
-        struct A { status: Status }
-        impl A { Status.unknown }
+        struct A { status: Status = Status.unknown }
     ";
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::UnknownEnumVariant { variant, .. } if variant == "unknown")) {
+        return Err(format!("Expected UnknownEnumVariant for 'unknown': {errors:?}").into());
     }
     Ok(())
 }
@@ -330,8 +359,7 @@ fn test_unknown_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_undefined_variable_in_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: String }
-        impl A { 1 + undefined_var }
+        struct A { x: Number = 1 + undefined_var }
     ";
     // Undefined variable should produce an error
     if compile(source).is_ok() {

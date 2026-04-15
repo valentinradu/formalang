@@ -5,11 +5,11 @@
 use formalang::compile;
 
 // =============================================================================
-// View vs Model Tests
+// Struct and Trait Tests
 // =============================================================================
 
 #[test]
-fn test_view_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_header_content_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Card {
             header: String,
@@ -21,7 +21,7 @@ fn test_view_with_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_model_without_mount_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_name_age_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct User {
             name: String,
@@ -33,7 +33,7 @@ fn test_model_without_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_with_header_footer_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Layout {
             header: String,
@@ -45,7 +45,7 @@ fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_model_trait_without_mount() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_with_id_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Identifiable {
             id: Number

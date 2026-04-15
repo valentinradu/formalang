@@ -3,6 +3,7 @@
 //! Tests array, struct, and enum destructuring as per documentation.
 
 use formalang::compile;
+use formalang::CompilerError;
 
 // =============================================================================
 // Array Destructuring Tests
@@ -131,8 +132,9 @@ fn test_error_duplicate_binding_in_array() -> Result<(), Box<dyn std::error::Err
         pub let items = ["a", "b"]
         pub let [a, a] = items
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('a'))) {
+        return Err(format!("Expected DuplicateDefinition for 'a': {errors:?}").into());
     }
     Ok(())
 }
@@ -145,9 +147,9 @@ fn test_error_duplicate_binding_in_struct() -> Result<(), Box<dyn std::error::Er
         pub let p = Point(x: 1, y: 2)
         pub let {x, x} = p
     ";
-    // Parser should reject duplicate field names
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('x'))) {
+        return Err(format!("Expected DuplicateDefinition for 'x': {errors:?}").into());
     }
     Ok(())
 }
@@ -160,8 +162,9 @@ fn test_error_duplicate_binding_across_patterns() -> Result<(), Box<dyn std::err
         pub let [first, second] = items
         pub let first = "other"
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with("first"))) {
+        return Err(format!("Expected DuplicateDefinition for 'first': {errors:?}").into());
     }
     Ok(())
 }
@@ -177,8 +180,9 @@ fn test_error_array_destructuring_type_mismatch() -> Result<(), Box<dyn std::err
         pub let value = "not an array"
         pub let [a, b] = value
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::ArrayDestructuringNotArray { .. })) {
+        return Err(format!("Expected ArrayDestructuringNotArray: {errors:?}").into());
     }
     Ok(())
 }
@@ -190,8 +194,9 @@ fn test_error_struct_destructuring_type_mismatch() -> Result<(), Box<dyn std::er
         pub let value = "not a struct"
         pub let {name} = value
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::StructDestructuringNotStruct { .. })) {
+        return Err(format!("Expected StructDestructuringNotStruct: {errors:?}").into());
     }
     Ok(())
 }
@@ -204,8 +209,9 @@ fn test_error_struct_destructuring_missing_field() -> Result<(), Box<dyn std::er
         pub let user = User(name: "Alice")
         pub let {name, age} = user
     "#;
-    if compile(source).is_ok() {
-        return Err("assertion failed".into());
+    let errors = compile(source).err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "age")) {
+        return Err(format!("Expected UnknownField for 'age': {errors:?}").into());
     }
     Ok(())
 }

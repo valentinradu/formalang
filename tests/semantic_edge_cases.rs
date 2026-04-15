@@ -1,6 +1,7 @@
 //! Semantic analyzer edge case tests
 
 use formalang::compile;
+use formalang::CompilerError;
 
 // =============================================================================
 // Visibility Tests
@@ -271,11 +272,11 @@ fn test_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Mount Field Tests
+// Struct Field Tests
 // =============================================================================
 
 #[test]
-fn test_mount_with_array() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Item {
             value: String
@@ -289,7 +290,7 @@ fn test_mount_with_array() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_mount_with_trait() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Renderable {
             content: String
@@ -364,12 +365,12 @@ fn test_multiple_errors() -> Result<(), Box<dyn std::error::Error>> {
         struct C { z: Unknown3 }
     ";
     let result = compile(source);
-    if result.is_ok() {
-        return Err("assertion failed".into());
-    }
     let errors = result.err().ok_or("expected error")?;
     if errors.len() < 3 {
-        return Err("assertion failed".into());
+        return Err(format!("Expected >= 3 errors, got {}: {errors:?}", errors.len()).into());
+    }
+    if !errors.iter().all(|e| matches!(e, CompilerError::UndefinedType { .. })) {
+        return Err(format!("Expected UndefinedType errors: {errors:?}").into());
     }
     Ok(())
 }
@@ -385,8 +386,9 @@ fn test_partial_valid() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let result = compile(source);
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "MissingType")) {
+        return Err(format!("Expected UndefinedType for MissingType: {errors:?}").into());
     }
     Ok(())
 }

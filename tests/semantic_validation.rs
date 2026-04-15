@@ -3,6 +3,7 @@
 //! These tests exercise validation paths in the semantic analyzer
 
 use formalang::compile;
+use formalang::CompilerError;
 
 // =============================================================================
 // Type Resolution Tests
@@ -75,17 +76,14 @@ fn test_resolve_tuple_with_generics() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_trait_field_type_validation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Typed {
-            value: String
-        }
-        struct Impl: Typed {
-            value: Number
-        }
+        trait Typed { value: String }
+        struct Impl { value: Number }
+        impl Typed for Impl { }
     ";
     let result = compile(source);
-    // Type mismatch should be detected
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "value")) {
+        return Err(format!("Expected TraitFieldTypeMismatch: {errors:?}").into());
     }
     Ok(())
 }
@@ -245,17 +243,17 @@ fn test_logical_operators_with_literals() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_invalid_if_condition_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            value: Number
-        }
+        struct Test { value: Number }
         impl Test {
-            value: if value { 1 } else { 0 }
+            fn compute(self) -> Number {
+                if self.value { 1 } else { 0 }
+            }
         }
     ";
     let result = compile(source);
-    // Number is not a valid condition type
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+        return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
 }
@@ -263,17 +261,17 @@ fn test_invalid_if_condition_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_invalid_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            value: String
-        }
+        struct Test { value: String }
         impl Test {
-            value: for item in value { item }
+            fn compute(self) -> String {
+                for item in self.value { item }
+            }
         }
     ";
     let result = compile(source);
-    // String is not iterable
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+        return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
 }
@@ -281,15 +279,14 @@ fn test_invalid_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_undefined_variable_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            value: Number
-        }
+        struct Test { value: Number }
         impl Test {
-            value: undefinedVariable + 1
+            fn compute(self) -> Number {
+                undefinedVariable + 1
+            }
         }
     ";
     let result = compile(source);
-    // Undefined variable
     if result.is_ok() {
         return Err("assertion failed".into());
     }
@@ -299,15 +296,14 @@ fn test_undefined_variable_reference() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_field_access_on_primitive() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            value: Number
-        }
+        struct Test { value: Number }
         impl Test {
-            value: value.field
+            fn compute(self) -> Number {
+                self.nonexistent
+            }
         }
     ";
     let result = compile(source);
-    // Cannot access field on Number
     if result.is_ok() {
         return Err("assertion failed".into());
     }
@@ -317,17 +313,17 @@ fn test_field_access_on_primitive() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_invalid_arithmetic_on_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            flag: Boolean
-        }
+        struct Test { flag: Boolean }
         impl Test {
-            flag: flag + 1
+            fn compute(self) -> Boolean {
+                self.flag + 1
+            }
         }
     ";
     let result = compile(source);
-    // Cannot add Boolean and Number
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
@@ -335,28 +331,27 @@ fn test_invalid_arithmetic_on_boolean() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_invalid_comparison_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test {
-            text: String,
-            num: Number
-        }
+        struct Test { text: String, num: Number }
         impl Test {
-            text: text < num
+            fn compute(self) -> Boolean {
+                self.text < self.num
+            }
         }
     ";
     let result = compile(source);
-    // Cannot compare String and Number
-    if result.is_ok() {
-        return Err("assertion failed".into());
+    let errors = result.err().ok_or("expected error")?;
+    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+        return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
 }
 
 // =============================================================================
-// View/Mount Field Tests
+// Struct and Trait Field Tests
 // =============================================================================
 
 #[test]
-fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_content_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container {
             content: String
@@ -367,7 +362,7 @@ fn test_mount_field_basic() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_header_main_footer_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Layout {
             header: String,
@@ -380,7 +375,7 @@ fn test_multiple_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_view_trait_with_mount() -> Result<(), Box<dyn std::error::Error>> {
+fn test_trait_with_content_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Renderable {
             content: String
@@ -660,7 +655,7 @@ fn test_impl_block_defaults_applied_on_instantiation() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn test_impl_block_defaults_with_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn test_impl_block_defaults_with_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Fields with struct field defaults should be optional during instantiation
     let source = r##"
         struct Rect {
@@ -769,9 +764,8 @@ fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>
         return Err("Function returning Number when String expected should fail".into());
     }
     let err = result.err().ok_or("expected error")?;
-    let err_str = format!("{err:?}");
-    if !err_str.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("Should report FunctionReturnTypeMismatch error: {err_str}").into());
+    if !err.iter().any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. })) {
+        return Err(format!("Expected FunctionReturnTypeMismatch: {err:?}").into());
     }
     Ok(())
 }
@@ -830,12 +824,8 @@ fn test_assignment_to_immutable_fails() -> Result<(), Box<dyn std::error::Error>
         return Err("Assignment to immutable binding should fail".into());
     }
     let errors = result.err().ok_or("expected error")?;
-    let error_strings: Vec<String> = errors.iter().map(|e| format!("{e:?}")).collect();
-    if !error_strings
-        .iter()
-        .any(|e| e.contains("immutable") || e.contains("Immutable"))
-    {
-        return Err(format!("Error should mention immutable: {error_strings:?}").into());
+    if !errors.iter().any(|e| matches!(e, CompilerError::AssignmentToImmutable { .. })) {
+        return Err(format!("Expected AssignmentToImmutable: {errors:?}").into());
     }
     Ok(())
 }
