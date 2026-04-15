@@ -369,7 +369,10 @@ fn test_multiple_errors() -> Result<(), Box<dyn std::error::Error>> {
     if errors.len() < 3 {
         return Err(format!("Expected >= 3 errors, got {}: {errors:?}", errors.len()).into());
     }
-    if !errors.iter().all(|e| matches!(e, CompilerError::UndefinedType { .. })) {
+    if !errors
+        .iter()
+        .all(|e| matches!(e, CompilerError::UndefinedType { .. }))
+    {
         return Err(format!("Expected UndefinedType errors: {errors:?}").into());
     }
     Ok(())
@@ -387,7 +390,10 @@ fn test_partial_valid() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "MissingType")) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "MissingType"))
+    {
         return Err(format!("Expected UndefinedType for MissingType: {errors:?}").into());
     }
     Ok(())

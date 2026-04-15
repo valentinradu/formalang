@@ -58,7 +58,10 @@ pub struct File {
 impl File {
     /// Create a new `File` with the current [`FORMAT_VERSION`].
     #[must_use]
-    #[expect(clippy::missing_const_for_fn, reason = "Vec<Statement> is not const-compatible")]
+    #[expect(
+        clippy::missing_const_for_fn,
+        reason = "Vec<Statement> is not const-compatible"
+    )]
     pub fn new(statements: Vec<Statement>, span: Span) -> Self {
         Self {
             format_version: FORMAT_VERSION,

@@ -104,13 +104,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         trait_name: &str,
     ) -> Vec<(String, Vec<crate::ast::FnParam>, Option<Type>)> {
-        self.symbols.traits.get(trait_name).map_or_else(Vec::new, |trait_info| {
-            trait_info
-                .methods
-                .iter()
-                .map(|m| (m.name.name.clone(), m.params.clone(), m.return_type.clone()))
-                .collect()
-        })
+        self.symbols
+            .traits
+            .get(trait_name)
+            .map_or_else(Vec::new, |trait_info| {
+                trait_info
+                    .methods
+                    .iter()
+                    .map(|m| (m.name.name.clone(), m.params.clone(), m.return_type.clone()))
+                    .collect()
+            })
     }
 
     /// Validate that a struct implements all required fields from its traits

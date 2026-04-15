@@ -951,7 +951,6 @@ struct Main {
     Ok(())
 }
 
-
 #[test]
 fn test_self_only() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions, not struct field defaults

@@ -210,7 +210,10 @@ pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
 }
 
 /// Fill spans in an expression
-#[expect(clippy::too_many_lines, reason = "exhaustive span-filling for all Expr variants")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive span-filling for all Expr variants"
+)]
 pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
         Expr::Literal(_) => {}

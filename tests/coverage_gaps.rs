@@ -374,13 +374,11 @@ fn test_error_unknown_generic_constraint() -> Result<(), Box<dyn std::error::Err
     let errors = compile(source)
         .err()
         .ok_or("expected UndefinedTrait error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "UnknownTrait"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "UnknownTrait"));
     if !has_error {
-        return Err(
-            format!("expected UndefinedTrait for 'UnknownTrait', got: {errors:?}").into(),
-        );
+        return Err(format!("expected UndefinedTrait for 'UnknownTrait', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -394,9 +392,9 @@ fn test_error_struct_as_trait_constraint() -> Result<(), Box<dyn std::error::Err
     let errors = compile(source)
         .err()
         .ok_or("expected UndefinedTrait error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "NotATrait"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "NotATrait"));
     if !has_error {
         return Err(format!("expected UndefinedTrait for 'NotATrait', got: {errors:?}").into());
     }
@@ -424,9 +422,9 @@ fn test_error_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
     let errors = compile(source)
         .err()
         .ok_or("expected GenericArityMismatch error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::GenericArityMismatch { name, .. } if name == "Box"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::GenericArityMismatch { name, .. } if name == "Box"));
     if !has_error {
         return Err(format!("expected GenericArityMismatch for 'Box', got: {errors:?}").into());
     }
@@ -680,9 +678,7 @@ fn test_error_struct_as_composed_trait() -> Result<(), Box<dyn std::error::Error
         struct NotATrait { x: String }
         trait MyTrait: NotATrait { y: Number }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected NotATrait error")?;
+    let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
         .iter()
         .any(|e| matches!(e, CompilerError::NotATrait { .. }));
@@ -699,9 +695,7 @@ fn test_error_enum_as_composed_trait() -> Result<(), Box<dyn std::error::Error>>
         enum NotATrait { a, b }
         trait MyTrait: NotATrait { y: Number }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected NotATrait error")?;
+    let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
         .iter()
         .any(|e| matches!(e, CompilerError::NotATrait { .. }));
@@ -795,13 +789,11 @@ fn test_error_out_of_scope_type_param() -> Result<(), Box<dyn std::error::Error>
     let errors = compile(source)
         .err()
         .ok_or("expected OutOfScopeTypeParameter error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::OutOfScopeTypeParameter { param, .. } if param == "T"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::OutOfScopeTypeParameter { param, .. } if param == "T"));
     if !has_error {
-        return Err(
-            format!("expected OutOfScopeTypeParameter for 'T', got: {errors:?}").into(),
-        );
+        return Err(format!("expected OutOfScopeTypeParameter for 'T', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1150,12 +1142,10 @@ fn test_error_struct_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1, y: 2, z: 3) }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected UnknownField error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::UnknownField { field, .. } if field == "z"),
-    );
+    let errors = compile(source).err().ok_or("expected UnknownField error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "z"));
     if !has_error {
         return Err(format!("expected UnknownField for 'z', got: {errors:?}").into());
     }
@@ -1168,18 +1158,15 @@ fn test_error_struct_missing_field() -> Result<(), Box<dyn std::error::Error>> {
         struct Point { x: Number, y: Number }
         struct Canvas { point: Point = Point(x: 1) }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected MissingField error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::MissingField { field, .. } if field == "y"),
-    );
+    let errors = compile(source).err().ok_or("expected MissingField error")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingField { field, .. } if field == "y"));
     if !has_error {
         return Err(format!("expected MissingField for 'y', got: {errors:?}").into());
     }
     Ok(())
 }
-
 
 // =============================================================================
 // Enum Instantiation Error Tests
@@ -1242,13 +1229,11 @@ fn test_generic_type_argument_validation() -> Result<(), Box<dyn std::error::Err
     let errors = compile(source)
         .err()
         .ok_or("expected UndefinedType error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "UndefinedType"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "UndefinedType"));
     if !has_error {
-        return Err(
-            format!("expected UndefinedType for 'UndefinedType', got: {errors:?}").into(),
-        );
+        return Err(format!("expected UndefinedType for 'UndefinedType', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1398,9 +1383,7 @@ fn test_error_enum_missing_field() -> Result<(), Box<dyn std::error::Error>> {
         enum User { profile(name: String, age: Number) }
         struct App { user: User = User.profile(name: "Bob") }
     "#;
-    let errors = compile(source)
-        .err()
-        .ok_or("expected MissingField error")?;
+    let errors = compile(source).err().ok_or("expected MissingField error")?;
     let has_error = errors
         .iter()
         .any(|e| matches!(e, CompilerError::MissingField { .. }));
@@ -1417,9 +1400,7 @@ fn test_error_enum_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
         enum User { profile(name: String) }
         struct App { user: User = User.profile(name: "Bob", unknown: "x") }
     "#;
-    let errors = compile(source)
-        .err()
-        .ok_or("expected UnknownField error")?;
+    let errors = compile(source).err().ok_or("expected UnknownField error")?;
     let has_error = errors
         .iter()
         .any(|e| matches!(e, CompilerError::UnknownField { .. }));
@@ -1480,13 +1461,11 @@ fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let errors = compile(source)
         .err()
         .ok_or("expected MissingTraitField error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name"));
     if !has_error {
-        return Err(
-            format!("expected MissingTraitField for 'name', got: {errors:?}").into(),
-        );
+        return Err(format!("expected MissingTraitField for 'name', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -1501,13 +1480,11 @@ fn test_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Erro
     let errors = compile(source)
         .err()
         .ok_or("expected TraitFieldTypeMismatch error")?;
-    let has_error = errors.iter().any(
-        |e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "id"),
-    );
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "id"));
     if !has_error {
-        return Err(
-            format!("expected TraitFieldTypeMismatch for 'id', got: {errors:?}").into(),
-        );
+        return Err(format!("expected TraitFieldTypeMismatch for 'id', got: {errors:?}").into());
     }
     Ok(())
 }

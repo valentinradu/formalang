@@ -82,7 +82,9 @@ fn test_trait_field_type_validation() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "value")) {
+    if !errors.iter().any(
+        |e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "value"),
+    ) {
         return Err(format!("Expected TraitFieldTypeMismatch: {errors:?}").into());
     }
     Ok(())
@@ -252,7 +254,10 @@ fn test_invalid_if_condition_type() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidIfCondition { .. }))
+    {
         return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
@@ -270,7 +275,10 @@ fn test_invalid_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ForLoopNotArray { .. }))
+    {
         return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
@@ -322,7 +330,10 @@ fn test_invalid_arithmetic_on_boolean() -> Result<(), Box<dyn std::error::Error>
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -340,7 +351,10 @@ fn test_invalid_comparison_types() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let result = compile(source);
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -764,7 +778,10 @@ fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>
         return Err("Function returning Number when String expected should fail".into());
     }
     let err = result.err().ok_or("expected error")?;
-    if !err.iter().any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. })) {
+    if !err
+        .iter()
+        .any(|e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }))
+    {
         return Err(format!("Expected FunctionReturnTypeMismatch: {err:?}").into());
     }
     Ok(())
@@ -824,7 +841,10 @@ fn test_assignment_to_immutable_fails() -> Result<(), Box<dyn std::error::Error>
         return Err("Assignment to immutable binding should fail".into());
     }
     let errors = result.err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::AssignmentToImmutable { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::AssignmentToImmutable { .. }))
+    {
         return Err(format!("Expected AssignmentToImmutable: {errors:?}").into());
     }
     Ok(())

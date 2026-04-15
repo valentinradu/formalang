@@ -34,7 +34,10 @@ impl<'a> ConstantFolder<'a> {
 
     /// Fold constants in an expression, returning a potentially simplified expression.
     #[must_use]
-    #[expect(clippy::too_many_lines, reason = "exhaustive match over all IrExpr variants")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match over all IrExpr variants"
+    )]
     pub fn fold_expr(&self, expr: IrExpr) -> IrExpr {
         match expr {
             IrExpr::BinaryOp {

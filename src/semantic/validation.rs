@@ -469,9 +469,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             call_label_set == param_label_set
         } else if none_labeled && !args.is_empty() {
             // Mode B: match by first-argument type
-            let first_arg_type = args
-                .first()
-                .map_or_else(|| "Unknown".to_string(), |(_, expr)| self.infer_type(expr, file));
+            let first_arg_type = args.first().map_or_else(
+                || "Unknown".to_string(),
+                |(_, expr)| self.infer_type(expr, file),
+            );
 
             let first_param_type = params
                 .iter()

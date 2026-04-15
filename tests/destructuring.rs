@@ -133,7 +133,9 @@ fn test_error_duplicate_binding_in_array() -> Result<(), Box<dyn std::error::Err
         pub let [a, a] = items
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('a'))) {
+    if !errors.iter().any(
+        |e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('a')),
+    ) {
         return Err(format!("Expected DuplicateDefinition for 'a': {errors:?}").into());
     }
     Ok(())
@@ -148,7 +150,9 @@ fn test_error_duplicate_binding_in_struct() -> Result<(), Box<dyn std::error::Er
         pub let {x, x} = p
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('x'))) {
+    if !errors.iter().any(
+        |e| matches!(e, CompilerError::DuplicateDefinition { name, .. } if name.starts_with('x')),
+    ) {
         return Err(format!("Expected DuplicateDefinition for 'x': {errors:?}").into());
     }
     Ok(())
@@ -181,7 +185,10 @@ fn test_error_array_destructuring_type_mismatch() -> Result<(), Box<dyn std::err
         pub let [a, b] = value
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::ArrayDestructuringNotArray { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ArrayDestructuringNotArray { .. }))
+    {
         return Err(format!("Expected ArrayDestructuringNotArray: {errors:?}").into());
     }
     Ok(())
@@ -195,7 +202,10 @@ fn test_error_struct_destructuring_type_mismatch() -> Result<(), Box<dyn std::er
         pub let {name} = value
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::StructDestructuringNotStruct { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::StructDestructuringNotStruct { .. }))
+    {
         return Err(format!("Expected StructDestructuringNotStruct: {errors:?}").into());
     }
     Ok(())
@@ -210,7 +220,10 @@ fn test_error_struct_destructuring_missing_field() -> Result<(), Box<dyn std::er
         pub let {name, age} = user
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "age")) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "age"))
+    {
         return Err(format!("Expected UnknownField for 'age': {errors:?}").into());
     }
     Ok(())

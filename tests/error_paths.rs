@@ -78,7 +78,9 @@ fn test_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
             || matches!(e, CompilerError::UndefinedType { name, .. } if name == "Unknown")
     });
     if !found {
-        return Err(format!("Expected UndefinedTrait or UndefinedType for 'Unknown': {errors:?}").into());
+        return Err(
+            format!("Expected UndefinedTrait or UndefinedType for 'Unknown': {errors:?}").into(),
+        );
     }
     Ok(())
 }
@@ -147,7 +149,10 @@ fn test_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
         impl Named for User { }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name")) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingTraitField { field, .. } if field == "name"))
+    {
         return Err(format!("Expected MissingTraitField for 'name': {errors:?}").into());
     }
     Ok(())
@@ -161,7 +166,9 @@ fn test_wrong_trait_field_type() -> Result<(), Box<dyn std::error::Error>> {
         impl Named for User { }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "name")) {
+    if !errors.iter().any(
+        |e| matches!(e, CompilerError::TraitFieldTypeMismatch { field, .. } if field == "name"),
+    ) {
         return Err(format!("Expected TraitFieldTypeMismatch for 'name': {errors:?}").into());
     }
     Ok(())
@@ -175,7 +182,10 @@ fn test_missing_multiple_trait_fields() -> Result<(), Box<dyn std::error::Error>
         impl Full for Empty { }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::MissingTraitField { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::MissingTraitField { .. }))
+    {
         return Err(format!("Expected MissingTraitField: {errors:?}").into());
     }
     Ok(())
@@ -209,7 +219,10 @@ fn test_add_boolean_boolean() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Number = true + false }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -221,7 +234,10 @@ fn test_subtract_string_string() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Number = "a" - "b" }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -233,7 +249,10 @@ fn test_multiply_string_number() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Number = "a" * 2 }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -245,7 +264,10 @@ fn test_divide_boolean_number() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Number = true / 2 }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -257,7 +279,10 @@ fn test_and_number_number() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Boolean = 1 && 2 }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -269,7 +294,10 @@ fn test_or_string_string() -> Result<(), Box<dyn std::error::Error>> {
         struct A { x: Boolean = "a" || "b" }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidBinaryOp { .. }))
+    {
         return Err(format!("Expected InvalidBinaryOp: {errors:?}").into());
     }
     Ok(())
@@ -287,7 +315,10 @@ fn test_if_condition_not_boolean() -> Result<(), Box<dyn std::error::Error>> {
         }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidIfCondition { .. }))
+    {
         return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
@@ -301,7 +332,10 @@ fn test_if_condition_number() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::InvalidIfCondition { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::InvalidIfCondition { .. }))
+    {
         return Err(format!("Expected InvalidIfCondition: {errors:?}").into());
     }
     Ok(())
@@ -315,7 +349,10 @@ fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
         }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ForLoopNotArray { .. }))
+    {
         return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
@@ -329,7 +366,10 @@ fn test_for_on_number() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::ForLoopNotArray { .. })) {
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ForLoopNotArray { .. }))
+    {
         return Err(format!("Expected ForLoopNotArray: {errors:?}").into());
     }
     Ok(())
@@ -346,7 +386,9 @@ fn test_unknown_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
         struct A { status: Status = Status.unknown }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
-    if !errors.iter().any(|e| matches!(e, CompilerError::UnknownEnumVariant { variant, .. } if variant == "unknown")) {
+    if !errors.iter().any(
+        |e| matches!(e, CompilerError::UnknownEnumVariant { variant, .. } if variant == "unknown"),
+    ) {
         return Err(format!("Expected UnknownEnumVariant for 'unknown': {errors:?}").into());
     }
     Ok(())
