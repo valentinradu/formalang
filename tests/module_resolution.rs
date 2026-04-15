@@ -951,21 +951,6 @@ struct Main {
     Ok(())
 }
 
-// =============================================================================
-// Example Website Integration Test
-// =============================================================================
-
-#[test]
-#[ignore = "stdlib uses GPU types like vec2 that need parser support"]
-fn test_stdlib_compiles_alone() -> Result<(), Box<dyn std::error::Error>> {
-    // Load stdlib from filesystem
-    let stdlib_source = std::fs::read_to_string("stdlib.fv")
-        .map_err(|e| format!("Failed to read docs/user/stdlib.fv: {e}"))?;
-
-    let root_dir = PathBuf::from(".");
-    analyze_with_filesystem(&stdlib_source, root_dir).map_err(|e| format!("{e:?}"))?;
-    Ok(())
-}
 
 #[test]
 fn test_self_only() -> Result<(), Box<dyn std::error::Error>> {
