@@ -795,9 +795,9 @@ fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
-    // Method calls on extern types are allowed
+    // Method calls on structs with extern impl are allowed
     let source = r"
-        extern type Canvas
+        struct Canvas { width: Number, height: Number }
         extern impl Canvas {
             fn area(self) -> Number
         }
@@ -814,7 +814,7 @@ fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern type Canvas
+        struct Canvas { width: Number, height: Number }
         extern impl Canvas {
             fn scale(self, factor: Number) -> Canvas
         }
@@ -831,7 +831,7 @@ fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern type Canvas
+        struct Canvas { width: Number, height: Number }
         extern impl Canvas {
             fn flip(self) -> Canvas
             fn area(self) -> Number

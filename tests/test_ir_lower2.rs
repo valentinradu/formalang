@@ -201,10 +201,10 @@ fn test_lower_general_closure() -> Result<(), Box<dyn std::error::Error>> {
     if params.len() != 1 {
         return Err(format!("expected 1 param, got {}", params.len()).into());
     }
-    if params.first().ok_or("index out of bounds")?.0 != "x" {
+    if params.first().ok_or("index out of bounds")?.1 != "x" {
         return Err(format!(
             "expected param 'x', got '{}'",
-            params.first().ok_or("index out of bounds")?.0
+            params.first().ok_or("index out of bounds")?.1
         )
         .into());
     }

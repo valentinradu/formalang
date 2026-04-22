@@ -673,21 +673,11 @@ fn test_impl_fn_with_type_param_return() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_function_with_dict_return_type() -> Result<(), Box<dyn std::error::Error>> {
+    // Since Gap 8, dict literal type inference returns "[String: Number]" matching declaration.
     let source = r#"
         fn make_dict() -> [String: Number] { ["key": 42] }
     "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for dict: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
 }
 
@@ -912,22 +902,11 @@ fn test_infer_type_struct_field_in_impl() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_infer_dict_literal_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Dict literal in a function context
+    // Since Gap 8, dict literal type inference returns "[String: Number]" matching declaration.
     let source = r#"
         fn get_dict() -> [String: Number] { ["key": 42] }
     "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected FunctionReturnTypeMismatch for dict literal: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("FunctionReturnTypeMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
 }
 

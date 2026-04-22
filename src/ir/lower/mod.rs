@@ -4,9 +4,8 @@ mod expr;
 mod types;
 
 use crate::ast::{
-    self, BindingPattern, Definition, EnumDef, ExternTypeDef, File, FnDef, FunctionDef,
-    GenericConstraint, ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef,
-    StructField, TraitDef, Type,
+    self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
+    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::symbol_table::SymbolTable;
@@ -190,16 +189,22 @@ impl<'a> IrLowerer<'a> {
                     clippy::cast_precision_loss,
                     reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
                 )]
-                let index_expr = IrExpr::Literal {
+                let index_key = IrExpr::Literal {
                     value: Literal::Number(i as f64),
                     ty: ResolvedType::Primitive(PrimitiveType::Number),
+                };
+                // `arr[i]` — dictionary-access is the IR node for index access
+                let access_expr = IrExpr::DictAccess {
+                    dict: Box::new(value_expr.clone()),
+                    key: Box::new(index_key),
+                    ty: elem_ty.clone(),
                 };
                 self.module.add_let(IrLet {
                     name,
                     visibility: let_binding.visibility,
                     mutable: let_binding.mutable,
                     ty: elem_ty.clone(),
-                    value: index_expr,
+                    value: access_expr,
                 });
             }
         }
@@ -219,15 +224,18 @@ impl<'a> IrLowerer<'a> {
                 .as_ref()
                 .map_or_else(|| field_name.clone(), |a| a.name.clone());
             let field_ty = self.get_field_type_from_resolved(value_expr.ty(), &field_name);
+            // `value.field_name`
+            let access_expr = IrExpr::FieldAccess {
+                object: Box::new(value_expr.clone()),
+                field: field_name,
+                ty: field_ty.clone(),
+            };
             self.module.add_let(IrLet {
                 name: binding_name,
                 visibility: let_binding.visibility,
                 mutable: let_binding.mutable,
                 ty: field_ty,
-                value: IrExpr::Reference {
-                    path: vec![field_name],
-                    ty: ResolvedType::TypeParam("StructField".to_string()),
-                },
+                value: access_expr,
             });
         }
     }
@@ -256,23 +264,27 @@ impl<'a> IrLowerer<'a> {
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_simple_binding_name(element) {
-                let ty = tuple_types.get(i).map_or_else(
-                    || ResolvedType::TypeParam("Unknown".to_string()),
-                    |(_, t)| t.clone(),
+                let (field_name, ty) = tuple_types.get(i).map_or_else(
+                    || {
+                        (
+                            i.to_string(),
+                            ResolvedType::TypeParam("Unknown".to_string()),
+                        )
+                    },
+                    |(n, t)| (n.clone(), t.clone()),
                 );
-                #[expect(
-                    clippy::cast_precision_loss,
-                    reason = "tuple destructuring indices are small source-code positions that fit exactly in f64 mantissa"
-                )]
+                // `value.field_name` — tuple fields are accessed by their declared name
+                let access_expr = IrExpr::FieldAccess {
+                    object: Box::new(value_expr.clone()),
+                    field: field_name,
+                    ty: ty.clone(),
+                };
                 self.module.add_let(IrLet {
                     name,
                     visibility: let_binding.visibility,
                     mutable: let_binding.mutable,
                     ty,
-                    value: IrExpr::Literal {
-                        value: Literal::Number(i as f64),
-                        ty: ResolvedType::Primitive(PrimitiveType::Number),
-                    },
+                    value: access_expr,
                 });
             }
         }
@@ -459,12 +471,15 @@ impl<'a> IrLowerer<'a> {
         let fields: Vec<IrField> = struct_info
             .fields
             .iter()
-            .map(|f| IrField {
-                name: f.name.clone(),
-                ty: self.lower_type(&f.ty),
-                mutable: false,
-                optional: false,
-                default: None,
+            .map(|f| {
+                let optional = matches!(f.ty, ast::Type::Optional(_));
+                IrField {
+                    name: f.name.clone(),
+                    ty: self.lower_type(&f.ty),
+                    mutable: false,
+                    optional,
+                    default: None,
+                }
             })
             .collect();
 
@@ -487,7 +502,6 @@ impl<'a> IrLowerer<'a> {
                 traits,
                 fields,
                 generic_params,
-                is_extern: struct_info.is_extern,
             },
         ) {
             self.errors.push(e);
@@ -524,7 +538,6 @@ impl<'a> IrLowerer<'a> {
                         traits: Vec::new(),
                         fields: Vec::new(),
                         generic_params: Vec::new(),
-                        is_extern: false,
                     },
                 ) {
                     self.errors.push(e);
@@ -539,22 +552,6 @@ impl<'a> IrLowerer<'a> {
                         visibility: e.visibility,
                         variants: Vec::new(),
                         generic_params: Vec::new(),
-                    },
-                ) {
-                    self.errors.push(e);
-                }
-            }
-            Definition::ExternType(ext) => {
-                let name = ext.name.name.clone();
-                if let Err(e) = self.module.add_struct(
-                    name,
-                    IrStruct {
-                        name: ext.name.name.clone(),
-                        visibility: ext.visibility,
-                        traits: Vec::new(),
-                        fields: Vec::new(),
-                        generic_params: Vec::new(),
-                        is_extern: true,
                     },
                 ) {
                     self.errors.push(e);
@@ -577,7 +574,6 @@ impl<'a> IrLowerer<'a> {
             Definition::Enum(e) => self.lower_enum(e),
             Definition::Impl(i) => self.lower_impl(i),
             Definition::Function(f) => self.lower_function(f.as_ref()),
-            Definition::ExternType(ext) => self.lower_extern_type(ext),
             Definition::Module(m) => {
                 // Lower nested definitions within the module
                 self.lower_module(&m.name.name, &m.definitions);
@@ -620,9 +616,6 @@ impl<'a> IrLowerer<'a> {
                 Definition::Function(f) => {
                     // Functions in modules
                     self.lower_function(f.as_ref());
-                }
-                Definition::ExternType(ext) => {
-                    self.lower_extern_type(ext);
                 }
                 Definition::Module(m) => {
                     // Recursively process nested modules
@@ -716,7 +709,6 @@ impl<'a> IrLowerer<'a> {
         struct_def.traits = traits;
         struct_def.generic_params = generic_params;
         struct_def.fields = fields;
-        struct_def.is_extern = false;
     }
 
     /// Lower enum with module prefix
@@ -835,7 +827,6 @@ impl<'a> IrLowerer<'a> {
         struct_def.traits = traits;
         struct_def.fields = fields;
         struct_def.generic_params = generic_params;
-        struct_def.is_extern = false;
     }
 
     fn lower_enum(&mut self, e: &EnumDef) {
@@ -911,6 +902,7 @@ impl<'a> IrLowerer<'a> {
                 name: p.name.name.clone(),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
+                convention: p.convention,
             })
             .collect();
 
@@ -948,6 +940,7 @@ impl<'a> IrLowerer<'a> {
                 name: p.name.name.clone(),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
+                convention: p.convention,
             })
             .collect();
 
@@ -980,6 +973,7 @@ impl<'a> IrLowerer<'a> {
                 name: p.name.name.clone(),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
+                convention: p.convention,
             })
             .collect();
 
@@ -992,27 +986,17 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_extern_type(&mut self, ext: &ExternTypeDef) {
-        let Some(id) = self.module.struct_id(&ext.name.name) else {
-            return;
-        };
-
-        let generic_params = self.lower_generic_params(&ext.generics);
-
-        // Update the struct in place
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from struct_id() guarantees valid index"
-        )]
-        let struct_def = &mut self.module.structs[id.0 as usize];
-        struct_def.generic_params = generic_params;
-        struct_def.is_extern = true;
-    }
-
     /// Extract the type name from an AST type (for return type context)
     fn type_name(ty: &ast::Type) -> String {
         match ty {
-            ast::Type::Primitive(prim) => format!("{prim:?}"),
+            ast::Type::Primitive(prim) => match prim {
+                ast::PrimitiveType::String => "String".to_string(),
+                ast::PrimitiveType::Number => "Number".to_string(),
+                ast::PrimitiveType::Boolean => "Boolean".to_string(),
+                ast::PrimitiveType::Path => "Path".to_string(),
+                ast::PrimitiveType::Regex => "Regex".to_string(),
+                ast::PrimitiveType::Never => "Never".to_string(),
+            },
             ast::Type::Optional(inner) => Self::type_name(inner),
             ast::Type::Array(_) => "Array".to_string(),
             ast::Type::Tuple(_) => "Tuple".to_string(),
@@ -1041,11 +1025,12 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_field_def(&mut self, f: &ast::FieldDef) -> IrField {
+        let optional = matches!(f.ty, ast::Type::Optional(_));
         IrField {
             name: f.name.name.clone(),
             ty: self.lower_type(&f.ty),
             mutable: f.mutable,
-            optional: false,
+            optional,
             default: None,
         }
     }
@@ -1125,7 +1110,10 @@ impl<'a> IrLowerer<'a> {
             },
 
             Type::Closure { params, ret } => ResolvedType::Closure {
-                param_tys: params.iter().map(|p| self.lower_type(p)).collect(),
+                param_tys: params
+                    .iter()
+                    .map(|(c, p)| (*c, self.lower_type(p)))
+                    .collect(),
                 return_ty: Box::new(self.lower_type(ret)),
             },
         }

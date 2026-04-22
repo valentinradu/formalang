@@ -3,7 +3,7 @@
 use super::IrLowerer;
 use crate::ast::{
     self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Expr, Literal,
-    PrimitiveType, UnaryOperator,
+    ParamConvention, PrimitiveType, UnaryOperator,
 };
 use crate::ir::{
     EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType,
@@ -54,7 +54,14 @@ impl IrLowerer<'_> {
                 scrutinee, arms, ..
             } => self.lower_match_expr(scrutinee, arms),
             Expr::Group { expr, .. } => self.lower_expr(expr),
-            Expr::LetExpr { body, .. } => self.lower_expr(body),
+            Expr::LetExpr {
+                mutable,
+                pattern,
+                ty,
+                value,
+                body,
+                ..
+            } => self.lower_let_expr(*mutable, pattern, ty.as_ref(), value, body),
             Expr::DictLiteral { entries, .. } => self.lower_dict_literal(entries),
             Expr::DictAccess { dict, key, .. } => self.lower_dict_access(dict, key),
             Expr::ClosureExpr { params, body, .. } => self.lower_closure(params, body),
@@ -72,7 +79,7 @@ impl IrLowerer<'_> {
                 method,
                 args,
                 ..
-            } => self.lower_method_call(receiver, &method.name, args),
+            } => self.lower_method_call(receiver, &method.name, args.as_slice()),
             Expr::Block {
                 statements, result, ..
             } => self.lower_block_expr(statements, result),
@@ -464,11 +471,21 @@ impl IrLowerer<'_> {
         }
     }
 
-    fn lower_method_call(&mut self, receiver: &Expr, method_name: &str, args: &[Expr]) -> IrExpr {
+    fn lower_method_call(
+        &mut self,
+        receiver: &Expr,
+        method_name: &str,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> IrExpr {
         let receiver_ir = self.lower_expr(receiver);
         let lowered_args: Vec<(Option<String>, IrExpr)> = args
             .iter()
-            .map(|expr| (None, self.lower_expr(expr)))
+            .map(|(label, expr)| {
+                (
+                    label.as_ref().map(|l| l.name.clone()),
+                    self.lower_expr(expr),
+                )
+            })
             .collect();
         let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name);
         IrExpr::MethodCall {
@@ -479,10 +496,43 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// Lower a `let pat = val in body` expression into a block with the binding as a statement.
+    fn lower_let_expr(
+        &mut self,
+        mutable: bool,
+        pattern: &BindingPattern,
+        ty: Option<&ast::Type>,
+        value: &Expr,
+        body: &Expr,
+    ) -> IrExpr {
+        let ir_value = self.lower_expr(value);
+        let ir_ty = ty.map(|t| self.lower_type(t));
+
+        let name = match pattern {
+            BindingPattern::Simple(ident) => ident.name.clone(),
+            BindingPattern::Tuple { .. }
+            | BindingPattern::Struct { .. }
+            | BindingPattern::Array { .. } => "_let".to_string(),
+        };
+        let stmt = IrBlockStatement::Let {
+            name,
+            mutable,
+            ty: ir_ty,
+            value: ir_value,
+        };
+        let ir_body = self.lower_expr(body);
+        let ty = ir_body.ty().clone();
+        IrExpr::Block {
+            statements: vec![stmt],
+            result: Box::new(ir_body),
+            ty,
+        }
+    }
+
     fn lower_block_expr(&mut self, statements: &[BlockStatement], result: &Expr) -> IrExpr {
         let ir_statements: Vec<IrBlockStatement> = statements
             .iter()
-            .map(|stmt| self.lower_block_statement(stmt))
+            .flat_map(|stmt| self.lower_block_statement(stmt))
             .collect();
         let ir_result = self.lower_expr(result);
         let ty = ir_result.ty().clone();
@@ -496,8 +546,8 @@ impl IrLowerer<'_> {
         }
     }
 
-    /// Lower an AST block statement to an IR block statement.
-    pub(super) fn lower_block_statement(&mut self, stmt: &BlockStatement) -> IrBlockStatement {
+    /// Lower an AST block statement to one or more IR block statements.
+    pub(super) fn lower_block_statement(&mut self, stmt: &BlockStatement) -> Vec<IrBlockStatement> {
         match stmt {
             BlockStatement::Let {
                 mutable,
@@ -506,65 +556,172 @@ impl IrLowerer<'_> {
                 value,
                 ..
             } => {
-                // Handle binding patterns
-                let name = match pattern {
-                    BindingPattern::Simple(ident) => ident.name.clone(),
-                    BindingPattern::Tuple { elements, .. } => {
-                        // For tuple destructuring, extract first simple name or use placeholder
-                        elements
-                            .iter()
-                            .find_map(|p| match p {
-                                BindingPattern::Simple(ident) => Some(ident.name.clone()),
-                                BindingPattern::Array { .. }
-                                | BindingPattern::Struct { .. }
-                                | BindingPattern::Tuple { .. } => None,
-                            })
-                            .unwrap_or_else(|| "_tuple".to_string())
+                let ir_value = self.lower_expr(value);
+                let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
+                match pattern {
+                    BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
+                        name: ident.name.clone(),
+                        mutable: *mutable,
+                        ty: ir_ty,
+                        value: ir_value,
+                    }],
+                    BindingPattern::Array { elements, .. } => {
+                        Self::lower_let_array_destructure(elements, *mutable, &ir_value)
                     }
                     BindingPattern::Struct { fields, .. } => {
-                        // For struct destructuring, use first field name or placeholder
-                        fields
-                            .first()
-                            .map_or_else(|| "_struct".to_string(), |f| f.name.name.clone())
+                        self.lower_let_struct_destructure(fields, *mutable, &ir_value)
                     }
-                    BindingPattern::Array { elements, .. } => {
-                        // For array destructuring, use first binding name or placeholder
-                        elements
-                            .iter()
-                            .find_map(|elem| match elem {
-                                crate::ast::ArrayPatternElement::Binding(
-                                    BindingPattern::Simple(ident),
-                                ) => Some(ident.name.clone()),
-                                crate::ast::ArrayPatternElement::Binding(_)
-                                | crate::ast::ArrayPatternElement::Rest(_)
-                                | crate::ast::ArrayPatternElement::Wildcard => None,
-                            })
-                            .unwrap_or_else(|| "_array".to_string())
+                    BindingPattern::Tuple { elements, .. } => {
+                        Self::lower_let_tuple_destructure(elements, *mutable, &ir_value)
                     }
-                };
-                let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
-                let ir_value = self.lower_expr(value);
-
-                IrBlockStatement::Let {
-                    name,
-                    mutable: *mutable,
-                    ty: ir_ty,
-                    value: ir_value,
                 }
             }
             BlockStatement::Assign { target, value, .. } => {
-                let ir_target = self.lower_expr(target);
-                let ir_value = self.lower_expr(value);
-
-                IrBlockStatement::Assign {
-                    target: ir_target,
-                    value: ir_value,
-                }
+                vec![IrBlockStatement::Assign {
+                    target: self.lower_expr(target),
+                    value: self.lower_expr(value),
+                }]
             }
             BlockStatement::Expr(expr) => {
-                let ir_expr = self.lower_expr(expr);
-                IrBlockStatement::Expr(ir_expr)
+                vec![IrBlockStatement::Expr(self.lower_expr(expr))]
             }
+        }
+    }
+
+    fn lower_let_array_destructure(
+        elements: &[crate::ast::ArrayPatternElement],
+        mutable: bool,
+        ir_value: &IrExpr,
+    ) -> Vec<IrBlockStatement> {
+        let elem_ty = match ir_value.ty() {
+            ResolvedType::Array(inner) => (**inner).clone(),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::EventMapping { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
+        };
+        elements
+            .iter()
+            .enumerate()
+            .filter_map(|(i, elem)| {
+                Self::extract_block_binding_name(elem).map(|name| {
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "array indices are small positions that fit in f64 mantissa"
+                    )]
+                    let key = IrExpr::Literal {
+                        value: Literal::Number(i as f64),
+                        ty: ResolvedType::Primitive(PrimitiveType::Number),
+                    };
+                    IrBlockStatement::Let {
+                        name,
+                        mutable,
+                        ty: Some(elem_ty.clone()),
+                        value: IrExpr::DictAccess {
+                            dict: Box::new(ir_value.clone()),
+                            key: Box::new(key),
+                            ty: elem_ty.clone(),
+                        },
+                    }
+                })
+            })
+            .collect()
+    }
+
+    fn lower_let_struct_destructure(
+        &self,
+        fields: &[crate::ast::StructPatternField],
+        mutable: bool,
+        ir_value: &IrExpr,
+    ) -> Vec<IrBlockStatement> {
+        fields
+            .iter()
+            .map(|field| {
+                let field_name = field.name.name.clone();
+                let binding_name = field
+                    .alias
+                    .as_ref()
+                    .map_or_else(|| field_name.clone(), |a| a.name.clone());
+                let field_ty = self.get_field_type_from_resolved(ir_value.ty(), &field_name);
+                IrBlockStatement::Let {
+                    name: binding_name,
+                    mutable,
+                    ty: Some(field_ty.clone()),
+                    value: IrExpr::FieldAccess {
+                        object: Box::new(ir_value.clone()),
+                        field: field_name,
+                        ty: field_ty,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    fn lower_let_tuple_destructure(
+        elements: &[crate::ast::BindingPattern],
+        mutable: bool,
+        ir_value: &IrExpr,
+    ) -> Vec<IrBlockStatement> {
+        let tuple_types = match ir_value.ty() {
+            ResolvedType::Tuple(fields) => fields.clone(),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::EventMapping { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => Vec::new(),
+        };
+        elements
+            .iter()
+            .enumerate()
+            .filter_map(|(i, elem)| {
+                IrLowerer::extract_simple_binding_name(elem).map(|name| {
+                    let (field_name, ty) = tuple_types.get(i).map_or_else(
+                        || {
+                            (
+                                i.to_string(),
+                                ResolvedType::TypeParam("Unknown".to_string()),
+                            )
+                        },
+                        |(n, t)| (n.clone(), t.clone()),
+                    );
+                    IrBlockStatement::Let {
+                        name,
+                        mutable,
+                        ty: Some(ty.clone()),
+                        value: IrExpr::FieldAccess {
+                            object: Box::new(ir_value.clone()),
+                            field: field_name,
+                            ty,
+                        },
+                    }
+                })
+            })
+            .collect()
+    }
+
+    fn extract_block_binding_name(elem: &crate::ast::ArrayPatternElement) -> Option<String> {
+        match elem {
+            crate::ast::ArrayPatternElement::Binding(p) => {
+                IrLowerer::extract_simple_binding_name(p)
+            }
+            crate::ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
+            crate::ast::ArrayPatternElement::Rest(None)
+            | crate::ast::ArrayPatternElement::Wildcard => None,
         }
     }
 
@@ -710,14 +867,14 @@ impl IrLowerer<'_> {
         }
 
         // General closure: lower params and body
-        let lowered_params: Vec<(String, ResolvedType)> = params
+        let lowered_params: Vec<(ParamConvention, String, ResolvedType)> = params
             .iter()
             .map(|p| {
                 let ty = p.ty.as_ref().map_or_else(
                     || ResolvedType::TypeParam("Unknown".to_string()),
                     |t| self.lower_type(t),
                 );
-                (p.name.name.clone(), ty)
+                (p.convention, p.name.name.clone(), ty)
             })
             .collect();
 
@@ -725,7 +882,10 @@ impl IrLowerer<'_> {
         let return_ty = body_ir.ty().clone();
 
         let ty = ResolvedType::Closure {
-            param_tys: lowered_params.iter().map(|(_, t)| t.clone()).collect(),
+            param_tys: lowered_params
+                .iter()
+                .map(|(c, _, t)| (*c, t.clone()))
+                .collect(),
             return_ty: Box::new(return_ty),
         };
 

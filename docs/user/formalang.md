@@ -70,9 +70,9 @@ Reserved words that cannot be used as identifiers:
 
 ```text
 trait    struct   enum     use      pub      impl     mod
-let      mut      match    for      in       if
+let      mut      sink     match    for      in       if
 else     true     false    nil      as       extern
-provides consumes
+fn       self
 ```
 
 ---
@@ -111,16 +111,12 @@ pub struct Collections {
   flags: [Boolean],            // Variable-length array of booleans
   matrix: [[Number]],          // Nested arrays
   users: [User],               // Array of custom types
-  coords: [Number, 3]          // Fixed-size array (3 numbers)
 }
 
 // Array literals
 pub let tags = ["urgent", "bug", "frontend"]
 pub let numbers = [1, 2, 3, 4, 5]
 pub let empty = []
-
-// Fixed-size arrays
-pub let rgb: [Number, 3] = [255, 128, 0]
 
 // Array destructuring
 pub let [first, second] = ["a", "b", "c"]     // Positional destructuring
@@ -217,11 +213,17 @@ pub struct Controls<E> {
   // No parameters - returns E
   onPress: () -> E,
 
-  // Single parameter
+  // Single parameter (default / let convention)
   onChange: String -> E,
 
   // Multiple parameters (comma-separated, no parens needed)
   onResize: Number, Number -> E,
+
+  // mut parameter — caller must pass a mutable binding
+  onScale: mut Number -> E,
+
+  // sink parameter — caller's binding is consumed (moved)
+  onSubmit: sink String -> E,
 
   // Optional closure (can be nil)
   onFocus: (String -> E)?,
@@ -233,17 +235,21 @@ pub struct Controls<E> {
 
 **Type syntax**:
 
-| Parameters | Syntax       | Example                   |
-| ---------- | ------------ | ------------------------- |
-| None       | `() -> T`    | `() -> Event`             |
-| One        | `T -> U`     | `String -> Event`         |
-| Multiple   | `T, U -> V`  | `Number, Number -> Point` |
+| Parameters           | Syntax              | Example                        |
+| -------------------- | ------------------- | ------------------------------ |
+| None                 | `() -> T`           | `() -> Event`                  |
+| One (default)        | `T -> U`            | `String -> Event`              |
+| One (mut)            | `mut T -> U`        | `mut Number -> Event`          |
+| One (sink)           | `sink T -> U`       | `sink String -> Event`         |
+| Multiple             | `T, U -> V`         | `Number, Number -> Point`      |
+| Mixed conventions    | `mut T, sink U -> V`| `mut Number, sink String -> V` |
 
 **Rules**:
 
 - Arrow `->` separates parameters from return type
 - Multiple parameters are comma-separated (no parentheses required)
 - Empty parameters require parentheses: `() -> T`
+- Convention keywords (`mut`, `sink`) precede the type in the type position
 - Parser uses `->` to determine grouping in ambiguous contexts
 
 ### Generic Types
@@ -494,42 +500,37 @@ pub let result1: Result<String, Number> = .ok(value: "success")
 
 ### Extern Declarations
 
-Extern declarations describe types and functions defined outside FormaLang
+Extern declarations describe functions and method stubs defined outside FormaLang
 (in the host runtime or a linked library). They have no FormaLang body.
 
-**Extern type** — an opaque type provided by the host:
-
-```formalang
-extern type Canvas
-extern type Connection
-```
+Types are always declared as normal structs. Use `extern impl` to attach host-provided
+methods to a struct, and `extern fn` for standalone host-provided functions.
 
 **Extern function** — a bodyless function provided by the host:
 
 ```formalang
-extern fn create_canvas() -> Canvas
+extern fn create_canvas(width: Number, height: Number) -> Canvas
 extern fn connect(url: String) -> Connection
 extern fn log(message: String)
 ```
 
-**Extern impl** — methods on an extern type provided by the host:
+**Extern impl** — host-provided methods on a struct:
 
 ```formalang
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 
 extern impl Canvas {
-  fn width(self) -> Number
-  fn height(self) -> Number
+  fn get_width(self) -> Number
+  fn get_height(self) -> Number
   fn clear(self)
 }
 ```
 
 **Rules**:
 
-- Extern types are opaque: no struct fields are visible inside FormaLang
+- Types are always normal structs — there is no `extern type`
 - Extern functions and extern impl methods have no body
-- You can read fields of extern types via dot access (host supplies the value)
-- Extern types can implement FormaLang traits via `impl Trait for ExternType`
+- A struct can have both a regular `impl` block and an `extern impl` block
 
 ### Function Definitions
 
@@ -553,6 +554,71 @@ fn log_value(value: Number) {
 pub fn identity<T>(value: T) -> T {
   value
 }
+```
+
+### Parameter Conventions
+
+FormaLang uses Mutable Value Semantics. Every parameter has a convention that
+controls how the callee may use the value:
+
+| Convention | Syntax            | Meaning                                          |
+| ---------- | ----------------- | ------------------------------------------------ |
+| (default)  | `x: T`            | Immutable. Callee reads only.                    |
+| `mut`      | `mut x: T`        | Exclusive mutable. Callee may mutate `x`.        |
+| `sink`     | `sink x: T`       | Ownership transfer. Caller gives up the value.   |
+
+```formalang
+// Default — immutable parameter
+fn read(x: Number) -> Number {
+  x
+}
+
+// mut — callee may mutate; argument must be let mut at call site
+fn bump(mut score: Number) -> Number {
+  score
+}
+
+// sink — callee owns the value; caller cannot use it after
+fn consume(sink label: String) -> String {
+  label
+}
+```
+
+The same conventions apply to `self` in impl methods:
+
+```formalang
+impl Counter {
+  fn value(self) -> Number { self.count }       // immutable self
+  fn increment(mut self) -> Number { self.count } // mutable self
+  fn destroy(sink self) -> Number { self.count }  // consuming self
+}
+```
+
+Call sites are transparent — no extra syntax required:
+
+```formalang
+let mut n: Number = 0
+let result = bump(n)   // n is let mut, so it satisfies mut convention
+```
+
+Closure parameters carry the same conventions. The convention constrains the **caller of the closure**:
+
+```formalang
+// Closure type with mut parameter — callers must pass a mutable binding
+let scale: mut Number -> Number = mut n -> n
+
+let mut x: Number = 10
+let _r: Number = scale(x)   // ok: x is mutable
+
+let y: Number = 5
+let _s: Number = scale(y)   // error: MutabilityMismatch — y is immutable
+
+// Closure type with sink parameter — callers give up the binding
+let consume: sink String -> String = sink s -> s
+
+let label: String = "hello"
+let _a: String = consume(label)  // ok: label is moved
+let _b: String = label           // error: UseAfterSink — label was consumed
 ```
 
 ---
@@ -618,7 +684,9 @@ pub enum Event {
 pub struct Form<E> {
   onChange: String -> E,
   onResize: Number, Number -> E,
-  onSubmit: () -> E
+  onSubmit: () -> E,
+  onScale: mut Number -> E,
+  onConsume: sink String -> E
 }
 
 impl Form {
@@ -629,18 +697,27 @@ impl Form {
   onResize: w, h -> .resized(width: w, height: h),
 
   // No parameters - empty parens required
-  onSubmit: () -> .submit
+  onSubmit: () -> .submit,
+
+  // mut convention — caller must pass a mutable binding
+  onScale: mut n -> .resized(width: n, height: n),
+
+  // sink convention — caller's binding is consumed
+  onConsume: sink s -> .textChanged(value: s)
 }
 ```
 
 **Expression syntax**:
 
-| Parameters | Syntax         | Example                        |
-| ---------- | -------------- | ------------------------------ |
-| None       | `() -> expr`   | `() -> .submit`                |
-| One        | `x -> expr`    | `x -> .changed(value: x)`      |
-| Multiple   | `x, y -> expr` | `x, y -> .point(x: x, y: y)`   |
-| With types | `x: T -> expr` | `x: String -> .text(x: x)`     |
+| Parameters          | Syntax              | Example                          |
+| ------------------- | ------------------- | -------------------------------- |
+| None                | `() -> expr`        | `() -> .submit`                  |
+| One (default)       | `x -> expr`         | `x -> .changed(value: x)`        |
+| One (mut)           | `mut x -> expr`     | `mut n -> .resized(width: n, height: n)` |
+| One (sink)          | `sink x -> expr`    | `sink s -> .text(value: s)`      |
+| Multiple            | `x, y -> expr`      | `x, y -> .point(x: x, y: y)`    |
+| With types          | `x: T -> expr`      | `x: String -> .text(x: x)`      |
+| Pipe syntax         | `\|x, y\| expr`     | `\|x, y\| x + y`                |
 
 **Rules**:
 
@@ -648,7 +725,9 @@ impl Form {
 - Single parameter does not need parentheses
 - Multiple parameters are comma-separated
 - Empty parameters require parentheses: `() -> expr`
+- Convention keywords (`mut`, `sink`) precede the parameter name
 - Type annotations optional when inferable
+- Convention on a closure param means the **caller of the closure** must satisfy it
 
 ### Instantiation
 
@@ -1053,44 +1132,6 @@ pub trait Container<T: Layout> {
 
 ---
 
-## Context System
-
-FormaLang uses the `provides` / `consumes` context system:
-
-```formalang
-struct Theme {
-  primary: String,
-  secondary: String
-}
-
-struct User {
-  name: String,
-  email: String
-}
-
-let dark_theme = Theme(primary: "#007AFF", secondary: "#5856D6")
-let alice = User(name: "Alice", email: "alice@example.com")
-
-// Provides expression (with alias)
-let themed_text = provides dark_theme as theme {
-  apply(color: theme.primary)
-}
-
-// Multiple provides
-let multi_context = provides dark_theme as theme, alice as user {
-  format(name: user.email, color: theme.secondary)
-}
-
-// Consumes expression
-let consumed = provides dark_theme as theme {
-  consumes theme {
-    apply(color: theme.secondary)
-  }
-}
-```
-
----
-
 ## Module System
 
 ### Use Statements
@@ -1225,7 +1266,7 @@ does not break existing consumers at the API boundary.
 **Type System**:
 
 - Primitive types (`String`, `Number`, `Boolean`, `Path`, `Regex`, `Never`)
-- Array types (`[Type]`, `[Type, N]` for fixed-size)
+- Array types (`[Type]`)
 - Dictionary types (`[KeyType: ValueType]`)
 - Optional types (`Type?`)
 - Generic types (`Type<T>`, `Type<T: Constraint>`)
@@ -1239,7 +1280,6 @@ does not break existing consumers at the API boundary.
 - Trait definitions (field requirements and method signatures)
 - `impl Trait for Type` conformance blocks
 - Enum definitions (with associated data, generics)
-- `extern type` declarations
 - `extern fn` declarations
 - `extern impl` blocks
 - Function definitions with optional overloading
@@ -1261,10 +1301,6 @@ does not break existing consumers at the API boundary.
 - For expressions (array iteration)
 - If expressions (with boolean and optional unwrapping)
 - Match expressions (exhaustive pattern matching)
-
-**Context System**:
-
-- Context system (`provides` / `consumes`)
 
 **Generics**:
 

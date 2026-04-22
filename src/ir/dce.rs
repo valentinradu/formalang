@@ -51,6 +51,13 @@ impl<'a> DeadCodeEliminator<'a> {
             }
         }
 
+        // Mark structs used in standalone function bodies
+        for func in &self.module.functions {
+            if let Some(body) = &func.body {
+                self.mark_used_in_expr(body);
+            }
+        }
+
         // Mark structs used in let bindings
         for let_binding in &self.module.lets {
             self.mark_used_in_expr(&let_binding.value);
@@ -419,6 +426,11 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
         }
     }
 
+    // Process standalone functions
+    for func in &mut result.functions {
+        func.body = func.body.take().map(eliminate_dead_code_expr);
+    }
+
     // Process let bindings
     for let_binding in &mut result.lets {
         let_binding.value = eliminate_dead_code_expr(let_binding.value.clone());
@@ -464,11 +476,15 @@ pub struct DeadCodeEliminationPass {
 }
 
 impl DeadCodeEliminationPass {
-    /// Create a pass with `remove_unused_structs` enabled.
+    /// Create a new dead-code elimination pass.
+    ///
+    /// `remove_unused_structs` defaults to `false` because removing structs
+    /// requires remapping all `StructId` references across the entire module.
+    /// Use `DeadCodeEliminator` directly to identify unused structs.
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            remove_unused_structs: true,
+            remove_unused_structs: false,
         }
     }
 }

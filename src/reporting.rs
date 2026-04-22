@@ -351,56 +351,674 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                     .with_color(Color::Red),
             ),
 
-        // Add more specific error formatting as needed
-        // For errors without specific formatting, use a generic format
-        CompilerError::InvalidCharacter { .. }
-        | CompilerError::UnterminatedString { .. }
-        | CompilerError::InvalidNumber { .. }
-        | CompilerError::MixedIndentation { .. }
-        | CompilerError::UnexpectedToken { .. }
-        | CompilerError::ExpectedComponentOrProperty { .. }
-        | CompilerError::InvalidIndentation { .. }
-        | CompilerError::UnexpectedEof { .. }
-        | CompilerError::UndefinedReference { .. }
-        | CompilerError::UnknownProperty { .. }
-        | CompilerError::MissingRequiredProperty { .. }
-        | CompilerError::InvalidPropertyValue { .. }
-        | CompilerError::InvalidComponentPosition { .. }
-        | CompilerError::UndefinedComponent { .. }
-        | CompilerError::ModuleReadError { .. }
-        | CompilerError::PrimitiveRedefinition { .. }
-        | CompilerError::UndefinedTrait { .. }
-        | CompilerError::MissingField { .. }
-        | CompilerError::UnknownField { .. }
-        | CompilerError::AssignmentToImmutable { .. }
-        | CompilerError::PositionalArgInStruct { .. }
-        | CompilerError::EnumVariantWithoutData { .. }
-        | CompilerError::EnumVariantRequiresData { .. }
-        | CompilerError::MutabilityMismatch { .. }
-        | CompilerError::GenericArityMismatch { .. }
-        | CompilerError::GenericConstraintViolation { .. }
-        | CompilerError::OutOfScopeTypeParameter { .. }
-        | CompilerError::MissingGenericArguments { .. }
-        | CompilerError::DuplicateGenericParam { .. }
-        | CompilerError::ExternFnWithBody { .. }
-        | CompilerError::RegularFnWithoutBody { .. }
-        | CompilerError::ExternImplWithBody { .. }
-        | CompilerError::MissingTraitMethod { .. }
-        | CompilerError::TraitMethodSignatureMismatch { .. }
-        | CompilerError::AmbiguousCall { .. }
-        | CompilerError::NoMatchingOverload { .. }
-        | CompilerError::CannotInferEnumType { .. }
-        | CompilerError::FunctionReturnTypeMismatch { .. }
-        | CompilerError::ExpressionDepthExceeded { .. }
-        | CompilerError::TooManyDefinitions { .. } => {
+        // Lexer errors
+        CompilerError::InvalidCharacter { character, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E999")
-                .with_message(error.to_string())
+                .with_code("E030")
+                .with_message(format!("Invalid character '{character}'"))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(error.to_string())
+                        .with_message(format!(
+                            "'{}' is not a valid character here",
+                            character.fg(Color::Red)
+                        ))
                         .with_color(Color::Red),
                 )
+        }
+
+        CompilerError::UnterminatedString { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E031")
+                .with_message("Unterminated string literal")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("string literal is never closed")
+                        .with_color(Color::Red),
+                )
+                .with_help("Add a closing '\"' to end the string")
+        }
+
+        CompilerError::InvalidNumber { value, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E032")
+                .with_message(format!("Invalid number '{value}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is not a valid number literal",
+                            value.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::MixedIndentation { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E033")
+                .with_message("Mixed tabs and spaces in indentation")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("indentation mixes tabs and spaces")
+                        .with_color(Color::Red),
+                )
+                .with_help("Use only spaces or only tabs consistently")
+        }
+
+        // Parser errors
+        CompilerError::UnexpectedToken {
+            expected, found, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E040")
+            .with_message(format!("Unexpected token '{found}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "expected {}, found {}",
+                        expected.fg(Color::Green),
+                        found.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::ExpectedComponentOrProperty { found, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E041")
+                .with_message(format!("Expected component or property, found '{found}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "found '{}', expected a struct, enum, trait, or property definition",
+                            found.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::InvalidIndentation { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E042")
+                .with_message("Invalid indentation")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("indentation level is inconsistent")
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::UnexpectedEof { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E043")
+                .with_message("Unexpected end of file")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("file ended unexpectedly — is there an unclosed delimiter?")
+                        .with_color(Color::Red),
+                )
+        }
+
+        // Semantic — references and definitions
+        CompilerError::UndefinedReference { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E050")
+                .with_message(format!("Undefined reference '{name}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is not defined in this scope",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("Check that '{name}' is defined before it is used"))
+        }
+
+        CompilerError::UndefinedComponent { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E051")
+                .with_message(format!("Undefined component '{name}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is not a known struct or component",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::PrimitiveRedefinition { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E052")
+                .with_message(format!("Cannot redefine primitive type '{name}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is a built-in primitive and cannot be redefined",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::UndefinedTrait { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E053")
+                .with_message(format!("Undefined trait '{name}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!("'{}' is not a known trait", name.fg(Color::Red)))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("Check that '{name}' is defined or imported"))
+        }
+
+        CompilerError::ModuleReadError { path, error, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E054")
+                .with_message(format!("Failed to read module '{path}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "could not read '{}': {}",
+                            path.fg(Color::Red),
+                            error
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        // Struct/enum field errors
+        CompilerError::UnknownProperty {
+            component,
+            property,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E060")
+            .with_message(format!("Unknown property '{property}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' has no property '{}'",
+                        component,
+                        property.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::MissingRequiredProperty {
+            component,
+            property,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E061")
+            .with_message(format!("Missing required property '{property}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' is required by '{}'",
+                        property.fg(Color::Red),
+                        component
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Add '{property}: ...' to the instantiation")),
+
+        CompilerError::InvalidPropertyValue {
+            property, message, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E062")
+            .with_message(format!("Invalid value for property '{property}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(message.as_str())
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::InvalidComponentPosition {
+            component, message, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E063")
+            .with_message(format!("'{component}' cannot be used in this context"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(message.as_str())
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::MissingField {
+            field, type_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E064")
+            .with_message(format!("Missing field '{field}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' requires field '{}'",
+                        type_name,
+                        field.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Add '{field}: ...' to the expression")),
+
+        CompilerError::UnknownField {
+            field, type_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E065")
+            .with_message(format!("Unknown field '{field}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' has no field '{}'",
+                        type_name,
+                        field.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::AssignmentToImmutable { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E066")
+                .with_message("Cannot assign to immutable binding")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("this binding is not mutable")
+                        .with_color(Color::Red),
+                )
+                .with_help("Declare the binding with 'let mut' to allow assignment")
+        }
+
+        CompilerError::PositionalArgInStruct {
+            struct_name,
+            position,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E067")
+            .with_message("Positional argument in struct instantiation")
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "argument {} is positional, but '{}' requires named arguments",
+                        position,
+                        struct_name.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help("Use 'field: value' syntax for all arguments"),
+
+        CompilerError::EnumVariantWithoutData {
+            variant, enum_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E068")
+            .with_message(format!("Enum variant '{variant}' has no data"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}.{}' has no associated data — use '.{}' without parentheses",
+                        enum_name,
+                        variant.fg(Color::Red),
+                        variant
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::EnumVariantRequiresData {
+            variant, enum_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E069")
+            .with_message(format!("Enum variant '{variant}' requires data"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}.{}' must be instantiated with its associated fields",
+                        enum_name,
+                        variant.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Use {enum_name}.{variant}(field: value, ...)")),
+
+        // Mutability / Mutable Value Semantics
+        CompilerError::MutabilityMismatch { param, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E070")
+                .with_message(format!("Mutability mismatch for parameter '{param}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "parameter '{}' requires a mutable value",
+                            param.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "Declare the binding with 'let mut' so it can be passed to a 'mut' parameter",
+                )
+        }
+
+        CompilerError::UseAfterSink { name, .. } => Report::build(
+            ReportKind::Error,
+            filename,
+            span.start.offset,
+        )
+        .with_code("E071")
+        .with_message(format!("Use of moved value '{name}'"))
+        .with_label(
+            Label::new((filename, span.start.offset..span.end.offset))
+                .with_message(format!(
+                    "'{}' was moved into a 'sink' parameter and cannot be used again",
+                    name.fg(Color::Red)
+                ))
+                .with_color(Color::Red),
+        )
+        .with_help(
+            "Each 'sink' parameter consumes its argument — do not use the binding after the call",
+        ),
+
+        // Generic type errors
+        CompilerError::GenericArityMismatch {
+            name,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E080")
+            .with_message(format!("Wrong number of type arguments for '{name}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' expects {} type argument(s), found {}",
+                        name,
+                        expected.to_string().fg(Color::Green),
+                        actual.to_string().fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::GenericConstraintViolation {
+            arg, constraint, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E081")
+            .with_message(format!("Type argument '{arg}' does not satisfy constraint"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "'{}' does not implement required trait '{}'",
+                        arg.fg(Color::Red),
+                        constraint.fg(Color::Green)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        CompilerError::OutOfScopeTypeParameter { param, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E082")
+                .with_message(format!("Type parameter '{param}' is out of scope"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is not a type parameter in this context",
+                            param.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::MissingGenericArguments { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E083")
+                .with_message(format!("Missing type arguments for '{name}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is a generic type and requires type arguments",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("Provide type arguments: {name}<Type>"))
+        }
+
+        CompilerError::DuplicateGenericParam { param, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E084")
+                .with_message(format!("Duplicate generic parameter '{param}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "type parameter '{}' is already declared",
+                            param.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        // Extern errors
+        CompilerError::ExternFnWithBody { function, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E090")
+                .with_message(format!("Extern function '{function}' must not have a body"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is declared extern — remove the body",
+                            function.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::RegularFnWithoutBody { function, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E091")
+                .with_message(format!("Non-extern function '{function}' must have a body"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is not extern — add a body expression",
+                            function.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Add a body: fn name(params) -> ReturnType { expression }")
+        }
+
+        CompilerError::ExternImplWithBody { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E092")
+                .with_message(format!(
+                    "Extern impl block for '{name}' must not contain function bodies"
+                ))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "extern impl '{}' — remove all function bodies",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::NilAssignedToNonOptional { expected, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E095")
+                .with_message(format!(
+                    "Cannot assign nil to non-optional type '{expected}'"
+                ))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "nil cannot be assigned to '{}' — use '{}?' to allow nil",
+                            expected.fg(Color::Red),
+                            expected
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("Change the type annotation to '{expected}?'"))
+        }
+
+        CompilerError::OptionalUsedAsNonOptional {
+            actual, expected, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E096")
+            .with_message("Optional type used where non-optional is required")
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "found optional '{}', expected non-optional '{}'",
+                        actual.fg(Color::Red),
+                        expected.fg(Color::Green)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help("Unwrap the optional value before accessing its fields"),
+
+        // Trait implementation errors
+        CompilerError::MissingTraitMethod {
+            method, trait_name, ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E100")
+            .with_message(format!(
+                "Missing method '{method}' required by trait '{trait_name}'"
+            ))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' requires method '{}'",
+                        trait_name.fg(Color::Blue),
+                        method.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            )
+            .with_help(format!("Add 'fn {method}(...)' to the impl block")),
+
+        CompilerError::TraitMethodSignatureMismatch {
+            method,
+            trait_name,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E101")
+            .with_message(format!("Method '{method}' signature mismatch"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "trait '{}' expects {}, found {}",
+                        trait_name.fg(Color::Blue),
+                        expected.fg(Color::Green),
+                        actual.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        // Function errors
+        CompilerError::FunctionReturnTypeMismatch {
+            function,
+            expected,
+            actual,
+            ..
+        } => Report::build(ReportKind::Error, filename, span.start.offset)
+            .with_code("E110")
+            .with_message(format!("Return type mismatch in '{function}'"))
+            .with_label(
+                Label::new((filename, span.start.offset..span.end.offset))
+                    .with_message(format!(
+                        "function '{}' returns {} but body has type {}",
+                        function,
+                        expected.fg(Color::Green),
+                        actual.fg(Color::Red)
+                    ))
+                    .with_color(Color::Red),
+            ),
+
+        // Overload resolution errors
+        CompilerError::AmbiguousCall { function, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E120")
+                .with_message(format!("Ambiguous call to '{function}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "multiple overloads of '{}' match this call",
+                            function.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Add argument labels to disambiguate the overload")
+        }
+
+        CompilerError::NoMatchingOverload { function, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E121")
+                .with_message(format!("No matching overload for '{function}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "no overload of '{}' matches the given arguments",
+                            function.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Check the argument labels and types against the available overloads")
+        }
+
+        CompilerError::CannotInferEnumType { variant, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E122")
+                .with_message(format!("Cannot infer enum type for variant '.{variant}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'.{}' — which enum does this variant belong to?",
+                            variant.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Add a type annotation: let x: MyEnum = .variant")
+        }
+
+        // Limit errors
+        CompilerError::ExpressionDepthExceeded { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E130")
+                .with_message("Expression nesting too deep")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("expression exceeds the compiler recursion limit")
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "Simplify the expression by extracting sub-expressions into let bindings",
+                )
+        }
+
+        CompilerError::TooManyDefinitions { kind, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E131")
+                .with_message(format!("Too many {kind} definitions"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "module contains too many {kind} definitions (limit: u32::MAX)"
+                        ))
+                        .with_color(Color::Red),
+                )
+        }
+
+        CompilerError::VisibilityViolation { name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E097")
+                .with_message(format!("'{name}' is private"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' is private and cannot be accessed from outside its module",
+                            name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!("Make '{name}' public with the 'pub' keyword"))
         }
     }
 }

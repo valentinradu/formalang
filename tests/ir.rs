@@ -3993,9 +3993,9 @@ fn compile_with_stdlib(source: &str) -> Result<formalang::IrModule, Vec<formalan
 fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
-    // A struct that uses a method call on an extern type
+    // A struct that uses a method call on an extern-impl type
     let source = r"
-        extern type Vec3
+        struct Vec3 { x: Number, y: Number, z: Number }
         extern impl Vec3 {
             fn normalize(self) -> Vec3
         }
@@ -4057,7 +4057,7 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        extern type Canvas
+        struct Canvas { width: Number, height: Number }
         extern impl Canvas {
             fn size(self) -> Number
         }
@@ -4121,7 +4121,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        extern type Handle
+        struct Handle { raw: Number }
         extern impl Handle {
             fn normalize(self) -> Handle
         }

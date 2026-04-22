@@ -513,14 +513,20 @@ fn resolved_type_display_name_dictionary() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn resolved_type_display_name_closure() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
+    use formalang::ast::{ParamConvention, PrimitiveType};
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::Closure {
         param_tys: vec![
-            ResolvedType::Primitive(PrimitiveType::Number),
-            ResolvedType::Primitive(PrimitiveType::String),
+            (
+                ParamConvention::Let,
+                ResolvedType::Primitive(PrimitiveType::Number),
+            ),
+            (
+                ParamConvention::Let,
+                ResolvedType::Primitive(PrimitiveType::String),
+            ),
         ],
         return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
     };
@@ -2858,7 +2864,7 @@ fn visitor_walk_expr_visits_dict_access() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::{Literal, PrimitiveType};
+    use formalang::ast::{Literal, ParamConvention, PrimitiveType};
     use formalang::ir::{walk_expr, walk_expr_children, IrExpr, IrVisitor};
     use formalang::ResolvedType;
 
@@ -2875,13 +2881,13 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
     let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
 
     let expr = IrExpr::Closure {
-        params: vec![("x".to_string(), num_ty.clone())],
+        params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(42.0),
             ty: num_ty.clone(),
         }),
         ty: ResolvedType::Closure {
-            param_tys: vec![num_ty.clone()],
+            param_tys: vec![(ParamConvention::Let, num_ty.clone())],
             return_ty: Box::new(num_ty),
         },
     };
@@ -3224,8 +3230,10 @@ fn dce_default_pass_has_remove_unused_structs_enabled() -> Result<(), Box<dyn st
     use formalang::ir::DeadCodeEliminationPass;
 
     let pass = DeadCodeEliminationPass::default();
-    if !pass.remove_unused_structs {
-        return Err("default() should have remove_unused_structs = true".into());
+    // Struct removal requires full ID remapping which is not implemented,
+    // so the safe default is false to avoid producing malformed IR.
+    if pass.remove_unused_structs {
+        return Err("default() should have remove_unused_structs = false".into());
     }
     Ok(())
 }

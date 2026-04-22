@@ -63,9 +63,6 @@ pub(super) fn fill_definition_span(def: &mut Definition, source: &str) {
         Definition::Impl(i) => fill_impl_def_spans(i, source),
         Definition::Enum(e) => fill_enum_def_spans(e, source),
         Definition::Function(f) => fill_function_def_spans(f, source),
-        Definition::ExternType(_) => {
-            // ExternType has no sub-spans to fill
-        }
     }
 }
 
@@ -201,7 +198,7 @@ pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
             fill_type_span(value, source);
         }
         Type::Closure { params, ret } => {
-            for param in params {
+            for (_, param) in params {
                 fill_type_span(param, source);
             }
             fill_type_span(ret, source);
@@ -357,7 +354,10 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
         } => {
             fill_expr_span(receiver, source);
             fill_span(&mut method.span, source);
-            for arg_expr in args {
+            for (label, arg_expr) in args {
+                if let Some(label_ident) = label {
+                    fill_span(&mut label_ident.span, source);
+                }
                 fill_expr_span(arg_expr, source);
             }
             fill_span(span, source);

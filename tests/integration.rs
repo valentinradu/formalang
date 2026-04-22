@@ -2,7 +2,7 @@
 //!
 //! These tests exercise the full compile pipeline: Lexer -> Parser -> Semantic Analyzer
 
-use formalang::{compile, parse_only, CompilerError};
+use formalang::{compile, compile_to_ir, parse_only, CompilerError};
 
 // =============================================================================
 // Basic Definition Tests
@@ -966,5 +966,127 @@ fn test_inferred_enum_in_struct_instantiation_args() -> Result<(), Box<dyn std::
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    Ok(())
+}
+
+// =============================================================================
+// Complete program — exercises every language feature end-to-end
+// =============================================================================
+
+#[test]
+fn test_complete_program_compiles() -> Result<(), Box<dyn std::error::Error>> {
+    let source = include_str!("fixtures/complete.fv");
+    compile(source).map_err(|e| format!("complete.fv failed to compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let source = include_str!("fixtures/complete.fv");
+    let module =
+        compile_to_ir(source).map_err(|e| format!("complete.fv failed IR lowering: {e:?}"))?;
+
+    // Enums
+    let priority = module
+        .enums
+        .iter()
+        .find(|e| e.name == "Priority")
+        .ok_or("Priority enum missing from IR")?;
+    if priority.variants.len() != 3 {
+        return Err(format!(
+            "Priority should have 3 variants, got {}",
+            priority.variants.len()
+        )
+        .into());
+    }
+    let status = module
+        .enums
+        .iter()
+        .find(|e| e.name == "Status")
+        .ok_or("Status enum missing from IR")?;
+    if status.variants.len() != 2 {
+        return Err(format!(
+            "Status should have 2 variants, got {}",
+            status.variants.len()
+        )
+        .into());
+    }
+
+    // Traits
+    if !module.traits.iter().any(|t| t.name == "Labeled") {
+        return Err("Labeled trait missing from IR".into());
+    }
+    if !module.traits.iter().any(|t| t.name == "Tracked") {
+        return Err("Tracked trait missing from IR".into());
+    }
+
+    // Structs
+    let task = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Task")
+        .ok_or("Task struct missing from IR")?;
+    if task.fields.len() < 8 {
+        return Err(format!(
+            "Task should have at least 8 fields, got {}",
+            task.fields.len()
+        )
+        .into());
+    }
+    let notes = task
+        .fields
+        .iter()
+        .find(|f| f.name == "notes")
+        .ok_or("notes field missing")?;
+    if !notes.optional {
+        return Err("notes field should be optional".into());
+    }
+    let retry = task
+        .fields
+        .iter()
+        .find(|f| f.name == "retry_count")
+        .ok_or("retry_count missing")?;
+    if !retry.mutable {
+        return Err("retry_count should be mutable".into());
+    }
+
+    // Standalone functions
+    if !module.functions.iter().any(|f| f.name == "clamp") {
+        return Err("clamp function missing from IR".into());
+    }
+    if !module.functions.iter().any(|f| f.name == "score_label") {
+        return Err("score_label function missing from IR".into());
+    }
+
+    // Impl block
+    let task_struct_id = module
+        .structs
+        .iter()
+        .position(|s| s.name == "Task")
+        .ok_or("Task struct not found")? as u32;
+    let task_impl = module
+        .impls
+        .iter()
+        .find(
+            |i| matches!(i.target, formalang::ir::ImplTarget::Struct(id) if id.0 == task_struct_id),
+        )
+        .ok_or("Task impl block missing from IR")?;
+    for expected in ["is_done", "priority_score", "describe", "next_retry"] {
+        if !task_impl.functions.iter().any(|f| f.name == expected) {
+            return Err(format!("Task impl missing method '{expected}'").into());
+        }
+    }
+
+    // Module-level lets
+    for expected in ["max_retries", "task_count", "sample", "cfg", "final_score"] {
+        if !module.lets.iter().any(|l| l.name == expected) {
+            return Err(format!("let binding '{expected}' missing from IR").into());
+        }
+    }
+    let task_count = module.lets.iter().find(|l| l.name == "task_count").unwrap();
+    if !task_count.mutable {
+        return Err("task_count should be mutable".into());
+    }
+
     Ok(())
 }

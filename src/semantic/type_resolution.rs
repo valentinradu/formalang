@@ -111,7 +111,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     // Validate function parameter and return types
                                     self.validate_standalone_function(func_def.as_ref(), file);
                                 }
-                                Definition::ExternType(_) => {}
                             }
                         }
 
@@ -129,9 +128,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Function(func_def) => {
                         // Validate standalone function parameter and return types
                         self.validate_standalone_function(func_def.as_ref(), file);
-                    }
-                    Definition::ExternType(_) => {
-                        // Extern types are opaque — no inner types to validate
                     }
                 }
             }
@@ -176,7 +172,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         struct_def.span,
                         struct_def.generics.clone(),
                         fields,
-                        false,
                     );
                 }
                 Definition::Enum(enum_def) => {
@@ -194,10 +189,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         Vec::new(), // Enums don't support inline trait syntax yet
                     );
                 }
-                Definition::Impl(_)
-                | Definition::Module(_)
-                | Definition::Function(_)
-                | Definition::ExternType(_) => {}
+                Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}
             }
         }
         symbols
@@ -251,9 +243,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Definition::Function(func_def) => {
                     // Validate function parameter and return types
                     self.validate_standalone_function(func_def.as_ref(), file);
-                }
-                Definition::ExternType(_) => {
-                    // Extern types are opaque — no inner types to validate
                 }
             }
         }
@@ -351,7 +340,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_type(value);
             }
             Type::Closure { params, ret } => {
-                for param in params {
+                for (_, param) in params {
                     self.validate_type(param);
                 }
                 self.validate_type(ret);
@@ -521,7 +510,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Type::Closure { params, ret } => {
                 // Recursively add dependencies for parameter and return types
-                for param in params {
+                for (_, param) in params {
                     Self::add_type_dependencies(graph, from, param);
                 }
                 Self::add_type_dependencies(graph, from, ret);

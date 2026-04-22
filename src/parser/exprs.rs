@@ -5,8 +5,8 @@ use chumsky::pratt::{infix, left, postfix, prefix};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, Pattern,
-    UnaryOperator,
+    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention,
+    Pattern, UnaryOperator,
 };
 use crate::lexer::Token;
 
@@ -267,10 +267,19 @@ where
 
         // Closure expression: () -> expr, x -> expr, x, y -> expr, x: T -> expr
         // Also supports pipe syntax: |x, y| expr, |x: T, y: T| -> T { body }
-        // Closure parameter: identifier with optional type annotation
-        let closure_param = ident_parser()
+        // Closure parameter: [mut|sink]? identifier with optional type annotation
+        let closure_convention = choice((
+            just(Token::Mut).to(ParamConvention::Mut),
+            just(Token::Sink).to(ParamConvention::Sink),
+        ))
+        .or_not()
+        .map(|c| c.unwrap_or(ParamConvention::Let));
+
+        let closure_param = closure_convention
+            .then(ident_parser())
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
-            .map_with(|(name, ty), e| ClosureParam {
+            .map_with(|((convention, name), ty), e| ClosureParam {
+                convention,
                 name,
                 ty,
                 span: span_from_simple(e.span()),
@@ -588,7 +597,7 @@ where
                 |receiver, (method, args): (Ident, MethodCallArgs), e| Expr::MethodCall {
                     receiver: Box::new(receiver),
                     method,
-                    args: args.into_iter().map(|(_, v)| v).collect(),
+                    args,
                     span: span_from_simple(e.span()),
                 },
             ),

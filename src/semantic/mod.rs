@@ -20,8 +20,8 @@ mod type_resolution;
 mod validation;
 
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, Definition, File, Statement, Type, UseItems, UseStmt,
-    Visibility,
+    ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,
+    UseItems, UseStmt, Visibility,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -121,6 +121,10 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     closure_param_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context: (type, mutable)
     local_let_bindings: HashMap<String, (String, bool)>,
+    /// Bindings consumed by a `sink` parameter call — cannot be used after
+    consumed_bindings: HashSet<String>,
+    /// Conventions for closure-typed bindings: binding_name → param conventions in order
+    closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Recursion depth counter for `validate_expr` (to prevent stack overflow)
     validate_expr_depth: usize,
 }
@@ -149,6 +153,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
+            consumed_bindings: HashSet::new(),
+            closure_binding_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -168,6 +174,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
+            consumed_bindings: HashSet::new(),
+            closure_binding_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -535,6 +543,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             module_symbols,
             &imported_module_path,
             &path_segments,
+            module_errors,
         );
     }
 
@@ -545,34 +554,47 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         target_symbols: &mut SymbolTable,
         module_path: &std::path::Path,
         path_segments: &[String],
+        errors: &mut Vec<CompilerError>,
     ) {
+        let module_name = path_segments.join("::");
         match items {
             UseItems::Single(ident) => {
-                Self::reexport_symbol(
+                if let Err(e) = target_symbols.import_symbol(
                     &ident.name,
                     source_symbols,
-                    target_symbols,
                     module_path.to_path_buf(),
                     path_segments.to_vec(),
-                );
+                ) {
+                    errors.push(Self::reexport_error_to_compiler_error(
+                        e,
+                        &module_name,
+                        ident.span,
+                    ));
+                }
             }
             UseItems::Multiple(idents) => {
                 for ident in idents {
-                    Self::reexport_symbol(
+                    if let Err(e) = target_symbols.import_symbol(
                         &ident.name,
                         source_symbols,
-                        target_symbols,
                         module_path.to_path_buf(),
                         path_segments.to_vec(),
-                    );
+                    ) {
+                        errors.push(Self::reexport_error_to_compiler_error(
+                            e,
+                            &module_name,
+                            ident.span,
+                        ));
+                    }
                 }
             }
             UseItems::Glob => {
+                // Glob imports iterate over known public symbols; errors here indicate
+                // internal inconsistency, not user error — silently skip.
                 for name in source_symbols.all_public_symbols() {
-                    Self::reexport_symbol(
+                    let _ = target_symbols.import_symbol(
                         &name,
                         source_symbols,
-                        target_symbols,
                         module_path.to_path_buf(),
                         path_segments.to_vec(),
                     );
@@ -581,17 +603,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Re-export a symbol from one module into another module's symbol table
-    fn reexport_symbol(
-        name: &str,
-        source_symbols: &SymbolTable,
-        target_symbols: &mut SymbolTable,
-        module_path: PathBuf,
-        logical_path: Vec<String>,
-    ) {
-        // Import the symbol into the target symbol table with public visibility
-        // This makes it available for further re-export
-        let _ = target_symbols.import_symbol(name, source_symbols, module_path, logical_path);
+    fn reexport_error_to_compiler_error(
+        err: crate::semantic::symbol_table::ImportError,
+        module_name: &str,
+        span: crate::location::Span,
+    ) -> CompilerError {
+        match err {
+            crate::semantic::symbol_table::ImportError::PrivateItem { name, .. }
+            | crate::semantic::symbol_table::ImportError::ItemNotFound { name, .. } => {
+                CompilerError::ImportItemNotFound {
+                    item: name,
+                    module: module_name.to_string(),
+                    available: String::new(),
+                    span,
+                }
+            }
+        }
     }
 
     /// Helper to collect a definition into a symbol table (static version for module parsing)
@@ -619,33 +646,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Function(func_def) => {
                 Self::collect_function_into(symbols, errors, func_def);
             }
-            Definition::ExternType(extern_type_def) => {
-                Self::collect_extern_type_into(symbols, errors, extern_type_def);
-            }
-        }
-    }
-
-    fn collect_extern_type_into(
-        symbols: &mut SymbolTable,
-        errors: &mut Vec<CompilerError>,
-        extern_type_def: &crate::ast::ExternTypeDef,
-    ) {
-        if let Some((kind, _)) = symbols.define_struct(
-            extern_type_def.name.name.clone(),
-            extern_type_def.visibility,
-            extern_type_def.span,
-            extern_type_def.generics.clone(),
-            vec![],
-            true,
-        ) {
-            errors.push(CompilerError::DuplicateDefinition {
-                name: format!(
-                    "{} (already defined as {})",
-                    extern_type_def.name.name,
-                    kind.as_str()
-                ),
-                span: extern_type_def.name.span,
-            });
         }
     }
 
@@ -703,7 +703,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
-            false,
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -822,6 +821,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .params
             .iter()
             .map(|p| ParamInfo {
+                convention: p.convention,
                 external_label: p.external_label.clone(),
                 name: p.name.clone(),
                 ty: p.ty.clone(),
@@ -834,6 +834,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
+            vec![],
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -971,7 +972,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::ExternType(extern_type_def) => &extern_type_def.generics,
                     Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
                 };
 
@@ -1063,13 +1063,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Enum(enum_def) => self.collect_definition_enum(enum_def),
             Definition::Module(module_def) => self.collect_definition_module(module_def),
             Definition::Function(func_def) => self.collect_definition_function(func_def),
-            Definition::ExternType(extern_type_def) => {
-                Self::collect_extern_type_into(
-                    &mut self.symbols,
-                    &mut self.errors,
-                    extern_type_def,
-                );
-            }
         }
     }
 
@@ -1119,7 +1112,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
-            false,
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1278,6 +1270,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .params
             .iter()
             .map(|p| ParamInfo {
+                convention: p.convention,
                 external_label: p.external_label.clone(),
                 name: p.name.clone(),
                 ty: p.ty.clone(),
@@ -1290,6 +1283,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
+            vec![],
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(

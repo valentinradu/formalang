@@ -283,8 +283,8 @@ impl<'a> ConstantFolder<'a> {
                     BinaryOperator::Le => Some(Literal::Boolean(l <= r)),
                     BinaryOperator::Gt => Some(Literal::Boolean(l > r)),
                     BinaryOperator::Ge => Some(Literal::Boolean(l >= r)),
-                    BinaryOperator::Eq => Some(Literal::Boolean((l - r).abs() < f64::EPSILON)),
-                    BinaryOperator::Ne => Some(Literal::Boolean((l - r).abs() >= f64::EPSILON)),
+                    BinaryOperator::Eq => Some(Literal::Boolean(l.to_bits() == r.to_bits())),
+                    BinaryOperator::Ne => Some(Literal::Boolean(l.to_bits() != r.to_bits())),
                     BinaryOperator::Div
                     | BinaryOperator::Mod
                     | BinaryOperator::And
@@ -391,6 +391,11 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
         for func in &mut impl_block.functions {
             func.body = func.body.take().map(|body| folder.fold_expr(body));
         }
+    }
+
+    // Fold constants in standalone functions
+    for func in &mut result.functions {
+        func.body = func.body.take().map(|body| folder.fold_expr(body));
     }
 
     // Fold constants in let bindings

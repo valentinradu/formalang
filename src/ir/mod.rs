@@ -48,7 +48,7 @@ pub use visitor::{
 
 use std::collections::HashMap;
 
-use crate::ast::{PrimitiveType, Visibility};
+use crate::ast::{ParamConvention, PrimitiveType, Visibility};
 use crate::error::CompilerError;
 use crate::location::Span;
 
@@ -283,8 +283,8 @@ pub enum ResolvedType {
     /// Unlike `EventMapping` which is restricted to enum variant returns,
     /// this represents arbitrary pure functions.
     Closure {
-        /// Parameter types
-        param_tys: Vec<Self>,
+        /// Parameter conventions and types
+        param_tys: Vec<(ParamConvention, Self)>,
         /// Return type
         return_ty: Box<Self>,
     },
@@ -642,7 +642,10 @@ impl ResolvedType {
                 param_tys,
                 return_ty,
             } => {
-                let params_str: Vec<_> = param_tys.iter().map(|t| t.display_name(module)).collect();
+                let params_str: Vec<_> = param_tys
+                    .iter()
+                    .map(|(_, t)| t.display_name(module))
+                    .collect();
                 format!(
                     "({}) -> {}",
                     params_str.join(", "),

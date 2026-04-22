@@ -2,6 +2,7 @@ use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
 use crate::ast::{
     BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File, Statement, StructDef,
+    Type,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -17,6 +18,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             match statement {
                 Statement::Let(let_binding) => {
                     self.validate_expr(&let_binding.value, file);
+                    // Gap 1: nil can only be assigned to optional types
+                    if let Some(type_ann) = &let_binding.type_annotation {
+                        let declared = Self::type_to_string(type_ann);
+                        let inferred = self.infer_type(&let_binding.value, file);
+                        if inferred == "Nil" && !declared.ends_with('?') {
+                            self.errors.push(CompilerError::NilAssignedToNonOptional {
+                                expected: declared,
+                                span: let_binding.span,
+                            });
+                        }
+                    }
+                    // Register closure-typed module-level bindings for call-site enforcement
+                    if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
+                        let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                        for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                            self.closure_binding_conventions
+                                .insert(binding.name, conventions.clone());
+                        }
+                    }
                     // Validate destructuring pattern type compatibility
                     self.validate_destructuring_pattern(
                         &let_binding.pattern,
@@ -30,19 +50,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.validate_struct_expressions(struct_def, file);
                     }
                     Definition::Impl(impl_def) => {
-                        // Set current impl struct for field type resolution
                         self.current_impl_struct = Some(impl_def.name.name.clone());
-                        // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
-                        // Clear impl struct context and local bindings
+                        self.consumed_bindings.clear();
+                        for func in &impl_def.functions {
+                            self.validate_function_return_type(func, file);
+                        }
                         self.current_impl_struct = None;
                         self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
                     }
-                    Definition::Trait(_)
-                    | Definition::Enum(_)
-                    | Definition::Module(_)
-                    | Definition::Function(_)
-                    | Definition::ExternType(_) => {}
+                    Definition::Function(func_def) => {
+                        self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
+                        for param in &func_def.params {
+                            if let Some(ty) = &param.ty {
+                                self.validate_type(ty);
+                            }
+                            let ty_str = param.ty.as_ref().map_or_else(
+                                || "Unknown".to_string(),
+                                |ty| Self::type_to_string(ty),
+                            );
+                            let mutable = matches!(
+                                param.convention,
+                                crate::ast::ParamConvention::Mut
+                                    | crate::ast::ParamConvention::Sink
+                            );
+                            self.local_let_bindings
+                                .insert(param.name.name.clone(), (ty_str, mutable));
+                        }
+                        if let Some(body) = &func_def.body {
+                            self.validate_expr(body, file);
+                        }
+                        self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
+                    }
+                    Definition::Module(module_def) => {
+                        for nested_def in &module_def.definitions {
+                            if let Definition::Impl(impl_def) = nested_def {
+                                self.current_impl_struct = Some(impl_def.name.name.clone());
+                                self.local_let_bindings.clear();
+                                self.consumed_bindings.clear();
+                                for func in &impl_def.functions {
+                                    self.validate_function_return_type(func, file);
+                                }
+                                self.current_impl_struct = None;
+                                self.local_let_bindings.clear();
+                                self.consumed_bindings.clear();
+                            }
+                        }
+                    }
+                    Definition::Trait(_) | Definition::Enum(_) => {}
                 },
                 Statement::Use(_) => {}
             }
@@ -55,6 +113,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for field in &struct_def.fields {
             if let Some(default_expr) = &field.default {
                 self.validate_expr(default_expr, file);
+                // Check that the default expression type matches the declared field type
+                let inferred = self.infer_type(default_expr, file);
+                let declared = Self::type_to_string(&field.ty);
+                // nil is compatible with any optional type
+                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                // a value of type T is compatible with T? (implicit wrapping)
+                let inner_to_optional =
+                    declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+                // treat any type containing "Unknown" or "InferredEnum" as indeterminate
+                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
+                if !nil_to_optional
+                    && !inner_to_optional
+                    && !has_unknown
+                    && inferred != "Unknown"
+                    && declared != "Unknown"
+                    && !self.type_strings_compatible(&declared, &inferred)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: declared,
+                        found: inferred,
+                        span: field.span,
+                    });
+                }
             }
         }
     }
@@ -148,10 +229,35 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
+                // Each branch is a separate control-flow path. Snapshot consumed_bindings
+                // before each branch and take the union afterward so that a binding consumed
+                // in either branch is considered consumed in the join point (conservative but
+                // never unsound: it can only produce false-positive UseAfterSink, never miss one).
+                let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
+                let after_then = self.consumed_bindings.clone();
+                self.consumed_bindings = pre_if.clone();
                 if let Some(else_expr) = else_branch {
                     self.validate_expr(else_expr, file);
+                    // Check that both branch types are compatible
+                    let then_type = self.infer_type(then_branch, file);
+                    let else_type = self.infer_type(else_expr, file);
+                    // Skip when either type is unknown or contains unknown (e.g. [Unknown])
+                    if !then_type.contains("Unknown")
+                        && !else_type.contains("Unknown")
+                        && !self.type_strings_compatible(&then_type, &else_type)
+                    {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: then_type,
+                            found: else_type,
+                            span: *span,
+                        });
+                    }
                 }
+                let after_else = self.consumed_bindings.clone();
+                // Union: consumed if consumed in then OR else
+                self.consumed_bindings = after_then;
+                self.consumed_bindings.extend(after_else);
                 self.validate_if_condition(condition, *span, file);
             }
             Expr::MatchExpr {
@@ -160,8 +266,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(scrutinee, file);
+                let pre_match = self.consumed_bindings.clone();
+                let mut post_union = pre_match.clone();
+                let mut arm_types: Vec<String> = Vec::new();
                 for arm in arms {
-                    self.validate_expr(&arm.body, file);
+                    self.consumed_bindings = pre_match.clone();
+                    // Register arm pattern bindings into a temporary scope
+                    if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
+                        let scope: HashSet<String> =
+                            bindings.iter().map(|b| b.name.clone()).collect();
+                        self.closure_param_scopes.push(scope);
+                        self.validate_expr(&arm.body, file);
+                        self.closure_param_scopes.pop();
+                    } else {
+                        self.validate_expr(&arm.body, file);
+                    }
+                    let arm_type = self.infer_type(&arm.body, file);
+                    arm_types.push(arm_type);
+                    post_union.extend(self.consumed_bindings.iter().cloned());
+                }
+                self.consumed_bindings = post_union;
+                // Check that all arm types are compatible with the first arm's type
+                if let Some(first_type) = arm_types.first().cloned() {
+                    if !first_type.contains("Unknown") {
+                        for (arm, arm_type) in arms.iter().zip(arm_types.iter()).skip(1) {
+                            if !arm_type.contains("Unknown")
+                                && !self.type_strings_compatible(&first_type, arm_type)
+                            {
+                                self.errors.push(CompilerError::TypeMismatch {
+                                    expected: first_type.clone(),
+                                    found: arm_type.clone(),
+                                    span: arm.span,
+                                });
+                            }
+                        }
+                    }
                 }
                 self.validate_match(scrutinee, arms, *span, file);
             }
@@ -172,11 +311,62 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(value, file);
                 }
             }
-            Expr::DictAccess { dict, key, .. } => {
+            Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
+                // Gap 3: Validate key type against declared dict type
+                let dict_type = self.infer_type(dict, file);
+                if let Some(inner) = dict_type
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .filter(|s| s.contains(": "))
+                {
+                    if let Some(colon_pos) = inner.find(": ") {
+                        let expected_key_type = &inner[..colon_pos];
+                        let actual_key_type = self.infer_type(key, file);
+                        if actual_key_type != "Unknown" && actual_key_type != expected_key_type {
+                            self.errors.push(CompilerError::TypeMismatch {
+                                expected: expected_key_type.to_string(),
+                                found: actual_key_type,
+                                span: *span,
+                            });
+                        }
+                    }
+                }
             }
-            Expr::FieldAccess { object, .. } => self.validate_expr(object, file),
+            Expr::FieldAccess {
+                object,
+                field,
+                span,
+            } => {
+                self.validate_expr(object, file);
+                let obj_type = self.infer_type(object, file);
+                if obj_type != "Unknown" {
+                    // Gap 1: Field access on optional type requires unwrapping
+                    if obj_type.ends_with('?') {
+                        let base = obj_type.trim_end_matches('?');
+                        if base != "Unknown" && self.symbols.get_struct(base).is_some() {
+                            self.errors.push(CompilerError::OptionalUsedAsNonOptional {
+                                actual: obj_type.clone(),
+                                expected: base.to_string(),
+                                span: *span,
+                            });
+                        }
+                    } else {
+                        // Gap 5: Check field existence
+                        let base_type = obj_type.trim_end_matches('?');
+                        if let Some(struct_info) = self.symbols.get_struct(base_type) {
+                            if !struct_info.fields.iter().any(|f| f.name == field.name) {
+                                self.errors.push(CompilerError::UnknownField {
+                                    field: field.name.clone(),
+                                    type_name: base_type.to_string(),
+                                    span: field.span,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             Expr::ClosureExpr { params, body, .. } => {
                 self.validate_expr_closure(params, body, file);
             }
@@ -189,7 +379,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 args,
                 span,
             } => {
-                self.validate_expr_method_call(receiver, method, args, *span, file);
+                self.validate_expr_method_call(receiver, method, args.as_slice(), *span, file);
             }
             Expr::Block {
                 statements, result, ..
@@ -201,8 +391,76 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
     }
 
+    /// Check module visibility for a multi-segment path (mod::item).
+    /// Returns true if access is allowed, false if a VisibilityViolation was emitted.
+    fn check_module_visibility(&mut self, path: &[crate::ast::Ident], span: Span) -> bool {
+        if path.len() < 2 {
+            return true;
+        }
+        let module_name = &path[0].name;
+        if let Some(module_info) = self.symbols.modules.get(module_name.as_str()) {
+            // Look up the item in the module's symbol table
+            let item_name = &path[1].name;
+            let item_visibility = module_info
+                .symbols
+                .structs
+                .get(item_name.as_str())
+                .map(|s| s.visibility)
+                .or_else(|| {
+                    module_info
+                        .symbols
+                        .functions
+                        .get(item_name.as_str())
+                        .and_then(|overloads| overloads.first().map(|f| f.visibility))
+                })
+                .or_else(|| {
+                    module_info
+                        .symbols
+                        .enums
+                        .get(item_name.as_str())
+                        .map(|e| e.visibility)
+                })
+                .or_else(|| {
+                    module_info
+                        .symbols
+                        .traits
+                        .get(item_name.as_str())
+                        .map(|t| t.visibility)
+                })
+                .or_else(|| {
+                    module_info
+                        .symbols
+                        .lets
+                        .get(item_name.as_str())
+                        .map(|l| l.visibility)
+                });
+
+            if let Some(crate::ast::Visibility::Private) = item_visibility {
+                self.errors.push(CompilerError::VisibilityViolation {
+                    name: item_name.clone(),
+                    span,
+                });
+                return false;
+            }
+        }
+        true
+    }
+
     /// Validate a reference expression (path lookup)
     fn validate_expr_reference(&mut self, path: &[crate::ast::Ident], span: Span, _file: &File) {
+        if let Some(first) = path.first() {
+            if self.consumed_bindings.contains(&first.name) {
+                self.errors.push(CompilerError::UseAfterSink {
+                    name: first.name.clone(),
+                    span,
+                });
+                return;
+            }
+        }
+        // Check module visibility for qualified paths (mod::item)
+        if !self.check_module_visibility(path, span) {
+            return;
+        }
         if path.first().is_some_and(|p| p.name == "self") {
             if self.current_impl_struct.is_none() {
                 self.errors.push(CompilerError::UndefinedReference {
@@ -255,10 +513,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if self.symbols.is_struct(name)
                 || self.symbols.is_enum(name)
                 || self.symbols.is_trait(name)
+                || self.symbols.functions.contains_key(name.as_str())
             {
                 return;
             }
-            if let Some(ref struct_name) = self.current_impl_struct {
+            if let Some(ref struct_name) = self.current_impl_struct.clone() {
                 if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                     for field in &struct_info.fields {
                         if field.name == *name {
@@ -266,11 +525,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                 }
-                self.errors.push(CompilerError::UndefinedReference {
-                    name: name.clone(),
-                    span,
-                });
             }
+            self.errors.push(CompilerError::UndefinedReference {
+                name: name.clone(),
+                span,
+            });
         }
     }
 
@@ -294,6 +553,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         for type_arg in type_args {
             self.validate_type(type_arg);
+        }
+
+        // Check module visibility for qualified paths (mod::item)
+        if !self.check_module_visibility(path, span) {
+            return;
         }
 
         let is_struct = self.symbols.get_struct_qualified(&name).is_some();
@@ -345,6 +609,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         span,
                     });
                 }
+            } else {
+                // Validate each type arg satisfies its constraints
+                for (type_arg, generic_param) in type_args.iter().zip(expected_params.iter()) {
+                    for constraint in &generic_param.constraints {
+                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                            self.errors.push(CompilerError::GenericConstraintViolation {
+                                arg: Self::type_to_string(type_arg),
+                                constraint: trait_ref.name.clone(),
+                                span,
+                            });
+                        }
+                    }
+                }
             }
         } else if !type_args.is_empty() {
             self.errors.push(CompilerError::GenericArityMismatch {
@@ -369,13 +647,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
+        // Gap 4: Validate generic type arguments against function's generic parameters
         if !type_args.is_empty() {
-            self.errors.push(CompilerError::GenericArityMismatch {
-                name: name.to_string(),
-                expected: 0,
-                actual: type_args.len(),
-                span,
-            });
+            let simple_name_for_lookup = name.rsplit("::").next().unwrap_or(name);
+            let overloads_for_generics = {
+                let direct = self.symbols.get_function_overloads(name);
+                if direct.is_empty() {
+                    self.symbols.get_function_overloads(simple_name_for_lookup)
+                } else {
+                    direct
+                }
+            };
+            let func_generics = overloads_for_generics
+                .first()
+                .map(|f| f.generics.clone())
+                .unwrap_or_default();
+
+            if func_generics.is_empty() {
+                self.errors.push(CompilerError::GenericArityMismatch {
+                    name: name.to_string(),
+                    expected: 0,
+                    actual: type_args.len(),
+                    span,
+                });
+            } else if type_args.len() != func_generics.len() {
+                self.errors.push(CompilerError::GenericArityMismatch {
+                    name: name.to_string(),
+                    expected: func_generics.len(),
+                    actual: type_args.len(),
+                    span,
+                });
+            } else {
+                // Validate each type arg satisfies constraints
+                for (type_arg, generic_param) in type_args.iter().zip(func_generics.iter()) {
+                    for constraint in &generic_param.constraints {
+                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                            self.errors.push(CompilerError::GenericConstraintViolation {
+                                arg: Self::type_to_string(type_arg),
+                                constraint: trait_ref.name.clone(),
+                                span,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         let simple_name = name.rsplit("::").next().unwrap_or(name);
@@ -390,8 +706,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         match overloads.len() {
             0 => {
-                // Check qualified path before reporting undefined
-                if !self.resolve_qualified_function(name) {
+                // Check if this is a closure binding call — enforce closure param conventions
+                let closure_conventions =
+                    self.closure_binding_conventions.get(simple_name).cloned();
+                if let Some(conventions) = closure_conventions {
+                    self.validate_closure_call_conventions(&conventions, args, span, file);
+                } else if !self.resolve_qualified_function(name) {
                     self.errors.push(CompilerError::UndefinedType {
                         name: format!("function '{name}'"),
                         span,
@@ -399,7 +719,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             1 => {
-                // Single overload — always valid
+                // Single overload — check mut param mutability
+                if let Some(info) = overloads.first() {
+                    let params = info.params.clone();
+                    self.validate_mut_param_args(&params, args, span, file);
+                }
             }
             _ => {
                 // Multiple overloads: resolve by argument labels or first-arg type
@@ -421,13 +745,61 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                     }
                     1 => {
-                        // Resolved to a unique overload — valid
+                        // Resolved to a unique overload — check mut param mutability
+                        if let Some(info) = matching.first() {
+                            let params = info.params.clone();
+                            self.validate_mut_param_args(&params, args, span, file);
+                        }
                     }
                     _ => {
                         self.errors.push(CompilerError::AmbiguousCall {
                             function: name.rsplit("::").next().unwrap_or(name).to_string(),
                             span,
                         });
+                    }
+                }
+            }
+        }
+    }
+
+    /// For each `mut`-convention parameter, verify the corresponding call argument is mutable.
+    fn validate_mut_param_args(
+        &mut self,
+        params: &[crate::semantic::symbol_table::ParamInfo],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
+            let param = label_opt.as_ref().map_or_else(
+                || non_self.get(i).copied(),
+                |label| {
+                    non_self
+                        .iter()
+                        .find(|p| {
+                            p.external_label
+                                .as_ref()
+                                .is_some_and(|l| l.name == label.name)
+                                || p.name.name == label.name
+                        })
+                        .map(|v| &**v)
+                },
+            );
+            if let Some(param) = param {
+                if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
+                {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: param.name.name.clone(),
+                        span,
+                    });
+                }
+                if param.convention == ParamConvention::Sink {
+                    if let crate::ast::Expr::Reference { path, .. } = arg_expr {
+                        if let Some(first) = path.first() {
+                            self.consumed_bindings.insert(first.name.clone());
+                        }
                     }
                 }
             }
@@ -468,7 +840,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let param_label_set: Vec<&str> = param_labels.iter().map(String::as_str).collect();
             call_label_set == param_label_set
         } else if none_labeled && !args.is_empty() {
-            // Mode B: match by first-argument type
+            // Mode B: arity check first, then match by first-argument type
+            let non_self_count = params.iter().filter(|p| p.name.name != "self").count();
+            if args.len() != non_self_count {
+                return false;
+            }
+
             let first_arg_type = args.first().map_or_else(
                 || "Unknown".to_string(),
                 |(_, expr)| self.infer_type(expr, file),
@@ -555,9 +932,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann);
         }
         self.validate_expr(value, file);
+        // Gap 1: nil can only be assigned to optional types
+        if let Some(type_ann) = ty {
+            let declared = Self::type_to_string(type_ann);
+            let inferred = self.infer_type(value, file);
+            if inferred == "Nil" && !declared.ends_with('?') {
+                self.errors.push(CompilerError::NilAssignedToNonOptional {
+                    expected: declared,
+                    span: *span,
+                });
+            }
+        }
         self.validate_destructuring_pattern(pattern, value, *span, file);
         for binding in collect_bindings_from_pattern(pattern) {
             let inferred_ty = self.infer_type(value, file);
+            // If annotated as a closure type, record param conventions for call-site enforcement
+            if let Some(Type::Closure { params, .. }) = ty {
+                let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(binding.name.clone(), conventions);
+            }
             self.local_let_bindings
                 .insert(binding.name, (inferred_ty, *mutable));
         }
@@ -569,20 +963,160 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &mut self,
         receiver: &Expr,
         method: &crate::ast::Ident,
-        args: &[Expr],
+        args: &[(Option<crate::ast::Ident>, Expr)],
         span: Span,
         file: &File,
     ) {
         self.validate_expr(receiver, file);
-        for arg in args {
+        for (_, arg) in args {
             self.validate_expr(arg, file);
         }
         let receiver_type = self.infer_type(receiver, file);
-        if !self.method_exists_on_type(&receiver_type, &method.name, file) {
+        if let Some(fn_def) = self.find_method_fn_def(&receiver_type, &method.name, file) {
+            let params = fn_def.params.clone();
+            self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
+            self.validate_fn_param_conventions_args(&params, args, span, file);
+        } else if !self.method_exists_on_type(&receiver_type, &method.name, file) {
             self.errors.push(CompilerError::UndefinedReference {
                 name: format!("method '{}' on type '{}'", method.name, receiver_type),
                 span,
             });
+        }
+    }
+
+    /// Find the `FnDef` for `method_name` on the given type by scanning the file's impl blocks.
+    fn find_method_fn_def<'f>(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        file: &'f File,
+    ) -> Option<&'f crate::ast::FnDef> {
+        if type_name == "Unknown" || type_name.contains("Unknown") {
+            return None;
+        }
+        for stmt in &file.statements {
+            if let crate::ast::Statement::Definition(def) = stmt {
+                if let crate::ast::Definition::Impl(impl_def) = &**def {
+                    if impl_def.name.name == type_name {
+                        for func in &impl_def.functions {
+                            if func.name.name == method_name {
+                                return Some(func);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check `mut self` / `sink self` convention against the receiver expression.
+    fn validate_fn_param_conventions_receiver(
+        &mut self,
+        receiver: &Expr,
+        params: &[crate::ast::FnParam],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let Some(self_param) = params.iter().find(|p| p.name.name == "self") else {
+            return;
+        };
+        match self_param.convention {
+            ParamConvention::Mut => {
+                if !self.is_expr_mutable(receiver, file) {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: "self".to_string(),
+                        span,
+                    });
+                }
+            }
+            ParamConvention::Sink => {
+                if let Expr::Reference { path, .. } = receiver {
+                    if let Some(first) = path.first() {
+                        self.consumed_bindings.insert(first.name.clone());
+                    }
+                }
+            }
+            ParamConvention::Let => {}
+        }
+    }
+
+    /// Check `mut` / `sink` conventions on non-self parameters using AST `FnParam` directly.
+    fn validate_fn_param_conventions_args(
+        &mut self,
+        params: &[crate::ast::FnParam],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
+            let param = label_opt.as_ref().map_or_else(
+                || non_self.get(i).copied(),
+                |label| {
+                    non_self
+                        .iter()
+                        .find(|p| {
+                            p.external_label
+                                .as_ref()
+                                .is_some_and(|l| l.name == label.name)
+                                || p.name.name == label.name
+                        })
+                        .copied()
+                },
+            );
+            if let Some(param) = param {
+                if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
+                {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: param.name.name.clone(),
+                        span,
+                    });
+                }
+                if param.convention == ParamConvention::Sink {
+                    if let Expr::Reference { path, .. } = arg_expr {
+                        if let Some(first) = path.first() {
+                            self.consumed_bindings.insert(first.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Enforce closure param conventions at a call site where the callee is a closure binding.
+    fn validate_closure_call_conventions(
+        &mut self,
+        conventions: &[crate::ast::ParamConvention],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        for (i, (_, arg_expr)) in args.iter().enumerate() {
+            let Some(&convention) = conventions.get(i) else {
+                break;
+            };
+            match convention {
+                ParamConvention::Mut => {
+                    if !self.is_expr_mutable(arg_expr, file) {
+                        self.errors.push(CompilerError::MutabilityMismatch {
+                            param: format!("arg{i}"),
+                            span,
+                        });
+                    }
+                }
+                ParamConvention::Sink => {
+                    if let Expr::Reference { path, .. } = arg_expr {
+                        if let Some(first) = path.first() {
+                            self.consumed_bindings.insert(first.name.clone());
+                        }
+                    }
+                }
+                ParamConvention::Let => {}
+            }
         }
     }
 
@@ -602,6 +1136,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .as_ref()
                         .map_or_else(|| self.infer_type(value, file), |t| Self::type_to_string(t));
                     for binding in collect_bindings_from_pattern(pattern) {
+                        if let Some(Type::Closure { params, .. }) = ty {
+                            let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                            self.closure_binding_conventions
+                                .insert(binding.name.clone(), conventions);
+                        }
                         self.local_let_bindings
                             .insert(binding.name, (ty_str.clone(), *mutable));
                     }
@@ -616,6 +1155,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     if !self.is_expr_mutable(target, file) {
                         self.errors
                             .push(CompilerError::AssignmentToImmutable { span: *span });
+                    }
+                    // Check that value type is compatible with target's declared type
+                    let value_type = self.infer_type(value, file);
+                    let target_type = self.infer_type(target, file);
+                    if !value_type.contains("Unknown")
+                        && !target_type.contains("Unknown")
+                        && !self.type_strings_compatible(&target_type, &value_type)
+                    {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: target_type,
+                            found: value_type,
+                            span: *span,
+                        });
                     }
                 }
                 BlockStatement::Expr(expr) => {
@@ -761,6 +1313,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let left_type = self.infer_type(left, file);
         let right_type = self.infer_type(right, file);
 
+        // Skip validation when either operand type is unknown (field access, method calls, etc.)
+        if left_type == "Unknown" || right_type == "Unknown" {
+            return;
+        }
+
         // Check type compatibility based on operator
         let valid = match op {
             // Add: Number + Number or String + String (concatenation) or GPU numeric types
@@ -838,12 +1395,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Validate for loop collection is an array
+    /// Validate for loop collection is an array or range
     pub(super) fn validate_for_loop(&mut self, collection: &Expr, span: Span, file: &File) {
         let collection_type = self.infer_type(collection, file);
 
-        // Check if it's an array type (starts with '[')
-        if !collection_type.starts_with('[') {
+        let is_iterable = collection_type.starts_with('[')
+            || collection_type.starts_with("Range<")
+            || collection_type == "Unknown";
+
+        if !is_iterable {
             self.errors.push(CompilerError::ForLoopNotArray {
                 actual: collection_type,
                 span,
@@ -860,6 +1420,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
     ) {
         let value_type = self.infer_type(value, file);
+
+        // Skip destructuring validation when value type is unknown (field access, etc.)
+        if value_type == "Unknown" {
+            return;
+        }
 
         match pattern {
             BindingPattern::Array { .. } => {
@@ -896,8 +1461,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                 }
             }
-            BindingPattern::Tuple { .. } | BindingPattern::Simple(_) => {
-                // Tuple and simple patterns don't require type validation here
+            BindingPattern::Tuple { elements, .. } => {
+                // Gap 2: Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
+                if let Some(inner) = value_type
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                {
+                    let field_count = if inner.is_empty() {
+                        0
+                    } else {
+                        inner.split(", ").count()
+                    };
+                    let pattern_count = elements.len();
+                    if pattern_count > field_count && field_count > 0 {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: format!("tuple with {field_count} field(s)"),
+                            found: value_type,
+                            span,
+                        });
+                    }
+                }
+            }
+            BindingPattern::Simple(_) => {
+                // Simple patterns don't require type validation here
             }
         }
     }
@@ -905,6 +1491,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate if condition is boolean or optional
     pub(super) fn validate_if_condition(&mut self, condition: &Expr, span: Span, file: &File) {
         let condition_type = self.infer_type(condition, file);
+
+        // Skip when type is unknown (field access, method calls — IR lowering handles these)
+        if condition_type == "Unknown" {
+            return;
+        }
 
         // Condition must be Boolean or optional (ends with '?')
         if condition_type != "Boolean" && !condition_type.ends_with('?') {
@@ -925,6 +1516,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         // Infer scrutinee type - must be an enum
         let scrutinee_type = self.infer_type(scrutinee, file);
+
+        // Skip when type is unknown (field access, method calls — IR lowering handles these)
+        if scrutinee_type == "Unknown" {
+            return;
+        }
 
         // Check if scrutinee is an enum (look it up in symbol table)
         if !self.symbols.is_enum(&scrutinee_type) {
@@ -1153,22 +1749,33 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate function return type matches the body expression type
     pub(super) fn validate_function_return_type(&mut self, func: &crate::ast::FnDef, file: &File) {
-        // Clear local let bindings for this function
+        // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
 
         // Register function parameters as local bindings
-        // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
-            let ty_str = param
-                .ty
-                .as_ref()
-                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
-            // Register parameter as a local binding with its type (mutable=true for params)
+            let ty_str = param.ty.as_ref().map_or_else(
+                || {
+                    if param.name.name == "self" {
+                        self.current_impl_struct
+                            .clone()
+                            .unwrap_or_else(|| "Unknown".to_string())
+                    } else {
+                        "Unknown".to_string()
+                    }
+                },
+                |ty| Self::type_to_string(ty),
+            );
+            let mutable = matches!(
+                param.convention,
+                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
+            );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, true));
+                .insert(param.name.name.clone(), (ty_str, mutable));
         }
 
         // Validate the function body expression (only if body exists)
@@ -1202,11 +1809,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func: &crate::ast::FunctionDef,
         file: &File,
     ) {
-        // Clear local let bindings for this function
+        // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
 
         // Register function parameters as local bindings
-        // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
@@ -1215,9 +1822,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .ty
                 .as_ref()
                 .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
-            // Register parameter as a local binding with its type (mutable=true for params)
+            let mutable = matches!(
+                param.convention,
+                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
+            );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, true));
+                .insert(param.name.name.clone(), (ty_str, mutable));
         }
 
         // Validate return type if declared

@@ -670,9 +670,11 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_pass_default_creates_with_remove_true() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::DeadCodeEliminationPass;
     let pass = DeadCodeEliminationPass::default();
-    if !pass.remove_unused_structs {
+    // Struct removal requires full ID remapping which is not implemented,
+    // so the safe default is false to avoid producing malformed IR.
+    if pass.remove_unused_structs {
         return Err(
-            "DeadCodeEliminationPass::default() should have remove_unused_structs = true".into(),
+            "DeadCodeEliminationPass::default() should have remove_unused_structs = false".into(),
         );
     }
     Ok(())

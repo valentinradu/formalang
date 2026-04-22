@@ -1,39 +1,9 @@
 //! Tests for extern declarations (#1)
 //!
-//! Covers: extern type, extern fn, extern impl, and all error cases.
+//! Covers: extern fn, extern impl, and all error cases.
+//! Note: `extern type` has been removed — types are always normal structs.
 
 use formalang::{compile, parse_only, CompilerError};
-
-// =============================================================================
-// extern type
-// =============================================================================
-
-#[test]
-fn test_extern_type_simple() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-extern type Canvas
-"#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    Ok(())
-}
-
-#[test]
-fn test_extern_type_with_generics() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-extern type Buffer<T>
-"#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    Ok(())
-}
-
-#[test]
-fn test_extern_type_pub() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-pub extern type Handle
-"#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    Ok(())
-}
 
 // =============================================================================
 // extern fn (module-level)
@@ -42,7 +12,7 @@ pub extern type Handle
 #[test]
 fn test_extern_fn_no_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern fn create_canvas() -> Canvas
 "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -52,7 +22,7 @@ extern fn create_canvas() -> Canvas
 #[test]
 fn test_extern_fn_with_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern fn render(canvas: Canvas, width: Number, height: Number) -> Boolean
 "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -62,7 +32,7 @@ extern fn render(canvas: Canvas, width: Number, height: Number) -> Boolean
 #[test]
 fn test_extern_fn_no_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern fn flush(canvas: Canvas)
 "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -76,11 +46,11 @@ extern fn flush(canvas: Canvas)
 #[test]
 fn test_extern_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern impl Canvas {
     fn draw(self, x: Number, y: Number)
-    fn width(self) -> Number
-    fn height(self) -> Number
+    fn get_width(self) -> Number
+    fn get_height(self) -> Number
 }
 "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -90,7 +60,7 @@ extern impl Canvas {
 #[test]
 fn test_extern_impl_with_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Handle
+struct Handle { raw: Number }
 extern impl Handle {
     fn id(self) -> Number
     fn is_valid(self) -> Boolean
@@ -103,7 +73,7 @@ extern impl Handle {
 #[test]
 fn test_regular_impl_and_extern_impl_coexist() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Socket
+struct Socket { host: String }
 extern impl Socket {
     fn send(self, data: String) -> Boolean
     fn close(self)
@@ -179,7 +149,7 @@ impl Foo {
 #[test]
 fn test_extern_impl_fn_with_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern impl Canvas {
     fn draw(self) {
         42
@@ -199,43 +169,31 @@ extern impl Canvas {
 }
 
 // =============================================================================
-// Extern type: field access on extern type is allowed (backend validates fields)
+// extern type keyword is now a parse error
 // =============================================================================
 
 #[test]
-fn test_field_access_on_extern_type_allowed() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_type_keyword_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
-extern fn get_canvas() -> Canvas
-
-fn use_canvas() -> Number {
-    let c = get_canvas()
-    c.width
-}
+extern type Foo
 "#;
-    // Field access on extern types is allowed at the language level.
-    // The backend is responsible for validating extern type field access.
-    compile(source).map_err(|e| format!("unexpected compile error: {e:?}"))?;
+    let result = parse_only(source);
+    if result.is_ok() {
+        return Err("expected parse error: `extern type` is no longer a valid production".into());
+    }
     Ok(())
 }
 
 // =============================================================================
-// Extern type: calling extern methods is allowed
+// Struct with extern impl compiles correctly
 // =============================================================================
 
 #[test]
-fn test_extern_method_call_allowed() -> Result<(), Box<dyn std::error::Error>> {
+fn test_struct_with_extern_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
-extern fn create() -> Canvas
-extern impl Canvas {
-    fn width(self) -> Number
-}
-
-fn get_width() -> Number {
-    let c = create()
-    c.width()
-}
+struct Canvas { width: Number, height: Number }
+extern impl Canvas { fn draw(self, x: Number, y: Number) }
+extern fn create_canvas(width: Number, height: Number) -> Canvas
 "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())

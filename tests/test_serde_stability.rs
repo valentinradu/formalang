@@ -103,9 +103,9 @@ pub enum Status {
 }
 
 #[test]
-fn test_extern_type_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
+fn test_extern_fn_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-extern type Canvas
+struct Canvas { width: Number, height: Number }
 extern fn create() -> Canvas
 "#;
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
@@ -114,7 +114,7 @@ extern fn create() -> Canvas
     let restored: formalang::File =
         serde_json::from_str(&json).map_err(|e| format!("deserialization failed: {e}"))?;
     if original != restored {
-        return Err("extern type round-trip produced a different AST".into());
+        return Err("extern fn round-trip produced a different AST".into());
     }
     Ok(())
 }

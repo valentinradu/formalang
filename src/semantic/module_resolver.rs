@@ -98,14 +98,13 @@ impl FileSystemResolver {
             return Some(file_path);
         }
 
-        // Try: root_dir/path/to.fv (treating last segment as module name)
-        if let Some((last, init)) = path.split_last() {
+        // Try: root_dir/path/to.fv (treating init segments as path, last is inside the file)
+        if let Some((_last, init)) = path.split_last() {
             if !init.is_empty() {
                 let mut dir_path = self.root_dir.clone();
                 for segment in init {
                     dir_path.push(segment);
                 }
-                dir_path.push(last);
                 dir_path.set_extension("fv");
 
                 if dir_path.exists() {
@@ -135,13 +134,12 @@ impl ModuleResolver for FileSystemResolver {
             file_path.set_extension("fv");
             searched.push(file_path);
 
-            if let Some((last, init)) = path.split_last() {
+            if let Some((_last, init)) = path.split_last() {
                 if !init.is_empty() {
                     let mut dir_path = self.root_dir.clone();
                     for segment in init {
                         dir_path.push(segment);
                     }
-                    dir_path.push(last);
                     dir_path.set_extension("fv");
                     searched.push(dir_path);
                 }

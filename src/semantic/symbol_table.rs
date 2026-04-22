@@ -66,8 +66,6 @@ pub struct StructInfo {
     pub fields: Vec<FieldInfo>,
     /// Track if impl block exists
     pub has_impl: bool,
-    /// True if this is an extern (opaque) type
-    pub is_extern: bool,
 }
 
 /// Information about a field
@@ -129,6 +127,8 @@ pub struct ModuleInfo {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ParamInfo {
+    /// Parameter passing convention
+    pub convention: crate::ast::ParamConvention,
     /// External call-site label (if specified separately from the internal name)
     pub external_label: Option<crate::ast::Ident>,
     pub name: crate::ast::Ident,
@@ -145,6 +145,8 @@ pub struct FunctionInfo {
     pub params: Vec<ParamInfo>,
     /// Return type (None for unit/void)
     pub return_type: Option<Type>,
+    /// Generic parameters declared on this function
+    pub generics: Vec<GenericParam>,
 }
 
 /// Kind of symbol (for error reporting)
@@ -219,7 +221,6 @@ impl SymbolTable {
         span: Span,
         generics: Vec<GenericParam>,
         fields: Vec<FieldInfo>,
-        is_extern: bool,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -234,7 +235,6 @@ impl SymbolTable {
                 generics,
                 fields,
                 has_impl: false,
-                is_extern,
             },
         );
         None
@@ -423,6 +423,7 @@ impl SymbolTable {
         span: Span,
         params: Vec<ParamInfo>,
         return_type: Option<Type>,
+        generics: Vec<GenericParam>,
     ) -> Option<(SymbolKind, Span)> {
         // Only check for conflicts with non-function symbols
         if let Some(info) = self.traits.get(&name) {
@@ -446,6 +447,7 @@ impl SymbolTable {
             span,
             params,
             return_type,
+            generics,
         });
         None
     }
@@ -790,6 +792,11 @@ impl SymbolTable {
                 symbols.push(name.clone());
             }
         }
+        for (name, overloads) in &self.functions {
+            if overloads.iter().any(|f| f.visibility == Visibility::Public) {
+                symbols.push(name.clone());
+            }
+        }
 
         symbols.sort();
         symbols
@@ -846,6 +853,8 @@ impl SymbolTable {
             Some(SymbolKind::Module)
         } else if self.impls.contains_key(name) {
             Some(SymbolKind::Impl)
+        } else if self.functions.contains_key(name) {
+            Some(SymbolKind::Function)
         } else {
             None
         }

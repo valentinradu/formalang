@@ -61,9 +61,6 @@ pub struct IrStruct {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
-
-    /// Whether this struct is an extern (opaque) type defined outside `FormaLang`
-    pub is_extern: bool,
 }
 
 /// A trait definition in the IR.
@@ -258,6 +255,9 @@ pub struct IrFunctionParam {
 
     /// Default value expression (if provided)
     pub default: Option<IrExpr>,
+
+    /// Parameter passing convention
+    pub convention: crate::ast::ParamConvention,
 }
 
 /// A field definition.

@@ -3,7 +3,7 @@
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
-use crate::ast::{Ident, PrimitiveType, TupleField, Type};
+use crate::ast::{Ident, ParamConvention, PrimitiveType, TupleField, Type};
 use crate::lexer::Token;
 
 use super::ident_parser;
@@ -127,7 +127,15 @@ where
                 }
             });
 
-        // Closure type: () -> T, T -> U, or T, U -> V
+        // Closure type: () -> T, T -> U, mut T -> U, or T, mut U -> V
+        // Convention prefix on each param type position
+        let closure_convention = choice((
+            just(Token::Mut).to(ParamConvention::Mut),
+            just(Token::Sink).to(ParamConvention::Sink),
+        ))
+        .or_not()
+        .map(|c| c.unwrap_or(ParamConvention::Let));
+
         // No-param closure: () -> ReturnType
         let no_param_closure = just(Token::LParen)
             .ignore_then(just(Token::RParen))
@@ -138,9 +146,10 @@ where
                 ret: Box::new(ret),
             });
 
-        // Single or multi-param closure: Type -> ReturnType OR Type, Type, ... -> ReturnType
-        let param_closure = optionable_type
+        // Single or multi-param closure: [mut|sink]? Type -> ReturnType OR [mut|sink]? Type, ...
+        let param_closure = closure_convention
             .clone()
+            .then(optionable_type.clone())
             .separated_by(just(Token::Comma))
             .at_least(1)
             .collect::<Vec<_>>()

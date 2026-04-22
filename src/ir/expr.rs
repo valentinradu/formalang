@@ -1,6 +1,6 @@
 //! IR expression types.
 
-use crate::ast::{BinaryOperator, Literal, UnaryOperator};
+use crate::ast::{BinaryOperator, Literal, ParamConvention, UnaryOperator};
 
 use super::{EnumId, ResolvedType, StructId};
 
@@ -237,8 +237,8 @@ pub enum IrExpr {
     /// Pure closures that can be inlined or converted to named functions.
     /// Unlike `EventMapping`, these can have arbitrary bodies and multiple parameters.
     Closure {
-        /// Parameter names and types
-        params: Vec<(String, ResolvedType)>,
+        /// Parameter conventions, names, and types
+        params: Vec<(ParamConvention, String, ResolvedType)>,
         /// Closure body
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`

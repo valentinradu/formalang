@@ -1,6 +1,6 @@
 # IR Reference
 
-**Last Updated**: 2026-04-14
+**Last Updated**: 2026-04-22
 
 This document provides a complete reference for the FormaLang Intermediate
 Representation (IR). The IR is the recommended output for building code
@@ -115,7 +115,6 @@ IrModule (root)
 |   |   +-- optional: bool
 |   |   +-- default: Option<IrExpr>
 |   |
-|   +-- mount_fields: Vec<IrField>
 |   +-- generic_params: Vec<IrGenericParam>
 |       |
 |       +-- name: String
@@ -123,8 +122,12 @@ IrModule (root)
 |
 +-- traits: Vec<IrTrait>
 |   |
-|   +-- (similar structure to IrStruct)
+|   +-- name: String
+|   +-- visibility: Visibility
 |   +-- composed_traits: Vec<TraitId> -----> trait inheritance
+|   +-- fields: Vec<IrField>
+|   +-- methods: Vec<IrFunctionSig>   -----> required method signatures
+|   +-- generic_params: Vec<IrGenericParam>
 |
 +-- enums: Vec<IrEnum>
 |   |
@@ -139,8 +142,8 @@ IrModule (root)
 |
 +-- impls: Vec<IrImpl>
 |   |
-|   +-- struct_id: StructId -----> points to IrStruct
-|   +-- defaults: Vec<(String, IrExpr)>
+|   +-- target: ImplTarget ----------> ImplTarget::Struct(StructId) or ImplTarget::Enum(EnumId)
+|   +-- functions: Vec<IrFunction>
 |
 +-- lets: Vec<IrLet>        // Module-level let bindings
 |
@@ -190,6 +193,13 @@ impl IrModule {
 
     /// Look up a function ID by name.
     pub fn function_id(&self, name: &str) -> Option<FunctionId>;
+
+    /// Rebuild the internal name-to-ID indices after mutating the module.
+    ///
+    /// Call this after adding or removing definitions from `structs`, `traits`,
+    /// `enums`, or `functions` so that the `*_id()` lookup methods stay
+    /// consistent.
+    pub fn rebuild_indices(&mut self);
 }
 ```
 
@@ -393,9 +403,10 @@ pub enum ResolvedType {
     /// General closure type: (T1, T2) -> R
     ///
     /// Unlike EventMapping (restricted to enum returns), this represents
-    /// arbitrary pure functions.
+    /// arbitrary pure functions. Each element is `(convention, type)` —
+    /// convention constrains the **caller** of the closure.
     Closure {
-        param_tys: Vec<ResolvedType>,
+        param_tys: Vec<(ParamConvention, ResolvedType)>,
         return_ty: Box<ResolvedType>,
     },
 }
@@ -422,7 +433,9 @@ pub enum ResolvedType {
 | `String -> Event` | `EventMapping { param_ty: Some(Primitive(String)), return_ty: Enum(n) }` |
 | `() -> Event` | `EventMapping { param_ty: None, return_ty: Enum(n) }` |
 | `[String: Number]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(Number) }` |
-| `(String, Number) -> Boolean` | `Closure { param_tys: [...], return_ty: Primitive(Boolean) }` |
+| `String, Number -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(Number))], return_ty: Primitive(Boolean) }` |
+| `mut Number -> Boolean` | `Closure { param_tys: [(Mut, Primitive(Number))], return_ty: Primitive(Boolean) }` |
+| `sink String -> Boolean` | `Closure { param_tys: [(Sink, Primitive(String))], return_ty: Primitive(Boolean) }` |
 
 ### Display Names
 
@@ -456,9 +469,6 @@ pub struct IrStruct {
     /// Regular fields
     pub fields: Vec<IrField>,
 
-    /// Mount fields (UI container slots)
-    pub mount_fields: Vec<IrField>,
-
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 }
@@ -480,11 +490,28 @@ pub struct IrTrait {
     /// Required fields
     pub fields: Vec<IrField>,
 
-    /// Required mount fields
-    pub mount_fields: Vec<IrField>,
+    /// Required method signatures
+    pub methods: Vec<IrFunctionSig>,
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+}
+```
+
+### IrFunctionSig
+
+A signature-only function declaration (no body). Used for required methods declared in traits.
+
+```rust
+pub struct IrFunctionSig {
+    /// Function name
+    pub name: String,
+
+    /// Parameters (first is typically `self`)
+    pub params: Vec<IrFunctionParam>,
+
+    /// Return type (None = unit/void)
+    pub return_type: Option<ResolvedType>,
 }
 ```
 
@@ -514,17 +541,36 @@ pub struct IrEnumVariant {
 }
 ```
 
+### ImplTarget
+
+Identifies what an impl block implements — a struct or an enum.
+
+```rust
+pub enum ImplTarget {
+    Struct(StructId),
+    Enum(EnumId),
+}
+```
+
 ### IrImpl
 
-Impl blocks provide field defaults for a struct:
+Impl blocks provide methods for a struct or enum.
 
 ```rust
 pub struct IrImpl {
-    /// The struct this impl is for
-    pub struct_id: StructId,
+    /// The struct or enum this impl is for
+    pub target: ImplTarget,
 
-    /// Field defaults: (field_name, default_value)
-    pub defaults: Vec<(String, IrExpr)>,
+    /// Methods defined in this impl block
+    pub functions: Vec<IrFunction>,
+}
+
+impl IrImpl {
+    /// Returns the struct ID if `target` is a struct, otherwise `None`.
+    pub fn struct_id(&self) -> Option<StructId>;
+
+    /// Returns the enum ID if `target` is an enum, otherwise `None`.
+    pub fn enum_id(&self) -> Option<EnumId>;
 }
 ```
 
@@ -580,16 +626,15 @@ pub enum IrExpr {
 
     /// Struct instantiation: User(name: "Alice", age: 30)
     StructInst {
-        struct_id: StructId,
+        struct_id: Option<StructId>,
         type_args: Vec<ResolvedType>,
         fields: Vec<(String, IrExpr)>,
-        mounts: Vec<(String, IrExpr)>,
         ty: ResolvedType,
     },
 
     /// Enum variant instantiation: Status.active or .active
     EnumInst {
-        enum_id: EnumId,
+        enum_id: Option<EnumId>,
         variant: String,
         fields: Vec<(String, IrExpr)>,
         ty: ResolvedType,
@@ -644,6 +689,20 @@ pub enum IrExpr {
         arms: Vec<IrMatchArm>,
         ty: ResolvedType,
     },
+
+    /// Closure expression: |x: Number, y: Number| x + y
+    ///
+    /// Each element of `params` is `(convention, name, type)`.
+    /// Convention constrains the **caller** — `Mut` requires mutable arg,
+    /// `Sink` consumes the caller's binding.
+    Closure {
+        params: Vec<(ParamConvention, String, ResolvedType)>,
+        body: Box<IrExpr>,
+        ty: ResolvedType,    // ResolvedType::Closure { param_tys, return_ty }
+    },
+
+    // ... (additional variants: FunctionCall, MethodCall, FieldAccess,
+    //      LetRef, DictLiteral, DictAccess, EventMapping, UnaryOp, Block)
 }
 ```
 
@@ -725,32 +784,67 @@ pub struct IrLet {
 
 ### IrFunction
 
-Standalone function definitions (outside of impl blocks):
+Function definitions — used for both standalone functions (`functions` field on `IrModule`)
+and methods inside impl blocks (`functions` field on `IrImpl`).
 
 ```rust
 pub struct IrFunction {
     /// Function name
     pub name: String,
 
-    /// Parameters (first is typically `self` for methods)
+    /// Parameters (first is `self` for methods; no `self` for standalone functions)
     pub params: Vec<IrFunctionParam>,
 
     /// Return type (None = unit/void)
     pub return_type: Option<ResolvedType>,
 
-    /// Function body expression
-    pub body: IrExpr,
-}
+    /// Function body expression (None for extern functions)
+    pub body: Option<IrExpr>,
 
+    /// Whether this function is extern (defined outside FormaLang)
+    pub is_extern: bool,
+}
+```
+
+### IrFunctionParam
+
+```rust
 pub struct IrFunctionParam {
     /// Parameter name
     pub name: String,
 
-    /// Parameter type (None for `self`)
+    /// Parameter type (None for bare `self`)
     pub ty: Option<ResolvedType>,
 
     /// Default value expression, if any
     pub default: Option<IrExpr>,
+
+    /// Parameter passing convention
+    pub convention: ParamConvention,
+}
+```
+
+#### ParamConvention in the IR
+
+`ParamConvention` is re-exported from `formalang::ast`. Backends should interpret it as follows:
+
+| Variant  | Meaning for the backend                                                                       |
+|----------|-----------------------------------------------------------------------------------------------|
+| `Let`    | Immutable read access. The backend may pass by reference or copy.                             |
+| `Mut`    | Exclusive mutable access. The backend must ensure no aliasing.                                |
+| `Sink`   | Ownership transfer. The value is logically moved; the caller cannot use it after this call.   |
+
+All three conventions use identical call syntax in FormaLang source; the distinction is purely semantic. Backends that target languages with explicit ownership (Rust, C++ move semantics, Swift inout) should map directly. Backends targeting garbage-collected languages (TypeScript, Python) may treat all three as pass-by-value and ignore the distinction.
+
+```rust
+use formalang::ast::ParamConvention;
+
+fn emit_param(param: &IrFunctionParam) {
+    match param.convention {
+        ParamConvention::Let  => { /* pass by value / reference */ }
+        ParamConvention::Mut  => { /* pass as mutable / inout */ }
+        ParamConvention::Sink => { /* consume / move */ }
+    }
 }
 ```
 
@@ -878,7 +972,6 @@ IrModule
     |       +-- mutable: false
     |       +-- optional: false
     |       +-- default: None
-    +-- mount_fields: []
     +-- generic_params: []
 ```
 
@@ -944,17 +1037,17 @@ IrModule
 |   |   +-- [0] IrField
 |   |       +-- name: "name"
 |   |       +-- ty: Primitive(String)
-|   +-- mount_fields: []
+|   +-- methods: []
 |   +-- generic_params: []
 |
 +-- structs[0]: IrStruct            // StructId(0)
     +-- name: "User"
     +-- visibility: Public
+
     +-- traits: [TraitId(0)]        // <-- linked to Named trait
     +-- fields:
     |   +-- [0] IrField { name: "name", ty: Primitive(String), ... }
     |   +-- [1] IrField { name: "age", ty: Primitive(Number), ... }
-    +-- mount_fields: []
     +-- generic_params: []
 ```
 
@@ -997,7 +1090,6 @@ IrModule
     |       +-- name: "label"
     |       +-- ty: Optional(Box::new(Primitive(String)))
     |       +-- optional: true
-    +-- mount_fields: []
     +-- generic_params:
         +-- [0] IrGenericParam
             +-- name: "T"
@@ -1043,19 +1135,23 @@ IrModule
         +-- [2] IrField { name: "status", ty: Enum(EnumId(0)) }      // linked!
 ```
 
-### Impl Block with Expressions
+### Impl Block with Methods
 
 **FormaLang source:**
 
 ```formalang
 pub struct Counter {
-    count: Number,
-    display: String
+    count: Number
 }
 
 impl Counter {
-    count: 0,
-    display: if count > 10 { "High" } else { "Low" }
+    fn increment(self) -> Number {
+        self.count + 1
+    }
+
+    fn reset(mut self) -> Number {
+        0
+    }
 }
 ```
 
@@ -1065,25 +1161,30 @@ impl Counter {
 IrModule
 +-- structs[0]: IrStruct            // StructId(0)
 |   +-- name: "Counter"
+
 |   +-- fields:
 |       +-- [0] IrField { name: "count", ty: Primitive(Number) }
-|       +-- [1] IrField { name: "display", ty: Primitive(String) }
 |
 +-- impls[0]: IrImpl
-    +-- struct_id: StructId(0)      // Counter
-    +-- defaults:
-        +-- ("count", IrExpr::Literal { value: Number(0.0), ty: Primitive(Number) })
-        +-- ("display", IrExpr::If {
-                condition: IrExpr::BinaryOp {
-                    left: IrExpr::Reference { path: ["count"], ty: Primitive(Number) },
-                    op: Gt,
-                    right: IrExpr::Literal { value: Number(10.0), ty: Primitive(Number) },
-                    ty: Primitive(Boolean)
-                },
-                then_branch: IrExpr::Literal { value: String("High"), ty: Primitive(String) },
-                else_branch: Some(IrExpr::Literal { value: String("Low"), ty: Primitive(String) }),
-                ty: Primitive(String)
-            })
+    +-- target: ImplTarget::Struct(StructId(0))
+    +-- functions:
+        +-- [0] IrFunction
+        |   +-- name: "increment"
+        
+        |   +-- params: [IrFunctionParam { name: "self", ty: None, convention: Let }]
+        |   +-- return_type: Some(Primitive(Number))
+        |   +-- body: Some(IrExpr::BinaryOp {
+        |           left: IrExpr::Reference { path: ["self", "count"], ty: Primitive(Number) },
+        |           op: Add,
+        |           right: IrExpr::Literal { value: Number(1.0), ty: Primitive(Number) },
+        |           ty: Primitive(Number)
+        |       })
+        +-- [1] IrFunction
+            +-- name: "reset"
+        
+            +-- params: [IrFunctionParam { name: "self", ty: None, convention: Mut }]
+            +-- return_type: Some(Primitive(Number))
+            +-- body: Some(IrExpr::Literal { value: Number(0.0), ty: Primitive(Number) })
 ```
 
 ### Match Expression
@@ -1091,20 +1192,15 @@ IrModule
 **FormaLang source:**
 
 ```formalang
-enum Option {
+pub enum Option {
     none,
     some(value: Number)
 }
 
-struct Display {
-    opt: Option,
-    text: String
-}
-
-impl Display {
-    text: match opt {
-        none => "Nothing",
-        some(value) => "Got value"
+pub fn describe(opt: Option) -> String {
+    match opt {
+        .none: "Nothing",
+        .some(value): "Got value"
     }
 }
 ```
@@ -1119,31 +1215,28 @@ IrModule
 |       +-- [0] IrEnumVariant { name: "none", fields: [] }
 |       +-- [1] IrEnumVariant { name: "some", fields: [IrField { name: "value", ... }] }
 |
-+-- structs[0]: IrStruct            // StructId(0)
-|   +-- name: "Display"
-|   +-- fields:
-|       +-- [0] IrField { name: "opt", ty: Enum(EnumId(0)) }
-|       +-- [1] IrField { name: "text", ty: Primitive(String) }
-|
-+-- impls[0]: IrImpl
-    +-- struct_id: StructId(0)
-    +-- defaults:
-        +-- ("text", IrExpr::Match {
-                scrutinee: IrExpr::Reference { path: ["opt"], ty: Enum(EnumId(0)) },
-                arms: [
-                    IrMatchArm {
-                        variant: "none",
-                        bindings: [],
-                        body: IrExpr::Literal { value: String("Nothing"), ty: Primitive(String) }
-                    },
-                    IrMatchArm {
-                        variant: "some",
-                        bindings: [("value", Primitive(Number))],
-                        body: IrExpr::Literal { value: String("Got value"), ty: Primitive(String) }
-                    }
-                ],
-                ty: Primitive(String)
-            })
++-- functions[0]: IrFunction
+    +-- name: "describe"
+
+    +-- params:
+    |   +-- [0] IrFunctionParam { name: "opt", ty: Some(Enum(EnumId(0))), convention: Let }
+    +-- return_type: Some(Primitive(String))
+    +-- body: Some(IrExpr::Match {
+            scrutinee: IrExpr::Reference { path: ["opt"], ty: Enum(EnumId(0)) },
+            arms: [
+                IrMatchArm {
+                    variant: "none",
+                    bindings: [],
+                    body: IrExpr::Literal { value: String("Nothing"), ty: Primitive(String) }
+                },
+                IrMatchArm {
+                    variant: "some",
+                    bindings: [("value", Primitive(Number))],
+                    body: IrExpr::Literal { value: String("Got value"), ty: Primitive(String) }
+                }
+            ],
+            ty: Primitive(String)
+        })
 ```
 
 ### For Expression
@@ -1151,13 +1244,8 @@ IrModule
 **FormaLang source:**
 
 ```formalang
-struct List {
-    items: [String],
-    labels: [String]
-}
-
-impl List {
-    labels: for item in items { item }
+pub fn tag_labels(tags: [String]) -> [String] {
+    for tag in tags { tag }
 }
 ```
 
@@ -1165,22 +1253,19 @@ impl List {
 
 ```text
 IrModule
-+-- structs[0]: IrStruct
-|   +-- name: "List"
-|   +-- fields:
-|       +-- [0] IrField { name: "items", ty: Array(Primitive(String)) }
-|       +-- [1] IrField { name: "labels", ty: Array(Primitive(String)) }
-|
-+-- impls[0]: IrImpl
-    +-- struct_id: StructId(0)
-    +-- defaults:
-        +-- ("labels", IrExpr::For {
-                var: "item",
-                var_ty: Primitive(String),
-                collection: IrExpr::Reference { path: ["items"], ty: Array(Primitive(String)) },
-                body: IrExpr::Reference { path: ["item"], ty: Primitive(String) },
-                ty: Array(Primitive(String))  // For produces array of body type
-            })
++-- functions[0]: IrFunction
+    +-- name: "tag_labels"
+
+    +-- params:
+    |   +-- [0] IrFunctionParam { name: "tags", ty: Some(Array(Primitive(String))), convention: Let }
+    +-- return_type: Some(Array(Primitive(String)))
+    +-- body: Some(IrExpr::For {
+            var: "tag",
+            var_ty: Primitive(String),
+            collection: IrExpr::Reference { path: ["tags"], ty: Array(Primitive(String)) },
+            body: IrExpr::Reference { path: ["tag"], ty: Primitive(String) },
+            ty: Array(Primitive(String))
+        })
 ```
 
 ## Building a Code Generator

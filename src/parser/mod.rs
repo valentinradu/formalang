@@ -166,7 +166,7 @@ where
         .repeated()
         .collect::<Vec<_>>()
         .map_with(|statements, e| File {
-            format_version: 1,
+            format_version: crate::ast::FORMAT_VERSION,
             statements,
             span: span_from_simple(e.span()),
         })
@@ -1114,7 +1114,7 @@ mod tests {
                 if params.len() != 1 {
                     return Err(format!("expected {:?} == {:?}", params.len(), 1).into());
                 }
-                let p0 = params.first().ok_or("expected at least one param")?;
+                let (_, p0) = params.first().ok_or("expected at least one param")?;
                 if *p0 != Type::Primitive(PrimitiveType::String) {
                     return Err(format!(
                         "{:?} != {:?}",
@@ -1165,7 +1165,7 @@ mod tests {
                 if params.len() != 2 {
                     return Err(format!("expected {:?} == {:?}", params.len(), 2).into());
                 }
-                let p0 = params.first().ok_or("expected at least 1 param")?;
+                let (_, p0) = params.first().ok_or("expected at least 1 param")?;
                 if *p0 != Type::Primitive(PrimitiveType::Number) {
                     return Err(format!(
                         "{:?} != {:?}",
@@ -1174,7 +1174,7 @@ mod tests {
                     )
                     .into());
                 }
-                let p1 = params.get(1).ok_or("expected at least 2 params")?;
+                let (_, p1) = params.get(1).ok_or("expected at least 2 params")?;
                 if *p1 != Type::Primitive(PrimitiveType::Number) {
                     return Err(format!(
                         "{:?} != {:?}",

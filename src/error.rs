@@ -241,6 +241,9 @@ pub enum CompilerError {
     #[error("Parameter '{param}' requires a mutable value, but received an immutable value")]
     MutabilityMismatch { param: String, span: Span },
 
+    #[error("Cannot use '{name}' after it was moved into a sink parameter")]
+    UseAfterSink { name: String, span: Span },
+
     // Generic type errors
     #[error("Type '{name}' expected {expected} generic argument(s), found {actual}")]
     GenericArityMismatch {
@@ -278,6 +281,18 @@ pub enum CompilerError {
     /// An `extern impl` block contains at least one function with a body.
     #[error("Extern impl block for '{name}' must not contain function bodies")]
     ExternImplWithBody { name: String, span: Span },
+
+    /// nil literal assigned to a non-optional type.
+    #[error("Cannot assign nil to non-optional type '{expected}'")]
+    NilAssignedToNonOptional { expected: String, span: Span },
+
+    /// Optional type used where a non-optional is required.
+    #[error("Cannot use optional type '{actual}' where non-optional '{expected}' is required")]
+    OptionalUsedAsNonOptional {
+        actual: String,
+        expected: String,
+        span: Span,
+    },
 
     /// A trait implementation is missing a method required by the trait.
     #[error("Missing method '{method}' required by trait '{trait_name}'")]
@@ -328,6 +343,10 @@ pub enum CompilerError {
     /// Module contains more definitions than the ID space allows (> `u32::MAX`).
     #[error("Module contains too many {kind} definitions")]
     TooManyDefinitions { kind: &'static str, span: Span },
+
+    /// Attempted to access a private item from outside its defining module.
+    #[error("'{name}' is private and cannot be accessed from outside its module")]
+    VisibilityViolation { name: String, span: Span },
 }
 
 impl CompilerError {
@@ -387,6 +406,8 @@ impl CompilerError {
             | Self::ExternFnWithBody { span, .. }
             | Self::RegularFnWithoutBody { span, .. }
             | Self::ExternImplWithBody { span, .. }
+            | Self::NilAssignedToNonOptional { span, .. }
+            | Self::OptionalUsedAsNonOptional { span, .. }
             | Self::MissingTraitMethod { span, .. }
             | Self::TraitMethodSignatureMismatch { span, .. }
             | Self::AmbiguousCall { span, .. }
@@ -394,8 +415,10 @@ impl CompilerError {
             | Self::CannotInferEnumType { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }
+            | Self::UseAfterSink { span, .. }
             | Self::ExpressionDepthExceeded { span }
-            | Self::TooManyDefinitions { span, .. } => *span,
+            | Self::TooManyDefinitions { span, .. }
+            | Self::VisibilityViolation { span, .. } => *span,
         }
     }
 }

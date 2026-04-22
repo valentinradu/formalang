@@ -29,6 +29,8 @@ pub enum Token {
     Let,
     #[token("mut")]
     Mut,
+    #[token("sink")]
+    Sink,
     #[token("extern")]
     Extern,
     #[token("match")]
@@ -73,7 +75,7 @@ pub enum Token {
     #[regex(r#""""([^\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#, |lex| parse_multiline_string(lex.slice()))]
     String(String),
 
-    #[regex(r"-?[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
+    #[regex(r"[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
     Number(f64),
 
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
@@ -236,6 +238,7 @@ impl Token {
                 | Self::Pub
                 | Self::Let
                 | Self::Mut
+                | Self::Sink
                 | Self::Extern
                 | Self::Match
                 | Self::For
@@ -275,6 +278,7 @@ impl Token {
             Self::Pub => "pub",
             Self::Let => "let",
             Self::Mut => "mut",
+            Self::Sink => "sink",
             Self::Extern => "extern",
             Self::Match => "match",
             Self::For => "for",
@@ -351,6 +355,7 @@ impl std::fmt::Display for Token {
             | Self::Pub
             | Self::Let
             | Self::Mut
+            | Self::Sink
             | Self::Extern
             | Self::Match
             | Self::For

@@ -14,7 +14,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Literal::Boolean(_) => "Boolean".to_string(),
                 Literal::Regex { .. } => "Regex".to_string(),
                 Literal::Path(_) => "Path".to_string(),
-                Literal::Nil => "nil".to_string(),
+                Literal::Nil => "Nil".to_string(),
             },
             Expr::Array { elements, .. } => elements.first().map_or_else(
                 || "[Unknown]".to_string(),
@@ -48,11 +48,53 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 |arm| self.infer_type(&arm.body, file),
             ),
             Expr::Group { expr, .. } => self.infer_type(expr, file),
-            Expr::DictLiteral { .. } => "Dictionary".to_string(),
-            Expr::DictAccess { .. } | Expr::FieldAccess { .. } | Expr::MethodCall { .. } => {
+            Expr::DictLiteral { entries, .. } => {
+                if let Some((first_key, first_value)) = entries.first() {
+                    let key_type = self.infer_type(first_key, file);
+                    let value_type = self.infer_type(first_value, file);
+                    format!("[{key_type}: {value_type}]")
+                } else {
+                    "[Unknown: Unknown]".to_string()
+                }
+            }
+            Expr::DictAccess { dict, .. } => {
+                // Gap 3: Infer value type from dict type "[K: V]"
+                let dict_type = self.infer_type(dict, file);
+                if let Some(inner) = dict_type
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .filter(|s| s.contains(": "))
+                {
+                    if let Some(colon_pos) = inner.find(": ") {
+                        if let Some(after) = inner.get(colon_pos.saturating_add(2)..) {
+                            return after.to_string();
+                        }
+                    }
+                }
                 "Unknown".to_string()
             }
-            Expr::ClosureExpr { .. } => "Closure".to_string(),
+            Expr::FieldAccess { .. } | Expr::MethodCall { .. } => "Unknown".to_string(),
+            Expr::ClosureExpr { params, body, .. } => {
+                let body_type = self.infer_type(body, file);
+                if params.is_empty() {
+                    format!("() -> {body_type}")
+                } else if params.len() == 1 {
+                    let param_type = params[0]
+                        .ty
+                        .as_ref()
+                        .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
+                    format!("{param_type} -> {body_type}")
+                } else {
+                    let param_types: Vec<String> = params
+                        .iter()
+                        .map(|p| {
+                            p.ty.as_ref()
+                                .map_or_else(|| "Unknown".to_string(), Self::type_to_string)
+                        })
+                        .collect();
+                    format!("{} -> {body_type}", param_types.join(", "))
+                }
+            }
             Expr::LetExpr { body, .. } => self.infer_type(body, file),
             Expr::Block { result, .. } => self.infer_type(result, file),
         }
