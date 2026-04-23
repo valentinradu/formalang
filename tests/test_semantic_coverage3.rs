@@ -234,11 +234,13 @@ struct Config { c: Color }
 #[test]
 fn test_module_with_duplicate_function_in_loading() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MemResolver::new();
+    // Two overloads with identical call-site labels and identical parameter
+    // types — a genuine duplicate, not a valid overload.
     resolver.add(
         vec!["funcs".to_string()],
         r"
 pub fn compute(x: Number) -> Number { x }
-pub fn compute(y: Number) -> Number { y }
+pub fn compute(x: Number) -> Number { x + 1 }
 ",
     );
 

@@ -266,7 +266,15 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             walk_expr(visitor, result);
         }
 
-        IrExpr::Closure { body, .. } => {
+        IrExpr::Closure {
+            params: _,
+            captures: _,
+            body,
+            ty: _,
+        } => {
+            // `params` and `captures` carry only names and types, not
+            // sub-expressions; callers that need them should read them
+            // directly off `IrExpr::Closure` in their own `visit_expr`.
             walk_expr(visitor, body);
         }
 

@@ -108,12 +108,15 @@ impl Formatter {
 
 #[test]
 fn test_ambiguous_call_error() -> Result<(), Box<dyn std::error::Error>> {
+    // Two overloads that differ only by parameter name (a vs b) but share
+    // the same first-positional-type (Number): a positional call matches
+    // both under Mode B.
     let source = r"
-fn run(x: Number) -> Number {
-    x
+fn run(a: Number) -> Number {
+    a
 }
-fn run(x: Number) -> Number {
-    x + 1
+fn run(b: Number) -> Number {
+    b + 1
 }
 let r = run(42)
 ";

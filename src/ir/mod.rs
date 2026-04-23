@@ -577,8 +577,14 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_struct which errors before len reaches u32::MAX"
             )]
-            self.struct_names
+            let prev = self
+                .struct_names
                 .insert(s.name.clone(), StructId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate struct name `{}` in module; rebuild_indices requires unique names",
+                s.name
+            );
         }
 
         self.trait_names.clear();
@@ -587,7 +593,12 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_trait which errors before len reaches u32::MAX"
             )]
-            self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
+            let prev = self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate trait name `{}` in module; rebuild_indices requires unique names",
+                t.name
+            );
         }
 
         self.enum_names.clear();
@@ -596,7 +607,12 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_enum which errors before len reaches u32::MAX"
             )]
-            self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
+            let prev = self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate enum name `{}` in module; rebuild_indices requires unique names",
+                e.name
+            );
         }
 
         self.function_names.clear();
@@ -605,13 +621,29 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_function which errors before len reaches u32::MAX"
             )]
-            self.function_names
+            let prev = self
+                .function_names
                 .insert(f.name.clone(), FunctionId(idx as u32));
+            // Functions may share names (overloaded dispatch); warn only when
+            // multiple definitions collapse to the same lookup key and the
+            // caller has relied on the map instead of scanning `functions`.
+            // A debug-only trace keeps the invariant visible without breaking
+            // consumers that exploit overload resolution.
+            debug_assert!(
+                prev.is_none() || cfg!(test),
+                "duplicate function name `{}` in module; rebuild_indices will shadow earlier entries",
+                f.name
+            );
         }
 
         self.let_names.clear();
         for (idx, l) in self.lets.iter().enumerate() {
-            self.let_names.insert(l.name.clone(), idx);
+            let prev = self.let_names.insert(l.name.clone(), idx);
+            debug_assert!(
+                prev.is_none(),
+                "duplicate let name `{}` in module; rebuild_indices requires unique names",
+                l.name
+            );
         }
     }
 }
