@@ -1516,12 +1516,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// analyzed during import resolution. Used by codegen backends to generate
     /// impl blocks from imported types.
     ///
+    /// The cache is populated as a side effect of `parse_and_analyze_module`:
+    /// after each imported module is semantically analyzed, its AST is also
+    /// lowered to IR and stored here keyed by its filesystem path.
+    ///
     /// # Returns
     ///
-    /// Reference to the cached IR modules. Empty if no imports were processed.
+    /// Reference to the cached IR modules. Empty if no imports were processed
+    /// or if every imported module failed IR lowering.
     pub const fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
-        // TODO: Implement - currently returns empty cache
-        // Will be populated during parse_and_analyze_module()
         &self.module_ir_cache
     }
 }

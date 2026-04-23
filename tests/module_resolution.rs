@@ -999,3 +999,34 @@ struct Test {
     analyze_with_mock(source, MockModuleResolver::new()).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_imported_ir_modules_cache_is_populated() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+use utils::Helper
+struct Main { h: Helper }
+";
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper { x: String }",
+    );
+    let tokens = Lexer::tokenize_all(source);
+    let file = parser::parse_file_with_source(&tokens, source)
+        .map_err(|errors| format!("{errors:?}"))?;
+    let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
+    analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
+
+    let cache = analyzer.imported_ir_modules();
+    if cache.is_empty() {
+        return Err("expected imported_ir_modules() to contain the utils module".into());
+    }
+    let utils = cache
+        .values()
+        .find(|m| m.structs.iter().any(|s| s.name == "Helper"))
+        .ok_or("Helper struct missing from imported IR modules")?;
+    if utils.structs.is_empty() {
+        return Err("utils IR module has no structs".into());
+    }
+    Ok(())
+}
