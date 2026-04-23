@@ -6,7 +6,7 @@
 use formalang::error::CompilerError;
 use formalang::lexer::Lexer;
 use formalang::parser;
-use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
+use formalang::semantic::module_resolver::{FileSystemResolver, ModuleError, ModuleResolver};
 use formalang::semantic::SemanticAnalyzer;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1027,6 +1027,71 @@ struct Main { h: Helper }
         .ok_or("Helper struct missing from imported IR modules")?;
     if utils.structs.is_empty() {
         return Err("utils IR module has no structs".into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// FileSystemResolver error paths
+// =============================================================================
+
+#[test]
+fn test_filesystem_resolver_not_found() -> Result<(), Box<dyn std::error::Error>> {
+    let resolver = FileSystemResolver::new(PathBuf::from("/nonexistent-root-for-tests"));
+    let err = resolver
+        .resolve(&["definitely_missing".to_string()], None)
+        .err()
+        .ok_or("expected NotFound")?;
+    match err {
+        ModuleError::NotFound {
+            path,
+            searched_paths,
+        } => {
+            if path != vec!["definitely_missing".to_string()] {
+                return Err(format!("unexpected path {path:?}").into());
+            }
+            if searched_paths.is_empty() {
+                return Err("searched_paths should be populated".into());
+            }
+        }
+        ModuleError::CircularImport { .. }
+        | ModuleError::ReadError { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("expected NotFound".into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_filesystem_resolver_read_error_on_directory() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a temp directory with a subdirectory named `m.fv` (a directory, not a file).
+    // Attempting to `resolve(["m"])` should find the path via exists() but fail to
+    // read its contents because it is a directory, surfacing a ReadError.
+    let tmp = tempfile::tempdir()?;
+    let fake_file = tmp.path().join("m.fv");
+    std::fs::create_dir(&fake_file)?;
+    let resolver = FileSystemResolver::new(tmp.path().to_path_buf());
+    let err = resolver
+        .resolve(&["m".to_string()], None)
+        .err()
+        .ok_or("expected ReadError when target is a directory")?;
+    match err {
+        ModuleError::ReadError { path, error } => {
+            if path != fake_file {
+                return Err(format!("unexpected path {path:?}").into());
+            }
+            if error.is_empty() {
+                return Err("ReadError.error should describe the failure".into());
+            }
+        }
+        ModuleError::NotFound { .. }
+        | ModuleError::CircularImport { .. }
+        | ModuleError::PrivateItem { .. }
+        | ModuleError::ItemNotFound { .. } => {
+            return Err("expected ReadError".into());
+        }
     }
     Ok(())
 }
