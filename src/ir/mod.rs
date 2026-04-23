@@ -28,6 +28,7 @@ mod dce;
 mod expr;
 mod fold;
 mod lower;
+mod monomorphise;
 mod types;
 mod visitor;
 
@@ -37,6 +38,7 @@ pub use dce::{
 pub use expr::{DispatchKind, IrBlockStatement, IrExpr, IrMatchArm};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
+pub use monomorphise::MonomorphisePass;
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
     IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait,
@@ -68,7 +70,7 @@ use crate::location::Span;
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct StructId(pub u32);
 
 /// ID for referencing trait definitions.
@@ -87,7 +89,7 @@ pub struct StructId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TraitId(pub u32);
 
 /// ID for referencing enum definitions.
@@ -106,7 +108,7 @@ pub struct TraitId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EnumId(pub u32);
 
 /// ID for referencing standalone function definitions.
@@ -125,7 +127,7 @@ pub struct EnumId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FunctionId(pub u32);
 
 /// ID for referencing impl blocks.
@@ -137,7 +139,7 @@ pub struct FunctionId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ImplId(pub u32);
 
 /// Kind of external type reference.
@@ -148,7 +150,7 @@ pub struct ImplId(pub u32);
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ImportedKind {
     /// External struct type
     Struct,
@@ -166,7 +168,7 @@ pub enum ImportedKind {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IrImport {
     /// Logical module path (e.g., `["utils", "helpers"]`)
     pub module_path: Vec<String>,
@@ -185,7 +187,7 @@ pub struct IrImport {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IrImportItem {
     /// Name of the imported type
     pub name: String,
@@ -202,7 +204,7 @@ pub struct IrImportItem {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
     Primitive(PrimitiveType),
@@ -312,7 +314,7 @@ pub enum ResolvedType {
 /// let struct_def = module.get_struct(struct_id).expect("struct exists");
 /// assert_eq!(struct_def.name, "User");
 /// ```
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct IrModule {
     /// All struct definitions, indexed by `StructId`
     pub structs: Vec<IrStruct>,

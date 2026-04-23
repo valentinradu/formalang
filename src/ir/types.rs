@@ -19,7 +19,7 @@ use super::{EnumId, IrExpr, ResolvedType, StructId, TraitId};
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrLet {
     /// The binding name
     pub name: String,
@@ -45,7 +45,7 @@ pub struct IrLet {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrStruct {
     /// The struct name
     pub name: String,
@@ -70,7 +70,7 @@ pub struct IrStruct {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrTrait {
     /// The trait name
     pub name: String,
@@ -107,7 +107,7 @@ pub struct IrTrait {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrFunctionSig {
     /// Function name
     pub name: String,
@@ -126,7 +126,7 @@ pub struct IrFunctionSig {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrEnum {
     /// The enum name
     pub name: String,
@@ -146,7 +146,7 @@ pub struct IrEnum {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrEnumVariant {
     /// The variant name
     pub name: String,
@@ -160,7 +160,7 @@ pub struct IrEnumVariant {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ImplTarget {
     /// Impl for a struct
     Struct(StructId),
@@ -175,7 +175,7 @@ pub enum ImplTarget {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
@@ -222,7 +222,7 @@ impl IrImpl {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrFunction {
     /// Function name
     pub name: String,
@@ -245,7 +245,7 @@ pub struct IrFunction {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrFunctionParam {
     /// Parameter name
     pub name: String,
@@ -267,7 +267,7 @@ pub struct IrFunctionParam {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrField {
     /// Field name
     pub name: String,
@@ -290,7 +290,7 @@ pub struct IrField {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrGenericParam {
     /// Parameter name (e.g., "T")
     pub name: String,

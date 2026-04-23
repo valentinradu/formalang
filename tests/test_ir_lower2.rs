@@ -975,3 +975,83 @@ fn test_lower_method_call_static_dispatch_on_struct_instance(
         }
     }
 }
+
+// =============================================================================
+// Closure captures (§2 closure environment)
+// =============================================================================
+
+#[test]
+fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub fn make_adder(sink n: Number) -> (Number) -> Number {
+            |x: Number| x + n
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("make_adder body missing")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    // The closure body references `n`, which is a parameter of make_adder.
+    let captured: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    if !captured.contains(&"n") {
+        return Err(format!("expected `n` in captures, got {captured:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_no_captures_when_pure() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub fn square() -> (Number) -> Number {
+            |x: Number| x * x
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "square")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("square body missing")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    if !captures.is_empty() {
+        return Err(format!("expected no captures, got {captures:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::Error>> {
+    // The closure's own parameters must not appear in its capture list.
+    let source = r"
+        pub fn combine(sink a: Number, sink b: Number) -> (Number) -> Number {
+            |x: Number| x + a + b
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "combine")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("combine body missing")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    let names: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    if names.contains(&"x") {
+        return Err(format!("closure param `x` leaked into captures: {names:?}").into());
+    }
+    if !names.contains(&"a") || !names.contains(&"b") {
+        return Err(format!("expected captures for `a` and `b`, got {names:?}").into());
+    }
+    Ok(())
+}

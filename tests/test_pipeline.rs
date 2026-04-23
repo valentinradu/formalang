@@ -510,3 +510,37 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
     }
     Ok(())
 }
+
+// =============================================================================
+// Monomorphisation stub (§2 IR gaps)
+// =============================================================================
+
+#[test]
+fn test_monomorphise_stub_rejects_generics() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct Box<T> { value: T }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline.run(module);
+    if result.is_ok() {
+        return Err("expected MonomorphisePass stub to reject a generic module".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct User { name: String, age: Number }
+        pub fn greet(user: User) -> String { user.name }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    pipeline
+        .run(module)
+        .map_err(|e| format!("expected stub to accept concrete module, got: {e:?}"))?;
+    Ok(())
+}

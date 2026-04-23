@@ -2741,6 +2741,7 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
 
     let expr = IrExpr::Closure {
         params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
+        captures: Vec::new(),
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(42.0),
             ty: num_ty.clone(),
