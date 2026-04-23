@@ -1,13 +1,17 @@
-#![allow(clippy::expect_used, clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use formalang::ast::ParamConvention;
-use formalang::error::CompilerError;
 /// Tests for `mut`/`sink` parameter conventions (Mutable Value Semantics).
-use formalang::{compile, compile_to_ir};
+use formalang::compile_to_ir;
+use formalang::error::CompilerError;
 
 // ---------------------------------------------------------------------------
 // Parser: convention is captured on FnParam
 // ---------------------------------------------------------------------------
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 fn parse_ok(src: &str) -> formalang::ast::File {
     compile(src).expect("expected parse success")

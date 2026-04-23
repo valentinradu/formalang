@@ -21,13 +21,16 @@ use formalang::ir::{
 
 #[test]
 fn test_dce_analyze_struct_in_impl_function_body() -> Result<(), Box<dyn std::error::Error>> {
-    // Struct used inside an impl function body should be marked used
+    // Struct used inside an impl function body should be marked used.
+    // (Outer is kept alive here by a standalone function signature — DCE no
+    // longer treats a bare impl block as a use of its target.)
     let source = r"
         struct Inner { value: Number = 0 }
         struct Outer { items: [Inner] }
         impl Outer {
             fn make() -> Inner { Inner(value: 1) }
         }
+        pub fn entry(o: Outer) -> Number { 0 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
@@ -36,10 +39,10 @@ fn test_dce_analyze_struct_in_impl_function_body() -> Result<(), Box<dyn std::er
     let inner_id = module.struct_id("Inner").ok_or("Inner must exist")?;
     let outer_id = module.struct_id("Outer").ok_or("Outer must exist")?;
     if !dce.is_struct_used(inner_id) {
-        return Err("Inner should be used (in impl body)".into());
+        return Err("Inner should be used (in impl body and as Outer field)".into());
     }
     if !dce.is_struct_used(outer_id) {
-        return Err("Outer should be used (has impl)".into());
+        return Err("Outer should be used (via `entry` function parameter)".into());
     }
     Ok(())
 }
@@ -624,14 +627,16 @@ fn test_dce_eliminate_with_remove_unused_structs() -> Result<(), Box<dyn std::er
     let source = r"
         struct Used { value: Number = 1 }
         struct Unused { data: String }
-        impl Used {}
+        impl Used { fn get(self) -> Number { self.value } }
+        pub fn entry(u: Used) -> Number { u.get() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    // With remove_unused_structs = true, the eliminator runs analyze()
     let optimized = eliminate_dead_code(&module, true);
-    // For now the implementation doesn't actually remove structs but runs the analysis
-    if optimized.structs.is_empty() {
-        return Err("Structs should still be present after DCE".into());
+    if !optimized.structs.iter().any(|s| s.name == "Used") {
+        return Err("Used should survive DCE (referenced by `entry`)".into());
+    }
+    if optimized.structs.iter().any(|s| s.name == "Unused") {
+        return Err("Unused should have been removed".into());
     }
     Ok(())
 }
@@ -645,8 +650,11 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::DeadCodeEliminationPass;
     use formalang::pipeline::IrPass;
 
+    // Keep Config alive via a standalone function parameter so the default
+    // pass (which now removes unused types) does not drop it.
     let source = r"
         struct Config { value: Number = if true { 1 } else { 2 } }
+        pub fn use_config(c: Config) -> Number { c.value }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut pass = DeadCodeEliminationPass::new();
@@ -654,11 +662,12 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     let optimized = result.map_err(|e| format!("pass: {e:?}"))?;
     let default = optimized
         .structs
-        .first()
-        .ok_or("index out of bounds")?
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("Config missing")?
         .fields
         .first()
-        .ok_or("index out of bounds")?
+        .ok_or("Config has no fields")?
         .default
         .as_ref()
         .ok_or("no default")?;
@@ -672,11 +681,9 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_pass_default_creates_with_remove_true() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::DeadCodeEliminationPass;
     let pass = DeadCodeEliminationPass::default();
-    // Struct removal requires full ID remapping which is not implemented,
-    // so the safe default is false to avoid producing malformed IR.
-    if pass.remove_unused_structs {
+    if !pass.remove_unused_structs {
         return Err(
-            "DeadCodeEliminationPass::default() should have remove_unused_structs = false".into(),
+            "DeadCodeEliminationPass::default() should have remove_unused_structs = true".into(),
         );
     }
     Ok(())
@@ -1448,7 +1455,7 @@ fn test_dce_preserves_trait_used_as_struct_generic_constraint(
 }
 
 /// A trait referenced only via virtual dispatch on a method call must be
-/// preserved — the DispatchKind::Virtual variant stores the trait_id and the
+/// preserved — the `DispatchKind::Virtual` variant stores the `trait_id` and the
 /// DCE must inspect it.
 #[test]
 fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn std::error::Error>> {

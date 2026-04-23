@@ -2,15 +2,19 @@
 //!
 //! Trait conformance is declared exclusively via `impl Trait for Type` blocks.
 
-use formalang::{compile, CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // Happy path: impl Trait for Type
 // =============================================================================
 
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
+
 #[test]
 fn test_impl_trait_for_struct_fields() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Named {
     name: String
 }
@@ -23,14 +27,14 @@ impl Named for User {
         self.name
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_impl_inherent_block() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Counter {
     value: Number
 }
@@ -39,14 +43,14 @@ impl Counter {
         self.value + 1
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_multiple_impl_blocks_same_type() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Named { name: String }
 trait Aged { age: Number }
 
@@ -66,7 +70,7 @@ impl Aged for Person {
         self.age >= 18
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -150,7 +154,7 @@ impl Named for Broken {
 
 #[test]
 fn test_trait_constraint_satisfied_via_impl() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Printable {
     label: String
 }
@@ -162,7 +166,7 @@ impl Printable for Doc {}
 fn print_it(item: Printable) -> String {
     item.label
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

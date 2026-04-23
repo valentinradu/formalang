@@ -3,38 +3,42 @@
 //! Covers: extern fn, extern impl, and all error cases.
 //! Note: `extern type` has been removed — types are always normal structs.
 
-use formalang::{compile, parse_only, CompilerError};
+use formalang::{parse_only, CompilerError};
 
 // =============================================================================
 // extern fn (module-level)
 // =============================================================================
 
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
+
 #[test]
 fn test_extern_fn_no_args() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern fn create_canvas() -> Canvas
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_extern_fn_with_args() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern fn render(canvas: Canvas, width: Number, height: Number) -> Boolean
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_extern_fn_no_return_type() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern fn flush(canvas: Canvas)
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -45,34 +49,34 @@ extern fn flush(canvas: Canvas)
 
 #[test]
 fn test_extern_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern impl Canvas {
     fn draw(self, x: Number, y: Number)
     fn get_width(self) -> Number
     fn get_height(self) -> Number
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_extern_impl_with_return_type() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Handle { raw: Number }
 extern impl Handle {
     fn id(self) -> Number
     fn is_valid(self) -> Boolean
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_regular_impl_and_extern_impl_coexist() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Socket { host: String }
 extern impl Socket {
     fn send(self, data: String) -> Boolean
@@ -83,7 +87,7 @@ impl Socket {
         self.send(data: text)
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -94,11 +98,11 @@ impl Socket {
 
 #[test]
 fn test_extern_fn_with_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 extern fn compute() -> Number {
     42
 }
-"#;
+";
     let result = parse_only(source);
     if result.is_ok() {
         return Err("expected parse error: extern fn must not have a body".into());
@@ -112,9 +116,9 @@ extern fn compute() -> Number {
 
 #[test]
 fn test_regular_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 fn compute() -> Number
-"#;
+";
     let result = parse_only(source);
     if result.is_ok() {
         return Err("expected parse error: non-extern fn must have a body".into());
@@ -124,12 +128,12 @@ fn compute() -> Number
 
 #[test]
 fn test_impl_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Foo {}
 impl Foo {
     fn bar(self) -> Number
 }
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error: impl fn without body")?;
@@ -148,14 +152,14 @@ impl Foo {
 
 #[test]
 fn test_extern_impl_fn_with_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern impl Canvas {
     fn draw(self) {
         42
     }
 }
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error: extern impl fn has body")?;
@@ -174,9 +178,9 @@ extern impl Canvas {
 
 #[test]
 fn test_extern_type_keyword_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 extern type Foo
-"#;
+";
     let result = parse_only(source);
     if result.is_ok() {
         return Err("expected parse error: `extern type` is no longer a valid production".into());
@@ -190,11 +194,11 @@ extern type Foo
 
 #[test]
 fn test_struct_with_extern_impl() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern impl Canvas { fn draw(self, x: Number, y: Number) }
 extern fn create_canvas(width: Number, height: Number) -> Canvas
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -210,9 +214,9 @@ fn test_extern_fn_ast_body_is_none() -> Result<(), Box<dyn std::error::Error>> {
         parse_only,
     };
 
-    let source = r#"
+    let source = r"
 extern fn compute() -> Number
-"#;
+";
     let file = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let def = file
         .statements
@@ -240,11 +244,11 @@ fn test_regular_fn_ast_body_is_some() -> Result<(), Box<dyn std::error::Error>> 
         parse_only,
     };
 
-    let source = r#"
+    let source = r"
 fn compute() -> Number {
     42
 }
-"#;
+";
     let file = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let def = file
         .statements

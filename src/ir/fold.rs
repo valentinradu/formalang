@@ -179,8 +179,14 @@ impl<'a> ConstantFolder<'a> {
                 result: Box::new(self.fold_expr(*result)),
                 ty,
             },
-            IrExpr::Closure { params, body, ty } => IrExpr::Closure {
+            IrExpr::Closure {
                 params,
+                captures,
+                body,
+                ty,
+            } => IrExpr::Closure {
+                params,
+                captures,
                 body: Box::new(self.fold_expr(*body)),
                 ty,
             },

@@ -66,6 +66,23 @@ The IR intentionally omits:
 - **String type references**: All resolved to typed IDs
 - **Module nesting**: Currently flattened (nested modules TODO)
 
+### Relationship to the Symbol Table
+
+The `SymbolTable` (built by the semantic analyzer) and the `IrModule`
+(produced by IR lowering) carry overlapping definitions by design:
+
+- `SymbolTable` keys everything by **name** and stores types as **strings**
+  (e.g. `"User"`, `"[Number]?"`). It is the authoritative view for the
+  validation passes and for LSP-style tooling that operates at the source
+  level.
+- `IrModule` keys everything by **typed IDs** (`StructId`, `TraitId`,
+  `EnumId`, `FunctionId`, `ImplId`) and stores types as `ResolvedType`
+  enums with embedded IDs. It is the authoritative view for code generators.
+
+The two are built in sequence — the symbol table drives lowering, then
+falls out of scope. Backends that need human-readable names can read them
+from the IR directly; they never need to inspect the symbol table.
+
 ## Obtaining the IR
 
 ### Main Entry Point
@@ -227,14 +244,14 @@ pub struct IrImportItem {
     /// Name of the imported type
     pub name: String,
     /// Kind of type (struct, trait, or enum)
-    pub kind: ExternalKind,
+    pub kind: ImportedKind,
 }
 ```
 
-#### ExternalKind
+#### ImportedKind
 
 ```rust
-pub enum ExternalKind {
+pub enum ImportedKind {
     Struct,
     Trait,
     Enum,
@@ -382,7 +399,7 @@ pub enum ResolvedType {
     External {
         module_path: Vec<String>,  // e.g., ["utils", "helpers"]
         name: String,              // Type name
-        kind: ExternalKind,        // Struct, Trait, or Enum
+        kind: ImportedKind,        // Struct, Trait, or Enum
         type_args: Vec<ResolvedType>,  // For generics
     },
 

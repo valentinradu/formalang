@@ -111,23 +111,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::ClosureExpr { params, body, .. } => {
                 let body_type = self.infer_type(body, file);
-                if params.is_empty() {
-                    format!("() -> {body_type}")
-                } else if params.len() == 1 {
-                    let param_type = params[0]
-                        .ty
-                        .as_ref()
-                        .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
-                    format!("{param_type} -> {body_type}")
-                } else {
-                    let param_types: Vec<String> = params
-                        .iter()
-                        .map(|p| {
-                            p.ty.as_ref()
-                                .map_or_else(|| "Unknown".to_string(), Self::type_to_string)
-                        })
-                        .collect();
-                    format!("{} -> {body_type}", param_types.join(", "))
+                match params.split_first() {
+                    None => format!("() -> {body_type}"),
+                    Some((only, [])) => {
+                        let param_type = only
+                            .ty
+                            .as_ref()
+                            .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
+                        format!("{param_type} -> {body_type}")
+                    }
+                    Some(_) => {
+                        let param_types: Vec<String> = params
+                            .iter()
+                            .map(|p| {
+                                p.ty.as_ref()
+                                    .map_or_else(|| "Unknown".to_string(), Self::type_to_string)
+                            })
+                            .collect();
+                        format!("{} -> {body_type}", param_types.join(", "))
+                    }
                 }
             }
             Expr::LetExpr { body, .. } => self.infer_type(body, file),

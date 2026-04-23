@@ -1,4 +1,13 @@
 //! IR lowering pass: AST + `SymbolTable` → `IrModule`
+//!
+//! The IR layer intentionally consumes the semantic analyzer's
+//! [`SymbolTable`](crate::semantic::SymbolTable) along with its public
+//! shape types ([`StructInfo`](crate::semantic::StructInfo),
+//! [`EnumInfo`](crate::semantic::EnumInfo), etc.). Those types are the
+//! narrow contract between the two phases and are re-exported from
+//! [`crate::semantic`] for that purpose; IR lowering should access them
+//! through the re-exports rather than reaching into
+//! `crate::semantic::symbol_table` directly.
 
 mod expr;
 mod types;
@@ -8,14 +17,13 @@ use crate::ast::{
     ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
-use crate::semantic::symbol_table::SymbolTable;
+use crate::semantic::{EnumInfo, StructInfo, SymbolKind, SymbolTable};
 
 use super::{
-    simple_type_name, ExternalKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction,
+    simple_type_name, ImportedKind, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction,
     IrFunctionParam, IrFunctionSig, IrGenericParam, IrImpl, IrImport, IrImportItem, IrLet,
     IrModule, IrStruct, IrTrait, ResolvedType, TraitId,
 };
-use crate::semantic::symbol_table::SymbolKind;
 use std::collections::HashMap;
 
 /// Lower an AST and symbol table into an IR module.
@@ -70,6 +78,18 @@ struct IrLowerer<'a> {
 }
 
 impl<'a> IrLowerer<'a> {
+    /// Record an internal-compiler-error indicating that an ID produced earlier
+    /// in the lowering pass no longer resolves to a definition. This only fires
+    /// on invariant violations (e.g. a caller mutating an IR vector between
+    /// registration and write-back); we surface it as a loud compilation
+    /// failure rather than panicking.
+    fn record_missing_id(&mut self, kind: &'static str, id: u32) {
+        self.errors.push(CompilerError::InternalError {
+            detail: format!("{kind} id {id} produced by registration lookup is no longer valid"),
+            span: crate::location::Span::default(),
+        });
+    }
+
     fn new(symbols: &'a SymbolTable) -> Self {
         Self {
             module: IrModule::new(),
@@ -370,7 +390,7 @@ impl<'a> IrLowerer<'a> {
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_struct(name, struct_info);
                 // Track this import for backend use (to find impl blocks)
-                self.try_track_external_import(name, ExternalKind::Struct);
+                self.try_track_imported_type(name, ImportedKind::Struct);
             }
         }
 
@@ -380,7 +400,7 @@ impl<'a> IrLowerer<'a> {
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_enum(name, enum_info);
                 // Track this import for backend use (to find impl blocks)
-                self.try_track_external_import(name, ExternalKind::Enum);
+                self.try_track_imported_type(name, ImportedKind::Enum);
             }
         }
 
@@ -431,7 +451,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Helper method to register an enum
     /// Note: `EnumInfo` doesn't preserve variant field details, so we create placeholder variants
-    fn register_enum(&mut self, name: &str, enum_info: &crate::semantic::symbol_table::EnumInfo) {
+    fn register_enum(&mut self, name: &str, enum_info: &EnumInfo) {
         let generic_params = self.lower_generic_params(&enum_info.generics);
 
         // EnumInfo only stores variant names and arity, not field details
@@ -459,11 +479,7 @@ impl<'a> IrLowerer<'a> {
     }
 
     /// Helper method to register a struct with full field information
-    fn register_struct(
-        &mut self,
-        name: &str,
-        struct_info: &crate::semantic::symbol_table::StructInfo,
-    ) {
+    fn register_struct(&mut self, name: &str, struct_info: &StructInfo) {
         // Convert fields from StructInfo to IrField
         let fields: Vec<IrField> = struct_info
             .fields
@@ -646,13 +662,10 @@ impl<'a> IrLowerer<'a> {
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
-        // Update the trait in place
-        // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from trait_id() guarantees valid index"
-        )]
-        let trait_def = &mut self.module.traits[id.0 as usize];
+        let Some(trait_def) = self.module.trait_mut(id) else {
+            self.record_missing_id("trait", id.0);
+            return;
+        };
         trait_def.name = qualified_name;
         trait_def.visibility = t.visibility;
         trait_def.composed_traits = composed_traits;
@@ -694,13 +707,10 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_struct_field(f))
             .collect();
 
-        // Update the struct in place
-        // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from struct_id() guarantees valid index"
-        )]
-        let struct_def = &mut self.module.structs[id.0 as usize];
+        let Some(struct_def) = self.module.struct_mut(id) else {
+            self.record_missing_id("struct", id.0);
+            return;
+        };
         struct_def.name = qualified_name;
         struct_def.visibility = s.visibility;
         struct_def.traits = traits;
@@ -739,13 +749,10 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        // Update the enum in place
-        // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from enum_id() guarantees valid index"
-        )]
-        let enum_def = &mut self.module.enums[id.0 as usize];
+        let Some(enum_def) = self.module.enum_mut(id) else {
+            self.record_missing_id("enum", id.0);
+            return;
+        };
         enum_def.name = qualified_name;
         enum_def.visibility = e.visibility;
         enum_def.generic_params = generic_params;
@@ -773,13 +780,10 @@ impl<'a> IrLowerer<'a> {
 
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
-        // Update the trait in place
-        // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from trait_id() guarantees valid index"
-        )]
-        let trait_def = &mut self.module.traits[id.0 as usize];
+        let Some(trait_def) = self.module.trait_mut(id) else {
+            self.record_missing_id("trait", id.0);
+            return;
+        };
         trait_def.composed_traits = composed_traits;
         trait_def.fields = fields;
         trait_def.methods = methods;
@@ -801,7 +805,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .filter_map(|trait_name| {
                 // Check if this is an external trait and track the import
-                self.try_track_external_import(trait_name, ExternalKind::Trait);
+                self.try_track_imported_type(trait_name, ImportedKind::Trait);
                 self.module.trait_id(trait_name)
             })
             .collect();
@@ -814,13 +818,10 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_struct_field(f))
             .collect();
 
-        // Update the struct in place
-        // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from struct_id() guarantees valid index"
-        )]
-        let struct_def = &mut self.module.structs[id.0 as usize];
+        let Some(struct_def) = self.module.struct_mut(id) else {
+            self.record_missing_id("struct", id.0);
+            return;
+        };
         struct_def.traits = traits;
         struct_def.fields = fields;
         struct_def.generic_params = generic_params;
@@ -846,13 +847,10 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        // Update the enum in place
-        // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from enum_id() guarantees valid index"
-        )]
-        let enum_def = &mut self.module.enums[id.0 as usize];
+        let Some(enum_def) = self.module.enum_mut(id) else {
+            self.record_missing_id("enum", id.0);
+            return;
+        };
         enum_def.variants = variants;
         enum_def.generic_params = generic_params;
     }
@@ -888,7 +886,9 @@ impl<'a> IrLowerer<'a> {
         // Clear the context
         self.current_impl_struct = None;
 
-        self.module.add_impl(IrImpl { target, functions });
+        if let Err(err) = self.module.add_impl(IrImpl { target, functions }) {
+            self.errors.push(err);
+        }
     }
 
     fn lower_function(&mut self, f: &FunctionDef) {
@@ -1118,7 +1118,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Track an external import if the given name is imported from another module.
     /// This is used for cases where we can't create a full External type (e.g., trait implementations).
-    pub(super) fn try_track_external_import(&mut self, name: &str, expected_kind: ExternalKind) {
+    pub(super) fn try_track_imported_type(&mut self, name: &str, expected_kind: ImportedKind) {
         if let Some(module_path) = self.symbols.get_module_logical_path(name) {
             let import_item = IrImportItem {
                 name: name.to_string(),
@@ -1152,9 +1152,9 @@ impl<'a> IrLowerer<'a> {
         let kind = self.symbols.get_symbol_kind(name)?;
 
         let external_kind = match kind {
-            SymbolKind::Struct => ExternalKind::Struct,
-            SymbolKind::Trait => ExternalKind::Trait,
-            SymbolKind::Enum => ExternalKind::Enum,
+            SymbolKind::Struct => ImportedKind::Struct,
+            SymbolKind::Trait => ImportedKind::Trait,
+            SymbolKind::Enum => ImportedKind::Enum,
             // Other kinds can't be used as types
             SymbolKind::Impl | SymbolKind::Let | SymbolKind::Module | SymbolKind::Function => {
                 return None

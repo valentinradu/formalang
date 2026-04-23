@@ -5,6 +5,7 @@ use crate::ast::{
     self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Expr, Literal,
     ParamConvention, PrimitiveType, UnaryOperator,
 };
+use crate::error::CompilerError;
 use crate::ir::{
     DispatchKind, ImplId, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType, TraitId,
 };
@@ -507,7 +508,11 @@ impl IrLowerer<'_> {
     /// * All other receiver shapes default to `Virtual` with a placeholder
     ///   trait id — backends can either reject these or fall back to runtime
     ///   resolution.
-    fn resolve_dispatch_kind(&self, receiver_ty: &ResolvedType, method_name: &str) -> DispatchKind {
+    fn resolve_dispatch_kind(
+        &mut self,
+        receiver_ty: &ResolvedType,
+        method_name: &str,
+    ) -> DispatchKind {
         // Static dispatch for concrete struct types.
         if let ResolvedType::Struct(struct_id)
         | ResolvedType::Generic {
@@ -521,7 +526,7 @@ impl IrLowerer<'_> {
             // this is the "method call inside its own impl" case. Point at
             // the slot that impl will occupy once finalized.
             return DispatchKind::Static {
-                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+                impl_id: self.next_impl_id_or_record(),
             };
         }
 
@@ -531,7 +536,7 @@ impl IrLowerer<'_> {
                 return DispatchKind::Static { impl_id };
             }
             return DispatchKind::Static {
-                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+                impl_id: self.next_impl_id_or_record(),
             };
         }
 
@@ -563,42 +568,94 @@ impl IrLowerer<'_> {
         }
     }
 
-    fn find_impl_for_struct(&self, id: crate::ir::StructId, method_name: &str) -> Option<ImplId> {
-        for (idx, impl_block) in self.module.impls.iter().enumerate() {
-            if impl_block.struct_id() == Some(id)
-                && impl_block.functions.iter().any(|f| f.name == method_name)
-            {
-                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
-        }
-        None
+    /// Return the `ImplId` that will be assigned to the next impl block added.
+    /// On u32 overflow, records a `TooManyDefinitions` error and returns a
+    /// sentinel ID so compilation fails loudly rather than producing wrong dispatch.
+    fn next_impl_id_or_record(&mut self) -> ImplId {
+        self.module.next_impl_id().unwrap_or_else(|| {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: crate::location::Span::default(),
+            });
+            ImplId(u32::MAX)
+        })
     }
 
-    fn find_impl_for_enum(&self, id: crate::ir::EnumId, method_name: &str) -> Option<ImplId> {
-        for (idx, impl_block) in self.module.impls.iter().enumerate() {
-            if impl_block.enum_id() == Some(id)
-                && impl_block.functions.iter().any(|f| f.name == method_name)
-            {
-                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
+    /// Record `TooManyDefinitions` for an impl index that does not fit in `u32`
+    /// and return a sentinel `ImplId`. Callers should have already established
+    /// an `add_impl`-enforced invariant; this path exists purely to keep the
+    /// compiler type-safe without an unchecked cast.
+    fn impl_id_from_idx(&mut self, idx: usize) -> ImplId {
+        if let Ok(v) = u32::try_from(idx) {
+            ImplId(v)
+        } else {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: crate::location::Span::default(),
+            });
+            ImplId(u32::MAX)
         }
-        None
+    }
+
+    fn trait_id_from_idx(&mut self, idx: usize) -> TraitId {
+        if let Ok(v) = u32::try_from(idx) {
+            TraitId(v)
+        } else {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "trait",
+                span: crate::location::Span::default(),
+            });
+            TraitId(u32::MAX)
+        }
+    }
+
+    fn find_impl_for_struct(
+        &mut self,
+        id: crate::ir::StructId,
+        method_name: &str,
+    ) -> Option<ImplId> {
+        let found_idx = self.module.impls.iter().enumerate().find_map(|(idx, b)| {
+            if b.struct_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name) {
+                Some(idx)
+            } else {
+                None
+            }
+        })?;
+        Some(self.impl_id_from_idx(found_idx))
+    }
+
+    fn find_impl_for_enum(&mut self, id: crate::ir::EnumId, method_name: &str) -> Option<ImplId> {
+        let found_idx = self.module.impls.iter().enumerate().find_map(|(idx, b)| {
+            if b.enum_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name) {
+                Some(idx)
+            } else {
+                None
+            }
+        })?;
+        Some(self.impl_id_from_idx(found_idx))
     }
 
     /// Best-effort lookup of the trait that declares `method_name` among the
     /// constraints attached to generic parameter `param_name`. Returns the
     /// first matching trait, or `None` if no constraint declares the method.
-    fn find_trait_for_method(&self, _param_name: &str, method_name: &str) -> Option<TraitId> {
+    fn find_trait_for_method(&mut self, _param_name: &str, method_name: &str) -> Option<TraitId> {
         // Walk all traits and pick the first one declaring this method.
         // This is intentionally loose: the semantic analyser already verified
         // that such a method exists, so picking any trait that declares it
         // preserves correctness for a single-trait bound.
-        for (idx, trait_def) in self.module.traits.iter().enumerate() {
-            if trait_def.methods.iter().any(|m| m.name == method_name) {
-                return Some(TraitId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
-        }
-        None
+        let found_idx = self
+            .module
+            .traits
+            .iter()
+            .enumerate()
+            .find_map(|(idx, trait_def)| {
+                if trait_def.methods.iter().any(|m| m.name == method_name) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })?;
+        Some(self.trait_id_from_idx(found_idx))
     }
 
     /// Lower a `let pat = val in body` expression into a block with the binding as a statement.
@@ -953,7 +1010,8 @@ impl IrLowerer<'_> {
 
     /// Lower a closure expression.
     ///
-    /// Lowers parameters and body to a `Closure` IR node. The regular lowering
+    /// Lowers parameters and body to a `Closure` IR node, and collects the
+    /// free variables (captures) referenced by the body. The regular lowering
     /// path handles all closure cases uniformly, including closures whose body
     /// is an enum variant construction.
     fn lower_closure(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
@@ -972,6 +1030,12 @@ impl IrLowerer<'_> {
         let body_ir = self.lower_expr(body);
         let return_ty = body_ir.ty().clone();
 
+        let param_names: std::collections::HashSet<String> =
+            lowered_params.iter().map(|(_, n, _)| n.clone()).collect();
+        let mut captures: Vec<(String, ResolvedType)> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        collect_free_refs(&body_ir, &param_names, &mut captures, &mut seen);
+
         let ty = ResolvedType::Closure {
             param_tys: lowered_params
                 .iter()
@@ -982,6 +1046,7 @@ impl IrLowerer<'_> {
 
         IrExpr::Closure {
             params: lowered_params,
+            captures,
             body: Box::new(body_ir),
             ty,
         }
@@ -1013,6 +1078,149 @@ impl IrLowerer<'_> {
                 // Wildcard has no bindings
                 Vec::new()
             }
+        }
+    }
+}
+
+/// Walk `expr` and collect every single-name `Reference` whose name is not
+/// bound inside the expression itself — i.e. the closure's free variables.
+///
+/// Captures are appended to `out` in first-reference order and deduplicated
+/// via `seen`. The caller seeds `bound` with the closure's own parameter
+/// names; nested lets and inner closures extend it locally during the walk.
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive dispatch over every IrExpr variant — extracting arms would hide the structural walk"
+)]
+fn collect_free_refs(
+    expr: &IrExpr,
+    bound: &std::collections::HashSet<String>,
+    out: &mut Vec<(String, ResolvedType)>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    match expr {
+        IrExpr::Reference { path, ty } => {
+            if let [name] = path.as_slice() {
+                if !bound.contains(name) && seen.insert(name.clone()) {
+                    out.push((name.clone(), ty.clone()));
+                }
+            }
+        }
+        IrExpr::LetRef { name, ty } => {
+            if !bound.contains(name) && seen.insert(name.clone()) {
+                out.push((name.clone(), ty.clone()));
+            }
+        }
+        IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => {}
+        IrExpr::StructInst { fields, .. }
+        | IrExpr::EnumInst { fields, .. }
+        | IrExpr::Tuple { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_free_refs(field_expr, bound, out, seen);
+            }
+        }
+        IrExpr::Array { elements, .. } => {
+            for e in elements {
+                collect_free_refs(e, bound, out, seen);
+            }
+        }
+        IrExpr::FieldAccess { object, .. } => collect_free_refs(object, bound, out, seen),
+        IrExpr::BinaryOp { left, right, .. } => {
+            collect_free_refs(left, bound, out, seen);
+            collect_free_refs(right, bound, out, seen);
+        }
+        IrExpr::UnaryOp { operand, .. } => collect_free_refs(operand, bound, out, seen),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_free_refs(condition, bound, out, seen);
+            collect_free_refs(then_branch, bound, out, seen);
+            if let Some(e) = else_branch {
+                collect_free_refs(e, bound, out, seen);
+            }
+        }
+        IrExpr::For {
+            var,
+            collection,
+            body,
+            ..
+        } => {
+            collect_free_refs(collection, bound, out, seen);
+            let mut inner = bound.clone();
+            inner.insert(var.clone());
+            collect_free_refs(body, &inner, out, seen);
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_free_refs(scrutinee, bound, out, seen);
+            for arm in arms {
+                let mut inner = bound.clone();
+                for (name, _) in &arm.bindings {
+                    inner.insert(name.clone());
+                }
+                collect_free_refs(&arm.body, &inner, out, seen);
+            }
+        }
+        IrExpr::FunctionCall { args, .. } => {
+            for (_, a) in args {
+                collect_free_refs(a, bound, out, seen);
+            }
+        }
+        IrExpr::MethodCall { receiver, args, .. } => {
+            collect_free_refs(receiver, bound, out, seen);
+            for (_, a) in args {
+                collect_free_refs(a, bound, out, seen);
+            }
+        }
+        IrExpr::Closure {
+            params, captures, ..
+        } => {
+            // Inner closure: its own captures are already computed relative to
+            // its body. Any capture that is bound in the outer scope is not
+            // free at this level; the rest bubble up as outer-closure captures.
+            let inner_params: std::collections::HashSet<String> =
+                params.iter().map(|(_, n, _)| n.clone()).collect();
+            for (name, ty) in captures {
+                if !inner_params.contains(name)
+                    && !bound.contains(name)
+                    && seen.insert(name.clone())
+                {
+                    out.push((name.clone(), ty.clone()));
+                }
+            }
+        }
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                collect_free_refs(k, bound, out, seen);
+                collect_free_refs(v, bound, out, seen);
+            }
+        }
+        IrExpr::DictAccess { dict, key, .. } => {
+            collect_free_refs(dict, bound, out, seen);
+            collect_free_refs(key, bound, out, seen);
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            let mut inner = bound.clone();
+            for stmt in statements {
+                match stmt {
+                    IrBlockStatement::Let { name, value, .. } => {
+                        collect_free_refs(value, &inner, out, seen);
+                        inner.insert(name.clone());
+                    }
+                    IrBlockStatement::Assign { target, value } => {
+                        collect_free_refs(target, &inner, out, seen);
+                        collect_free_refs(value, &inner, out, seen);
+                    }
+                    IrBlockStatement::Expr(e) => collect_free_refs(e, &inner, out, seen),
+                }
+            }
+            collect_free_refs(result, &inner, out, seen);
         }
     }
 }

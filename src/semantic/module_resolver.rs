@@ -1,7 +1,10 @@
-use crate::location::Span;
 use std::path::PathBuf;
 
-/// Error types for module resolution
+/// Error types for module resolution.
+///
+/// Each variant carries only data intrinsic to the resolution failure; the
+/// source `Span` of the offending `use` statement is supplied by the caller
+/// when converting a [`ModuleError`] into a user-facing [`crate::CompilerError`].
 #[expect(
     clippy::exhaustive_enums,
     reason = "matched exhaustively by consumer code"
@@ -12,28 +15,18 @@ pub enum ModuleError {
     NotFound {
         path: Vec<String>,
         searched_paths: Vec<PathBuf>,
-        span: Span,
     },
     /// Circular import detected
-    CircularImport { cycle: Vec<String>, span: Span },
+    CircularImport { cycle: Vec<String> },
     /// Failed to read module file
-    ReadError {
-        path: PathBuf,
-        error: String,
-        span: Span,
-    },
+    ReadError { path: PathBuf, error: String },
     /// Imported item is not public
-    PrivateItem {
-        item: String,
-        module: String,
-        span: Span,
-    },
+    PrivateItem { item: String, module: String },
     /// Imported item not found in module
     ItemNotFound {
         item: String,
         module: String,
         available: Vec<String>,
-        span: Span,
     },
 }
 
@@ -148,7 +141,6 @@ impl ModuleResolver for FileSystemResolver {
             ModuleError::NotFound {
                 path: path.to_vec(),
                 searched_paths: searched,
-                span: Span::default(),
             }
         })?;
 
@@ -156,7 +148,6 @@ impl ModuleResolver for FileSystemResolver {
         let source = std::fs::read_to_string(&module_file).map_err(|e| ModuleError::ReadError {
             path: module_file.clone(),
             error: e.to_string(),
-            span: Span::default(),
         })?;
 
         Ok((source, module_file))

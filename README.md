@@ -331,10 +331,9 @@ The compiler resolves overloads by the named-argument label set. Ambiguous or un
 
 | Function | Returns | Use case |
 | --- | --- | --- |
-| `compile_to_ir(src)` | `Result<IrModule, Vec<CompilerError>>` | Code generation |
-| `compile(src)` | `Result<File, Vec<CompilerError>>` | Validation, tooling |
+| `compile_to_ir(src)` | `Result<IrModule, Vec<CompilerError>>` | Code generation (canonical) |
 | `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer), …>` | LSP hover / completion |
-| `compile_and_report(src, filename)` | `Result<File, String>` | Human-readable errors |
+| `compile_and_report(src, filename)` | `Result<IrModule, String>` | CLI: compile + human-readable errors |
 | `parse_only(src)` | `Result<File, …>` | Syntax check only |
 
 Custom module resolver (to load `.fv` files from anywhere):
@@ -409,9 +408,9 @@ impl Backend for MyBackend {
 ### Error reporting
 
 ```rust
-use formalang::{compile, reporting::report_errors};
+use formalang::{compile_to_ir, reporting::report_errors};
 
-match compile(source) {
+match compile_to_ir(source) {
     Ok(_) => {}
     Err(errors) => {
         eprintln!("{}", report_errors(&errors, source, "file.fv"));

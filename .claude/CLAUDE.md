@@ -58,7 +58,7 @@
 - Tests in `tests/` for integration
 - Tests in `src/` with `#[cfg(test)]` for unit
 - All public APIs need tests
-- **Markdown code tests are mandatory**
+- ```rust``` examples in doc comments are exercised by `cargo test --doc`
 
 ---
 
@@ -79,15 +79,13 @@ plugin system.
 - **Plugin system**: `IrPass` for IR transforms; `Backend` for code generation; composed with `Pipeline`
 - **Built-in passes**: `DeadCodeEliminationPass`, `ConstantFoldingPass` in `formalang::ir`
 
-### Stdlib Usage
+### Module Resolution
 
-- **Always import via `use`**: Never append or concatenate stdlib source
-- **Use FileSystemResolver**: Tests should import stdlib from filesystem
-- **Location**: modules in `stdlib/` directory (no single `stdlib.fv` at root)
-- **Import pattern**: `use stdlib::*` for all stdlib symbols
-- **No include_str**: Never use `include_str!` to load stdlib
+- **Always import via `use`**: Never append or concatenate source files
+- **Use `FileSystemResolver`**: Resolve imports from disk via `compile_with_resolver`
+- **No `include_str!`**: Never splice one module's source into another
 - **Impl block defaults**: Importing a struct/enum also imports its impl block
-- **Test setup**: Use `PathBuf::from(".")` as resolver root
+- **Test setup**: Use `PathBuf::from(".")` (or a `tempfile::tempdir`) as resolver root
 
 ### Code Formatting
 

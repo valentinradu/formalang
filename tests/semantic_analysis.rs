@@ -2,11 +2,13 @@
 //!
 //! Tests for exercising semantic analyzer validation paths
 
-use formalang::compile;
-
 // =============================================================================
 // Struct and Trait Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_struct_with_header_content_fields() -> Result<(), Box<dyn std::error::Error>> {

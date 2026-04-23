@@ -2,11 +2,15 @@
 //!
 //! These tests exercise the full compile pipeline: Lexer -> Parser -> Semantic Analyzer
 
-use formalang::{compile, compile_to_ir, parse_only, CompilerError};
+use formalang::{compile_to_ir, parse_only, CompilerError};
 
 // =============================================================================
 // Basic Definition Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_empty_file() -> Result<(), Box<dyn std::error::Error>> {
@@ -981,6 +985,10 @@ fn test_complete_program_compiles() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "end-to-end integration check asserting every IR section against a fixture"
+)]
 fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>> {
     let source = include_str!("fixtures/complete.fv");
     let module =

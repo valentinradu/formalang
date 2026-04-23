@@ -2,11 +2,15 @@
 //!
 //! Tests for type validation, trait checking, and semantic errors
 
-use formalang::{compile, compile_and_report};
+use formalang::compile_and_report;
 
 // =============================================================================
 // Type Validation Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_type_validation_primitive_string() -> Result<(), Box<dyn std::error::Error>> {

@@ -2,11 +2,15 @@
 //!
 //! Tests for parser edge cases and AST node coverage
 
-use formalang::{compile, parse_only};
+use formalang::parse_only;
 
 // =============================================================================
 // Parse Function Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_compile_simple() -> Result<(), Box<dyn std::error::Error>> {
@@ -611,7 +615,7 @@ fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
         struct Container {
             header: String,
             content: String,
@@ -635,7 +639,7 @@ fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
         impl Button {
             fn getOnClick() -> String { self.label }
         }
-    "#;
+    ";
     compile(source).map_err(|e| format!("View hierarchy: {e:?}"))?;
     Ok(())
 }

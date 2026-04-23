@@ -1,12 +1,16 @@
-//! Tests to cover gaps in test coverage
-//!
-//! Targets: AST helpers, Token parsing, `ImportGraph`, semantic edge cases
+//! Tests for AST helper methods (`Expr::span`), Token parsing, `ImportGraph`,
+//! and semantic edge cases. Distinct from `test_gaps.rs`, which exercises the
+//! compiler's gap-filling validation passes.
 
-use formalang::{compile, CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // AST Span Tests - Exercise Expr::span() for all variants
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_expr_span_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {

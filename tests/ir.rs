@@ -2900,7 +2900,7 @@ fn test_resolved_type_display_generic() -> Result<(), Box<dyn std::error::Error>
 // External Reference Tests
 // =============================================================================
 
-use formalang::ir::ExternalKind;
+use formalang::ir::ImportedKind;
 use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -2935,7 +2935,6 @@ impl ModuleResolver for MockResolver {
             .ok_or_else(|| ModuleError::NotFound {
                 path: path.to_vec(),
                 searched_paths: vec![],
-                span: formalang::location::Span::default(),
             })
     }
 }
@@ -2996,11 +2995,11 @@ struct Main {
                 )
                 .into());
             }
-            if *kind != ExternalKind::Struct {
+            if *kind != ImportedKind::Struct {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Struct
+                    ImportedKind::Struct
                 )
                 .into());
             }
@@ -3102,11 +3101,11 @@ struct Item {
                 )
                 .into());
             }
-            if *kind != ExternalKind::Enum {
+            if *kind != ImportedKind::Enum {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Enum
+                    ImportedKind::Enum
                 )
                 .into());
             }
@@ -3170,11 +3169,11 @@ struct Wrapper {
             if name != "Box" {
                 return Err(format!("expected {:?} but got {:?}", "Box", name).into());
             }
-            if *kind != ExternalKind::Struct {
+            if *kind != ImportedKind::Struct {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Struct
+                    ImportedKind::Struct
                 )
                 .into());
             }
@@ -3962,8 +3961,9 @@ struct Container { p: Point = Point(x: 1, y: 2) }
 // Method Resolution Tests
 // =============================================================================
 
-/// Helper to compile with stdlib access
-fn compile_with_stdlib(source: &str) -> Result<formalang::IrModule, Vec<formalang::CompilerError>> {
+/// Compile through a `FileSystemResolver` rooted at the current directory,
+/// so tests can write fixture modules alongside the test binary.
+fn compile_rooted_here(source: &str) -> Result<formalang::IrModule, Vec<formalang::CompilerError>> {
     let root_dir = std::path::PathBuf::from(".");
     let resolver = formalang::FileSystemResolver::new(root_dir);
     let (ast, analyzer) = formalang::compile_with_analyzer_and_resolver(source, resolver)?;
@@ -3996,7 +3996,7 @@ fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>
         }
     ";
 
-    let module = compile_with_stdlib(source).map_err(|e| format!("Should compile: {e:?}"))?;
+    let module = compile_rooted_here(source).map_err(|e| format!("Should compile: {e:?}"))?;
 
     // Find the method call in the function body
     struct MethodCallFinder {
@@ -4058,7 +4058,7 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
 
-    let module = compile_with_stdlib(source).map_err(|e| format!("Should compile: {e:?}"))?;
+    let module = compile_rooted_here(source).map_err(|e| format!("Should compile: {e:?}"))?;
 
     struct MethodCallFinder {
         found_length: bool,
@@ -4122,7 +4122,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
 
-    let module = compile_with_stdlib(source).map_err(|e| format!("Should compile: {e:?}"))?;
+    let module = compile_rooted_here(source).map_err(|e| format!("Should compile: {e:?}"))?;
 
     // Find the method call in function body
     struct MethodCallFinder {

@@ -13,7 +13,7 @@
 //! impl Used { value: 1 }
 //! ```
 
-use crate::ir::{IrExpr, IrModule, StructId, TraitId};
+use crate::ir::{EnumId, IrExpr, IrModule, StructId, TraitId};
 use std::collections::HashSet;
 
 /// Dead code eliminator that removes unreachable and unused code.
@@ -25,6 +25,9 @@ pub struct DeadCodeEliminator<'a> {
     /// Traits that are actually used (including those referenced only as
     /// trait constraints on generic parameters).
     used_traits: HashSet<TraitId>,
+    /// Enums that are actually used (including those referenced only in
+    /// field types or variant constructions).
+    used_enums: HashSet<EnumId>,
 }
 
 impl<'a> DeadCodeEliminator<'a> {
@@ -35,22 +38,28 @@ impl<'a> DeadCodeEliminator<'a> {
             module,
             used_structs: HashSet::new(),
             used_traits: HashSet::new(),
+            used_enums: HashSet::new(),
         }
     }
 
     /// Analyze the module to find all used definitions.
     pub fn analyze(&mut self) {
-        // Mark structs/enums used in impl blocks
+        // Walk impl-method bodies for references. Do NOT mark the impl's
+        // target type as used purely because an impl block exists; an impl
+        // is dead code if nothing else references its target. Impls whose
+        // target is removed are pruned by `remove_unused_definitions`.
         for impl_block in &self.module.impls {
-            if let Some(struct_id) = impl_block.struct_id() {
-                self.used_structs.insert(struct_id);
-            }
-            // Note: enum impls don't affect struct DCE
-
-            // Check expressions in functions
             for func in &impl_block.functions {
                 if let Some(body) = &func.body {
                     self.mark_used_in_expr(body);
+                }
+                for p in &func.params {
+                    if let Some(ty) = &p.ty {
+                        self.mark_used_in_type(ty);
+                    }
+                }
+                if let Some(ret) = &func.return_type {
+                    self.mark_used_in_type(ret);
                 }
             }
         }
@@ -216,12 +225,31 @@ impl<'a> DeadCodeEliminator<'a> {
                     self.mark_used_in_type(arg);
                 }
             }
-            // Other types don't reference structs or traits
-            ResolvedType::Primitive(_) | ResolvedType::Enum(_) | ResolvedType::TypeParam(_) => {}
+            ResolvedType::Enum(id) => {
+                self.used_enums.insert(*id);
+            }
+            // Placeholder types do not reference any definition.
+            ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
         }
     }
 
+    /// Get the set of used enum IDs.
+    #[must_use]
+    pub const fn used_enums_set(&self) -> &HashSet<EnumId> {
+        &self.used_enums
+    }
+
+    /// Check if an enum is used.
+    #[must_use]
+    pub fn is_enum_used(&self, id: EnumId) -> bool {
+        self.used_enums.contains(&id)
+    }
+
     /// Mark structs used in an expression.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match over every IrExpr variant; splitting would hide the walk"
+    )]
     fn mark_used_in_expr(&mut self, expr: &IrExpr) {
         match expr {
             IrExpr::StructInst {
@@ -256,7 +284,17 @@ impl<'a> DeadCodeEliminator<'a> {
                     self.mark_used_in_expr(e);
                 }
             }
-            IrExpr::Tuple { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            IrExpr::EnumInst {
+                enum_id, fields, ..
+            } => {
+                if let Some(id) = enum_id {
+                    self.used_enums.insert(*id);
+                }
+                for (_, e) in fields {
+                    self.mark_used_in_expr(e);
+                }
+            }
+            IrExpr::Tuple { fields, .. } => {
                 for (_, e) in fields {
                     self.mark_used_in_expr(e);
                 }
@@ -549,18 +587,440 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
         }
     }
 
-    // Optionally remove unused structs
+    // Physically remove unused structs/traits/enums, then rewrite every ID
+    // reference so the module stays internally consistent.
     if remove_unused_structs {
         let mut eliminator = DeadCodeEliminator::new(&result);
         eliminator.analyze();
-
-        // Filter to only keep used structs
-        // Note: This is tricky because struct IDs would change
-        // For now, we just report which are unused but don't remove them
-        // Full removal would require re-indexing all references
+        let used_structs = eliminator.used_structs.clone();
+        let used_traits = eliminator.used_traits.clone();
+        let used_enums = eliminator.used_enums.clone();
+        drop(eliminator);
+        remove_unused_definitions(&mut result, &used_structs, &used_traits, &used_enums);
     }
 
     result
+}
+
+/// Mapping from old-to-new IDs after a DCE pass. `None` at an index means
+/// the old definition was removed.
+#[derive(Debug, Default)]
+struct IdRemap {
+    structs: Vec<Option<StructId>>,
+    traits: Vec<Option<TraitId>>,
+    enums: Vec<Option<EnumId>>,
+}
+
+impl IdRemap {
+    fn struct_of(&self, old: StructId) -> Option<StructId> {
+        self.structs.get(old.0 as usize).copied().flatten()
+    }
+
+    fn trait_of(&self, old: TraitId) -> Option<TraitId> {
+        self.traits.get(old.0 as usize).copied().flatten()
+    }
+
+    fn enum_of(&self, old: EnumId) -> Option<EnumId> {
+        self.enums.get(old.0 as usize).copied().flatten()
+    }
+}
+
+/// Remove unused struct/trait/enum definitions and every reference to them
+/// across the whole IR module. Also drops impl blocks whose target is
+/// removed, and rebuilds name-to-ID indices.
+fn remove_unused_definitions(
+    module: &mut IrModule,
+    used_structs: &HashSet<StructId>,
+    used_traits: &HashSet<TraitId>,
+    used_enums: &HashSet<EnumId>,
+) {
+    let remap = build_remap(module, used_structs, used_traits, used_enums);
+
+    // Filter definition vectors in-place, preserving the relative order of
+    // survivors so later-added IDs remain higher than earlier ones. Walk the
+    // remap Option slice in lockstep with the definition vector.
+    {
+        let mut iter = remap.structs.iter();
+        module
+            .structs
+            .retain(|_| iter.next().copied().flatten().is_some());
+    }
+    {
+        let mut iter = remap.traits.iter();
+        module
+            .traits
+            .retain(|_| iter.next().copied().flatten().is_some());
+    }
+    {
+        let mut iter = remap.enums.iter();
+        module
+            .enums
+            .retain(|_| iter.next().copied().flatten().is_some());
+    }
+
+    // Drop impls that target a removed struct or enum.
+    module.impls.retain(|impl_block| {
+        use crate::ir::ImplTarget;
+        match impl_block.target {
+            ImplTarget::Struct(id) => remap.struct_of(id).is_some(),
+            ImplTarget::Enum(id) => remap.enum_of(id).is_some(),
+        }
+    });
+
+    // Rewrite every remaining ID.
+    remap_module(module, &remap);
+
+    module.rebuild_indices();
+}
+
+fn build_remap(
+    module: &IrModule,
+    used_structs: &HashSet<StructId>,
+    used_traits: &HashSet<TraitId>,
+    used_enums: &HashSet<EnumId>,
+) -> IdRemap {
+    // Since every old id is itself < u32::MAX (add_* enforces this),
+    // truncation here is safe. try_from flagged by strict lints; use it.
+    fn remap_slice<Id: Copy + Eq + std::hash::Hash>(
+        count: usize,
+        used: &HashSet<Id>,
+        make: impl Fn(u32) -> Id,
+    ) -> Vec<Option<Id>> {
+        let mut out = Vec::with_capacity(count);
+        let mut next: u32 = 0;
+        for i in 0..count {
+            let Ok(old_idx) = u32::try_from(i) else {
+                out.push(None);
+                continue;
+            };
+            let old = make(old_idx);
+            if used.contains(&old) {
+                out.push(Some(make(next)));
+                next = next.wrapping_add(1);
+            } else {
+                out.push(None);
+            }
+        }
+        out
+    }
+
+    IdRemap {
+        structs: remap_slice(module.structs.len(), used_structs, StructId),
+        traits: remap_slice(module.traits.len(), used_traits, TraitId),
+        enums: remap_slice(module.enums.len(), used_enums, EnumId),
+    }
+}
+
+fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
+    use crate::ir::ResolvedType;
+    match ty {
+        ResolvedType::Struct(id) => {
+            if let Some(new) = remap.struct_of(*id) {
+                *id = new;
+            }
+        }
+        ResolvedType::Trait(id) => {
+            if let Some(new) = remap.trait_of(*id) {
+                *id = new;
+            }
+        }
+        ResolvedType::Enum(id) => {
+            if let Some(new) = remap.enum_of(*id) {
+                *id = new;
+            }
+        }
+        ResolvedType::Generic { base, args } => {
+            if let Some(new) = remap.struct_of(*base) {
+                *base = new;
+            }
+            for a in args {
+                remap_type(a, remap);
+            }
+        }
+        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => remap_type(inner, remap),
+        ResolvedType::Tuple(fields) => {
+            for (_, t) in fields {
+                remap_type(t, remap);
+            }
+        }
+        ResolvedType::Dictionary { key_ty, value_ty } => {
+            remap_type(key_ty, remap);
+            remap_type(value_ty, remap);
+        }
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => {
+            for (_, t) in param_tys {
+                remap_type(t, remap);
+            }
+            remap_type(return_ty, remap);
+        }
+        ResolvedType::External { type_args, .. } => {
+            for a in type_args {
+                remap_type(a, remap);
+            }
+        }
+        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
+    }
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive match over every IrExpr variant; splitting would hide the structural walk"
+)]
+fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
+    remap_type(expr.ty_mut(), remap);
+    match expr {
+        IrExpr::StructInst {
+            struct_id,
+            type_args,
+            fields,
+            ..
+        } => {
+            if let Some(id) = struct_id {
+                if let Some(new) = remap.struct_of(*id) {
+                    *id = new;
+                }
+            }
+            for t in type_args {
+                remap_type(t, remap);
+            }
+            for (_, e) in fields {
+                remap_expr(e, remap);
+            }
+        }
+        IrExpr::EnumInst {
+            enum_id, fields, ..
+        } => {
+            if let Some(id) = enum_id {
+                if let Some(new) = remap.enum_of(*id) {
+                    *id = new;
+                }
+            }
+            for (_, e) in fields {
+                remap_expr(e, remap);
+            }
+        }
+        IrExpr::BinaryOp { left, right, .. } => {
+            remap_expr(left, remap);
+            remap_expr(right, remap);
+        }
+        IrExpr::UnaryOp { operand, .. } => remap_expr(operand, remap),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            remap_expr(condition, remap);
+            remap_expr(then_branch, remap);
+            if let Some(eb) = else_branch {
+                remap_expr(eb, remap);
+            }
+        }
+        IrExpr::Array { elements, .. } => {
+            for e in elements {
+                remap_expr(e, remap);
+            }
+        }
+        IrExpr::Tuple { fields, .. } => {
+            for (_, e) in fields {
+                remap_expr(e, remap);
+            }
+        }
+        IrExpr::FieldAccess { object, .. } => remap_expr(object, remap),
+        IrExpr::For {
+            var_ty,
+            collection,
+            body,
+            ..
+        } => {
+            remap_type(var_ty, remap);
+            remap_expr(collection, remap);
+            remap_expr(body, remap);
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            remap_expr(scrutinee, remap);
+            for arm in arms {
+                for (_, t) in &mut arm.bindings {
+                    remap_type(t, remap);
+                }
+                remap_expr(&mut arm.body, remap);
+            }
+        }
+        IrExpr::FunctionCall { args, .. } => {
+            for (_, e) in args {
+                remap_expr(e, remap);
+            }
+        }
+        IrExpr::MethodCall {
+            receiver,
+            args,
+            dispatch,
+            ..
+        } => {
+            remap_expr(receiver, remap);
+            for (_, e) in args {
+                remap_expr(e, remap);
+            }
+            if let crate::ir::DispatchKind::Virtual { trait_id, .. } = dispatch {
+                if let Some(new) = remap.trait_of(*trait_id) {
+                    *trait_id = new;
+                }
+            }
+        }
+        IrExpr::Closure {
+            params,
+            captures,
+            body,
+            ..
+        } => {
+            for (_, _, t) in params {
+                remap_type(t, remap);
+            }
+            for (_, t) in captures {
+                remap_type(t, remap);
+            }
+            remap_expr(body, remap);
+        }
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                remap_expr(k, remap);
+                remap_expr(v, remap);
+            }
+        }
+        IrExpr::DictAccess { dict, key, .. } => {
+            remap_expr(dict, remap);
+            remap_expr(key, remap);
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            for stmt in statements.iter_mut() {
+                remap_block_statement(stmt, remap);
+            }
+            remap_expr(result, remap);
+        }
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => {}
+    }
+}
+
+fn remap_block_statement(stmt: &mut crate::ir::IrBlockStatement, remap: &IdRemap) {
+    use crate::ir::IrBlockStatement;
+    match stmt {
+        IrBlockStatement::Let { ty, value, .. } => {
+            if let Some(t) = ty {
+                remap_type(t, remap);
+            }
+            remap_expr(value, remap);
+        }
+        IrBlockStatement::Assign { target, value } => {
+            remap_expr(target, remap);
+            remap_expr(value, remap);
+        }
+        IrBlockStatement::Expr(e) => remap_expr(e, remap),
+    }
+}
+
+/// Rewrite each surviving trait ID in `ids` and drop those whose trait was
+/// removed. Returns `true` if the trait survived and has been updated.
+fn retain_trait_id(id: &mut TraitId, remap: &IdRemap) -> bool {
+    remap.trait_of(*id).is_some_and(|new| {
+        *id = new;
+        true
+    })
+}
+
+fn remap_module(module: &mut IrModule, remap: &IdRemap) {
+    for s in &mut module.structs {
+        s.traits.retain_mut(|id| retain_trait_id(id, remap));
+        for f in &mut s.fields {
+            remap_type(&mut f.ty, remap);
+            if let Some(default) = &mut f.default {
+                remap_expr(default, remap);
+            }
+        }
+        for gp in &mut s.generic_params {
+            gp.constraints.retain_mut(|id| retain_trait_id(id, remap));
+        }
+    }
+    for t in &mut module.traits {
+        t.composed_traits
+            .retain_mut(|id| retain_trait_id(id, remap));
+        for f in &mut t.fields {
+            remap_type(&mut f.ty, remap);
+        }
+        for m in &mut t.methods {
+            for p in &mut m.params {
+                if let Some(ty) = &mut p.ty {
+                    remap_type(ty, remap);
+                }
+            }
+            if let Some(ret) = &mut m.return_type {
+                remap_type(ret, remap);
+            }
+        }
+        for gp in &mut t.generic_params {
+            gp.constraints.retain_mut(|id| retain_trait_id(id, remap));
+        }
+    }
+    for e in &mut module.enums {
+        for v in &mut e.variants {
+            for f in &mut v.fields {
+                remap_type(&mut f.ty, remap);
+            }
+        }
+        for gp in &mut e.generic_params {
+            gp.constraints.retain_mut(|id| retain_trait_id(id, remap));
+        }
+    }
+    for i in &mut module.impls {
+        match &mut i.target {
+            crate::ir::ImplTarget::Struct(id) => {
+                if let Some(new) = remap.struct_of(*id) {
+                    *id = new;
+                }
+            }
+            crate::ir::ImplTarget::Enum(id) => {
+                if let Some(new) = remap.enum_of(*id) {
+                    *id = new;
+                }
+            }
+        }
+        for f in &mut i.functions {
+            remap_function(f, remap);
+        }
+    }
+    for f in &mut module.functions {
+        remap_function(f, remap);
+    }
+    for l in &mut module.lets {
+        remap_type(&mut l.ty, remap);
+        remap_expr(&mut l.value, remap);
+    }
+}
+
+fn remap_function(f: &mut crate::ir::IrFunction, remap: &IdRemap) {
+    for p in &mut f.params {
+        if let Some(ty) = &mut p.ty {
+            remap_type(ty, remap);
+        }
+        if let Some(default) = &mut p.default {
+            remap_expr(default, remap);
+        }
+    }
+    if let Some(ret) = &mut f.return_type {
+        remap_type(ret, remap);
+    }
+    if let Some(body) = &mut f.body {
+        remap_expr(body, remap);
+    }
 }
 
 /// An [`IrPass`] that removes dead code from the module.
@@ -582,13 +1042,13 @@ pub struct DeadCodeEliminationPass {
 impl DeadCodeEliminationPass {
     /// Create a new dead-code elimination pass.
     ///
-    /// `remove_unused_structs` defaults to `false` because removing structs
-    /// requires remapping all `StructId` references across the entire module.
-    /// Use `DeadCodeEliminator` directly to identify unused structs.
+    /// Physically removes unused struct, trait, and enum definitions (and any
+    /// impl blocks whose target is removed), then rewrites every surviving ID
+    /// reference across the module and rebuilds the name-to-ID indices.
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            remove_unused_structs: false,
+            remove_unused_structs: true,
         }
     }
 }
@@ -714,23 +1174,26 @@ mod tests {
 
     #[test]
     fn test_analyze_used_structs() -> Result<(), Box<dyn std::error::Error>> {
+        // DCE semantics: an impl block does NOT keep its target alive on its
+        // own. Something else must reference the struct (a field type, a
+        // function parameter, or an expression). Here a standalone function
+        // takes a `Used` parameter.
         let source = r"
             struct Used { value: Number = 1 }
             struct Unused { data: String }
             impl Used {}
+            pub fn take(u: Used) -> Number { u.value }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
         let mut eliminator = DeadCodeEliminator::new(&module);
         eliminator.analyze();
 
-        // Used should be marked as used (it has an impl block)
         let used_id = module.struct_id("Used").ok_or("Used struct not found")?;
         if !eliminator.is_struct_used(used_id) {
             return Err("Used struct should be marked as used".into());
         }
 
-        // Unused should NOT be marked as used
         let unused_id = module
             .struct_id("Unused")
             .ok_or("Unused struct not found")?;
@@ -742,17 +1205,19 @@ mod tests {
 
     #[test]
     fn test_analyze_struct_referenced_in_field() -> Result<(), Box<dyn std::error::Error>> {
+        // Outer is kept alive by a function parameter; Inner by being a field
+        // type of Outer.
         let source = r"
             struct Inner { value: Number = 1 }
             struct Outer { inner: Inner = Inner(value: 1) }
             impl Outer {}
+            pub fn show(o: Outer) -> Number { o.inner.value }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
         let mut eliminator = DeadCodeEliminator::new(&module);
         eliminator.analyze();
 
-        // Both Inner and Outer should be used
         let inner_id = module.struct_id("Inner").ok_or("Inner struct not found")?;
         let outer_id = module.struct_id("Outer").ok_or("Outer struct not found")?;
 
@@ -760,7 +1225,7 @@ mod tests {
             return Err("Inner struct should be used (referenced by Outer)".into());
         }
         if !eliminator.is_struct_used(outer_id) {
-            return Err("Outer struct should be used (has impl block)".into());
+            return Err("Outer struct should be used (referenced by `show`)".into());
         }
         Ok(())
     }
@@ -821,5 +1286,81 @@ mod tests {
             return Err("Container trait should be marked as used because it is a bound".into());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod removal_tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::compile_to_ir;
+
+    #[test]
+    fn test_removal_drops_unused_struct() {
+        let source = r"
+            pub struct Used { value: Number }
+            pub struct Unused { data: String }
+            impl Used { fn get(self) -> Number { self.value } }
+            pub fn run(u: Used) -> Number { u.get() }
+        ";
+        let module = compile_to_ir(source).unwrap();
+        let before = module.structs.len();
+        assert!(before >= 2, "expected both structs in IR before DCE");
+        let optimized = eliminate_dead_code(&module, true);
+        assert!(
+            optimized.structs.iter().any(|s| s.name == "Used"),
+            "Used should survive"
+        );
+        assert!(
+            !optimized.structs.iter().any(|s| s.name == "Unused"),
+            "Unused should be removed"
+        );
+    }
+
+    #[test]
+    fn test_removal_preserves_remaining_struct_ids() {
+        // After removing an unused struct, references to surviving structs
+        // (e.g. in field types, function params) should still resolve.
+        let source = r"
+            pub struct Unused { data: String }
+            pub struct Used { value: Number }
+            pub fn run(u: Used) -> Number { u.value }
+        ";
+        let module = compile_to_ir(source).unwrap();
+        let optimized = eliminate_dead_code(&module, true);
+        // Name → ID lookup via the rebuilt indices.
+        let used_id = optimized.struct_id("Used").unwrap();
+        let used = optimized.get_struct(used_id).unwrap();
+        assert_eq!(used.name, "Used");
+        assert_eq!(used.fields.len(), 1);
+    }
+
+    #[test]
+    fn test_removal_drops_impl_for_removed_enum() {
+        // An impl block targeting a removed enum must be dropped.
+        let source = r"
+            pub enum Used { a, b }
+            pub enum Unused { x, y }
+            impl Unused { fn describe(self) -> Number { 0 } }
+            pub fn run(u: Used) -> Used { u }
+        ";
+        let module = compile_to_ir(source).unwrap();
+        let before_impls = module.impls.len();
+        assert!(before_impls >= 1, "expected Unused impl in IR before DCE");
+        let optimized = eliminate_dead_code(&module, true);
+        assert!(
+            !optimized.enums.iter().any(|e| e.name == "Unused"),
+            "Unused enum should be removed"
+        );
+        // The impl targeted Unused; it should be gone too.
+        for impl_block in &optimized.impls {
+            match impl_block.target {
+                crate::ir::ImplTarget::Enum(id) => {
+                    let e = optimized.get_enum(id).unwrap();
+                    assert_ne!(e.name, "Unused");
+                }
+                crate::ir::ImplTarget::Struct(_) => {}
+            }
+        }
     }
 }

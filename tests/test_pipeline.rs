@@ -155,8 +155,11 @@ fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn std::error::Error>> {
+    // Keep Config alive through a standalone function parameter, so
+    // DeadCodeEliminationPass (which now removes unused types) does not drop it.
     let source = r"
         pub struct Config { scale: Number = 2 * 3 }
+        pub fn use_config(c: Config) -> Number { c.scale }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -508,5 +511,39 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
     if trait_count != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, trait_count).into());
     }
+    Ok(())
+}
+
+// =============================================================================
+// Monomorphisation stub (§2 IR gaps)
+// =============================================================================
+
+#[test]
+fn test_monomorphise_stub_rejects_generics() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct Box<T> { value: T }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline.run(module);
+    if result.is_ok() {
+        return Err("expected MonomorphisePass stub to reject a generic module".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct User { name: String, age: Number }
+        pub fn greet(user: User) -> String { user.name }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    pipeline
+        .run(module)
+        .map_err(|e| format!("expected stub to accept concrete module, got: {e:?}"))?;
     Ok(())
 }

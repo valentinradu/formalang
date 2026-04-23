@@ -2,12 +2,15 @@
 //!
 //! Tests array, struct, and enum destructuring as per documentation.
 
-use formalang::compile;
 use formalang::CompilerError;
 
 // =============================================================================
 // Array Destructuring Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_array_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {

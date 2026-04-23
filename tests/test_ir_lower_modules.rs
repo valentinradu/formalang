@@ -342,14 +342,14 @@ fn resolved_type_display_name_type_param() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn resolved_type_display_name_external_no_args() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::ExternalKind;
+    use formalang::ir::ImportedKind;
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::External {
         module_path: vec!["utils".to_string()],
         name: "Helper".to_string(),
-        kind: ExternalKind::Struct,
+        kind: ImportedKind::Struct,
         type_args: vec![],
     };
     let name = ty.display_name(&module);
@@ -362,14 +362,14 @@ fn resolved_type_display_name_external_no_args() -> Result<(), Box<dyn std::erro
 #[test]
 fn resolved_type_display_name_external_with_args() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::PrimitiveType;
-    use formalang::ir::ExternalKind;
+    use formalang::ir::ImportedKind;
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::External {
         module_path: vec!["utils".to_string()],
         name: "Box".to_string(),
-        kind: ExternalKind::Struct,
+        kind: ImportedKind::Struct,
         type_args: vec![ResolvedType::Primitive(PrimitiveType::String)],
     };
     let name = ty.display_name(&module);
@@ -2063,9 +2063,12 @@ fn dce_via_pipeline_array_in_let() -> Result<(), Box<dyn std::error::Error>> {
 fn dce_analyzes_used_structs_via_impl_blocks() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::DeadCodeEliminator;
 
+    // A bare impl block no longer marks its target as used — the struct must
+    // be referenced from somewhere "functional" (here, a standalone function).
     let source = r"
         struct Config { value: Number }
         impl Config {}
+        pub fn load(c: Config) -> Number { c.value }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut elim = DeadCodeEliminator::new(&module);
@@ -2073,7 +2076,7 @@ fn dce_analyzes_used_structs_via_impl_blocks() -> Result<(), Box<dyn std::error:
 
     let id = module.struct_id("Config").ok_or("Config should exist")?;
     if !(elim.is_struct_used(id)) {
-        return Err("Config should be marked used because it has an impl block".into());
+        return Err("Config should be marked used (via `load` function parameter)".into());
     }
     Ok(())
 }
@@ -2741,6 +2744,7 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
 
     let expr = IrExpr::Closure {
         params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
+        captures: Vec::new(),
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(42.0),
             ty: num_ty.clone(),
@@ -3048,10 +3052,10 @@ fn dce_default_pass_has_remove_unused_structs_enabled() -> Result<(), Box<dyn st
     use formalang::ir::DeadCodeEliminationPass;
 
     let pass = DeadCodeEliminationPass::default();
-    // Struct removal requires full ID remapping which is not implemented,
-    // so the safe default is false to avoid producing malformed IR.
-    if pass.remove_unused_structs {
-        return Err("default() should have remove_unused_structs = false".into());
+    // Struct/trait/enum removal with ID remapping is implemented; the default
+    // now removes unused types.
+    if !pass.remove_unused_structs {
+        return Err("default() should have remove_unused_structs = true".into());
     }
     Ok(())
 }
@@ -3165,12 +3169,14 @@ fn dce_eliminator_dict_field_type_marks_struct() -> Result<(), Box<dyn std::erro
 fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::eliminate_dead_code;
 
-    // This exercises the impl block processing path in eliminate_dead_code
+    // Exercise the impl-block processing path in eliminate_dead_code. V2 is
+    // kept alive by a standalone function that takes it as a parameter.
     let source = r"
         struct V2 { x: Number, y: Number }
         impl V2 {
             fn len(self) -> Number { self.x + self.y }
         }
+        pub fn length(v: V2) -> Number { v.len() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, true);

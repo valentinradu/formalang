@@ -28,6 +28,7 @@ mod dce;
 mod expr;
 mod fold;
 mod lower;
+mod monomorphise;
 mod types;
 mod visitor;
 
@@ -37,6 +38,7 @@ pub use dce::{
 pub use expr::{DispatchKind, IrBlockStatement, IrExpr, IrMatchArm};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
+pub use monomorphise::MonomorphisePass;
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
     IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait,
@@ -68,7 +70,7 @@ use crate::location::Span;
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct StructId(pub u32);
 
 /// ID for referencing trait definitions.
@@ -87,7 +89,7 @@ pub struct StructId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TraitId(pub u32);
 
 /// ID for referencing enum definitions.
@@ -106,7 +108,7 @@ pub struct TraitId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EnumId(pub u32);
 
 /// ID for referencing standalone function definitions.
@@ -125,7 +127,7 @@ pub struct EnumId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FunctionId(pub u32);
 
 /// ID for referencing impl blocks.
@@ -137,7 +139,7 @@ pub struct FunctionId(pub u32);
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ImplId(pub u32);
 
 /// Kind of external type reference.
@@ -148,8 +150,8 @@ pub struct ImplId(pub u32);
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ExternalKind {
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ImportedKind {
     /// External struct type
     Struct,
     /// External trait type
@@ -166,7 +168,7 @@ pub enum ExternalKind {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IrImport {
     /// Logical module path (e.g., `["utils", "helpers"]`)
     pub module_path: Vec<String>,
@@ -185,12 +187,12 @@ pub struct IrImport {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IrImportItem {
     /// Name of the imported type
     pub name: String,
     /// Kind of type (struct, trait, or enum)
-    pub kind: ExternalKind,
+    pub kind: ImportedKind,
 }
 
 /// A fully resolved type.
@@ -202,7 +204,7 @@ pub struct IrImportItem {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ResolvedType {
     /// Primitive type (String, Number, Boolean, Path, Regex)
     Primitive(PrimitiveType),
@@ -253,7 +255,7 @@ pub enum ResolvedType {
     /// External {
     ///     module_path: ["utils"],
     ///     name: "Helper",
-    ///     kind: ExternalKind::Struct,
+    ///     kind: ImportedKind::Struct,
     ///     type_args: [],
     /// }
     /// ```
@@ -263,7 +265,7 @@ pub enum ResolvedType {
         /// Type name in that module
         name: String,
         /// Kind of type (struct, trait, or enum)
-        kind: ExternalKind,
+        kind: ImportedKind,
         /// Type arguments for generic types (empty for non-generic)
         type_args: Vec<Self>,
     },
@@ -312,7 +314,7 @@ pub enum ResolvedType {
 /// let struct_def = module.get_struct(struct_id).expect("struct exists");
 /// assert_eq!(struct_def.name, "User");
 /// ```
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct IrModule {
     /// All struct definitions, indexed by `StructId`
     pub structs: Vec<IrStruct>,
@@ -457,9 +459,55 @@ impl IrModule {
         Ok(id)
     }
 
-    /// Add an impl block.
-    pub(crate) fn add_impl(&mut self, i: IrImpl) {
+    /// Look up a mutable reference to a struct by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — callers should treat this
+    /// as a compiler invariant violation (IDs produced by [`Self::struct_id`]
+    /// are always valid unless the underlying `Vec` was mutated externally).
+    pub(crate) fn struct_mut(&mut self, id: StructId) -> Option<&mut IrStruct> {
+        self.structs.get_mut(id.0 as usize)
+    }
+
+    /// Look up a mutable reference to a trait by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — see [`Self::struct_mut`].
+    pub(crate) fn trait_mut(&mut self, id: TraitId) -> Option<&mut IrTrait> {
+        self.traits.get_mut(id.0 as usize)
+    }
+
+    /// Look up a mutable reference to an enum by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — see [`Self::struct_mut`].
+    pub(crate) fn enum_mut(&mut self, id: EnumId) -> Option<&mut IrEnum> {
+        self.enums.get_mut(id.0 as usize)
+    }
+
+    /// Add an impl block and return its ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CompilerError::TooManyDefinitions`] if the impl count exceeds `u32::MAX`.
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_impl(&mut self, i: IrImpl) -> Result<ImplId, CompilerError> {
+        let id = u32::try_from(self.impls.len()).map(ImplId).map_err(|_| {
+            CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: Span::default(),
+            }
+        })?;
         self.impls.push(i);
+        Ok(id)
+    }
+
+    /// Return the `ImplId` that the next call to [`Self::add_impl`] will produce,
+    /// without mutating the module. Returns `None` if the impl count has already
+    /// reached `u32::MAX`.
+    #[must_use]
+    pub(crate) fn next_impl_id(&self) -> Option<ImplId> {
+        u32::try_from(self.impls.len()).ok().map(ImplId)
     }
 
     /// Look up a let binding by name.

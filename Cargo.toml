@@ -3,7 +3,12 @@ name = "formalang"
 version = "0.1.0"
 edition = "2021"
 authors = ["formavera team"]
-description = "FormaLang compiler - lexer, parser, and semantic analyzer"
+description = "FormaLang compiler frontend: lexer, parser, semantic analyzer, and IR lowering."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/valentinradu/formalang"
+readme = "README.md"
+keywords = ["compiler", "language", "frontend", "ir", "plugin"]
+categories = ["compilers", "parser-implementations"]
 
 [[bin]]
 name = "fvc"

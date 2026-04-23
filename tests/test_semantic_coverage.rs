@@ -3,11 +3,13 @@
 //! Covers error paths, validation branches, and expression types that are
 //! not exercised by existing tests.
 
-use formalang::compile;
-
 // =============================================================================
 // validate_type: generic arity mismatch
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_generic_arity_mismatch_too_many_args() -> Result<(), Box<dyn std::error::Error>> {

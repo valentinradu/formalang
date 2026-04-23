@@ -1,11 +1,14 @@
 //! Semantic analyzer edge case tests
 
-use formalang::compile;
 use formalang::CompilerError;
 
 // =============================================================================
 // Visibility Tests
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_pub_trait() -> Result<(), Box<dyn std::error::Error>> {

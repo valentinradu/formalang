@@ -1,4 +1,5 @@
 // Semantic analysis (validation only - no evaluation or expansion)
+// Pass 0: Resolve modules and imports
 // Pass 1: Build symbol table
 // Pass 2: Resolve type references
 // Pass 3: Validate expressions (operators, for/if/match)
@@ -19,6 +20,13 @@ mod trait_check;
 mod type_resolution;
 mod validation;
 
+/// Re-exports of the symbol-table shapes that IR lowering and downstream
+/// tooling consume. These are the minimal public contract between the
+/// semantic and IR layers.
+pub use symbol_table::{
+    EnumInfo, LetInfo, ModuleInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo,
+};
+
 use crate::ast::{
     ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,
     UseItems, UseStmt, Visibility,
@@ -29,7 +37,6 @@ use import_graph::ImportGraph;
 use module_resolver::{ModuleError, ModuleResolver};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use symbol_table::SymbolTable;
 
 /// Tracks generic parameters in scope for a definition
 #[derive(Debug, Clone)]
@@ -136,7 +143,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     local_let_bindings: HashMap<String, (String, bool)>,
     /// Bindings consumed by a `sink` parameter call — cannot be used after
     consumed_bindings: HashSet<String>,
-    /// Conventions for closure-typed bindings: binding_name → param conventions in order
+    /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Free-variable captures for closure-typed let bindings, used for
     /// escape-aware ownership propagation.
@@ -173,7 +180,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// All closure-binding captures created anywhere in the currently-validating
     /// function body, flat across nested block scopes. Cleared at function
     /// entry/exit. Used by the function-return escape check to classify captures
-    /// when a named closure binding is returned (see validate_function_return_escape).
+    /// when a named closure binding is returned (see `validate_function_return_escape`).
     pub(super) fn_scope_closure_captures: HashMap<String, Vec<String>>,
     /// Parameter conventions for the currently-validated function body.
     ///
@@ -1511,12 +1518,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// analyzed during import resolution. Used by codegen backends to generate
     /// impl blocks from imported types.
     ///
+    /// The cache is populated as a side effect of `parse_and_analyze_module`:
+    /// after each imported module is semantically analyzed, its AST is also
+    /// lowered to IR and stored here keyed by its filesystem path.
+    ///
     /// # Returns
     ///
-    /// Reference to the cached IR modules. Empty if no imports were processed.
+    /// Reference to the cached IR modules. Empty if no imports were processed
+    /// or if every imported module failed IR lowering.
     pub const fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
-        // TODO: Implement - currently returns empty cache
-        // Will be populated during parse_and_analyze_module()
         &self.module_ir_cache
     }
 }

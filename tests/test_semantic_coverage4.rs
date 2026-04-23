@@ -1,11 +1,20 @@
 //! Final coverage tests targeting remaining uncovered lines in semantic/mod.rs.
 
-use formalang::compile;
-use formalang::compile_with_resolver;
 use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use formalang::CompilerError;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
+
+fn compile_with_resolver<R: formalang::semantic::module_resolver::ModuleResolver>(
+    source: &str,
+    resolver: R,
+) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer_and_resolver(source, resolver).map(|(file, _)| file)
+}
 
 struct MemResolver {
     modules: HashMap<Vec<String>, (String, PathBuf)>,
@@ -36,7 +45,6 @@ impl ModuleResolver for MemResolver {
             .ok_or_else(|| ModuleError::NotFound {
                 path: path.to_vec(),
                 searched_paths: vec![],
-                span: formalang::location::Span::default(),
             })
     }
 }

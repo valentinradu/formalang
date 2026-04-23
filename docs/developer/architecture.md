@@ -24,8 +24,9 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 
 - **Lexer**: Tokenizes source with `logos`
 - **Parser**: Builds AST from tokens with `chumsky` (Pratt precedence)
-- **Semantic Analyzer**: 5-pass validation; builds symbol table, resolves
-  types, validates traits, detects cycles
+- **Semantic Analyzer**: 6-pass validation (Pass 0 resolves modules, Passes
+  1–5 build symbol tables, resolve types, validate expressions, validate
+  traits, detect cycles)
 - **IR Lowering**: Converts the validated AST + symbol table into a
   fully type-resolved `IrModule`
 - **Plugin System**: External `IrPass` transforms and `Backend` emitters
@@ -37,10 +38,10 @@ Defined in `src/lib.rs`:
 
 | Function                     | Returns                                                                         | Use case                   |
 | ---------------------------- | ------------------------------------------------------------------------------- | -------------------------- |
-| `compile_to_ir(src)`         | `Result<IrModule, Vec<CompilerError>>`                                          | Code generation            |
-| `compile(src)`               | `Result<File, Vec<CompilerError>>`                                              | Syntax analysis, tooling   |
-| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>`      | LSP                        |
+| `compile_to_ir(src)`         | `Result<IrModule, Vec<CompilerError>>`                                          | Code generation (canonical) |
+| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>`      | LSP, AST-level tooling     |
 | `parse_only(src)`            | `Result<File, ...>`                                                             | Parsing without validation |
+| `compile_and_report(src, f)` | `Result<IrModule, String>`                                                      | CLI: compile + formatted errors |
 
 ## Plugin System
 

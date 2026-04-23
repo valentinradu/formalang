@@ -1,12 +1,17 @@
 //! Tests for all 11 compiler gaps implemented in the gap-filling pass.
 
-use formalang::compile;
+#![allow(clippy::indexing_slicing)]
+
 use formalang::compile_to_ir;
 use formalang::CompilerError;
 
 // =============================================================================
 // Gap 1: Assignment type checking
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_assignment_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {

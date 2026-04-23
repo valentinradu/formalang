@@ -2,7 +2,6 @@
 //!
 //! Targets uncovered clusters identified via llvm-cov HTML report.
 
-use formalang::compile;
 use formalang::semantic::module_resolver::FileSystemResolver;
 use formalang::semantic::SemanticAnalyzer;
 use std::path::PathBuf;
@@ -10,6 +9,10 @@ use std::path::PathBuf;
 // =============================================================================
 // SemanticAnalyzer::new() — lines 125-141
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_semantic_analyzer_new_constructor() -> Result<(), Box<dyn std::error::Error>> {

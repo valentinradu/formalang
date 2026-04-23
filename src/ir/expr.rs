@@ -14,7 +14,7 @@ use super::{EnumId, ImplId, ResolvedType, StructId, TraitId};
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DispatchKind {
     /// Direct call on a known concrete type — no runtime lookup needed.
     Static {
@@ -48,7 +48,7 @@ pub enum DispatchKind {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum IrExpr {
     /// Literal value (string, number, boolean, etc.)
     Literal {
@@ -241,11 +241,22 @@ pub enum IrExpr {
     },
 
     /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
-    ///
-    /// Pure closures that can be inlined or converted to named functions.
     Closure {
         /// Parameter conventions, names, and types
         params: Vec<(ParamConvention, String, ResolvedType)>,
+        /// Free variables referenced by the body that are bound in an
+        /// enclosing scope. Each entry is `(binding_name, resolved_type)`.
+        ///
+        /// Populated during IR lowering by walking the body and collecting
+        /// every [`Reference`](Self::Reference) / [`LetRef`](Self::LetRef)
+        /// whose name is not introduced inside the closure itself. Backends
+        /// use this to emit capture-environment structs, vtable closures,
+        /// or to reject closures that capture values whose lifetime cannot
+        /// be satisfied by the target language.
+        ///
+        /// Capture entries are deduplicated by name and ordered by the
+        /// first reference encountered during the traversal.
+        captures: Vec<(String, ResolvedType)>,
         /// Closure body
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
@@ -289,7 +300,7 @@ pub enum IrExpr {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum IrBlockStatement {
     /// Let binding: `let x = expr` or `let mut x = expr`
     Let {
@@ -349,7 +360,7 @@ impl IrBlockStatement {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrMatchArm {
     /// Variant name being matched (empty string for wildcard)
     pub variant: String,
@@ -368,6 +379,32 @@ impl IrExpr {
     /// Get the resolved type of this expression.
     #[must_use]
     pub const fn ty(&self) -> &ResolvedType {
+        match self {
+            Self::Literal { ty, .. }
+            | Self::StructInst { ty, .. }
+            | Self::EnumInst { ty, .. }
+            | Self::Array { ty, .. }
+            | Self::Tuple { ty, .. }
+            | Self::Reference { ty, .. }
+            | Self::SelfFieldRef { ty, .. }
+            | Self::FieldAccess { ty, .. }
+            | Self::LetRef { ty, .. }
+            | Self::BinaryOp { ty, .. }
+            | Self::UnaryOp { ty, .. }
+            | Self::If { ty, .. }
+            | Self::For { ty, .. }
+            | Self::Match { ty, .. }
+            | Self::FunctionCall { ty, .. }
+            | Self::MethodCall { ty, .. }
+            | Self::Closure { ty, .. }
+            | Self::DictLiteral { ty, .. }
+            | Self::DictAccess { ty, .. }
+            | Self::Block { ty, .. } => ty,
+        }
+    }
+
+    /// Get a mutable reference to the resolved type of this expression.
+    pub const fn ty_mut(&mut self) -> &mut ResolvedType {
         match self {
             Self::Literal { ty, .. }
             | Self::StructInst { ty, .. }

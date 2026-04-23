@@ -3,11 +3,15 @@
 //! Same name, different signatures. Resolved by named-argument label set (Mode A)
 //! or first-positional-argument type (Mode B).
 
-use formalang::{compile, CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // Happy path: overloading by named-argument label set (Mode A)
 // =============================================================================
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_overload_by_label_set() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,7 +108,7 @@ impl Formatter {
 
 #[test]
 fn test_ambiguous_call_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 fn run(x: Number) -> Number {
     x
 }
@@ -112,7 +116,7 @@ fn run(x: Number) -> Number {
     x + 1
 }
 let r = run(42)
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error: ambiguous overload call")?;
@@ -131,7 +135,7 @@ let r = run(42)
 
 #[test]
 fn test_no_matching_overload_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 fn process(text: String) -> String {
     text
 }
@@ -139,7 +143,7 @@ fn process(number: Number) -> Number {
     number
 }
 let r = process(true)
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error: no matching overload")?;
@@ -182,14 +186,14 @@ let r = greet(de: "Hallo")
 #[test]
 fn test_overloads_get_distinct_function_ids() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::compile_to_ir;
-    let source = r#"
+    let source = r"
 fn process(text: String) -> String {
     text
 }
 fn process(number: Number) -> Number {
     number
 }
-"#;
+";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let process_fns: Vec<_> = module
         .functions
