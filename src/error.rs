@@ -313,6 +313,12 @@ pub enum CompilerError {
     /// may be captured by an escaping closure.
     #[error("Returned closure captures '{binding}' which does not outlive the function")]
     ClosureCaptureEscapesLocalBinding { binding: String, span: Span },
+
+    /// A compiler invariant was violated during lowering or analysis. This is
+    /// always a bug in the compiler itself — the `detail` field documents
+    /// which invariant failed so it can be reported and fixed.
+    #[error("Internal compiler error: {detail}")]
+    InternalError { detail: String, span: Span },
 }
 
 impl CompilerError {
@@ -377,7 +383,8 @@ impl CompilerError {
             | Self::ExpressionDepthExceeded { span }
             | Self::TooManyDefinitions { span, .. }
             | Self::VisibilityViolation { span, .. }
-            | Self::ClosureCaptureEscapesLocalBinding { span, .. } => *span,
+            | Self::ClosureCaptureEscapesLocalBinding { span, .. }
+            | Self::InternalError { span, .. } => *span,
         }
     }
 }

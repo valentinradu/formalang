@@ -78,6 +78,20 @@ struct IrLowerer<'a> {
 }
 
 impl<'a> IrLowerer<'a> {
+    /// Record an internal-compiler-error indicating that an ID produced earlier
+    /// in the lowering pass no longer resolves to a definition. This only fires
+    /// on invariant violations (e.g. a caller mutating an IR vector between
+    /// registration and write-back); we surface it as a loud compilation
+    /// failure rather than panicking.
+    fn record_missing_id(&mut self, kind: &'static str, id: u32) {
+        self.errors.push(CompilerError::InternalError {
+            detail: format!(
+                "{kind} id {id} produced by registration lookup is no longer valid"
+            ),
+            span: crate::location::Span::default(),
+        });
+    }
+
     fn new(symbols: &'a SymbolTable) -> Self {
         Self {
             module: IrModule::new(),
@@ -650,13 +664,10 @@ impl<'a> IrLowerer<'a> {
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
-        // Update the trait in place
-        // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from trait_id() guarantees valid index"
-        )]
-        let trait_def = &mut self.module.traits[id.0 as usize];
+        let Some(trait_def) = self.module.trait_mut(id) else {
+            self.record_missing_id("trait", id.0);
+            return;
+        };
         trait_def.name = qualified_name;
         trait_def.visibility = t.visibility;
         trait_def.composed_traits = composed_traits;
@@ -698,13 +709,10 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_struct_field(f))
             .collect();
 
-        // Update the struct in place
-        // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from struct_id() guarantees valid index"
-        )]
-        let struct_def = &mut self.module.structs[id.0 as usize];
+        let Some(struct_def) = self.module.struct_mut(id) else {
+            self.record_missing_id("struct", id.0);
+            return;
+        };
         struct_def.name = qualified_name;
         struct_def.visibility = s.visibility;
         struct_def.traits = traits;
@@ -743,13 +751,10 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        // Update the enum in place
-        // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from enum_id() guarantees valid index"
-        )]
-        let enum_def = &mut self.module.enums[id.0 as usize];
+        let Some(enum_def) = self.module.enum_mut(id) else {
+            self.record_missing_id("enum", id.0);
+            return;
+        };
         enum_def.name = qualified_name;
         enum_def.visibility = e.visibility;
         enum_def.generic_params = generic_params;
@@ -777,13 +782,10 @@ impl<'a> IrLowerer<'a> {
 
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
 
-        // Update the trait in place
-        // id was obtained from trait_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from trait_id() guarantees valid index"
-        )]
-        let trait_def = &mut self.module.traits[id.0 as usize];
+        let Some(trait_def) = self.module.trait_mut(id) else {
+            self.record_missing_id("trait", id.0);
+            return;
+        };
         trait_def.composed_traits = composed_traits;
         trait_def.fields = fields;
         trait_def.methods = methods;
@@ -818,13 +820,10 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_struct_field(f))
             .collect();
 
-        // Update the struct in place
-        // id was obtained from struct_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from struct_id() guarantees valid index"
-        )]
-        let struct_def = &mut self.module.structs[id.0 as usize];
+        let Some(struct_def) = self.module.struct_mut(id) else {
+            self.record_missing_id("struct", id.0);
+            return;
+        };
         struct_def.traits = traits;
         struct_def.fields = fields;
         struct_def.generic_params = generic_params;
@@ -850,13 +849,10 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
-        // Update the enum in place
-        // id was obtained from enum_id() which guarantees it is a valid index
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "id obtained from enum_id() guarantees valid index"
-        )]
-        let enum_def = &mut self.module.enums[id.0 as usize];
+        let Some(enum_def) = self.module.enum_mut(id) else {
+            self.record_missing_id("enum", id.0);
+            return;
+        };
         enum_def.variants = variants;
         enum_def.generic_params = generic_params;
     }

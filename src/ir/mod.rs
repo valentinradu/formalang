@@ -457,6 +457,29 @@ impl IrModule {
         Ok(id)
     }
 
+    /// Look up a mutable reference to a struct by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — callers should treat this
+    /// as a compiler invariant violation (IDs produced by [`Self::struct_id`]
+    /// are always valid unless the underlying `Vec` was mutated externally).
+    pub(crate) fn struct_mut(&mut self, id: StructId) -> Option<&mut IrStruct> {
+        self.structs.get_mut(id.0 as usize)
+    }
+
+    /// Look up a mutable reference to a trait by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — see [`Self::struct_mut`].
+    pub(crate) fn trait_mut(&mut self, id: TraitId) -> Option<&mut IrTrait> {
+        self.traits.get_mut(id.0 as usize)
+    }
+
+    /// Look up a mutable reference to an enum by its ID.
+    ///
+    /// Returns `None` if the ID is out of bounds — see [`Self::struct_mut`].
+    pub(crate) fn enum_mut(&mut self, id: EnumId) -> Option<&mut IrEnum> {
+        self.enums.get_mut(id.0 as usize)
+    }
+
     /// Add an impl block and return its ID.
     ///
     /// # Errors

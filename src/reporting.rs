@@ -937,6 +937,17 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                     "Only `sink` parameters and outer-scope bindings may be captured by a closure that escapes the function; consider taking ownership via a `sink` parameter",
                 )
         }
+
+        CompilerError::InternalError { detail, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E999")
+                .with_message(format!("Internal compiler error: {detail}"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("compiler invariant violated — please file a bug")
+                        .with_color(Color::Red),
+                )
+        }
     }
 }
 
