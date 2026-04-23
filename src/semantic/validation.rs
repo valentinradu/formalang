@@ -16,139 +16,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn validate_expressions(&mut self, file: &File) {
         for statement in &file.statements {
             match statement {
-                Statement::Let(let_binding) => {
-                    self.validate_expr(&let_binding.value, file);
-                    // Gap 1: nil can only be assigned to optional types
-                    if let Some(type_ann) = &let_binding.type_annotation {
-                        let declared = Self::type_to_string(type_ann);
-                        let inferred = self.infer_type(&let_binding.value, file);
-                        if inferred == "Nil" && !declared.ends_with('?') {
-                            self.errors.push(CompilerError::NilAssignedToNonOptional {
-                                expected: declared,
-                                span: let_binding.span,
-                            });
-                        }
-                    }
-                    // Register closure-typed module-level bindings for call-site enforcement
-                    if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
-                        let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
-                        // If the value is a closure literal, record its free
-                        // variables so we can detect use-after-sink at call sites.
-                        let captures = if let Expr::ClosureExpr {
-                            params: cparams,
-                            body,
-                            ..
-                        } = &let_binding.value
-                        {
-                            let param_set: HashSet<String> =
-                                cparams.iter().map(|p| p.name.name.clone()).collect();
-                            Some(Self::collect_free_variables(body, &param_set))
-                        } else {
-                            None
-                        };
-                        for binding in collect_bindings_from_pattern(&let_binding.pattern) {
-                            self.closure_binding_conventions
-                                .insert(binding.name.clone(), conventions.clone());
-                            if let Some(caps) = &captures {
-                                self.closure_binding_captures
-                                    .insert(binding.name.clone(), caps.clone());
-                                self.fn_scope_closure_captures
-                                    .insert(binding.name, caps.clone());
-                            }
-                        }
-                    }
-                    // Validate destructuring pattern type compatibility
-                    self.validate_destructuring_pattern(
-                        &let_binding.pattern,
-                        &let_binding.value,
-                        let_binding.span,
-                        file,
-                    );
-                }
+                Statement::Let(let_binding) => self.validate_let_statement(let_binding, file),
                 Statement::Definition(def) => match &**def {
                     Definition::Struct(struct_def) => {
                         self.validate_struct_expressions(struct_def, file);
                     }
-                    Definition::Impl(impl_def) => {
-                        self.current_impl_struct = Some(impl_def.name.name.clone());
-                        self.local_let_bindings.clear();
-                        self.consumed_bindings.clear();
-                        for func in &impl_def.functions {
-                            self.validate_function_return_type(func, file);
-                        }
-                        self.current_impl_struct = None;
-                        self.local_let_bindings.clear();
-                        self.consumed_bindings.clear();
-                    }
-                    Definition::Function(func_def) => {
-                        self.local_let_bindings.clear();
-                        self.consumed_bindings.clear();
-                        // Snapshot closure-binding maps so entries introduced in
-                        // this function body don't leak into later functions.
-                        let saved_closure_conventions = self.closure_binding_conventions.clone();
-                        let saved_closure_captures = self.closure_binding_captures.clone();
-                        let saved_fn_scope_captures =
-                            std::mem::take(&mut self.fn_scope_closure_captures);
-                        let saved_param_conventions = self.current_fn_param_conventions.clone();
-                        self.current_fn_param_conventions.clear();
-                        for param in &func_def.params {
-                            if let Some(ty) = &param.ty {
-                                self.validate_type(ty);
-                            }
-                            let ty_str = param.ty.as_ref().map_or_else(
-                                || "Unknown".to_string(),
-                                |ty| Self::type_to_string(ty),
-                            );
-                            let mutable = matches!(
-                                param.convention,
-                                crate::ast::ParamConvention::Mut
-                                    | crate::ast::ParamConvention::Sink
-                            );
-                            self.local_let_bindings
-                                .insert(param.name.name.clone(), (ty_str, mutable));
-                            self.current_fn_param_conventions
-                                .insert(param.name.name.clone(), param.convention);
-                            // Register closure-typed parameters so they're
-                            // callable inside the body. Parameters have no
-                            // captures of their own — no closure_binding_captures
-                            // entry.
-                            if let Some(Type::Closure {
-                                params: closure_params,
-                                ..
-                            }) = &param.ty
-                            {
-                                let conventions: Vec<_> =
-                                    closure_params.iter().map(|(c, _)| *c).collect();
-                                self.closure_binding_conventions
-                                    .insert(param.name.name.clone(), conventions);
-                            }
-                        }
-                        if let Some(body) = &func_def.body {
-                            self.validate_expr(body, file);
-                            self.validate_function_return_escape(
-                                func_def.return_type.as_ref(),
-                                body,
-                            );
-                        }
-                        self.local_let_bindings.clear();
-                        self.consumed_bindings.clear();
-                        self.closure_binding_conventions = saved_closure_conventions;
-                        self.closure_binding_captures = saved_closure_captures;
-                        self.fn_scope_closure_captures = saved_fn_scope_captures;
-                        self.current_fn_param_conventions = saved_param_conventions;
-                    }
+                    Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
+                    Definition::Function(func_def) => self.validate_function_body(func_def, file),
                     Definition::Module(module_def) => {
                         for nested_def in &module_def.definitions {
                             if let Definition::Impl(impl_def) = nested_def {
-                                self.current_impl_struct = Some(impl_def.name.name.clone());
-                                self.local_let_bindings.clear();
-                                self.consumed_bindings.clear();
-                                for func in &impl_def.functions {
-                                    self.validate_function_return_type(func, file);
-                                }
-                                self.current_impl_struct = None;
-                                self.local_let_bindings.clear();
-                                self.consumed_bindings.clear();
+                                self.validate_impl_expressions(impl_def, file);
                             }
                         }
                     }
@@ -157,6 +35,117 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Statement::Use(_) => {}
             }
         }
+    }
+
+    fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
+        self.validate_expr(&let_binding.value, file);
+        // Gap 1: nil can only be assigned to optional types
+        if let Some(type_ann) = &let_binding.type_annotation {
+            let declared = Self::type_to_string(type_ann);
+            let inferred = self.infer_type(&let_binding.value, file);
+            if inferred == "Nil" && !declared.ends_with('?') {
+                self.errors.push(CompilerError::NilAssignedToNonOptional {
+                    expected: declared,
+                    span: let_binding.span,
+                });
+            }
+        }
+        // Register closure-typed module-level bindings for call-site enforcement
+        if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
+            let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+            // If the value is a closure literal, record its free
+            // variables so we can detect use-after-sink at call sites.
+            let captures = if let Expr::ClosureExpr {
+                params: cparams,
+                body,
+                ..
+            } = &let_binding.value
+            {
+                let param_set: HashSet<String> =
+                    cparams.iter().map(|p| p.name.name.clone()).collect();
+                Some(Self::collect_free_variables(body, &param_set))
+            } else {
+                None
+            };
+            for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                self.closure_binding_conventions
+                    .insert(binding.name.clone(), conventions.clone());
+                if let Some(caps) = &captures {
+                    self.closure_binding_captures
+                        .insert(binding.name.clone(), caps.clone());
+                    self.fn_scope_closure_captures
+                        .insert(binding.name, caps.clone());
+                }
+            }
+        }
+        self.validate_destructuring_pattern(
+            &let_binding.pattern,
+            &let_binding.value,
+            let_binding.span,
+            file,
+        );
+    }
+
+    fn validate_impl_expressions(&mut self, impl_def: &crate::ast::ImplDef, file: &File) {
+        self.current_impl_struct = Some(impl_def.name.name.clone());
+        self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+        for func in &impl_def.functions {
+            self.validate_function_return_type(func, file);
+        }
+        self.current_impl_struct = None;
+        self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+    }
+
+    fn validate_function_body(&mut self, func_def: &crate::ast::FunctionDef, file: &File) {
+        self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+        // Snapshot closure-binding maps so entries introduced in
+        // this function body don't leak into later functions.
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_fn_scope_captures = std::mem::take(&mut self.fn_scope_closure_captures);
+        let saved_param_conventions = self.current_fn_param_conventions.clone();
+        self.current_fn_param_conventions.clear();
+        for param in &func_def.params {
+            if let Some(ty) = &param.ty {
+                self.validate_type(ty);
+            }
+            let ty_str = param
+                .ty
+                .as_ref()
+                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
+            let mutable = matches!(
+                param.convention,
+                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
+            );
+            self.local_let_bindings
+                .insert(param.name.name.clone(), (ty_str, mutable));
+            self.current_fn_param_conventions
+                .insert(param.name.name.clone(), param.convention);
+            // Register closure-typed parameters so they're callable inside the body.
+            // Parameters have no captures of their own — no closure_binding_captures entry.
+            if let Some(Type::Closure {
+                params: closure_params,
+                ..
+            }) = &param.ty
+            {
+                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(param.name.name.clone(), conventions);
+            }
+        }
+        if let Some(body) = &func_def.body {
+            self.validate_expr(body, file);
+            self.validate_function_return_escape(func_def.return_type.as_ref(), body);
+        }
+        self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.fn_scope_closure_captures = saved_fn_scope_captures;
+        self.current_fn_param_conventions = saved_param_conventions;
     }
 
     /// Validate expressions in struct field defaults
@@ -297,7 +286,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
                 let after_then = self.consumed_bindings.clone();
-                self.consumed_bindings = pre_if.clone();
+                self.consumed_bindings.clone_from(&pre_if);
                 if let Some(else_expr) = else_branch {
                     self.validate_expr(else_expr, file);
                     // Check that both branch types are compatible.
@@ -333,7 +322,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let mut post_union = pre_match.clone();
                 let mut arm_types: Vec<String> = Vec::new();
                 for arm in arms {
-                    self.consumed_bindings = pre_match.clone();
+                    self.consumed_bindings.clone_from(&pre_match);
                     // Register arm pattern bindings into a temporary scope
                     if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
                         let scope: HashSet<String> =
@@ -919,21 +908,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(expected_params) = self.symbols.get_generics(name) {
             let expected = expected_params.len();
             let actual = type_args.len();
-            if expected != actual {
-                if actual == 0 && expected > 0 {
-                    self.errors.push(CompilerError::MissingGenericArguments {
-                        name: name.to_string(),
-                        span,
-                    });
-                } else {
-                    self.errors.push(CompilerError::GenericArityMismatch {
-                        name: name.to_string(),
-                        expected,
-                        actual,
-                        span,
-                    });
-                }
-            } else {
+            if expected == actual {
                 // Validate each type arg satisfies its constraints
                 for (type_arg, generic_param) in type_args.iter().zip(expected_params.iter()) {
                     for constraint in &generic_param.constraints {
@@ -947,6 +922,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                 }
+            } else if actual == 0 && expected > 0 {
+                self.errors.push(CompilerError::MissingGenericArguments {
+                    name: name.to_string(),
+                    span,
+                });
+            } else {
+                self.errors.push(CompilerError::GenericArityMismatch {
+                    name: name.to_string(),
+                    expected,
+                    actual,
+                    span,
+                });
             }
         } else if !type_args.is_empty() {
             self.errors.push(CompilerError::GenericArityMismatch {
@@ -1818,7 +1805,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_expr(arg, file);
         }
         let receiver_type = self.infer_type(receiver, file);
-        if let Some(fn_def) = self.find_method_fn_def(&receiver_type, &method.name, file) {
+        if let Some(fn_def) = Self::find_method_fn_def(&receiver_type, &method.name, file) {
             let params = fn_def.params.clone();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
             self.validate_fn_param_conventions_args(&params, args, span, file);
@@ -1832,7 +1819,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Find the `FnDef` for `method_name` on the given type by scanning the file's impl blocks.
     fn find_method_fn_def<'f>(
-        &self,
         type_name: &str,
         method_name: &str,
         file: &'f File,

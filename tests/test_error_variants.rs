@@ -5,7 +5,7 @@
 //! end-to-end triggers for variants that were only lightly covered prior to
 //! the Phase 5 audit fix pass.
 //!
-//! Not included: `TooManyDefinitions` (only fires at u32::MAX definitions,
+//! Not included: `TooManyDefinitions` (only fires at `u32::MAX` definitions,
 //! impractical to construct) and `ModuleReadError` (already covered by
 //! `module_resolution.rs`).
 

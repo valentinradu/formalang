@@ -1,6 +1,6 @@
 //! Tests for serde stability (#4)
 //!
-//! Verifies format_version field and that public AST types serialize/deserialize correctly.
+//! Verifies `format_version` field and that public AST types serialize/deserialize correctly.
 
 use formalang::parse_only;
 
@@ -10,11 +10,11 @@ use formalang::parse_only;
 
 #[test]
 fn test_file_has_format_version() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Foo {
     x: Number
 }
-"#;
+";
     let file = parse_only(source).map_err(|e| format!("{e:?}"))?;
     if file.format_version == 0 {
         return Err("format_version must be non-zero (currently 1)".into());
@@ -37,7 +37,7 @@ fn test_empty_file_has_format_version() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_file_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 pub struct Point {
     x: Number,
     y: Number
@@ -47,7 +47,7 @@ impl Point {
         self.x + self.y
     }
 }
-"#;
+";
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let json =
         serde_json::to_string(&original).map_err(|e| format!("serialization failed: {e}"))?;
@@ -62,11 +62,11 @@ impl Point {
 
 #[test]
 fn test_file_roundtrip_preserves_format_version() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Named {
     name: String
 }
-"#;
+";
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let json =
         serde_json::to_string(&original).map_err(|e| format!("serialization failed: {e}"))?;
@@ -85,12 +85,12 @@ trait Named {
 
 #[test]
 fn test_enum_def_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 pub enum Status {
     Active,
     Inactive
 }
-"#;
+";
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let json =
         serde_json::to_string(&original).map_err(|e| format!("serialization failed: {e}"))?;
@@ -104,10 +104,10 @@ pub enum Status {
 
 #[test]
 fn test_extern_fn_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 struct Canvas { width: Number, height: Number }
 extern fn create() -> Canvas
-"#;
+";
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let json =
         serde_json::to_string(&original).map_err(|e| format!("serialization failed: {e}"))?;

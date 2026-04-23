@@ -136,7 +136,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     local_let_bindings: HashMap<String, (String, bool)>,
     /// Bindings consumed by a `sink` parameter call — cannot be used after
     consumed_bindings: HashSet<String>,
-    /// Conventions for closure-typed bindings: binding_name → param conventions in order
+    /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Free-variable captures for closure-typed let bindings, used for
     /// escape-aware ownership propagation.
@@ -173,7 +173,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// All closure-binding captures created anywhere in the currently-validating
     /// function body, flat across nested block scopes. Cleared at function
     /// entry/exit. Used by the function-return escape check to classify captures
-    /// when a named closure binding is returned (see validate_function_return_escape).
+    /// when a named closure binding is returned (see `validate_function_return_escape`).
     pub(super) fn_scope_closure_captures: HashMap<String, Vec<String>>,
     /// Parameter conventions for the currently-validated function body.
     ///

@@ -457,9 +457,32 @@ impl IrModule {
         Ok(id)
     }
 
-    /// Add an impl block.
-    pub(crate) fn add_impl(&mut self, i: IrImpl) {
+    /// Add an impl block and return its ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CompilerError::TooManyDefinitions`] if the impl count exceeds `u32::MAX`.
+    #[expect(
+        clippy::result_large_err,
+        reason = "CompilerError is large by design; callers push errors into a Vec so allocation is bounded"
+    )]
+    pub(crate) fn add_impl(&mut self, i: IrImpl) -> Result<ImplId, CompilerError> {
+        let id = u32::try_from(self.impls.len()).map(ImplId).map_err(|_| {
+            CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: Span::default(),
+            }
+        })?;
         self.impls.push(i);
+        Ok(id)
+    }
+
+    /// Return the `ImplId` that the next call to [`Self::add_impl`] will produce,
+    /// without mutating the module. Returns `None` if the impl count has already
+    /// reached `u32::MAX`.
+    #[must_use]
+    pub(crate) fn next_impl_id(&self) -> Option<ImplId> {
+        u32::try_from(self.impls.len()).ok().map(ImplId)
     }
 
     /// Look up a let binding by name.

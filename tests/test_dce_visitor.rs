@@ -1448,7 +1448,7 @@ fn test_dce_preserves_trait_used_as_struct_generic_constraint(
 }
 
 /// A trait referenced only via virtual dispatch on a method call must be
-/// preserved — the DispatchKind::Virtual variant stores the trait_id and the
+/// preserved — the `DispatchKind::Virtual` variant stores the `trait_id` and the
 /// DCE must inspect it.
 #[test]
 fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn std::error::Error>> {

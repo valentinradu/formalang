@@ -2935,7 +2935,6 @@ impl ModuleResolver for MockResolver {
             .ok_or_else(|| ModuleError::NotFound {
                 path: path.to_vec(),
                 searched_paths: vec![],
-                span: formalang::location::Span::default(),
             })
     }
 }

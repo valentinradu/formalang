@@ -11,31 +11,31 @@ use formalang::{compile, CompilerError};
 
 #[test]
 fn test_trait_with_method_signatures() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Drawable {
     fn draw(self) -> Boolean
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_trait_with_fields_and_methods() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Shape {
     color: String
     fn area(self) -> Number
     fn perimeter(self) -> Number
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_impl_trait_provides_all_methods() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Drawable {
     fn draw(self) -> Boolean
     fn visible(self) -> Boolean
@@ -51,14 +51,14 @@ impl Drawable for Circle {
         self.radius > 0
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_trait_method_with_params() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Resizable {
     fn resize(self, factor: Number) -> Boolean
 }
@@ -71,7 +71,7 @@ impl Resizable for Box {
         true
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -109,7 +109,7 @@ impl Extended for Item {
 
 #[test]
 fn test_missing_trait_method_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Drawable {
     fn draw(self) -> Boolean
     fn visible(self) -> Boolean
@@ -122,7 +122,7 @@ impl Drawable for Square {
         true
     }
 }
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error for missing trait method")?;
@@ -138,7 +138,7 @@ impl Drawable for Square {
 
 #[test]
 fn test_missing_all_trait_methods_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Drawable {
     fn draw(self) -> Boolean
 }
@@ -146,7 +146,7 @@ struct Square {
     side: Number
 }
 impl Drawable for Square {}
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error for missing all trait methods")?;
@@ -165,7 +165,7 @@ impl Drawable for Square {}
 
 #[test]
 fn test_trait_method_return_type_mismatch_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Drawable {
     fn draw(self) -> Boolean
 }
@@ -177,7 +177,7 @@ impl Drawable for Circle {
         42
     }
 }
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error for method signature mismatch")?;
@@ -195,7 +195,7 @@ impl Drawable for Circle {
 
 #[test]
 fn test_trait_method_param_count_mismatch_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Resizable {
     fn resize(self, factor: Number) -> Boolean
 }
@@ -207,7 +207,7 @@ impl Resizable for Rect {
         true
     }
 }
-"#;
+";
     let errors = compile(source)
         .err()
         .ok_or("expected error for param count mismatch")?;
@@ -228,7 +228,7 @@ impl Resizable for Rect {
 
 #[test]
 fn test_trait_fields_and_methods_both_checked() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Named {
     name: String
     fn greet(self) -> String
@@ -241,7 +241,7 @@ impl Named for Person {
         self.name
     }
 }
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
@@ -252,7 +252,7 @@ impl Named for Person {
 
 #[test]
 fn test_trait_with_no_methods_still_valid() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
 trait Labeled {
     label: String
 }
@@ -260,7 +260,7 @@ struct Tag {
     label: String
 }
 impl Labeled for Tag {}
-"#;
+";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

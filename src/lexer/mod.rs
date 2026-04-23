@@ -9,7 +9,7 @@ use logos::Logos;
 /// Lexer for `FormaLang` source code
 #[derive(Debug)]
 pub struct Lexer<'source> {
-    lexer: logos::Lexer<'source, Token>,
+    inner: logos::Lexer<'source, Token>,
     source: &'source str,
     /// Errors accumulated during lexing. Each malformed token is reported, and
     /// the lexer continues scanning rather than silently dropping it.
@@ -20,7 +20,7 @@ impl<'source> Lexer<'source> {
     #[must_use]
     pub fn new(source: &'source str) -> Self {
         Self {
-            lexer: Token::lexer(source),
+            inner: Token::lexer(source),
             source,
             errors: Vec::new(),
         }
@@ -31,8 +31,8 @@ impl<'source> Lexer<'source> {
     /// On a lexer error, records a [`CompilerError`] and continues scanning.
     pub fn next_token(&mut self) -> Option<(Token, Span)> {
         loop {
-            let token = self.lexer.next()?;
-            let range = self.lexer.span();
+            let token = self.inner.next()?;
+            let range = self.inner.span();
             let span = Span::from_range(range.start, range.end);
 
             match token {
@@ -54,6 +54,8 @@ impl<'source> Lexer<'source> {
     /// - [`CompilerError::InvalidCharacter`] — anything else (default fall-back).
     fn classify_error(source: &str, start: usize, end: usize) -> CompilerError {
         let span = Span::from_range(start, end);
+        // Logos always produces byte ranges within `source`; fall back to empty
+        // only as a defensive measure if that invariant is ever broken.
         let slice = source.get(start..end).unwrap_or_default();
 
         let first = slice.chars().next();
@@ -75,7 +77,7 @@ impl<'source> Lexer<'source> {
     /// Get current span
     #[must_use]
     pub fn span(&self) -> Span {
-        let range = self.lexer.span();
+        let range = self.inner.span();
         Span::from_range(range.start, range.end)
     }
 

@@ -5,6 +5,7 @@ use crate::ast::{
     self, BinaryOperator, BindingPattern, BlockStatement, ClosureParam, Expr, Literal,
     ParamConvention, PrimitiveType, UnaryOperator,
 };
+use crate::error::CompilerError;
 use crate::ir::{
     DispatchKind, ImplId, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType, TraitId,
 };
@@ -507,7 +508,11 @@ impl IrLowerer<'_> {
     /// * All other receiver shapes default to `Virtual` with a placeholder
     ///   trait id — backends can either reject these or fall back to runtime
     ///   resolution.
-    fn resolve_dispatch_kind(&self, receiver_ty: &ResolvedType, method_name: &str) -> DispatchKind {
+    fn resolve_dispatch_kind(
+        &mut self,
+        receiver_ty: &ResolvedType,
+        method_name: &str,
+    ) -> DispatchKind {
         // Static dispatch for concrete struct types.
         if let ResolvedType::Struct(struct_id)
         | ResolvedType::Generic {
@@ -521,7 +526,7 @@ impl IrLowerer<'_> {
             // this is the "method call inside its own impl" case. Point at
             // the slot that impl will occupy once finalized.
             return DispatchKind::Static {
-                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+                impl_id: self.next_impl_id_or_record(),
             };
         }
 
@@ -531,7 +536,7 @@ impl IrLowerer<'_> {
                 return DispatchKind::Static { impl_id };
             }
             return DispatchKind::Static {
-                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+                impl_id: self.next_impl_id_or_record(),
             };
         }
 
@@ -563,42 +568,94 @@ impl IrLowerer<'_> {
         }
     }
 
-    fn find_impl_for_struct(&self, id: crate::ir::StructId, method_name: &str) -> Option<ImplId> {
-        for (idx, impl_block) in self.module.impls.iter().enumerate() {
-            if impl_block.struct_id() == Some(id)
-                && impl_block.functions.iter().any(|f| f.name == method_name)
-            {
-                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
-        }
-        None
+    /// Return the `ImplId` that will be assigned to the next impl block added.
+    /// On u32 overflow, records a `TooManyDefinitions` error and returns a
+    /// sentinel ID so compilation fails loudly rather than producing wrong dispatch.
+    fn next_impl_id_or_record(&mut self) -> ImplId {
+        self.module.next_impl_id().unwrap_or_else(|| {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: crate::location::Span::default(),
+            });
+            ImplId(u32::MAX)
+        })
     }
 
-    fn find_impl_for_enum(&self, id: crate::ir::EnumId, method_name: &str) -> Option<ImplId> {
-        for (idx, impl_block) in self.module.impls.iter().enumerate() {
-            if impl_block.enum_id() == Some(id)
-                && impl_block.functions.iter().any(|f| f.name == method_name)
-            {
-                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
+    /// Record `TooManyDefinitions` for an impl index that does not fit in `u32`
+    /// and return a sentinel `ImplId`. Callers should have already established
+    /// an `add_impl`-enforced invariant; this path exists purely to keep the
+    /// compiler type-safe without an unchecked cast.
+    fn impl_id_from_idx(&mut self, idx: usize) -> ImplId {
+        if let Ok(v) = u32::try_from(idx) {
+            ImplId(v)
+        } else {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "impl",
+                span: crate::location::Span::default(),
+            });
+            ImplId(u32::MAX)
         }
-        None
+    }
+
+    fn trait_id_from_idx(&mut self, idx: usize) -> TraitId {
+        if let Ok(v) = u32::try_from(idx) {
+            TraitId(v)
+        } else {
+            self.errors.push(CompilerError::TooManyDefinitions {
+                kind: "trait",
+                span: crate::location::Span::default(),
+            });
+            TraitId(u32::MAX)
+        }
+    }
+
+    fn find_impl_for_struct(
+        &mut self,
+        id: crate::ir::StructId,
+        method_name: &str,
+    ) -> Option<ImplId> {
+        let found_idx = self.module.impls.iter().enumerate().find_map(|(idx, b)| {
+            if b.struct_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name) {
+                Some(idx)
+            } else {
+                None
+            }
+        })?;
+        Some(self.impl_id_from_idx(found_idx))
+    }
+
+    fn find_impl_for_enum(&mut self, id: crate::ir::EnumId, method_name: &str) -> Option<ImplId> {
+        let found_idx = self.module.impls.iter().enumerate().find_map(|(idx, b)| {
+            if b.enum_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name) {
+                Some(idx)
+            } else {
+                None
+            }
+        })?;
+        Some(self.impl_id_from_idx(found_idx))
     }
 
     /// Best-effort lookup of the trait that declares `method_name` among the
     /// constraints attached to generic parameter `param_name`. Returns the
     /// first matching trait, or `None` if no constraint declares the method.
-    fn find_trait_for_method(&self, _param_name: &str, method_name: &str) -> Option<TraitId> {
+    fn find_trait_for_method(&mut self, _param_name: &str, method_name: &str) -> Option<TraitId> {
         // Walk all traits and pick the first one declaring this method.
         // This is intentionally loose: the semantic analyser already verified
         // that such a method exists, so picking any trait that declares it
         // preserves correctness for a single-trait bound.
-        for (idx, trait_def) in self.module.traits.iter().enumerate() {
-            if trait_def.methods.iter().any(|m| m.name == method_name) {
-                return Some(TraitId(u32::try_from(idx).unwrap_or(u32::MAX)));
-            }
-        }
-        None
+        let found_idx = self
+            .module
+            .traits
+            .iter()
+            .enumerate()
+            .find_map(|(idx, trait_def)| {
+                if trait_def.methods.iter().any(|m| m.name == method_name) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })?;
+        Some(self.trait_id_from_idx(found_idx))
     }
 
     /// Lower a `let pat = val in body` expression into a block with the binding as a statement.

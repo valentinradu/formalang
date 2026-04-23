@@ -611,7 +611,7 @@ fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
+    let source = r"
         struct Container {
             header: String,
             content: String,
@@ -635,7 +635,7 @@ fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
         impl Button {
             fn getOnClick() -> String { self.label }
         }
-    "#;
+    ";
     compile(source).map_err(|e| format!("View hierarchy: {e:?}"))?;
     Ok(())
 }

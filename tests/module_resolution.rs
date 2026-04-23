@@ -5,9 +5,8 @@
 
 use formalang::error::CompilerError;
 use formalang::lexer::Lexer;
-use formalang::location::Span;
 use formalang::parser;
-use formalang::semantic::module_resolver::{FileSystemResolver, ModuleError, ModuleResolver};
+use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use formalang::semantic::SemanticAnalyzer;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -60,7 +59,6 @@ impl ModuleResolver for MockModuleResolver {
             .ok_or_else(|| ModuleError::NotFound {
                 path: path_vec,
                 searched_paths: vec![],
-                span: Span::default(),
             })
     }
 }
@@ -123,7 +121,6 @@ fn test_mock_resolver_returns_configured_error() -> Result<(), Box<dyn std::erro
         ModuleError::ReadError {
             path: PathBuf::from("broken.forma"),
             error: "Permission denied".to_string(),
-            span: Span::default(),
         },
     );
 
@@ -171,7 +168,6 @@ fn test_module_error_not_found_fields() -> Result<(), Box<dyn std::error::Error>
     let error = ModuleError::NotFound {
         path: vec!["foo".to_string(), "bar".to_string()],
         searched_paths: vec![PathBuf::from("/a/b.forma"), PathBuf::from("/a/b/c.forma")],
-        span: Span::default(),
     };
 
     match error {
@@ -201,7 +197,6 @@ fn test_module_error_not_found_fields() -> Result<(), Box<dyn std::error::Error>
 fn test_module_error_circular_import() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::CircularImport {
         cycle: vec!["a".to_string(), "b".to_string(), "a".to_string()],
-        span: Span::default(),
     };
 
     match error {
@@ -233,7 +228,6 @@ fn test_module_error_read_error() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::ReadError {
         path: PathBuf::from("/some/path.forma"),
         error: "File not accessible".to_string(),
-        span: Span::default(),
     };
 
     match error {
@@ -260,7 +254,6 @@ fn test_module_error_private_item() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::PrivateItem {
         item: "InternalHelper".to_string(),
         module: "utils".to_string(),
-        span: Span::default(),
     };
 
     match error {
@@ -288,7 +281,6 @@ fn test_module_error_item_not_found() -> Result<(), Box<dyn std::error::Error>> 
         item: "Missing".to_string(),
         module: "utils".to_string(),
         available: vec!["Helper".to_string(), "Utils".to_string()],
-        span: Span::default(),
     };
 
     match error {
@@ -323,12 +315,10 @@ fn test_module_error_equality() -> Result<(), Box<dyn std::error::Error>> {
     let error1 = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: Span::default(),
     };
     let error2 = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: Span::default(),
     };
 
     if error1 != error2 {
@@ -342,7 +332,6 @@ fn test_module_error_debug() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::NotFound {
         path: vec!["test".to_string()],
         searched_paths: vec![],
-        span: Span::default(),
     };
 
     let debug_str = format!("{error:?}");
@@ -360,7 +349,6 @@ fn test_module_error_clone() -> Result<(), Box<dyn std::error::Error>> {
     let error = ModuleError::ReadError {
         path: PathBuf::from("test.forma"),
         error: "Test error".to_string(),
-        span: Span::default(),
     };
 
     let cloned = error.clone();
@@ -382,19 +370,6 @@ fn analyze_with_mock(source: &str, resolver: MockModuleResolver) -> Result<(), V
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
-    let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
-    analyzer.analyze(&file)
-}
-
-fn analyze_with_filesystem(source: &str, root_dir: PathBuf) -> Result<(), Vec<CompilerError>> {
-    let tokens = Lexer::tokenize_all(source);
-    let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
-        errors
-            .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
-            .collect::<Vec<_>>()
-    })?;
-    let resolver = FileSystemResolver::new(root_dir);
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
     analyzer.analyze(&file)
 }
@@ -428,7 +403,6 @@ fn test_semantic_use_module_read_error() -> Result<(), Box<dyn std::error::Error
         ModuleError::ReadError {
             path: PathBuf::from("broken.forma"),
             error: "Permission denied".to_string(),
-            span: Span::default(),
         },
     );
     let source = r"
@@ -460,7 +434,6 @@ fn test_semantic_use_circular_import() -> Result<(), Box<dyn std::error::Error>>
                 "circular".to_string(),
                 "main".to_string(),
             ],
-            span: Span::default(),
         },
     );
     let source = r"
@@ -489,7 +462,6 @@ fn test_semantic_use_private_item() -> Result<(), Box<dyn std::error::Error>> {
         ModuleError::PrivateItem {
             item: "InternalHelper".to_string(),
             module: "utils".to_string(),
-            span: Span::default(),
         },
     );
     let source = r"
@@ -519,7 +491,6 @@ fn test_semantic_use_item_not_found() -> Result<(), Box<dyn std::error::Error>> 
             item: "Missing".to_string(),
             module: "utils".to_string(),
             available: vec!["Helper".to_string(), "Utils".to_string()],
-            span: Span::default(),
         },
     );
     let source = r"

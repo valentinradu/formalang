@@ -888,7 +888,9 @@ impl<'a> IrLowerer<'a> {
         // Clear the context
         self.current_impl_struct = None;
 
-        self.module.add_impl(IrImpl { target, functions });
+        if let Err(err) = self.module.add_impl(IrImpl { target, functions }) {
+            self.errors.push(err);
+        }
     }
 
     fn lower_function(&mut self, f: &FunctionDef) {

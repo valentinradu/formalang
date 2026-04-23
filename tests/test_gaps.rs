@@ -1,5 +1,7 @@
 //! Tests for all 11 compiler gaps implemented in the gap-filling pass.
 
+#![allow(clippy::indexing_slicing)]
+
 use formalang::compile;
 use formalang::compile_to_ir;
 use formalang::CompilerError;
