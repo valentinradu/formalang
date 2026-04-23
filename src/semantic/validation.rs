@@ -51,6 +51,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 .insert(binding.name.clone(), conventions.clone());
                             if let Some(caps) = &captures {
                                 self.closure_binding_captures
+                                    .insert(binding.name.clone(), caps.clone());
+                                self.fn_scope_closure_captures
                                     .insert(binding.name, caps.clone());
                             }
                         }
@@ -81,6 +83,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Function(func_def) => {
                         self.local_let_bindings.clear();
                         self.consumed_bindings.clear();
+                        // Snapshot closure-binding maps so entries introduced in
+                        // this function body don't leak into later functions.
+                        let saved_closure_conventions = self.closure_binding_conventions.clone();
+                        let saved_closure_captures = self.closure_binding_captures.clone();
+                        let saved_fn_scope_captures =
+                            std::mem::take(&mut self.fn_scope_closure_captures);
+                        let saved_param_conventions = self.current_fn_param_conventions.clone();
+                        self.current_fn_param_conventions.clear();
                         for param in &func_def.params {
                             if let Some(ty) = &param.ty {
                                 self.validate_type(ty);
@@ -96,12 +106,36 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             );
                             self.local_let_bindings
                                 .insert(param.name.name.clone(), (ty_str, mutable));
+                            self.current_fn_param_conventions
+                                .insert(param.name.name.clone(), param.convention);
+                            // Register closure-typed parameters so they're
+                            // callable inside the body. Parameters have no
+                            // captures of their own — no closure_binding_captures
+                            // entry.
+                            if let Some(Type::Closure {
+                                params: closure_params,
+                                ..
+                            }) = &param.ty
+                            {
+                                let conventions: Vec<_> =
+                                    closure_params.iter().map(|(c, _)| *c).collect();
+                                self.closure_binding_conventions
+                                    .insert(param.name.name.clone(), conventions);
+                            }
                         }
                         if let Some(body) = &func_def.body {
                             self.validate_expr(body, file);
+                            self.validate_function_return_escape(
+                                func_def.return_type.as_ref(),
+                                body,
+                            );
                         }
                         self.local_let_bindings.clear();
                         self.consumed_bindings.clear();
+                        self.closure_binding_conventions = saved_closure_conventions;
+                        self.closure_binding_captures = saved_closure_captures;
+                        self.fn_scope_closure_captures = saved_fn_scope_captures;
+                        self.current_fn_param_conventions = saved_param_conventions;
                     }
                     Definition::Module(module_def) => {
                         for nested_def in &module_def.definitions {
@@ -536,6 +570,135 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn escape_closure_value(&mut self, expr: &Expr) {
         if let Some(caps) = self.closure_captures_of_expr(expr) {
             self.mark_captures_consumed(&caps);
+        }
+    }
+
+    /// Walk the body's result expression and collect every closure value that
+    /// would escape the function via `return` along with its captures.
+    ///
+    /// A closure "escapes via return" if it is the outermost value of the
+    /// function body. That may be a direct `ClosureExpr`, a `Reference` to a
+    /// closure-typed let binding, or a closure reachable through a `Block`,
+    /// `LetExpr`, `IfExpr`, or `MatchExpr` result. Returns one `(captures,
+    /// span)` entry per escaping closure (if/match branches contribute one
+    /// entry per branch so per-branch error reporting is possible).
+    fn collect_returned_closure_captures(&self, expr: &Expr) -> Vec<(Vec<String>, Span)> {
+        let mut results: Vec<(Vec<String>, Span)> = Vec::new();
+        self.collect_returned_closure_captures_rec(expr, &mut results);
+        results
+    }
+
+    fn collect_returned_closure_captures_rec(
+        &self,
+        expr: &Expr,
+        out: &mut Vec<(Vec<String>, Span)>,
+    ) {
+        match expr {
+            Expr::ClosureExpr { params, body, span } => {
+                let param_set: HashSet<String> =
+                    params.iter().map(|p| p.name.name.clone()).collect();
+                let caps = Self::collect_free_variables(body, &param_set);
+                out.push((caps, *span));
+            }
+            Expr::Reference { path, span } => {
+                if path.len() == 1 {
+                    if let Some(first) = path.first() {
+                        // Prefer the flat function-scope map so bindings
+                        // introduced inside a now-popped nested block still
+                        // carry their captures for the return-escape check.
+                        if let Some(caps) = self
+                            .fn_scope_closure_captures
+                            .get(&first.name)
+                            .or_else(|| self.closure_binding_captures.get(&first.name))
+                        {
+                            out.push((caps.clone(), *span));
+                        }
+                    }
+                }
+            }
+            Expr::Group { expr, .. } => {
+                self.collect_returned_closure_captures_rec(expr, out);
+            }
+            Expr::Block { result, .. } => {
+                self.collect_returned_closure_captures_rec(result, out);
+            }
+            Expr::LetExpr { body, .. } => {
+                self.collect_returned_closure_captures_rec(body, out);
+            }
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.collect_returned_closure_captures_rec(then_branch, out);
+                if let Some(else_expr) = else_branch {
+                    self.collect_returned_closure_captures_rec(else_expr, out);
+                }
+            }
+            Expr::MatchExpr { arms, .. } => {
+                for arm in arms {
+                    self.collect_returned_closure_captures_rec(&arm.body, out);
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::MethodCall { .. } => {}
+        }
+    }
+
+    /// If `return_type` is a closure type, verify that every closure returned
+    /// by `body` only captures bindings that outlive the function: outer-scope
+    /// bindings (module-level or wider) and `sink` parameters. Local `let`
+    /// bindings and `let`/`mut` parameters would die with the function frame
+    /// and leave a dangling capture.
+    fn validate_function_return_escape(&mut self, return_type: Option<&Type>, body: &Expr) {
+        let Some(Type::Closure { .. }) = return_type else {
+            return;
+        };
+        let escaping = self.collect_returned_closure_captures(body);
+        if escaping.is_empty() {
+            return;
+        }
+        let param_convs = self.current_fn_param_conventions.clone();
+        for (captures, span) in escaping {
+            for cap in captures {
+                if let Some(convention) = param_convs.get(&cap) {
+                    match convention {
+                        crate::ast::ParamConvention::Sink => {
+                            // Ownership transfers into the returned closure.
+                            self.consumed_bindings.insert(cap);
+                        }
+                        crate::ast::ParamConvention::Let | crate::ast::ParamConvention::Mut => {
+                            self.errors
+                                .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                                    binding: cap,
+                                    span,
+                                });
+                        }
+                    }
+                } else if self.symbols.is_let(&cap) {
+                    // Module-level let — outlives the function. OK.
+                } else {
+                    // Not a parameter, not a module-level let: must be a
+                    // function-local let introduced inside the body (by now the
+                    // block/let scope has been popped). It dies with the frame.
+                    self.errors
+                        .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                            binding: cap,
+                            span,
+                        });
+                }
+            }
         }
     }
 
@@ -1618,6 +1781,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(caps) = &captures {
                 self.closure_binding_captures
                     .insert(binding.name.clone(), caps.clone());
+                self.fn_scope_closure_captures
+                    .insert(binding.name.clone(), caps.clone());
             }
             self.local_let_bindings
                 .insert(binding.name, (inferred_ty, *mutable));
@@ -1855,6 +2020,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                         if let Some(caps) = &captures {
                             self.closure_binding_captures
+                                .insert(binding.name.clone(), caps.clone());
+                            self.fn_scope_closure_captures
                                 .insert(binding.name.clone(), caps.clone());
                         }
                         self.local_let_bindings
@@ -2593,6 +2760,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
+        // Snapshot closure-binding maps so entries introduced in this function
+        // body don't leak into later functions.
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
+        let saved_param_conventions = self.current_fn_param_conventions.clone();
+        self.current_fn_param_conventions.clear();
+        self.fn_scope_closure_captures.clear();
 
         // Register function parameters as local bindings
         for param in &func.params {
@@ -2617,11 +2792,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             );
             self.local_let_bindings
                 .insert(param.name.name.clone(), (ty_str, mutable));
+            self.current_fn_param_conventions
+                .insert(param.name.name.clone(), param.convention);
+            // Register closure-typed parameters so they're callable inside the
+            // body. Parameters have no captures of their own — no
+            // closure_binding_captures entry.
+            if let Some(Type::Closure {
+                params: closure_params,
+                ..
+            }) = &param.ty
+            {
+                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(param.name.name.clone(), conventions);
+            }
         }
 
         // Validate the function body expression (only if body exists)
         if let Some(body) = &func.body {
             self.validate_expr(body, file);
+            self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
@@ -2642,6 +2832,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.fn_scope_closure_captures = saved_fn_scope_captures;
+        self.current_fn_param_conventions = saved_param_conventions;
     }
 
     /// Validate a standalone function definition (outside of impl blocks)
@@ -2653,6 +2847,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
+        // Snapshot closure-binding maps so entries introduced in this function
+        // body don't leak into later functions.
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
+        let saved_param_conventions = self.current_fn_param_conventions.clone();
+        self.current_fn_param_conventions.clear();
+        self.fn_scope_closure_captures.clear();
 
         // Register function parameters as local bindings
         for param in &func.params {
@@ -2669,6 +2871,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             );
             self.local_let_bindings
                 .insert(param.name.name.clone(), (ty_str, mutable));
+            self.current_fn_param_conventions
+                .insert(param.name.name.clone(), param.convention);
+            if let Some(Type::Closure {
+                params: closure_params,
+                ..
+            }) = &param.ty
+            {
+                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(param.name.name.clone(), conventions);
+            }
         }
 
         // Validate return type if declared
@@ -2679,6 +2892,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Validate the function body if present
         if let Some(body) = &func.body {
             self.validate_expr(body, file);
+            self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
@@ -2699,6 +2913,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.fn_scope_closure_captures = saved_fn_scope_captures;
+        self.current_fn_param_conventions = saved_param_conventions;
     }
 
     /// Check if a method exists on a given type

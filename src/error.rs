@@ -307,6 +307,12 @@ pub enum CompilerError {
     /// Attempted to access a private item from outside its defining module.
     #[error("'{name}' is private and cannot be accessed from outside its module")]
     VisibilityViolation { name: String, span: Span },
+
+    /// A closure returned from a function captures a binding that does not
+    /// outlive the function. Only `sink` parameters and outer-scope bindings
+    /// may be captured by an escaping closure.
+    #[error("Returned closure captures '{binding}' which does not outlive the function")]
+    ClosureCaptureEscapesLocalBinding { binding: String, span: Span },
 }
 
 impl CompilerError {
@@ -370,7 +376,8 @@ impl CompilerError {
             | Self::UseAfterSink { span, .. }
             | Self::ExpressionDepthExceeded { span }
             | Self::TooManyDefinitions { span, .. }
-            | Self::VisibilityViolation { span, .. } => *span,
+            | Self::VisibilityViolation { span, .. }
+            | Self::ClosureCaptureEscapesLocalBinding { span, .. } => *span,
         }
     }
 }

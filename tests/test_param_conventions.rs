@@ -548,9 +548,10 @@ fn test_closure_sink_pass_consumes_captures() {
 #[test]
 fn test_closure_let_pass_does_not_consume_captures() {
     // Positive control: let-pass is a borrow, not escape — the captured `y`
-    // remains live after a let-pass of `c`.
+    // remains live after a let-pass of `c`, even when the host function calls
+    // the closure parameter inside its body.
     let result = compile(
-        "pub fn run(cb: () -> Number) -> Number { 0 }
+        "pub fn run(cb: () -> Number) -> Number { cb() }
          let y: Number = 5
          let c: () -> Number = () -> y
          let _r: Number = run(c)
@@ -612,4 +613,110 @@ fn test_closure_conditional_escape_consumes_captures() {
          let _gone: Number = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Closure-typed parameters are invokable inside the host function body
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_closure_typed_param_callable() {
+    compile(
+        "pub fn run(cb: () -> Number) -> Number { cb() }
+         let r: Number = run(cb: () -> 5)",
+    )
+    .expect("closure-typed param should be invokable");
+}
+
+#[test]
+fn test_closure_typed_param_with_args_callable() {
+    compile(
+        "pub fn apply(f: Number -> Number, v: Number) -> Number { f(v) }
+         let r: Number = apply(f: |n: Number| n + 1, v: 5)",
+    )
+    .expect("closure param with arg should be invokable");
+}
+
+// ---------------------------------------------------------------------------
+// Function-return escape check for captured bindings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_fn_returns_closure_capturing_let_param_rejected() {
+    // Let param is a view — can't escape.
+    assert!(has_error(
+        "pub fn make(y: Number) -> () -> Number { () -> y }",
+        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+    ));
+}
+
+#[test]
+fn test_fn_returns_closure_capturing_sink_param_allowed() {
+    // Sink transfers ownership into the closure.
+    compile("pub fn make(sink y: Number) -> () -> Number { () -> y }")
+        .expect("sink param should be allowed to escape via returned closure");
+}
+
+#[test]
+fn test_fn_returns_closure_capturing_local_let_rejected() {
+    assert!(has_error(
+        "pub fn make() -> () -> Number {
+             let y: Number = 5
+             () -> y
+         }",
+        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+    ));
+}
+
+#[test]
+fn test_fn_returns_closure_capturing_module_let_allowed() {
+    compile(
+        "let top: Number = 5
+         pub fn make() -> () -> Number { () -> top }",
+    )
+    .expect("module-level let capture should outlive the function");
+}
+
+#[test]
+fn test_fn_returns_closure_no_capture_allowed() {
+    compile("pub fn make() -> () -> Number { () -> 42 }")
+        .expect("closure with no captures can always escape");
+}
+
+#[test]
+fn test_fn_returns_named_closure_capturing_local_let_rejected() {
+    // Named closure binding returned; its captures must still be checked.
+    assert!(has_error(
+        "pub fn make() -> () -> Number {
+             let y: Number = 5
+             let c: () -> Number = () -> y
+             c
+         }",
+        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+    ));
+}
+
+#[test]
+fn test_fn_returns_named_closure_capturing_module_let_allowed() {
+    // Module-level capture outlives the function.
+    compile(
+        "let top: Number = 5
+         pub fn make() -> () -> Number {
+             let c: () -> Number = () -> top
+             c
+         }",
+    )
+    .expect("module capture via named closure binding should be allowed");
+}
+
+#[test]
+fn test_fn_returns_named_closure_capturing_sink_param_allowed() {
+    // Sink param ownership transfers via named binding too.
+    compile(
+        "pub fn make(sink y: Number) -> () -> Number {
+             let c: () -> Number = () -> y
+             c
+         }",
+    )
+    .expect("sink-param capture via named closure binding should be allowed");
 }

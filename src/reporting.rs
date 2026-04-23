@@ -918,6 +918,25 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                 )
                 .with_help(format!("Make '{name}' public with the 'pub' keyword"))
         }
+
+        CompilerError::ClosureCaptureEscapesLocalBinding { binding, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E132")
+                .with_message(format!(
+                    "Returned closure captures '{binding}' which does not outlive the function"
+                ))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'{}' dies when the function returns, leaving a dangling capture",
+                            binding.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(
+                    "Only `sink` parameters and outer-scope bindings may be captured by a closure that escapes the function; consider taking ownership via a `sink` parameter",
+                )
+        }
     }
 }
 

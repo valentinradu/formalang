@@ -156,14 +156,32 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     ///   each captured binding is marked consumed at the escape site.
     /// - Transitive: if closure A captures closure B and A escapes, B's
     ///   captures are also consumed.
+    /// - Function-return escape: when a function's declared return type is
+    ///   a closure type, the returned closure's captures are validated
+    ///   against `current_fn_param_conventions`. Only `sink` parameters and
+    ///   outer-scope bindings (module-level or wider) may be captured; local
+    ///   `let` bindings and `let`/`mut` parameters would leave dangling
+    ///   captures and are rejected with
+    ///   `ClosureCaptureEscapesLocalBinding`. A `sink`-parameter capture
+    ///   that escapes is marked consumed in the function's scope.
     ///
     /// Not covered:
-    /// - Function-return escape: closures returned from functions that
-    ///   capture outer bindings are not tracked. A future pass is needed.
     /// - Closures stored in arbitrary non-let places (e.g., assigned to a
     ///   struct field after construction via field assignment); only
     ///   construction-site field assignment is tracked.
     pub(super) closure_binding_captures: HashMap<String, Vec<String>>,
+    /// All closure-binding captures created anywhere in the currently-validating
+    /// function body, flat across nested block scopes. Cleared at function
+    /// entry/exit. Used by the function-return escape check to classify captures
+    /// when a named closure binding is returned (see validate_function_return_escape).
+    pub(super) fn_scope_closure_captures: HashMap<String, Vec<String>>,
+    /// Parameter conventions for the currently-validated function body.
+    ///
+    /// Populated on entry to a function body and cleared on exit. Used by the
+    /// return-escape check to distinguish `sink` parameters (ownership
+    /// transfers into a returned closure) from `let`/`mut` parameters (views
+    /// that cannot escape) and from function-local `let` bindings.
+    pub(super) current_fn_param_conventions: HashMap<String, ParamConvention>,
     /// Recursion depth counter for `validate_expr` (to prevent stack overflow)
     validate_expr_depth: usize,
 }
@@ -195,6 +213,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             consumed_bindings: HashSet::new(),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
+            fn_scope_closure_captures: HashMap::new(),
+            current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -217,6 +237,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             consumed_bindings: HashSet::new(),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
+            fn_scope_closure_captures: HashMap::new(),
+            current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
