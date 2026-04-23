@@ -2,11 +2,16 @@
 //!
 //! Targets: AST helpers, Token parsing, `ImportGraph`, semantic edge cases
 
-use formalang::{compile, CompilerError};
+use formalang::{CompilerError};
 
 // =============================================================================
 // AST Span Tests - Exercise Expr::span() for all variants
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_expr_span_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {

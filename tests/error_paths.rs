@@ -2,12 +2,16 @@
 //!
 //! Tests that exercise error detection and validation paths
 
-use formalang::compile;
 use formalang::CompilerError;
 
 // =============================================================================
 // Type Error Tests
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_undefined_type_in_field() -> Result<(), Box<dyn std::error::Error>> {

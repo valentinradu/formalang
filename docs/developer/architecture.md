@@ -38,10 +38,10 @@ Defined in `src/lib.rs`:
 
 | Function                     | Returns                                                                         | Use case                   |
 | ---------------------------- | ------------------------------------------------------------------------------- | -------------------------- |
-| `compile_to_ir(src)`         | `Result<IrModule, Vec<CompilerError>>`                                          | Code generation            |
-| `compile(src)`               | `Result<File, Vec<CompilerError>>`                                              | Syntax analysis, tooling   |
-| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>`      | LSP                        |
+| `compile_to_ir(src)`         | `Result<IrModule, Vec<CompilerError>>`                                          | Code generation (canonical) |
+| `compile_with_analyzer(src)` | `Result<(File, SemanticAnalyzer<FileSystemResolver>), Vec<CompilerError>>`      | LSP, AST-level tooling     |
 | `parse_only(src)`            | `Result<File, ...>`                                                             | Parsing without validation |
+| `compile_and_report(src, f)` | `Result<IrModule, String>`                                                      | CLI: compile + formatted errors |
 
 ## Plugin System
 

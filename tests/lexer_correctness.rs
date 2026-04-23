@@ -12,11 +12,16 @@
 #![allow(clippy::wildcard_enum_match_arm)]
 
 use formalang::lexer::{Lexer, Token};
-use formalang::{compile, CompilerError};
+use formalang::{CompilerError};
 
 // ============================================================================
 // Number literals
 // ============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn tokenize_number_with_underscores() -> Result<(), Box<dyn std::error::Error>> {

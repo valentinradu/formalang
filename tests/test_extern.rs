@@ -3,11 +3,16 @@
 //! Covers: extern fn, extern impl, and all error cases.
 //! Note: `extern type` has been removed — types are always normal structs.
 
-use formalang::{compile, parse_only, CompilerError};
+use formalang::{parse_only, CompilerError};
 
 // =============================================================================
 // extern fn (module-level)
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_extern_fn_no_args() -> Result<(), Box<dyn std::error::Error>> {

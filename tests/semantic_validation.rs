@@ -2,12 +2,16 @@
 //!
 //! These tests exercise validation paths in the semantic analyzer
 
-use formalang::compile;
 use formalang::CompilerError;
 
 // =============================================================================
 // Type Resolution Tests
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_resolve_nested_generic_type() -> Result<(), Box<dyn std::error::Error>> {

@@ -2,11 +2,16 @@
 //!
 //! These tests exercise the full compile pipeline: Lexer -> Parser -> Semantic Analyzer
 
-use formalang::{compile, compile_to_ir, parse_only, CompilerError};
+use formalang::{compile_to_ir, parse_only, CompilerError};
 
 // =============================================================================
 // Basic Definition Tests
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn test_empty_file() -> Result<(), Box<dyn std::error::Error>> {

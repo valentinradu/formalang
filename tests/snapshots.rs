@@ -16,11 +16,16 @@
 
 #![allow(clippy::expect_used)]
 
-use formalang::{compile, compile_to_ir};
+use formalang::{compile_to_ir};
 
 // =============================================================================
 // AST snapshots
 // =============================================================================
+
+
+fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
+    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+}
 
 #[test]
 fn ast_struct_and_impl() {

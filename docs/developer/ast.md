@@ -12,10 +12,12 @@ The FormaLang compiler produces a validated AST as a Rust data structure. The AS
 
 ### Obtaining the AST
 
-Use the `compile` function for a fully validated AST:
+Use `compile_with_analyzer` for a fully validated AST plus the semantic
+analyzer (useful for LSP tooling). For pure syntax inspection without
+semantic checks, use `parse_only`.
 
 ```rust
-use formalang::compile;
+use formalang::compile_with_analyzer;
 
 let source = r#"
 pub struct User {
@@ -24,8 +26,8 @@ pub struct User {
 }
 "#;
 
-match compile(source) {
-    Ok(file) => {
+match compile_with_analyzer(source) {
+    Ok((file, _analyzer)) => {
         // file is the root AST node
         for statement in &file.statements {
             // process statements

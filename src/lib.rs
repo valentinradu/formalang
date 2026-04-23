@@ -23,99 +23,6 @@ pub use reporting::{report_error, report_errors};
 pub use semantic::module_resolver::FileSystemResolver;
 pub use semantic::SemanticAnalyzer;
 
-/// Compile `FormaLang` source code into a validated AST.
-///
-/// # Pipeline
-///
-/// 1. **Lexer**: Tokenizes the source code
-/// 2. **Parser**: Builds an Abstract Syntax Tree (AST)
-/// 3. **Semantic Analyzer**: Validates the AST (6 passes)
-///    - Pass 0: Module resolution (use statements, imports)
-///    - Pass 1: Symbol table building (all definitions)
-///    - Pass 2: Type resolution (type references)
-///    - Pass 3: Expression validation (operators, control flow)
-///    - Pass 4: Trait validation (implementations)
-///    - Pass 5: Circular dependency detection
-///
-/// # Returns
-///
-/// * `Ok(File)` - The validated AST
-/// * `Err(Vec<CompilerError>)` - Compilation errors
-///
-/// # Errors
-///
-/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
-///
-/// # Example
-///
-/// ```
-/// use formalang::compile;
-///
-/// let source = r#"
-/// pub struct User {
-///     name: String,
-///     age: Number
-/// }
-/// "#;
-///
-/// match compile(source) {
-///     Ok(_file) => println!("OK"),
-///     Err(errors) => {
-///         for e in errors { eprintln!("{e}"); }
-///     }
-/// }
-/// ```
-pub fn compile(source: &str) -> Result<File, Vec<CompilerError>> {
-    compile_with_resolver(
-        source,
-        FileSystemResolver::new(std::env::current_dir().unwrap_or_else(|_| ".".into())),
-    )
-}
-
-/// Compile `FormaLang` source code with a custom module resolver.
-///
-/// # Errors
-///
-/// Returns a vector of [`CompilerError`] if lexing, parsing, or semantic analysis fails.
-///
-/// # Example
-///
-/// ```
-/// use formalang::{compile_with_resolver, FileSystemResolver};
-/// use std::path::PathBuf;
-///
-/// let resolver = FileSystemResolver::new(PathBuf::from("."));
-/// let source = "pub struct Point { x: Number, y: Number }";
-/// let _file = compile_with_resolver(source, resolver).unwrap();
-/// ```
-pub fn compile_with_resolver<R>(source: &str, resolver: R) -> Result<File, Vec<CompilerError>>
-where
-    R: semantic::module_resolver::ModuleResolver,
-{
-    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
-    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
-        errors
-            .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
-            .collect::<Vec<_>>()
-    });
-    let mut file = match parse_result {
-        Ok(f) if lex_errors.is_empty() => f,
-        Ok(_) => return Err(lex_errors),
-        Err(mut parse_errors) => {
-            let mut all = lex_errors;
-            all.append(&mut parse_errors);
-            return Err(all);
-        }
-    };
-    // Use a synthetic root path so import-graph cycle detection is active even
-    // when there is no real file on disk.
-    let mut analyzer =
-        SemanticAnalyzer::new_with_file(resolver, std::path::PathBuf::from("<root>"));
-    analyzer.analyze_and_classify(&mut file)?;
-    Ok(file)
-}
-
 /// Compile and return both the AST and the semantic analyzer.
 ///
 /// Useful for LSP implementations that need access to the symbol table for
@@ -167,11 +74,11 @@ where
     Ok((file, analyzer))
 }
 
-/// Compile and format errors for display.
+/// Compile to IR, formatting errors as a human-readable report on failure.
 ///
 /// # Errors
 ///
-/// Returns a formatted error string if compilation fails.
+/// Returns a formatted error string if compilation or IR lowering fails.
 ///
 /// # Example
 ///
@@ -180,12 +87,12 @@ where
 ///
 /// let source = std::fs::read_to_string("example.fv").unwrap();
 /// match compile_and_report(&source, "example.fv") {
-///     Ok(_file) => println!("OK"),
+///     Ok(_module) => println!("OK"),
 ///     Err(report) => eprintln!("{report}"),
 /// }
 /// ```
-pub fn compile_and_report(source: &str, filename: &str) -> Result<File, String> {
-    compile(source).map_err(|errors| report_errors(&errors, source, filename))
+pub fn compile_and_report(source: &str, filename: &str) -> Result<IrModule, String> {
+    compile_to_ir(source).map_err(|errors| report_errors(&errors, source, filename))
 }
 
 /// Parse `FormaLang` source without semantic analysis.
