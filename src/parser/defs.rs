@@ -5,8 +5,8 @@ use chumsky::prelude::*;
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant,
-    ExternTypeDef, FieldDef, FnDef, FnParam, FnSig, FunctionDef, GenericConstraint, GenericParam,
-    Ident, ImplDef, ModuleDef, StructDef, StructField, StructPatternField, TraitDef, Type,
+    FieldDef, FnDef, FnParam, FnSig, FunctionDef, GenericConstraint, GenericParam, Ident, ImplDef,
+    ModuleDef, ParamConvention, StructDef, StructField, StructPatternField, TraitDef, Type,
 };
 use crate::lexer::Token;
 
@@ -328,25 +328,6 @@ where
         })
 }
 
-/// Parse an extern type declaration: `extern type Name<T>`
-pub(super) fn extern_type_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, ExternTypeDef, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    visibility_parser()
-        .then_ignore(just(Token::Extern))
-        .then_ignore(select! { Token::Ident(s) if s == "type" => () })
-        .then(ident_parser())
-        .then(generic_params_parser())
-        .map_with(|((visibility, name), generics), e| ExternTypeDef {
-            visibility,
-            name,
-            generics,
-            span: span_from_simple(e.span()),
-        })
-}
-
 /// Parse an extern function declaration: `extern fn name(params) -> Type`
 pub(super) fn extern_fn_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FunctionDef, extra::Err<Rich<'tokens, Token>>> + Clone
@@ -521,30 +502,48 @@ where
         })
 }
 
-/// Parse function parameters: `(self, x: Type, label name: Type, y: Type = default)`
+/// Parse function parameters: `(self, mut self, x: Type, mut x: Type, sink x: Type, label name: Type)`
 ///
-/// Parameters support an optional external label: `fn foo(en name: String)` where `en` is
-/// the label used at call sites and `name` is the internal parameter name.
+/// Parameters support an optional convention prefix (`mut` or `sink`) and an optional
+/// external label: `fn foo(en name: String)` where `en` is the label used at call sites
+/// and `name` is the internal parameter name.
 pub(super) fn fn_params_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    let self_param = just(Token::SelfKeyword).map_with(|_, e| FnParam {
-        external_label: None,
-        name: Ident::new("self", span_from_simple(e.span())),
-        ty: None,
-        default: None,
-        span: span_from_simple(e.span()),
-    });
+    // Optional convention prefix: `mut` | `sink` | (nothing → Let)
+    let convention = choice((
+        just(Token::Mut).to(ParamConvention::Mut),
+        just(Token::Sink).to(ParamConvention::Sink),
+    ))
+    .or_not()
+    .map(|c| c.unwrap_or(ParamConvention::Let));
 
-    // `label name: Type = default` — two identifiers before the colon means external label
-    let labeled_param = ident_parser()
+    // `[mut|sink]? self`
+    let self_param =
+        convention
+            .clone()
+            .then(just(Token::SelfKeyword))
+            .map_with(|(convention, _), e| FnParam {
+                convention,
+                external_label: None,
+                name: Ident::new("self", span_from_simple(e.span())),
+                ty: None,
+                default: None,
+                span: span_from_simple(e.span()),
+            });
+
+    // `[mut|sink]? label name: Type = default` — two identifiers before the colon
+    let labeled_param = convention
+        .clone()
+        .then(ident_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
-        .map_with(|(((label, name), ty), default), e| FnParam {
+        .map_with(|((((convention, label), name), ty), default), e| FnParam {
+            convention,
             external_label: Some(label),
             name,
             ty: Some(ty),
@@ -552,12 +551,15 @@ where
             span: span_from_simple(e.span()),
         });
 
-    // `name: Type = default` — single identifier before the colon
-    let typed_param = ident_parser()
+    // `[mut|sink]? name: Type = default` — single identifier before the colon
+    let typed_param = convention
+        .clone()
+        .then(ident_parser())
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
-        .map_with(|((name, ty), default), e| FnParam {
+        .map_with(|(((convention, name), ty), default), e| FnParam {
+            convention,
             external_label: None,
             name,
             ty: Some(ty),
@@ -693,7 +695,6 @@ where
     recursive(|def| {
         choice((
             // Extern variants must come before their non-extern counterparts
-            extern_type_parser().map(Definition::ExternType),
             extern_impl_parser().map(Definition::Impl),
             extern_fn_parser().map(|f| Definition::Function(Box::new(f))),
             trait_def_parser().map(Definition::Trait),
@@ -703,5 +704,6 @@ where
             module_def_parser(def).map(Definition::Module),
             function_def_parser().map(|f| Definition::Function(Box::new(f))),
         ))
+        .labelled("definition (struct, enum, trait, impl, fn, extern, or mod)")
     })
 }

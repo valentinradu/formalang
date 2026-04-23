@@ -917,3 +917,103 @@ fn test_nested_block_expressions() -> Result<(), Box<dyn std::error::Error>> {
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
+
+// =============================================================================
+// Regression tests for Phase 3 semantic correctness fixes
+// =============================================================================
+
+/// Fix 1: FieldAccess/MethodCall inference should return meaningful types,
+/// not "Unknown". A field access used as an if-condition must be detected as
+/// invalid when the field is non-Boolean.
+#[test]
+fn test_field_access_inference_detects_invalid_if_condition(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // p.count has type Number; using it as the if condition must now error
+    // (was previously accepted because field-access inference returned Unknown).
+    let source = r"
+        struct Counter { count: Number }
+        let c = Counter(count: 3)
+        let _ = if c.count { 1 } else { 0 }
+    ";
+    let result = compile(source);
+    match result {
+        Ok(_) => Err("expected InvalidIfCondition for Number-typed field as condition".into()),
+        Err(errors) => {
+            if errors
+                .iter()
+                .any(|e| matches!(e, CompilerError::InvalidIfCondition { .. }))
+            {
+                Ok(())
+            } else {
+                Err(format!("expected InvalidIfCondition, got {errors:?}").into())
+            }
+        }
+    }
+}
+
+/// Fix 2: Block-scoped let bindings must not leak into the enclosing scope.
+#[test]
+fn test_block_scope_does_not_leak() -> Result<(), Box<dyn std::error::Error>> {
+    // `inner` is declared in a block; referencing it outside must error.
+    let source = r"
+        struct Test {
+            value: Number = {
+                let inner = 5
+                inner
+            }
+        }
+        let _ = inner
+    ";
+    let result = compile(source);
+    match result {
+        Ok(_) => Err("expected block-local binding to be out of scope".into()),
+        Err(errors) => {
+            let has_undefined = errors
+                .iter()
+                .any(|e| matches!(e, CompilerError::UndefinedReference { .. }));
+            if has_undefined {
+                Ok(())
+            } else {
+                Err(format!("expected UndefinedReference, got {errors:?}").into())
+            }
+        }
+    }
+}
+
+/// Fix 7: Nested module visibility must be enforced for 3+ level paths.
+/// When middle modules are private, accessing a deeply-nested item must error.
+#[test]
+fn test_nested_private_module_access_errors() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub mod outer {
+            mod hidden {
+                pub struct Secret { x: Number }
+            }
+        }
+        let _ = outer::hidden::Secret(x: 1)
+    ";
+    let result = compile(source);
+    match result {
+        Ok(_) => Err("expected nested private module access to error".into()),
+        Err(errors) => {
+            let has_visibility = errors
+                .iter()
+                .any(|e| matches!(e, CompilerError::VisibilityViolation { .. }));
+            if has_visibility {
+                Ok(())
+            } else {
+                Err(format!("expected VisibilityViolation, got {errors:?}").into())
+            }
+        }
+    }
+}
+
+/// Fix 12: If-expr branches of T and Nil should unify to T? without errors.
+#[test]
+fn test_if_expr_widens_to_optional() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        let x: Number? = if true { 1 } else { nil }
+    ";
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    Ok(())
+}

@@ -27,8 +27,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Trait(_)
                     | Definition::Enum(_)
                     | Definition::Module(_)
-                    | Definition::Function(_)
-                    | Definition::ExternType(_) => {}
+                    | Definition::Function(_) => {}
                 }
             }
         }
@@ -56,16 +55,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     });
                 }
                 Some(impl_fn) => {
-                    // Check signature match: param count (excluding self) and return type
-                    let param_count_mismatch = impl_fn
+                    // Check: param count (excluding self), conventions, and return type
+                    let required_non_self: Vec<_> = required_params
+                        .iter()
+                        .filter(|p| p.name.name != "self")
+                        .collect();
+                    let impl_non_self: Vec<_> = impl_fn
                         .params
                         .iter()
                         .filter(|p| p.name.name != "self")
-                        .count()
-                        != required_params
+                        .collect();
+
+                    let param_count_mismatch = impl_non_self.len() != required_non_self.len();
+
+                    let convention_mismatch = !param_count_mismatch
+                        && required_non_self
                             .iter()
-                            .filter(|p| p.name.name != "self")
-                            .count();
+                            .zip(impl_non_self.iter())
+                            .any(|(req, imp)| req.convention != imp.convention);
+
+                    // Also check self convention if both have self
+                    let self_convention_mismatch = {
+                        let req_self = required_params.iter().find(|p| p.name.name == "self");
+                        let imp_self = impl_fn.params.iter().find(|p| p.name.name == "self");
+                        match (req_self, imp_self) {
+                            (Some(r), Some(i)) => r.convention != i.convention,
+                            _ => false,
+                        }
+                    };
 
                     let return_type_mismatch = match (&required_return, &impl_fn.return_type) {
                         (Some(req_ret), Some(impl_ret)) => !Self::types_match(req_ret, impl_ret),
@@ -73,7 +90,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         _ => true,
                     };
 
-                    if param_count_mismatch || return_type_mismatch {
+                    if param_count_mismatch
+                        || convention_mismatch
+                        || self_convention_mismatch
+                        || return_type_mismatch
+                    {
                         let expected = required_return
                             .as_ref()
                             .map_or_else(|| "()".to_string(), Self::type_to_string);
@@ -189,6 +210,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .all(|(t1, t2)| Self::types_match(t1, t2))
             }
             (Type::TypeParameter(p1), Type::TypeParameter(p2)) => p1.name == p2.name,
+            (Type::Dictionary { key: k1, value: v1 }, Type::Dictionary { key: k2, value: v2 }) => {
+                Self::types_match(k1, k2) && Self::types_match(v1, v2)
+            }
+            (
+                Type::Closure {
+                    params: p1,
+                    ret: r1,
+                },
+                Type::Closure {
+                    params: p2,
+                    ret: r2,
+                },
+            ) => {
+                p1.len() == p2.len()
+                    && p1
+                        .iter()
+                        .zip(p2.iter())
+                        .all(|((c1, a), (c2, b))| c1 == c2 && Self::types_match(a, b))
+                    && Self::types_match(r1, r2)
+            }
             _ => false,
         }
     }
@@ -238,15 +279,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Type::Closure { params, ret } => {
                 if params.is_empty() {
                     format!("() -> {}", Self::type_to_string(ret))
-                } else if let Some(only_param) = params.first().filter(|_| params.len() == 1) {
+                } else if let Some((_, only_param)) = params.first().filter(|_| params.len() == 1) {
                     format!(
                         "{} -> {}",
                         Self::type_to_string(only_param),
                         Self::type_to_string(ret)
                     )
                 } else {
-                    let param_types: Vec<String> =
-                        params.iter().map(|p| Self::type_to_string(p)).collect();
+                    let param_types: Vec<String> = params
+                        .iter()
+                        .map(|(_, p)| Self::type_to_string(p))
+                        .collect();
                     format!(
                         "{} -> {}",
                         param_types.join(", "),
@@ -257,29 +300,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Check if two type strings are compatible
+    /// Check if two type strings are compatible.
     ///
-    /// This handles:
-    /// - Exact matches
-    /// - Number/f32/i32/u32 compatibility
-    /// - Unknown/placeholder type params
-    /// - `InferredEnum` matching enum types
+    /// Handles exact matches, the `Unknown` placeholder (incomplete inference),
+    /// and `.variant(...)` inferred enum syntax.
     pub(super) fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
-        // Exact match
         if expected == actual {
             return true;
         }
 
-        // Allow placeholder types to match anything (incomplete type inference)
-        if actual == "Unknown" || actual.ends_with("Result") || actual.starts_with("FunctionResult")
-        {
+        // Unknown means type inference couldn't determine the type — accept conservatively
+        if actual == "Unknown" || actual.contains("Unknown") {
             return true;
         }
 
-        // InferredEnum is compatible with any declared enum type
-        // This handles `.variant(...)` syntax where the enum type is inferred from context
-        if actual == "InferredEnum" && self.symbols.enums.contains_key(expected) {
-            return true;
+        // `.variant(...)` syntax: enum type is inferred from context
+        // Strip optional suffix (e.g. "Event?" -> "Event") for the lookup
+        if actual == "InferredEnum" {
+            let base_expected = expected.trim_end_matches('?');
+            if self.symbols.enums.contains_key(base_expected) {
+                return true;
+            }
+        }
+
+        // Closure types: compare structurally, allowing InferredEnum in return position
+        // e.g. "() -> InferredEnum" is compatible with "() -> Event?" when Event is an enum
+        if let Some(exp_arrow) = expected.rfind(" -> ") {
+            if let Some(act_arrow) = actual.rfind(" -> ") {
+                let exp_params = &expected[..exp_arrow];
+                let act_params = &actual[..act_arrow];
+                let exp_ret = &expected[exp_arrow.saturating_add(4)..];
+                let act_ret = &actual[act_arrow.saturating_add(4)..];
+                if exp_params == act_params {
+                    return self.type_strings_compatible(exp_ret, act_ret);
+                }
+            }
         }
 
         false

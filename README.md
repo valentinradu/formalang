@@ -86,6 +86,33 @@ impl Counter {
 }
 ```
 
+### Parameter Conventions
+
+Every function parameter has a convention controlling how the argument is received. The call site always looks the same — `f(x)` — only the function declaration changes.
+
+```formalang
+// default — immutable; the callee reads the value
+fn area(radius: Number) -> Number {
+    radius * radius
+}
+
+// mut — callee may mutate; argument binding must be let mut
+fn bump(mut n: Number) -> Number {
+    n
+}
+
+// sink — ownership transfer; caller cannot use the binding after the call
+fn consume(sink label: String) -> String {
+    label
+}
+
+// Self conventions work the same way
+impl Counter {
+    fn view(self) -> Number { self.value }         // default (immutable self)
+    fn increment(mut self) -> Number { self.value } // mut self
+}
+```
+
 ### Traits
 
 Traits declare field and method requirements. Any struct that satisfies all of them can declare conformance.
@@ -147,7 +174,7 @@ let m: Message = .text(content: "hello")
 let x = 42
 let name: String = "Alice"
 pub let MAX: Number = 100
-mut let counter = 0
+let mut counter: Number = 0    // mutable binding
 ```
 
 ### Arrays, Dictionaries, Tuples
@@ -156,7 +183,6 @@ mut let counter = 0
 // Arrays
 let tags: [String] = ["a", "b", "c"]
 let matrix: [[Number]] = [[1, 2], [3, 4]]
-let fixed: [Number, 3] = [255, 128, 0]   // fixed-size
 
 // Dictionaries
 let config: [String: Number] = ["timeout": 30, "retries": 3]

@@ -1503,7 +1503,6 @@ fn type_name(ty: &ResolvedType) -> String {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. } => "Other".to_string(),
     }
@@ -2442,7 +2441,6 @@ impl IrVisitor for ExprCounter {
             }
             IrExpr::FunctionCall { .. }
             | IrExpr::MethodCall { .. }
-            | IrExpr::EventMapping { .. }
             | IrExpr::DictLiteral { .. }
             | IrExpr::DictAccess { .. }
             | IrExpr::UnaryOp { .. }
@@ -3019,7 +3017,6 @@ struct Main {
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3123,7 +3120,6 @@ struct Item {
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3201,7 +3197,6 @@ struct Wrapper {
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3295,7 +3290,6 @@ struct Container {
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3493,7 +3487,6 @@ struct Collection {
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }) => {
                 return Err(format!("Unexpected variant: {other:?}").into())
@@ -3508,7 +3501,6 @@ struct Collection {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3561,7 +3553,6 @@ struct Container {
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }) => {
                 return Err(format!("Unexpected variant: {other:?}").into())
@@ -3576,7 +3567,6 @@ struct Container {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
@@ -3678,7 +3668,6 @@ struct Main {
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => {}
         }
@@ -3739,7 +3728,6 @@ struct Main {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::TypeParam(_)
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => {}
         }
@@ -3841,7 +3829,6 @@ struct Container { h: Helper = Helper(name: "test") }
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }) => {
                 return Err(format!("Unexpected variant: {other:?}").into())
@@ -3913,7 +3900,6 @@ struct Item { status: Status = Status.active }
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }) => {
                 return Err(format!("Unexpected variant: {other:?}").into())
@@ -3993,9 +3979,9 @@ fn compile_with_stdlib(source: &str) -> Result<formalang::IrModule, Vec<formalan
 fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
-    // A struct that uses a method call on an extern type
+    // A struct that uses a method call on an extern-impl type
     let source = r"
-        extern type Vec3
+        struct Vec3 { x: Number, y: Number, z: Number }
         extern impl Vec3 {
             fn normalize(self) -> Vec3
         }
@@ -4057,7 +4043,7 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        extern type Canvas
+        struct Canvas { width: Number, height: Number }
         extern impl Canvas {
             fn size(self) -> Number
         }
@@ -4121,7 +4107,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        extern type Handle
+        struct Handle { raw: Number }
         extern impl Handle {
             fn normalize(self) -> Handle
         }
@@ -4183,161 +4169,6 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     // Return type should be resolved
     if finder.return_type.is_none() {
         return Err("normalize method call should have a resolved return type".into());
-    }
-    Ok(())
-}
-
-// =============================================================================
-// Event Mapping Tests
-// =============================================================================
-
-/// Test that closure expressions with enum return are lowered to `EventMapping`
-#[test]
-#[expect(
-    clippy::items_after_statements,
-    reason = "local helper struct defined after setup"
-)]
-fn test_event_mapping_no_param() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::{walk_module, IrExpr, IrVisitor};
-
-    // Use inferred enum syntax (.submit) not qualified (Event::submit)
-    let source = r"
-        enum Event { submit, cancel }
-        struct Button {
-            action: (() -> Event)? = () -> .submit
-        }
-    ";
-
-    let module = compile_with_stdlib(source).map_err(|e| format!("Should compile: {e:?}"))?;
-
-    struct EventMappingFinder {
-        found: bool,
-        variant: Option<String>,
-        has_param: bool,
-    }
-
-    impl IrVisitor for EventMappingFinder {
-        fn visit_expr(&mut self, e: &IrExpr) {
-            if let IrExpr::EventMapping { variant, param, .. } = e {
-                self.found = true;
-                self.variant = Some(variant.clone());
-                self.has_param = param.is_some();
-            }
-            formalang::ir::walk_expr_children(self, e);
-        }
-    }
-
-    let mut finder = EventMappingFinder {
-        found: false,
-        variant: None,
-        has_param: false,
-    };
-    walk_module(&mut finder, &module);
-
-    if !(finder.found) {
-        return Err("Should find EventMapping".into());
-    }
-    if finder.variant != Some("submit".to_string()) {
-        return Err(format!(
-            "expected {:?} but got {:?}",
-            Some("submit".to_string()),
-            finder.variant
-        )
-        .into());
-    }
-    if finder.has_param {
-        return Err("Should have no param for () -> ...".into());
-    }
-    Ok(())
-}
-
-/// Test that closure expressions with param are lowered to `EventMapping` with bindings
-#[test]
-#[expect(
-    clippy::items_after_statements,
-    reason = "local helper struct defined after setup"
-)]
-fn test_event_mapping_with_param() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::{walk_module, EventBindingSource, IrExpr, IrVisitor};
-
-    // Full field binding test - closure params are now tracked in semantic analyzer
-    let source = r"
-        enum Event { valueChanged(value: Number) }
-        struct Slider {
-            onChange: (Number -> Event)? = x -> .valueChanged(value: x)
-        }
-    ";
-
-    let module = compile_with_stdlib(source).map_err(|e| format!("Should compile: {e:?}"))?;
-
-    struct EventMappingFinder {
-        found: bool,
-        variant: Option<String>,
-        param: Option<String>,
-        bindings: Vec<(String, String)>,
-    }
-
-    impl IrVisitor for EventMappingFinder {
-        fn visit_expr(&mut self, e: &IrExpr) {
-            if let IrExpr::EventMapping {
-                variant,
-                param,
-                field_bindings,
-                ..
-            } = e
-            {
-                self.found = true;
-                self.variant = Some(variant.clone());
-                self.param = param.clone();
-                self.bindings = field_bindings
-                    .iter()
-                    .map(|b| {
-                        let source_name = match &b.source {
-                            EventBindingSource::Param(p) => p.clone(),
-                            EventBindingSource::Literal(_) => "literal".to_string(),
-                        };
-                        (b.field_name.clone(), source_name)
-                    })
-                    .collect();
-            }
-            formalang::ir::walk_expr_children(self, e);
-        }
-    }
-
-    let mut finder = EventMappingFinder {
-        found: false,
-        variant: None,
-        param: None,
-        bindings: vec![],
-    };
-    walk_module(&mut finder, &module);
-
-    if !(finder.found) {
-        return Err("Should find EventMapping".into());
-    }
-    if finder.variant != Some("valueChanged".to_string()) {
-        return Err(format!(
-            "expected {:?} but got {:?}",
-            Some("valueChanged".to_string()),
-            finder.variant
-        )
-        .into());
-    }
-    if finder.param != Some("x".to_string()) {
-        return Err(format!(
-            "expected {:?} but got {:?}",
-            Some("x".to_string()),
-            finder.param
-        )
-        .into());
-    }
-    let expected_bindings = vec![("value".to_string(), "x".to_string())];
-    if finder.bindings != expected_bindings {
-        return Err(format!(
-            "expected bindings {:?}, got {:?}",
-            expected_bindings, finder.bindings
-        )
-        .into());
     }
     Ok(())
 }
@@ -4470,7 +4301,6 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::EventMapping { .. }
         | ResolvedType::Closure { .. }) => {
             return Err(format!("Unexpected variant: {other:?}").into())
         }

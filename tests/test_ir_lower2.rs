@@ -1,151 +1,13 @@
-//! Additional tests for lower.rs coverage: event mappings, inferred enums,
-//! closures, destructuring patterns, method calls on enums, `string_to_resolved_type`,
+//! Additional tests for lower.rs coverage: inferred enums, closures,
+//! destructuring patterns, method calls on enums, `string_to_resolved_type`,
 //! block let destructuring, `lower_let_binding` patterns, module/function lowering.
+
+#![allow(clippy::expect_used)]
 
 use formalang::ast::BinaryOperator;
 use formalang::ast::PrimitiveType;
 use formalang::compile_to_ir;
-use formalang::ir::{eliminate_dead_code, EventBindingSource, IrExpr, ResolvedType};
-
-// =============================================================================
-// Event mapping: named enum instantiation
-// =============================================================================
-
-#[test]
-fn test_lower_event_mapping_named_enum() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        enum Action { submit, cancel }
-        struct Button {
-            on_click: () -> Action = () -> Action.submit
-        }
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let field = &module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?;
-    let expr = field.default.as_ref().ok_or("no default")?;
-    let IrExpr::EventMapping { variant, .. } = expr else {
-        return Err(format!("Expected EventMapping, got {expr:?}").into());
-    };
-    if variant != "submit" {
-        return Err(format!("expected 'submit', got '{variant}'").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_lower_event_mapping_with_param() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        enum TextEvent { changed(value: String) }
-        struct Input {
-            on_change: (String) -> TextEvent = |v: String| TextEvent.changed(value: v)
-        }
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let field = &module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?;
-    let expr = field.default.as_ref().ok_or("no default")?;
-    let IrExpr::EventMapping {
-        variant,
-        param,
-        field_bindings,
-        ..
-    } = expr
-    else {
-        return Err(format!("Expected EventMapping, got {expr:?}").into());
-    };
-    if variant != "changed" {
-        return Err(format!("expected 'changed', got '{variant}'").into());
-    }
-    if param.is_none() {
-        return Err("Should have param".into());
-    }
-    if field_bindings.is_empty() {
-        return Err("Should have field bindings".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_lower_event_mapping_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
-    // Inferred enum instantiation in closure
-    let source = r"
-        enum Status { done }
-        struct Button {
-            on_click: () -> Status = () -> .done
-        }
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let field = &module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?;
-    let expr = field.default.as_ref().ok_or("no default")?;
-    // Should produce EventMapping with inferred variant
-    let IrExpr::EventMapping { variant, .. } = expr else {
-        return Err(format!("Expected EventMapping, got {expr:?}").into());
-    };
-    if variant != "done" {
-        return Err(format!("expected 'done', got '{variant}'").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_lower_event_mapping_with_literal_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        enum ConfigEvent { updated(value: Number) }
-        struct Slider {
-            on_update: () -> ConfigEvent = () -> ConfigEvent.updated(value: 42)
-        }
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let field = &module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?;
-    let expr = field.default.as_ref().ok_or("no default")?;
-    let IrExpr::EventMapping {
-        variant,
-        field_bindings,
-        ..
-    } = expr
-    else {
-        return Err(format!("Expected EventMapping, got {expr:?}").into());
-    };
-    if variant != "updated" {
-        return Err(format!("expected 'updated', got '{variant}'").into());
-    }
-    if field_bindings.len() != 1 {
-        return Err(format!("expected 1 field binding, got {}", field_bindings.len()).into());
-    }
-    // field binding should be a Literal source
-    let EventBindingSource::Literal(_) =
-        &field_bindings.first().ok_or("index out of bounds")?.source
-    else {
-        return Err(format!(
-            "Expected Literal binding source, got {:?}",
-            &field_bindings.first().ok_or("index out of bounds")?.source
-        )
-        .into());
-    };
-    Ok(())
-}
+use formalang::ir::{eliminate_dead_code, IrExpr, ResolvedType};
 
 // =============================================================================
 // Inferred enum instantiation in functions
@@ -201,10 +63,10 @@ fn test_lower_general_closure() -> Result<(), Box<dyn std::error::Error>> {
     if params.len() != 1 {
         return Err(format!("expected 1 param, got {}", params.len()).into());
     }
-    if params.first().ok_or("index out of bounds")?.0 != "x" {
+    if params.first().ok_or("index out of bounds")?.1 != "x" {
         return Err(format!(
             "expected param 'x', got '{}'",
-            params.first().ok_or("index out of bounds")?.0
+            params.first().ok_or("index out of bounds")?.1
         )
         .into());
     }
@@ -217,47 +79,6 @@ fn test_lower_general_closure() -> Result<(), Box<dyn std::error::Error>> {
             | IrExpr::LetRef { .. }
     ) {
         return Err(format!("Closure body should be an expression, got {body:?}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_lower_zero_param_closure() -> Result<(), Box<dyn std::error::Error>> {
-    // Two-param closure - the type field needs different syntax for multi-param
-    // Test event mapping with param that has a literal field binding (not Param source)
-    let source = r"
-        enum InputEvent { changed(value: Number) }
-        struct Input {
-            on_change: (Number) -> InputEvent = |v: Number| InputEvent.changed(value: 100)
-        }
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let expr = module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?
-        .default
-        .as_ref()
-        .ok_or("no default")?;
-    // With v=100 (literal, not param reference), field binding source is Literal
-    let IrExpr::EventMapping { field_bindings, .. } = expr else {
-        return Err(format!("Expected EventMapping, got {expr:?}").into());
-    };
-    if field_bindings.len() != 1 {
-        return Err(format!("expected 1 field binding, got {}", field_bindings.len()).into());
-    }
-    if !matches!(
-        &field_bindings.first().ok_or("index out of bounds")?.source,
-        EventBindingSource::Literal(_) | EventBindingSource::Param(_)
-    ) {
-        return Err(format!(
-            "Expected Literal or Param binding source, got {:?}",
-            &field_bindings.first().ok_or("index out of bounds")?.source
-        )
-        .into());
     }
     Ok(())
 }
@@ -1083,4 +904,74 @@ fn test_lower_optional_struct_field() -> Result<(), Box<dyn std::error::Error>> 
         return Err("name should be optional".into());
     }
     Ok(())
+}
+
+// =============================================================================
+// Lower: method call dispatch kind
+// =============================================================================
+
+#[test]
+fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Error>> {
+    // A method on a concrete struct type should lower to a static-dispatch
+    // MethodCall pointing at the impl block that provides the body.
+    use formalang::ir::DispatchKind;
+
+    let source = r"
+        struct Counter { count: Number = 0 }
+        impl Counter {
+            fn bump() -> Number { self.count + 1 }
+            fn bump_twice() -> Number { self.bump() }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let impl_block = module.impls.first().ok_or("no impl block")?;
+    let func = impl_block
+        .functions
+        .iter()
+        .find(|f| f.name == "bump_twice")
+        .ok_or("bump_twice not found")?;
+    let body = func.body.as_ref().ok_or("no body on bump_twice")?;
+    let IrExpr::MethodCall { dispatch, .. } = body else {
+        return Err(format!("expected MethodCall, got {body:?}").into());
+    };
+    match dispatch {
+        DispatchKind::Static { .. } => Ok(()),
+        DispatchKind::Virtual { .. } => {
+            Err("expected static dispatch on concrete struct, got virtual".into())
+        }
+    }
+}
+
+#[test]
+fn test_lower_method_call_static_dispatch_on_struct_instance(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // A method invoked on a named struct instance should lower to static
+    // dispatch pointing at the impl block that registers the method.
+    use formalang::ir::DispatchKind;
+
+    let source = r"
+        struct Counter { count: Number = 0 }
+        impl Counter {
+            fn bump() -> Number { self.count + 1 }
+        }
+        pub fn entry() -> Number {
+            Counter().bump()
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "entry")
+        .ok_or("entry not found")?;
+    let body = func.body.as_ref().ok_or("no body")?;
+    let IrExpr::MethodCall { dispatch, .. } = body else {
+        return Err(format!("expected MethodCall, got {body:?}").into());
+    };
+    match dispatch {
+        DispatchKind::Static { .. } => Ok(()),
+        DispatchKind::Virtual { .. } => {
+            Err("expected static dispatch on `Counter` instance, got virtual".into())
+        }
+    }
 }

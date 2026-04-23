@@ -1,8 +1,36 @@
 //! IR expression types.
 
-use crate::ast::{BinaryOperator, Literal, UnaryOperator};
+use crate::ast::{BinaryOperator, Literal, ParamConvention, UnaryOperator};
 
-use super::{EnumId, ResolvedType, StructId};
+use super::{EnumId, ImplId, ResolvedType, StructId, TraitId};
+
+/// How a method call should be dispatched.
+///
+/// Backends must pick the correct emission strategy depending on whether
+/// the receiver's concrete type is known at compile time. Static dispatch
+/// resolves to a specific `impl` block; virtual dispatch must go through a
+/// vtable keyed by the trait and method name.
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
+#[derive(Clone, Debug)]
+pub enum DispatchKind {
+    /// Direct call on a known concrete type — no runtime lookup needed.
+    Static {
+        /// The impl block that provides the method body.
+        impl_id: ImplId,
+    },
+    /// Trait method call through a generic type parameter or trait object.
+    /// The backend must resolve the concrete method at runtime (monomorphised
+    /// or through a vtable, depending on the target).
+    Virtual {
+        /// The trait declaring the method.
+        trait_id: TraitId,
+        /// The method name on the trait.
+        method_name: String,
+    },
+}
 
 /// An expression in the IR.
 ///
@@ -205,40 +233,19 @@ pub enum IrExpr {
         method: String,
         /// Named arguments: (`parameter_name`, value) - None for positional args
         args: Vec<(Option<String>, Self)>,
+        /// Dispatch strategy (static call into a specific impl block, or
+        /// virtual call through a trait).
+        dispatch: DispatchKind,
         /// Resolved return type
-        ty: ResolvedType,
-    },
-
-    /// Event mapping: `() -> .submit` or `x -> .changed(value: x)`
-    ///
-    /// Event mappings are restricted closures that:
-    /// - Have zero or one parameter
-    /// - Return an enum variant instantiation
-    /// - Cannot capture variables from outer scope
-    ///
-    /// These compile to metadata for the runtime, not executable GPU code.
-    EventMapping {
-        /// The enum being instantiated.
-        /// `None` for external enums - use return type from `ty` field.
-        enum_id: Option<EnumId>,
-        /// Variant name being constructed
-        variant: String,
-        /// Parameter name (None for `() -> ...`)
-        param: Option<String>,
-        /// Maps enum variant fields to the parameter
-        /// e.g., `x -> .changed(value: x)` produces `[("value", "x")]`
-        field_bindings: Vec<EventFieldBinding>,
-        /// Resolved type: the closure/event mapping type
         ty: ResolvedType,
     },
 
     /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
     ///
     /// Pure closures that can be inlined or converted to named functions.
-    /// Unlike `EventMapping`, these can have arbitrary bodies and multiple parameters.
     Closure {
-        /// Parameter names and types
-        params: Vec<(String, ResolvedType)>,
+        /// Parameter conventions, names, and types
+        params: Vec<(ParamConvention, String, ResolvedType)>,
         /// Closure body
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
@@ -337,34 +344,6 @@ impl IrBlockStatement {
     }
 }
 
-/// A field binding in an event mapping.
-///
-/// Maps an enum variant field to a source.
-#[expect(
-    clippy::exhaustive_structs,
-    reason = "IR types are constructed directly by consumer code"
-)]
-#[derive(Clone, Debug)]
-pub struct EventFieldBinding {
-    /// The field name in the enum variant
-    pub field_name: String,
-    /// The source of the value
-    pub source: EventBindingSource,
-}
-
-/// Source of a value in an event mapping field binding.
-#[expect(
-    clippy::exhaustive_enums,
-    reason = "IR types are matched exhaustively by code generators"
-)]
-#[derive(Clone, Debug)]
-pub enum EventBindingSource {
-    /// References the event mapping parameter: `x -> .changed(value: x)`
-    Param(String),
-    /// A literal value: `() -> .changed(value: 42)`
-    Literal(Literal),
-}
-
 /// A match arm: `Variant(bindings) => body` or `_ => body`
 #[expect(
     clippy::exhaustive_structs,
@@ -406,7 +385,6 @@ impl IrExpr {
             | Self::Match { ty, .. }
             | Self::FunctionCall { ty, .. }
             | Self::MethodCall { ty, .. }
-            | Self::EventMapping { ty, .. }
             | Self::Closure { ty, .. }
             | Self::DictLiteral { ty, .. }
             | Self::DictAccess { ty, .. }

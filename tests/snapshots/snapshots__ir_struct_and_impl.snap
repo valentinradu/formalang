@@ -1,0 +1,96 @@
+---
+source: tests/snapshots.rs
+expression: module
+---
+IrModule {
+    structs: [
+        IrStruct {
+            name: "Point",
+            visibility: Private,
+            traits: [],
+            fields: [
+                IrField {
+                    name: "x",
+                    ty: Primitive(
+                        Number,
+                    ),
+                    mutable: false,
+                    optional: false,
+                    default: None,
+                },
+                IrField {
+                    name: "y",
+                    ty: Primitive(
+                        Number,
+                    ),
+                    mutable: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            generic_params: [],
+        },
+    ],
+    traits: [],
+    enums: [],
+    impls: [
+        IrImpl {
+            target: Struct(
+                StructId(
+                    0,
+                ),
+            ),
+            functions: [
+                IrFunction {
+                    name: "magnitude",
+                    params: [
+                        IrFunctionParam {
+                            name: "self",
+                            ty: None,
+                            default: None,
+                            convention: Let,
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Number,
+                        ),
+                    ),
+                    body: Some(
+                        BinaryOp {
+                            left: SelfFieldRef {
+                                field: "x",
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                            op: Add,
+                            right: SelfFieldRef {
+                                field: "y",
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                            ty: Primitive(
+                                Number,
+                            ),
+                        },
+                    ),
+                    is_extern: false,
+                },
+            ],
+        },
+    ],
+    lets: [],
+    functions: [],
+    imports: [],
+    struct_names: {
+        "Point": StructId(
+            0,
+        ),
+    },
+    trait_names: {},
+    enum_names: {},
+    function_names: {},
+    let_names: {},
+}

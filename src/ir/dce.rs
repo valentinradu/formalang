@@ -13,7 +13,7 @@
 //! impl Used { value: 1 }
 //! ```
 
-use crate::ir::{IrExpr, IrModule, StructId};
+use crate::ir::{IrExpr, IrModule, StructId, TraitId};
 use std::collections::HashSet;
 
 /// Dead code eliminator that removes unreachable and unused code.
@@ -22,6 +22,9 @@ pub struct DeadCodeEliminator<'a> {
     module: &'a IrModule,
     /// Structs that are actually used
     used_structs: HashSet<StructId>,
+    /// Traits that are actually used (including those referenced only as
+    /// trait constraints on generic parameters).
+    used_traits: HashSet<TraitId>,
 }
 
 impl<'a> DeadCodeEliminator<'a> {
@@ -31,6 +34,7 @@ impl<'a> DeadCodeEliminator<'a> {
         Self {
             module,
             used_structs: HashSet::new(),
+            used_traits: HashSet::new(),
         }
     }
 
@@ -51,15 +55,92 @@ impl<'a> DeadCodeEliminator<'a> {
             }
         }
 
+        // Mark structs used in standalone function bodies
+        for func in &self.module.functions {
+            if let Some(body) = &func.body {
+                self.mark_used_in_expr(body);
+            }
+            // Trait constraints on generic parameters keep the trait alive
+            for gp in &func.params {
+                if let Some(ty) = &gp.ty {
+                    self.mark_used_in_type(ty);
+                }
+            }
+        }
+
         // Mark structs used in let bindings
         for let_binding in &self.module.lets {
             self.mark_used_in_expr(&let_binding.value);
+            self.mark_used_in_type(&let_binding.ty);
         }
 
-        // Mark structs referenced in struct fields
+        // Mark structs referenced in struct fields and trait constraints on
+        // their generic parameters.
         for s in &self.module.structs {
             for field in &s.fields {
                 self.mark_used_in_type(&field.ty);
+            }
+            for trait_id in &s.traits {
+                self.used_traits.insert(*trait_id);
+            }
+            for gp in &s.generic_params {
+                for trait_id in &gp.constraints {
+                    self.used_traits.insert(*trait_id);
+                }
+            }
+        }
+
+        // Mark trait constraints referenced by trait generic parameters and
+        // through trait composition. A trait's own methods may also mention
+        // types in their signatures.
+        for t in &self.module.traits {
+            for composed in &t.composed_traits {
+                self.used_traits.insert(*composed);
+            }
+            for gp in &t.generic_params {
+                for trait_id in &gp.constraints {
+                    self.used_traits.insert(*trait_id);
+                }
+            }
+            for field in &t.fields {
+                self.mark_used_in_type(&field.ty);
+            }
+            for method in &t.methods {
+                for p in &method.params {
+                    if let Some(ty) = &p.ty {
+                        self.mark_used_in_type(ty);
+                    }
+                }
+                if let Some(ret) = &method.return_type {
+                    self.mark_used_in_type(ret);
+                }
+            }
+        }
+
+        // Mark trait constraints referenced by function generic parameters
+        // and types mentioned in their signatures.
+        for f in &self.module.functions {
+            for p in &f.params {
+                if let Some(ty) = &p.ty {
+                    self.mark_used_in_type(ty);
+                }
+            }
+            if let Some(ret) = &f.return_type {
+                self.mark_used_in_type(ret);
+            }
+        }
+
+        // Enum variant fields can also reference types.
+        for e in &self.module.enums {
+            for variant in &e.variants {
+                for field in &variant.fields {
+                    self.mark_used_in_type(&field.ty);
+                }
+            }
+            for gp in &e.generic_params {
+                for trait_id in &gp.constraints {
+                    self.used_traits.insert(*trait_id);
+                }
             }
         }
     }
@@ -70,10 +151,26 @@ impl<'a> DeadCodeEliminator<'a> {
         self.used_structs.contains(&id)
     }
 
+    /// Check if a trait is used.
+    ///
+    /// A trait is considered used when it appears as a type, as a trait
+    /// constraint on a generic parameter, or as a trait composed into
+    /// another live trait.
+    #[must_use]
+    pub fn is_trait_used(&self, id: TraitId) -> bool {
+        self.used_traits.contains(&id)
+    }
+
     /// Get the set of used struct IDs.
     #[must_use]
     pub const fn used_structs(&self) -> &HashSet<StructId> {
         &self.used_structs
+    }
+
+    /// Get the set of used trait IDs.
+    #[must_use]
+    pub const fn used_traits(&self) -> &HashSet<TraitId> {
+        &self.used_traits
     }
 
     /// Mark structs used in a type.
@@ -83,6 +180,9 @@ impl<'a> DeadCodeEliminator<'a> {
         match ty {
             ResolvedType::Struct(id) => {
                 self.used_structs.insert(*id);
+            }
+            ResolvedType::Trait(id) => {
+                self.used_traits.insert(*id);
             }
             ResolvedType::Generic { base, args } => {
                 self.used_structs.insert(*base);
@@ -102,22 +202,22 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.mark_used_in_type(key_ty);
                 self.mark_used_in_type(value_ty);
             }
-            ResolvedType::EventMapping {
-                param_ty,
+            ResolvedType::Closure {
+                param_tys,
                 return_ty,
             } => {
-                if let Some(param) = param_ty {
-                    self.mark_used_in_type(param);
+                for (_, pty) in param_tys {
+                    self.mark_used_in_type(pty);
                 }
                 self.mark_used_in_type(return_ty);
             }
-            // Other types don't reference structs
-            ResolvedType::Primitive(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Closure { .. } => {}
+            ResolvedType::External { type_args, .. } => {
+                for arg in type_args {
+                    self.mark_used_in_type(arg);
+                }
+            }
+            // Other types don't reference structs or traits
+            ResolvedType::Primitive(_) | ResolvedType::Enum(_) | ResolvedType::TypeParam(_) => {}
         }
     }
 
@@ -180,11 +280,22 @@ impl<'a> DeadCodeEliminator<'a> {
                     self.mark_used_in_expr(arg);
                 }
             }
-            IrExpr::MethodCall { receiver, args, .. } => {
+            IrExpr::MethodCall {
+                receiver,
+                args,
+                dispatch,
+                ..
+            } => {
                 self.mark_used_in_expr(receiver);
                 for (_, arg) in args {
                     self.mark_used_in_expr(arg);
                 }
+                // Virtual dispatch keeps its trait alive.
+                if let crate::ir::DispatchKind::Virtual { trait_id, .. } = dispatch {
+                    self.used_traits.insert(*trait_id);
+                }
+                // Static dispatch points at an impl whose target struct/enum
+                // is already reached via the receiver's type.
             }
             IrExpr::DictLiteral { entries, .. } => {
                 for (k, v) in entries {
@@ -207,8 +318,7 @@ impl<'a> DeadCodeEliminator<'a> {
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
-            | IrExpr::LetRef { .. }
-            | IrExpr::EventMapping { .. } => {}
+            | IrExpr::LetRef { .. } => {}
             IrExpr::FieldAccess { object, .. } => self.mark_used_in_expr(object),
             IrExpr::Closure { body, .. } => self.mark_used_in_expr(body),
         }
@@ -344,6 +454,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             receiver,
             method,
             args,
+            dispatch,
             ty,
         } => IrExpr::MethodCall {
             receiver: Box::new(eliminate_dead_code_expr(*receiver)),
@@ -352,6 +463,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .into_iter()
                 .map(|(name, e)| (name, eliminate_dead_code_expr(e)))
                 .collect(),
+            dispatch,
             ty,
         },
         IrExpr::EnumInst {
@@ -398,7 +510,6 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         | IrExpr::FieldAccess { .. }
         | IrExpr::LetRef { .. }
         | IrExpr::UnaryOp { .. }
-        | IrExpr::EventMapping { .. }
         | IrExpr::Closure { .. }) => e,
     }
 }
@@ -417,6 +528,11 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
         for func in &mut impl_block.functions {
             func.body = func.body.take().map(eliminate_dead_code_expr);
         }
+    }
+
+    // Process standalone functions
+    for func in &mut result.functions {
+        func.body = func.body.take().map(eliminate_dead_code_expr);
     }
 
     // Process let bindings
@@ -464,11 +580,15 @@ pub struct DeadCodeEliminationPass {
 }
 
 impl DeadCodeEliminationPass {
-    /// Create a pass with `remove_unused_structs` enabled.
+    /// Create a new dead-code elimination pass.
+    ///
+    /// `remove_unused_structs` defaults to `false` because removing structs
+    /// requires remapping all `StructId` references across the entire module.
+    /// Use `DeadCodeEliminator` directly to identify unused structs.
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            remove_unused_structs: true,
+            remove_unused_structs: false,
         }
     }
 }
@@ -676,6 +796,29 @@ mod tests {
             }
         } else {
             return Err(format!("Expected literal 2, got {expr:?}").into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_analyze_trait_constraint_kept_alive() -> Result<(), Box<dyn std::error::Error>> {
+        // A trait used only as a bound on a generic parameter must still be
+        // marked as live so it is not eliminated.
+        let source = r"
+            pub trait Container { size: Number }
+            pub struct Box<T: Container> { value: T }
+            impl Box {}
+        ";
+        let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+
+        let mut eliminator = DeadCodeEliminator::new(&module);
+        eliminator.analyze();
+
+        let trait_id = module
+            .trait_id("Container")
+            .ok_or("Container trait not found")?;
+        if !eliminator.is_trait_used(trait_id) {
+            return Err("Container trait should be marked as used because it is a bound".into());
         }
         Ok(())
     }

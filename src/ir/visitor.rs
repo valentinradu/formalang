@@ -151,6 +151,14 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         }
     }
 
+    // Visit standalone functions
+    for f in &module.functions {
+        visitor.visit_function(f);
+        if let Some(body) = &f.body {
+            walk_expr(visitor, body);
+        }
+    }
+
     // Visit let bindings
     for l in &module.lets {
         visitor.visit_let(l);
@@ -262,8 +270,7 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             walk_expr(visitor, body);
         }
 
-        IrExpr::EventMapping { .. }
-        | IrExpr::Literal { .. }
+        IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
         | IrExpr::LetRef { .. } => {}

@@ -80,7 +80,7 @@ pub enum Statement {
     Definition(Box<Definition>),
 }
 
-/// Definition (trait, struct, impl, enum, module, function, or extern type)
+/// Definition (trait, struct, impl, enum, module, or function)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Definition {
@@ -91,8 +91,6 @@ pub enum Definition {
     Module(ModuleDef),
     /// Standalone function definition (not inside impl block)
     Function(Box<FunctionDef>),
-    /// Extern opaque type declaration — no fields, no structural access
-    ExternType(ExternTypeDef),
 }
 
 /// Standalone function definition with visibility.
@@ -108,26 +106,6 @@ pub struct FunctionDef {
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.
     pub body: Option<Expr>,
-    pub span: Span,
-}
-
-/// Extern opaque type declaration.
-///
-/// Values of an extern type can only be produced by extern functions or methods
-/// that return that type.
-///
-/// # Example
-///
-/// ```formalang
-/// extern type Canvas
-/// extern type Buffer<T>
-/// ```
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ExternTypeDef {
-    pub visibility: Visibility,
-    pub name: Ident,
-    pub generics: Vec<GenericParam>,
     pub span: Span,
 }
 
@@ -271,10 +249,27 @@ pub struct FnSig {
     pub span: Span,
 }
 
+/// Parameter passing convention (Mutable Value Semantics).
+///
+/// - `Let` — immutable borrow (default). The callee reads but cannot mutate.
+/// - `Mut` — exclusive mutable. The callee may mutate; the updated value is returned
+///   to the caller at the end of the call.
+/// - `Sink` — ownership transfer. The caller gives up the value; the callee owns it.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum ParamConvention {
+    #[default]
+    Let,
+    Mut,
+    Sink,
+}
+
 /// Function parameter
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnParam {
+    /// Parameter passing convention (default: `Let`).
+    pub convention: ParamConvention,
     /// External call-site label (if specified separately from the internal name).
     /// For `fn foo(label name: Type)`, `external_label` is `Some("label")` and `name` is `"name"`.
     pub external_label: Option<Ident>,
@@ -347,7 +342,7 @@ pub enum Type {
     },
 
     Closure {
-        params: Vec<Self>,
+        params: Vec<(ParamConvention, Self)>,
         ret: Box<Self>,
     },
 
@@ -488,11 +483,12 @@ pub enum Expr {
         span: Span,
     },
 
-    /// Method call: `expr.method(arg1, arg2, ...)`
+    /// Method call: `expr.method(arg1, label: arg2, ...)`
     MethodCall {
         receiver: Box<Self>,
         method: Ident,
-        args: Vec<Self>,
+        /// Arguments with optional call-site labels.
+        args: Vec<(Option<Ident>, Self)>,
         span: Span,
     },
 
@@ -527,6 +523,7 @@ pub enum BlockStatement {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClosureParam {
+    pub convention: ParamConvention,
     pub name: Ident,
     pub ty: Option<Type>,
     pub span: Span,

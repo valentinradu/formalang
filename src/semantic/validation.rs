@@ -2,6 +2,7 @@ use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
 use crate::ast::{
     BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File, Statement, StructDef,
+    Type,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -17,6 +18,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             match statement {
                 Statement::Let(let_binding) => {
                     self.validate_expr(&let_binding.value, file);
+                    // Gap 1: nil can only be assigned to optional types
+                    if let Some(type_ann) = &let_binding.type_annotation {
+                        let declared = Self::type_to_string(type_ann);
+                        let inferred = self.infer_type(&let_binding.value, file);
+                        if inferred == "Nil" && !declared.ends_with('?') {
+                            self.errors.push(CompilerError::NilAssignedToNonOptional {
+                                expected: declared,
+                                span: let_binding.span,
+                            });
+                        }
+                    }
+                    // Register closure-typed module-level bindings for call-site enforcement
+                    if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
+                        let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                        // If the value is a closure literal, record its free
+                        // variables so we can detect use-after-sink at call sites.
+                        let captures = if let Expr::ClosureExpr {
+                            params: cparams,
+                            body,
+                            ..
+                        } = &let_binding.value
+                        {
+                            let param_set: HashSet<String> =
+                                cparams.iter().map(|p| p.name.name.clone()).collect();
+                            Some(Self::collect_free_variables(body, &param_set))
+                        } else {
+                            None
+                        };
+                        for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                            self.closure_binding_conventions
+                                .insert(binding.name.clone(), conventions.clone());
+                            if let Some(caps) = &captures {
+                                self.closure_binding_captures
+                                    .insert(binding.name.clone(), caps.clone());
+                                self.fn_scope_closure_captures
+                                    .insert(binding.name, caps.clone());
+                            }
+                        }
+                    }
                     // Validate destructuring pattern type compatibility
                     self.validate_destructuring_pattern(
                         &let_binding.pattern,
@@ -30,19 +70,89 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.validate_struct_expressions(struct_def, file);
                     }
                     Definition::Impl(impl_def) => {
-                        // Set current impl struct for field type resolution
                         self.current_impl_struct = Some(impl_def.name.name.clone());
-                        // Clear local let bindings for this impl block
                         self.local_let_bindings.clear();
-                        // Clear impl struct context and local bindings
+                        self.consumed_bindings.clear();
+                        for func in &impl_def.functions {
+                            self.validate_function_return_type(func, file);
+                        }
                         self.current_impl_struct = None;
                         self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
                     }
-                    Definition::Trait(_)
-                    | Definition::Enum(_)
-                    | Definition::Module(_)
-                    | Definition::Function(_)
-                    | Definition::ExternType(_) => {}
+                    Definition::Function(func_def) => {
+                        self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
+                        // Snapshot closure-binding maps so entries introduced in
+                        // this function body don't leak into later functions.
+                        let saved_closure_conventions = self.closure_binding_conventions.clone();
+                        let saved_closure_captures = self.closure_binding_captures.clone();
+                        let saved_fn_scope_captures =
+                            std::mem::take(&mut self.fn_scope_closure_captures);
+                        let saved_param_conventions = self.current_fn_param_conventions.clone();
+                        self.current_fn_param_conventions.clear();
+                        for param in &func_def.params {
+                            if let Some(ty) = &param.ty {
+                                self.validate_type(ty);
+                            }
+                            let ty_str = param.ty.as_ref().map_or_else(
+                                || "Unknown".to_string(),
+                                |ty| Self::type_to_string(ty),
+                            );
+                            let mutable = matches!(
+                                param.convention,
+                                crate::ast::ParamConvention::Mut
+                                    | crate::ast::ParamConvention::Sink
+                            );
+                            self.local_let_bindings
+                                .insert(param.name.name.clone(), (ty_str, mutable));
+                            self.current_fn_param_conventions
+                                .insert(param.name.name.clone(), param.convention);
+                            // Register closure-typed parameters so they're
+                            // callable inside the body. Parameters have no
+                            // captures of their own — no closure_binding_captures
+                            // entry.
+                            if let Some(Type::Closure {
+                                params: closure_params,
+                                ..
+                            }) = &param.ty
+                            {
+                                let conventions: Vec<_> =
+                                    closure_params.iter().map(|(c, _)| *c).collect();
+                                self.closure_binding_conventions
+                                    .insert(param.name.name.clone(), conventions);
+                            }
+                        }
+                        if let Some(body) = &func_def.body {
+                            self.validate_expr(body, file);
+                            self.validate_function_return_escape(
+                                func_def.return_type.as_ref(),
+                                body,
+                            );
+                        }
+                        self.local_let_bindings.clear();
+                        self.consumed_bindings.clear();
+                        self.closure_binding_conventions = saved_closure_conventions;
+                        self.closure_binding_captures = saved_closure_captures;
+                        self.fn_scope_closure_captures = saved_fn_scope_captures;
+                        self.current_fn_param_conventions = saved_param_conventions;
+                    }
+                    Definition::Module(module_def) => {
+                        for nested_def in &module_def.definitions {
+                            if let Definition::Impl(impl_def) = nested_def {
+                                self.current_impl_struct = Some(impl_def.name.name.clone());
+                                self.local_let_bindings.clear();
+                                self.consumed_bindings.clear();
+                                for func in &impl_def.functions {
+                                    self.validate_function_return_type(func, file);
+                                }
+                                self.current_impl_struct = None;
+                                self.local_let_bindings.clear();
+                                self.consumed_bindings.clear();
+                            }
+                        }
+                    }
+                    Definition::Trait(_) | Definition::Enum(_) => {}
                 },
                 Statement::Use(_) => {}
             }
@@ -55,6 +165,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for field in &struct_def.fields {
             if let Some(default_expr) = &field.default {
                 self.validate_expr(default_expr, file);
+                // Check that the default expression type matches the declared field type
+                let inferred = self.infer_type(default_expr, file);
+                let declared = Self::type_to_string(&field.ty);
+                // nil is compatible with any optional type
+                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                // a value of type T is compatible with T? (implicit wrapping)
+                let inner_to_optional =
+                    declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+                // treat any type containing "Unknown" or "InferredEnum" as indeterminate
+                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
+                if !nil_to_optional
+                    && !inner_to_optional
+                    && !has_unknown
+                    && inferred != "Unknown"
+                    && declared != "Unknown"
+                    && !self.type_strings_compatible(&declared, &inferred)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: declared,
+                        found: inferred,
+                        span: field.span,
+                    });
+                }
             }
         }
     }
@@ -81,10 +214,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for elem in elements {
                     self.validate_expr(elem, file);
                 }
+                // Escape analysis: any closure value stored in the array escapes
+                // with the collection — mark its captures as consumed.
+                for elem in elements {
+                    self.escape_closure_value(elem);
+                }
             }
             Expr::Tuple { fields, .. } => {
                 for (_, field_expr) in fields {
                     self.validate_expr(field_expr, file);
+                }
+                // Escape analysis: closure values stored in a tuple escape.
+                for (_, field_expr) in fields {
+                    self.escape_closure_value(field_expr);
                 }
             }
             Expr::Reference { path, span } => {
@@ -148,10 +290,37 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
+                // Each branch is a separate control-flow path. Snapshot consumed_bindings
+                // before each branch and take the union afterward so that a binding consumed
+                // in either branch is considered consumed in the join point (conservative but
+                // never unsound: it can only produce false-positive UseAfterSink, never miss one).
+                let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
+                let after_then = self.consumed_bindings.clone();
+                self.consumed_bindings = pre_if.clone();
                 if let Some(else_expr) = else_branch {
                     self.validate_expr(else_expr, file);
+                    // Check that both branch types are compatible.
+                    // Widening rules: T and Nil unify to T?; T and T? unify to T?.
+                    let then_type = self.infer_type(then_branch, file);
+                    let else_type = self.infer_type(else_expr, file);
+                    // Skip when either type is unknown or contains unknown (e.g. [Unknown])
+                    if !then_type.contains("Unknown")
+                        && !else_type.contains("Unknown")
+                        && !Self::types_unify_with_optional_widening(&then_type, &else_type)
+                        && !self.type_strings_compatible(&then_type, &else_type)
+                    {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: then_type,
+                            found: else_type,
+                            span: *span,
+                        });
+                    }
                 }
+                let after_else = self.consumed_bindings.clone();
+                // Union: consumed if consumed in then OR else
+                self.consumed_bindings = after_then;
+                self.consumed_bindings.extend(after_else);
                 self.validate_if_condition(condition, *span, file);
             }
             Expr::MatchExpr {
@@ -160,8 +329,43 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(scrutinee, file);
+                let pre_match = self.consumed_bindings.clone();
+                let mut post_union = pre_match.clone();
+                let mut arm_types: Vec<String> = Vec::new();
                 for arm in arms {
-                    self.validate_expr(&arm.body, file);
+                    self.consumed_bindings = pre_match.clone();
+                    // Register arm pattern bindings into a temporary scope
+                    if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
+                        let scope: HashSet<String> =
+                            bindings.iter().map(|b| b.name.clone()).collect();
+                        self.closure_param_scopes.push(scope);
+                        self.validate_expr(&arm.body, file);
+                        self.closure_param_scopes.pop();
+                    } else {
+                        self.validate_expr(&arm.body, file);
+                    }
+                    let arm_type = self.infer_type(&arm.body, file);
+                    arm_types.push(arm_type);
+                    post_union.extend(self.consumed_bindings.iter().cloned());
+                }
+                self.consumed_bindings = post_union;
+                // Check that all arm types are compatible with the first arm's type.
+                // Widening: variations of T and T?/Nil unify to T?.
+                if let Some(first_type) = arm_types.first().cloned() {
+                    if !first_type.contains("Unknown") {
+                        for (arm, arm_type) in arms.iter().zip(arm_types.iter()).skip(1) {
+                            if !arm_type.contains("Unknown")
+                                && !Self::types_unify_with_optional_widening(&first_type, arm_type)
+                                && !self.type_strings_compatible(&first_type, arm_type)
+                            {
+                                self.errors.push(CompilerError::TypeMismatch {
+                                    expected: first_type.clone(),
+                                    found: arm_type.clone(),
+                                    span: arm.span,
+                                });
+                            }
+                        }
+                    }
                 }
                 self.validate_match(scrutinee, arms, *span, file);
             }
@@ -171,12 +375,68 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(key, file);
                     self.validate_expr(value, file);
                 }
+                // Escape analysis: closure values stored as dict keys/values escape.
+                for (key, value) in entries {
+                    self.escape_closure_value(key);
+                    self.escape_closure_value(value);
+                }
             }
-            Expr::DictAccess { dict, key, .. } => {
+            Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
+                // Gap 3: Validate key type against declared dict type
+                let dict_type = self.infer_type(dict, file);
+                if let Some(inner) = dict_type
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .filter(|s| s.contains(": "))
+                {
+                    if let Some(colon_pos) = inner.find(": ") {
+                        let expected_key_type = &inner[..colon_pos];
+                        let actual_key_type = self.infer_type(key, file);
+                        if actual_key_type != "Unknown" && actual_key_type != expected_key_type {
+                            self.errors.push(CompilerError::TypeMismatch {
+                                expected: expected_key_type.to_string(),
+                                found: actual_key_type,
+                                span: *span,
+                            });
+                        }
+                    }
+                }
             }
-            Expr::FieldAccess { object, .. } => self.validate_expr(object, file),
+            Expr::FieldAccess {
+                object,
+                field,
+                span,
+            } => {
+                self.validate_expr(object, file);
+                let obj_type = self.infer_type(object, file);
+                if obj_type != "Unknown" {
+                    // Gap 1: Field access on optional type requires unwrapping
+                    if obj_type.ends_with('?') {
+                        let base = obj_type.trim_end_matches('?');
+                        if base != "Unknown" && self.symbols.get_struct(base).is_some() {
+                            self.errors.push(CompilerError::OptionalUsedAsNonOptional {
+                                actual: obj_type.clone(),
+                                expected: base.to_string(),
+                                span: *span,
+                            });
+                        }
+                    } else {
+                        // Gap 5: Check field existence
+                        let base_type = obj_type.trim_end_matches('?');
+                        if let Some(struct_info) = self.symbols.get_struct(base_type) {
+                            if !struct_info.fields.iter().any(|f| f.name == field.name) {
+                                self.errors.push(CompilerError::UnknownField {
+                                    field: field.name.clone(),
+                                    type_name: base_type.to_string(),
+                                    span: field.span,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             Expr::ClosureExpr { params, body, .. } => {
                 self.validate_expr_closure(params, body, file);
             }
@@ -189,7 +449,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 args,
                 span,
             } => {
-                self.validate_expr_method_call(receiver, method, args, *span, file);
+                self.validate_expr_method_call(receiver, method, args.as_slice(), *span, file);
             }
             Expr::Block {
                 statements, result, ..
@@ -201,8 +461,330 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
     }
 
+    /// Return the name of the leftmost (root) binding referenced by `expr`, if any.
+    ///
+    /// Walks through `FieldAccess`, `Group`, and `Reference` nodes to find the
+    /// root identifier. Returns `None` for expressions that don't reference a
+    /// binding (literals, calls, etc.) — those are new values, not places.
+    ///
+    /// Used to mark the root binding as consumed when a compound expression
+    /// (e.g., `x.field`) is passed to a sink parameter.
+    fn root_binding(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Reference { path, .. } => path.first().map(|id| id.name.clone()),
+            Expr::FieldAccess { object, .. } => Self::root_binding(object),
+            Expr::Group { expr, .. } => Self::root_binding(expr),
+            Expr::Literal(_)
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => None,
+        }
+    }
+
+    /// Extract the set of captures for an escaping closure value.
+    ///
+    /// - `Reference` to a tracked closure binding → its recorded captures.
+    /// - `ClosureExpr` literal → free variables of the literal body.
+    /// - `Group` → recurse on the inner expression.
+    ///
+    /// Returns `None` if `expr` is not a closure value in a form we can handle.
+    fn closure_captures_of_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+        match expr {
+            Expr::Reference { path, .. } => {
+                if path.len() != 1 {
+                    return None;
+                }
+                let name = &path.first()?.name;
+                self.closure_binding_captures.get(name).cloned()
+            }
+            Expr::ClosureExpr { params, body, .. } => {
+                let param_set: HashSet<String> =
+                    params.iter().map(|p| p.name.name.clone()).collect();
+                Some(Self::collect_free_variables(body, &param_set))
+            }
+            Expr::Group { expr, .. } => self.closure_captures_of_expr(expr),
+            Expr::Literal(_)
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => None,
+        }
+    }
+
+    /// Mark the captures of an escaping closure as consumed.
+    ///
+    /// Given an initial list of captured names, walks transitively through
+    /// `closure_binding_captures`: if any captured name is itself a tracked
+    /// closure binding, its captures are included too. Each reached name is
+    /// inserted into `consumed_bindings`. A visited set prevents infinite
+    /// recursion on cyclic capture chains.
+    fn mark_captures_consumed(&mut self, initial: &[String]) {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut stack: Vec<String> = initial.to_vec();
+        while let Some(name) = stack.pop() {
+            if !visited.insert(name.clone()) {
+                continue;
+            }
+            // If `name` itself names a tracked closure binding, recurse into its captures.
+            if let Some(nested) = self.closure_binding_captures.get(&name).cloned() {
+                for cap in nested {
+                    if !visited.contains(&cap) {
+                        stack.push(cap);
+                    }
+                }
+            }
+            self.consumed_bindings.insert(name);
+        }
+    }
+
+    /// Escape helper: if `expr` is a closure value (named binding or literal),
+    /// mark its captures as consumed transitively.
+    ///
+    /// Used at escape sites: sink-pass, struct field assignment, array/dict
+    /// element, and similar positions where the closure's owning scope changes.
+    fn escape_closure_value(&mut self, expr: &Expr) {
+        if let Some(caps) = self.closure_captures_of_expr(expr) {
+            self.mark_captures_consumed(&caps);
+        }
+    }
+
+    /// Walk the body's result expression and collect every closure value that
+    /// would escape the function via `return` along with its captures.
+    ///
+    /// A closure "escapes via return" if it is the outermost value of the
+    /// function body. That may be a direct `ClosureExpr`, a `Reference` to a
+    /// closure-typed let binding, or a closure reachable through a `Block`,
+    /// `LetExpr`, `IfExpr`, or `MatchExpr` result. Returns one `(captures,
+    /// span)` entry per escaping closure (if/match branches contribute one
+    /// entry per branch so per-branch error reporting is possible).
+    fn collect_returned_closure_captures(&self, expr: &Expr) -> Vec<(Vec<String>, Span)> {
+        let mut results: Vec<(Vec<String>, Span)> = Vec::new();
+        self.collect_returned_closure_captures_rec(expr, &mut results);
+        results
+    }
+
+    fn collect_returned_closure_captures_rec(
+        &self,
+        expr: &Expr,
+        out: &mut Vec<(Vec<String>, Span)>,
+    ) {
+        match expr {
+            Expr::ClosureExpr { params, body, span } => {
+                let param_set: HashSet<String> =
+                    params.iter().map(|p| p.name.name.clone()).collect();
+                let caps = Self::collect_free_variables(body, &param_set);
+                out.push((caps, *span));
+            }
+            Expr::Reference { path, span } => {
+                if path.len() == 1 {
+                    if let Some(first) = path.first() {
+                        // Prefer the flat function-scope map so bindings
+                        // introduced inside a now-popped nested block still
+                        // carry their captures for the return-escape check.
+                        if let Some(caps) = self
+                            .fn_scope_closure_captures
+                            .get(&first.name)
+                            .or_else(|| self.closure_binding_captures.get(&first.name))
+                        {
+                            out.push((caps.clone(), *span));
+                        }
+                    }
+                }
+            }
+            Expr::Group { expr, .. } => {
+                self.collect_returned_closure_captures_rec(expr, out);
+            }
+            Expr::Block { result, .. } => {
+                self.collect_returned_closure_captures_rec(result, out);
+            }
+            Expr::LetExpr { body, .. } => {
+                self.collect_returned_closure_captures_rec(body, out);
+            }
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.collect_returned_closure_captures_rec(then_branch, out);
+                if let Some(else_expr) = else_branch {
+                    self.collect_returned_closure_captures_rec(else_expr, out);
+                }
+            }
+            Expr::MatchExpr { arms, .. } => {
+                for arm in arms {
+                    self.collect_returned_closure_captures_rec(&arm.body, out);
+                }
+            }
+            Expr::Literal(_)
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::FieldAccess { .. }
+            | Expr::MethodCall { .. } => {}
+        }
+    }
+
+    /// If `return_type` is a closure type, verify that every closure returned
+    /// by `body` only captures bindings that outlive the function: outer-scope
+    /// bindings (module-level or wider) and `sink` parameters. Local `let`
+    /// bindings and `let`/`mut` parameters would die with the function frame
+    /// and leave a dangling capture.
+    fn validate_function_return_escape(&mut self, return_type: Option<&Type>, body: &Expr) {
+        let Some(Type::Closure { .. }) = return_type else {
+            return;
+        };
+        let escaping = self.collect_returned_closure_captures(body);
+        if escaping.is_empty() {
+            return;
+        }
+        let param_convs = self.current_fn_param_conventions.clone();
+        for (captures, span) in escaping {
+            for cap in captures {
+                if let Some(convention) = param_convs.get(&cap) {
+                    match convention {
+                        crate::ast::ParamConvention::Sink => {
+                            // Ownership transfers into the returned closure.
+                            self.consumed_bindings.insert(cap);
+                        }
+                        crate::ast::ParamConvention::Let | crate::ast::ParamConvention::Mut => {
+                            self.errors
+                                .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                                    binding: cap,
+                                    span,
+                                });
+                        }
+                    }
+                } else if self.symbols.is_let(&cap) {
+                    // Module-level let — outlives the function. OK.
+                } else {
+                    // Not a parameter, not a module-level let: must be a
+                    // function-local let introduced inside the body (by now the
+                    // block/let scope has been popped). It dies with the frame.
+                    self.errors
+                        .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                            binding: cap,
+                            span,
+                        });
+                }
+            }
+        }
+    }
+
+    /// Check module visibility for a multi-segment path (`mod::item`,
+    /// `outer::inner::item`, etc.).
+    ///
+    /// Walks the full module path, checking:
+    /// 1. Each intermediate module segment must be `pub` to be accessible
+    ///    across module boundaries.
+    /// 2. The final item must be `pub` when accessed across any module boundary.
+    ///
+    /// Returns true if access is allowed, false if a `VisibilityViolation`
+    /// was emitted.
+    fn check_module_visibility(&mut self, path: &[crate::ast::Ident], span: Span) -> bool {
+        let Some((first, rest)) = path.split_first() else {
+            return true;
+        };
+        if rest.is_empty() {
+            return true;
+        }
+        let Some(root_module) = self.symbols.modules.get(first.name.as_str()) else {
+            return true;
+        };
+        // Walk intermediate modules (all rest segments except the last).
+        // Each intermediate module must itself be `pub`.
+        let mut current = &root_module.symbols;
+        let Some((item_ident, middle)) = rest.split_last() else {
+            return true;
+        };
+        for seg in middle {
+            let name = seg.name.as_str();
+            let Some(next) = current.modules.get(name) else {
+                // Unknown module: leave error reporting to the caller.
+                return true;
+            };
+            if matches!(next.visibility, crate::ast::Visibility::Private) {
+                self.errors.push(CompilerError::VisibilityViolation {
+                    name: name.to_string(),
+                    span,
+                });
+                return false;
+            }
+            current = &next.symbols;
+        }
+        // Final segment is the item name
+        let item_name = item_ident.name.as_str();
+        let item_visibility = current
+            .structs
+            .get(item_name)
+            .map(|s| s.visibility)
+            .or_else(|| {
+                current
+                    .functions
+                    .get(item_name)
+                    .and_then(|overloads| overloads.first().map(|f| f.visibility))
+            })
+            .or_else(|| current.enums.get(item_name).map(|e| e.visibility))
+            .or_else(|| current.traits.get(item_name).map(|t| t.visibility))
+            .or_else(|| current.lets.get(item_name).map(|l| l.visibility))
+            .or_else(|| current.modules.get(item_name).map(|m| m.visibility));
+
+        if matches!(item_visibility, Some(crate::ast::Visibility::Private)) {
+            self.errors.push(CompilerError::VisibilityViolation {
+                name: item_name.to_string(),
+                span,
+            });
+            return false;
+        }
+        true
+    }
+
     /// Validate a reference expression (path lookup)
     fn validate_expr_reference(&mut self, path: &[crate::ast::Ident], span: Span, _file: &File) {
+        if let Some(first) = path.first() {
+            if self.consumed_bindings.contains(&first.name) {
+                self.errors.push(CompilerError::UseAfterSink {
+                    name: first.name.clone(),
+                    span,
+                });
+                return;
+            }
+        }
+        // Check module visibility for qualified paths (mod::item)
+        if !self.check_module_visibility(path, span) {
+            return;
+        }
         if path.first().is_some_and(|p| p.name == "self") {
             if self.current_impl_struct.is_none() {
                 self.errors.push(CompilerError::UndefinedReference {
@@ -255,10 +837,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if self.symbols.is_struct(name)
                 || self.symbols.is_enum(name)
                 || self.symbols.is_trait(name)
+                || self.symbols.functions.contains_key(name.as_str())
             {
                 return;
             }
-            if let Some(ref struct_name) = self.current_impl_struct {
+            if let Some(ref struct_name) = self.current_impl_struct.clone() {
                 if let Some(struct_info) = self.symbols.get_struct(struct_name) {
                     for field in &struct_info.fields {
                         if field.name == *name {
@@ -266,11 +849,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                 }
-                self.errors.push(CompilerError::UndefinedReference {
-                    name: name.clone(),
-                    span,
-                });
             }
+            self.errors.push(CompilerError::UndefinedReference {
+                name: name.clone(),
+                span,
+            });
         }
     }
 
@@ -294,6 +877,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         for type_arg in type_args {
             self.validate_type(type_arg);
+        }
+
+        // Check module visibility for qualified paths (mod::item)
+        if !self.check_module_visibility(path, span) {
+            return;
         }
 
         let is_struct = self.symbols.get_struct_qualified(&name).is_some();
@@ -345,6 +933,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         span,
                     });
                 }
+            } else {
+                // Validate each type arg satisfies its constraints
+                for (type_arg, generic_param) in type_args.iter().zip(expected_params.iter()) {
+                    for constraint in &generic_param.constraints {
+                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                            self.errors.push(CompilerError::GenericConstraintViolation {
+                                arg: Self::type_to_string(type_arg),
+                                constraint: trait_ref.name.clone(),
+                                span,
+                            });
+                        }
+                    }
+                }
             }
         } else if !type_args.is_empty() {
             self.errors.push(CompilerError::GenericArityMismatch {
@@ -361,6 +963,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate a function call invocation, performing overload resolution when multiple
     /// overloads exist for the same name.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "covers generic-arity checks, overload resolution, closure binding checks (conventions + captures) — splitting hurts readability"
+    )]
     fn validate_expr_invocation_function(
         &mut self,
         name: &str,
@@ -369,13 +975,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
+        // Gap 4: Validate generic type arguments against function's generic parameters
         if !type_args.is_empty() {
-            self.errors.push(CompilerError::GenericArityMismatch {
-                name: name.to_string(),
-                expected: 0,
-                actual: type_args.len(),
-                span,
-            });
+            let simple_name_for_lookup = name.rsplit("::").next().unwrap_or(name);
+            let overloads_for_generics = {
+                let direct = self.symbols.get_function_overloads(name);
+                if direct.is_empty() {
+                    self.symbols.get_function_overloads(simple_name_for_lookup)
+                } else {
+                    direct
+                }
+            };
+            let func_generics = overloads_for_generics
+                .first()
+                .map(|f| f.generics.clone())
+                .unwrap_or_default();
+
+            if func_generics.is_empty() {
+                self.errors.push(CompilerError::GenericArityMismatch {
+                    name: name.to_string(),
+                    expected: 0,
+                    actual: type_args.len(),
+                    span,
+                });
+            } else if type_args.len() != func_generics.len() {
+                self.errors.push(CompilerError::GenericArityMismatch {
+                    name: name.to_string(),
+                    expected: func_generics.len(),
+                    actual: type_args.len(),
+                    span,
+                });
+            } else {
+                // Validate each type arg satisfies constraints
+                for (type_arg, generic_param) in type_args.iter().zip(func_generics.iter()) {
+                    for constraint in &generic_param.constraints {
+                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                            self.errors.push(CompilerError::GenericConstraintViolation {
+                                arg: Self::type_to_string(type_arg),
+                                constraint: trait_ref.name.clone(),
+                                span,
+                            });
+                        }
+                    }
+                }
+            }
         }
 
         let simple_name = name.rsplit("::").next().unwrap_or(name);
@@ -390,8 +1034,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         match overloads.len() {
             0 => {
-                // Check qualified path before reporting undefined
-                if !self.resolve_qualified_function(name) {
+                // Check if this is a closure binding call — enforce closure param conventions
+                let closure_conventions =
+                    self.closure_binding_conventions.get(simple_name).cloned();
+                if let Some(conventions) = closure_conventions {
+                    // Before applying param conventions (which may mark new bindings
+                    // as consumed), check if any captured binding has already been
+                    // consumed — that's an after-the-fact use-after-sink via the
+                    // closure.
+                    if let Some(captures) = self.closure_binding_captures.get(simple_name).cloned()
+                    {
+                        for captured in &captures {
+                            if self.consumed_bindings.contains(captured) {
+                                self.errors.push(CompilerError::UseAfterSink {
+                                    name: captured.clone(),
+                                    span,
+                                });
+                            }
+                        }
+                    }
+                    self.validate_closure_call_conventions(&conventions, args, span, file);
+                } else if !self.resolve_qualified_function(name) {
                     self.errors.push(CompilerError::UndefinedType {
                         name: format!("function '{name}'"),
                         span,
@@ -399,7 +1062,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             1 => {
-                // Single overload — always valid
+                // Single overload — check mut param mutability
+                if let Some(info) = overloads.first() {
+                    let params = info.params.clone();
+                    self.validate_mut_param_args(&params, args, span, file);
+                }
             }
             _ => {
                 // Multiple overloads: resolve by argument labels or first-arg type
@@ -421,7 +1088,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                     }
                     1 => {
-                        // Resolved to a unique overload — valid
+                        // Resolved to a unique overload — check mut param mutability
+                        if let Some(info) = matching.first() {
+                            let params = info.params.clone();
+                            self.validate_mut_param_args(&params, args, span, file);
+                        }
                     }
                     _ => {
                         self.errors.push(CompilerError::AmbiguousCall {
@@ -429,6 +1100,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             span,
                         });
                     }
+                }
+            }
+        }
+    }
+
+    /// For each `mut`-convention parameter, verify the corresponding call argument is mutable.
+    fn validate_mut_param_args(
+        &mut self,
+        params: &[crate::semantic::symbol_table::ParamInfo],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
+            let param = label_opt.as_ref().map_or_else(
+                || non_self.get(i).copied(),
+                |label| {
+                    non_self
+                        .iter()
+                        .find(|p| {
+                            p.external_label
+                                .as_ref()
+                                .is_some_and(|l| l.name == label.name)
+                                || p.name.name == label.name
+                        })
+                        .map(|v| &**v)
+                },
+            );
+            if let Some(param) = param {
+                if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
+                {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: param.name.name.clone(),
+                        span,
+                    });
+                }
+                if param.convention == ParamConvention::Sink {
+                    if let Some(root) = Self::root_binding(arg_expr) {
+                        self.consumed_bindings.insert(root);
+                    }
+                    // Escape analysis: a closure value passed to a sink param
+                    // escapes with its captures — mark them consumed.
+                    self.escape_closure_value(arg_expr);
                 }
             }
         }
@@ -467,8 +1183,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 call_labels.iter().filter_map(|l| l.as_deref()).collect();
             let param_label_set: Vec<&str> = param_labels.iter().map(String::as_str).collect();
             call_label_set == param_label_set
+        } else if none_labeled && args.is_empty() {
+            // Zero-arg call: match only zero-arg overloads.
+            // Without context-type disambiguation (e.g., from a let annotation),
+            // multiple zero-arg overloads will be reported as AmbiguousCall by the
+            // caller. This is the scope-limited behavior — see Fix 6 notes.
+            params.iter().filter(|p| p.name.name != "self").count() == 0
         } else if none_labeled && !args.is_empty() {
-            // Mode B: match by first-argument type
+            // Mode B: arity check first, then match by first-argument type
+            let non_self_count = params.iter().filter(|p| p.name.name != "self").count();
+            if args.len() != non_self_count {
+                return false;
+            }
+
             let first_arg_type = args.first().map_or_else(
                 || "Unknown".to_string(),
                 |(_, expr)| self.infer_type(expr, file),
@@ -518,6 +1245,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a closure expression
+    ///
+    /// Checks that the closure body does not capture any binding that has
+    /// already been consumed by a sink parameter at closure-creation time.
+    ///
+    /// Limitation: this only detects the case where a referenced binding is
+    /// *already* in `consumed_bindings` when the closure is created. It does
+    /// not detect the trickier after-the-fact pattern where a closure retains
+    /// a binding that is consumed later (e.g.,
+    /// `let c = |_| x; consume(x); c(0)`). Full escape analysis is left for
+    /// a future pass.
     fn validate_expr_closure(
         &mut self,
         params: &[crate::ast::ClosureParam],
@@ -533,12 +1270,450 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for param in params {
             param_scope.insert(param.name.name.clone());
         }
+        // Detect closure bodies referencing bindings already consumed by a sink.
+        let consumed = self.consumed_bindings.clone();
+        let mut inner_scopes: Vec<HashSet<String>> = Vec::new();
+        Self::check_captures_rec(
+            body,
+            &param_scope,
+            &consumed,
+            &mut self.errors,
+            &mut inner_scopes,
+        );
         self.closure_param_scopes.push(param_scope);
         self.validate_expr(body, file);
         self.closure_param_scopes.pop();
     }
 
+    /// Walk `expr` and emit `UseAfterSink` for any `Reference` whose root
+    /// binding is in `consumed` and is not shadowed by a closure parameter
+    /// or a binding introduced inside `expr`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "dispatcher match over all Expr and BlockStatement variants"
+    )]
+    fn check_captures_rec(
+        expr: &Expr,
+        outer_params: &HashSet<String>,
+        consumed: &HashSet<String>,
+        errors: &mut Vec<CompilerError>,
+        inner_scopes: &mut Vec<HashSet<String>>,
+    ) {
+        let is_shadowed = |name: &str| -> bool {
+            if outer_params.contains(name) {
+                return true;
+            }
+            inner_scopes.iter().any(|s| s.contains(name))
+        };
+        match expr {
+            Expr::Reference { path, span } => {
+                if let Some(first) = path.first() {
+                    if !is_shadowed(&first.name) && consumed.contains(&first.name) {
+                        errors.push(CompilerError::UseAfterSink {
+                            name: first.name.clone(),
+                            span: *span,
+                        });
+                    }
+                }
+            }
+            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Array { elements, .. } => {
+                for e in elements {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::Tuple { fields, .. } => {
+                for (_, e) in fields {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::Invocation { args, .. } => {
+                for (_, e) in args {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::EnumInstantiation { data, .. } => {
+                for (_, e) in data {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                Self::check_captures_rec(left, outer_params, consumed, errors, inner_scopes);
+                Self::check_captures_rec(right, outer_params, consumed, errors, inner_scopes);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                Self::check_captures_rec(operand, outer_params, consumed, errors, inner_scopes);
+            }
+            Expr::ForExpr {
+                var,
+                collection,
+                body,
+                ..
+            } => {
+                Self::check_captures_rec(collection, outer_params, consumed, errors, inner_scopes);
+                let mut scope = HashSet::new();
+                scope.insert(var.name.clone());
+                inner_scopes.push(scope);
+                Self::check_captures_rec(body, outer_params, consumed, errors, inner_scopes);
+                inner_scopes.pop();
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::check_captures_rec(condition, outer_params, consumed, errors, inner_scopes);
+                Self::check_captures_rec(then_branch, outer_params, consumed, errors, inner_scopes);
+                if let Some(e) = else_branch {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => {
+                Self::check_captures_rec(scrutinee, outer_params, consumed, errors, inner_scopes);
+                for arm in arms {
+                    let mut scope = HashSet::new();
+                    if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
+                        for b in bindings {
+                            scope.insert(b.name.clone());
+                        }
+                    }
+                    inner_scopes.push(scope);
+                    Self::check_captures_rec(
+                        &arm.body,
+                        outer_params,
+                        consumed,
+                        errors,
+                        inner_scopes,
+                    );
+                    inner_scopes.pop();
+                }
+            }
+            Expr::Group { expr, .. } => {
+                Self::check_captures_rec(expr, outer_params, consumed, errors, inner_scopes);
+            }
+            Expr::DictLiteral { entries, .. } => {
+                for (k, v) in entries {
+                    Self::check_captures_rec(k, outer_params, consumed, errors, inner_scopes);
+                    Self::check_captures_rec(v, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::DictAccess { dict, key, .. } => {
+                Self::check_captures_rec(dict, outer_params, consumed, errors, inner_scopes);
+                Self::check_captures_rec(key, outer_params, consumed, errors, inner_scopes);
+            }
+            Expr::FieldAccess { object, .. } => {
+                Self::check_captures_rec(object, outer_params, consumed, errors, inner_scopes);
+            }
+            Expr::ClosureExpr { params, body, .. } => {
+                let mut scope = HashSet::new();
+                for p in params {
+                    scope.insert(p.name.name.clone());
+                }
+                inner_scopes.push(scope);
+                Self::check_captures_rec(body, outer_params, consumed, errors, inner_scopes);
+                inner_scopes.pop();
+            }
+            Expr::LetExpr {
+                pattern,
+                value,
+                body,
+                ..
+            } => {
+                Self::check_captures_rec(value, outer_params, consumed, errors, inner_scopes);
+                let mut scope = HashSet::new();
+                for b in collect_bindings_from_pattern(pattern) {
+                    scope.insert(b.name);
+                }
+                inner_scopes.push(scope);
+                Self::check_captures_rec(body, outer_params, consumed, errors, inner_scopes);
+                inner_scopes.pop();
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                Self::check_captures_rec(receiver, outer_params, consumed, errors, inner_scopes);
+                for (_, e) in args {
+                    Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
+                }
+            }
+            Expr::Block {
+                statements, result, ..
+            } => {
+                let mut scope = HashSet::new();
+                for stmt in statements {
+                    match stmt {
+                        BlockStatement::Let { pattern, value, .. } => {
+                            Self::check_captures_rec(
+                                value,
+                                outer_params,
+                                consumed,
+                                errors,
+                                inner_scopes,
+                            );
+                            for b in collect_bindings_from_pattern(pattern) {
+                                scope.insert(b.name);
+                            }
+                        }
+                        BlockStatement::Assign { target, value, .. } => {
+                            Self::check_captures_rec(
+                                target,
+                                outer_params,
+                                consumed,
+                                errors,
+                                inner_scopes,
+                            );
+                            Self::check_captures_rec(
+                                value,
+                                outer_params,
+                                consumed,
+                                errors,
+                                inner_scopes,
+                            );
+                        }
+                        BlockStatement::Expr(e) => {
+                            Self::check_captures_rec(
+                                e,
+                                outer_params,
+                                consumed,
+                                errors,
+                                inner_scopes,
+                            );
+                        }
+                    }
+                }
+                inner_scopes.push(scope);
+                Self::check_captures_rec(result, outer_params, consumed, errors, inner_scopes);
+                inner_scopes.pop();
+            }
+        }
+    }
+
+    /// Collect the free variables referenced in a closure body.
+    ///
+    /// A free variable is any single-segment `Expr::Reference` path whose root
+    /// identifier is not bound by the closure's own parameters, nor by any
+    /// binding introduced within the body (nested closure params, `for`/`match`
+    /// bindings, block/LetExpr locals). Ordering of the returned list is the
+    /// order first encountered; duplicates are suppressed.
+    pub(super) fn collect_free_variables(
+        body: &Expr,
+        closure_params: &HashSet<String>,
+    ) -> Vec<String> {
+        let mut captures: Vec<String> = Vec::new();
+        let mut inner_scopes: Vec<HashSet<String>> = Vec::new();
+        Self::collect_free_vars_rec(body, closure_params, &mut inner_scopes, &mut captures);
+        captures
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "dispatcher match over all Expr and BlockStatement variants"
+    )]
+    fn collect_free_vars_rec(
+        expr: &Expr,
+        outer_params: &HashSet<String>,
+        inner_scopes: &mut Vec<HashSet<String>>,
+        captures: &mut Vec<String>,
+    ) {
+        let is_bound = |name: &str, inner: &Vec<HashSet<String>>| -> bool {
+            if outer_params.contains(name) {
+                return true;
+            }
+            inner.iter().any(|s| s.contains(name))
+        };
+        match expr {
+            Expr::Reference { path, .. } => {
+                if path.len() == 1 {
+                    if let Some(first) = path.first() {
+                        let name = &first.name;
+                        if !is_bound(name, inner_scopes)
+                            && !captures.iter().any(|n| n == name)
+                            && name != "self"
+                        {
+                            captures.push(name.clone());
+                        }
+                    }
+                }
+            }
+            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Array { elements, .. } => {
+                for e in elements {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::Tuple { fields, .. } => {
+                for (_, e) in fields {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::Invocation { path, args, .. } => {
+                // The function/struct name itself is a bound symbol or a name;
+                // if it is a single-segment reference to a let binding, it
+                // should count as a capture too (so we can detect calling a
+                // captured closure binding that was consumed).
+                if path.len() == 1 {
+                    if let Some(first) = path.first() {
+                        let name = &first.name;
+                        if !is_bound(name, inner_scopes)
+                            && !captures.iter().any(|n| n == name)
+                            && name != "self"
+                        {
+                            captures.push(name.clone());
+                        }
+                    }
+                }
+                for (_, e) in args {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::EnumInstantiation { data, .. } => {
+                for (_, e) in data {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                Self::collect_free_vars_rec(left, outer_params, inner_scopes, captures);
+                Self::collect_free_vars_rec(right, outer_params, inner_scopes, captures);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                Self::collect_free_vars_rec(operand, outer_params, inner_scopes, captures);
+            }
+            Expr::ForExpr {
+                var,
+                collection,
+                body,
+                ..
+            } => {
+                Self::collect_free_vars_rec(collection, outer_params, inner_scopes, captures);
+                let mut scope = HashSet::new();
+                scope.insert(var.name.clone());
+                inner_scopes.push(scope);
+                Self::collect_free_vars_rec(body, outer_params, inner_scopes, captures);
+                inner_scopes.pop();
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::collect_free_vars_rec(condition, outer_params, inner_scopes, captures);
+                Self::collect_free_vars_rec(then_branch, outer_params, inner_scopes, captures);
+                if let Some(e) = else_branch {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => {
+                Self::collect_free_vars_rec(scrutinee, outer_params, inner_scopes, captures);
+                for arm in arms {
+                    let mut scope = HashSet::new();
+                    if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
+                        for b in bindings {
+                            scope.insert(b.name.clone());
+                        }
+                    }
+                    inner_scopes.push(scope);
+                    Self::collect_free_vars_rec(&arm.body, outer_params, inner_scopes, captures);
+                    inner_scopes.pop();
+                }
+            }
+            Expr::Group { expr, .. } => {
+                Self::collect_free_vars_rec(expr, outer_params, inner_scopes, captures);
+            }
+            Expr::DictLiteral { entries, .. } => {
+                for (k, v) in entries {
+                    Self::collect_free_vars_rec(k, outer_params, inner_scopes, captures);
+                    Self::collect_free_vars_rec(v, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::DictAccess { dict, key, .. } => {
+                Self::collect_free_vars_rec(dict, outer_params, inner_scopes, captures);
+                Self::collect_free_vars_rec(key, outer_params, inner_scopes, captures);
+            }
+            Expr::FieldAccess { object, .. } => {
+                Self::collect_free_vars_rec(object, outer_params, inner_scopes, captures);
+            }
+            Expr::ClosureExpr { params, body, .. } => {
+                let mut scope = HashSet::new();
+                for p in params {
+                    scope.insert(p.name.name.clone());
+                }
+                inner_scopes.push(scope);
+                Self::collect_free_vars_rec(body, outer_params, inner_scopes, captures);
+                inner_scopes.pop();
+            }
+            Expr::LetExpr {
+                pattern,
+                value,
+                body,
+                ..
+            } => {
+                Self::collect_free_vars_rec(value, outer_params, inner_scopes, captures);
+                let mut scope = HashSet::new();
+                for b in collect_bindings_from_pattern(pattern) {
+                    scope.insert(b.name);
+                }
+                inner_scopes.push(scope);
+                Self::collect_free_vars_rec(body, outer_params, inner_scopes, captures);
+                inner_scopes.pop();
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                Self::collect_free_vars_rec(receiver, outer_params, inner_scopes, captures);
+                for (_, e) in args {
+                    Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                }
+            }
+            Expr::Block {
+                statements, result, ..
+            } => {
+                let mut scope = HashSet::new();
+                for stmt in statements {
+                    match stmt {
+                        BlockStatement::Let { pattern, value, .. } => {
+                            Self::collect_free_vars_rec(
+                                value,
+                                outer_params,
+                                inner_scopes,
+                                captures,
+                            );
+                            for b in collect_bindings_from_pattern(pattern) {
+                                scope.insert(b.name);
+                            }
+                        }
+                        BlockStatement::Assign { target, value, .. } => {
+                            Self::collect_free_vars_rec(
+                                target,
+                                outer_params,
+                                inner_scopes,
+                                captures,
+                            );
+                            Self::collect_free_vars_rec(
+                                value,
+                                outer_params,
+                                inner_scopes,
+                                captures,
+                            );
+                        }
+                        BlockStatement::Expr(e) => {
+                            Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
+                        }
+                    }
+                }
+                inner_scopes.push(scope);
+                Self::collect_free_vars_rec(result, outer_params, inner_scopes, captures);
+                inner_scopes.pop();
+            }
+        }
+    }
+
     /// Validate a let expression
+    ///
+    /// Like block statements, `let ... in body` introduces bindings that are
+    /// scoped to `body` and must not leak out. Snapshots are taken on entry
+    /// and restored on exit.
     fn validate_expr_let(&mut self, expr: &Expr, file: &File) {
         let Expr::LetExpr {
             mutable,
@@ -555,13 +1730,78 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann);
         }
         self.validate_expr(value, file);
+        // Gap 1: nil can only be assigned to optional types
+        if let Some(type_ann) = ty {
+            let declared = Self::type_to_string(type_ann);
+            let inferred = self.infer_type(value, file);
+            if inferred == "Nil" && !declared.ends_with('?') {
+                self.errors.push(CompilerError::NilAssignedToNonOptional {
+                    expected: declared,
+                    span: *span,
+                });
+            }
+        }
         self.validate_destructuring_pattern(pattern, value, *span, file);
+        let saved_let_bindings = self.local_let_bindings.clone();
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_consumed = self.consumed_bindings.clone();
+        // Collect closure captures once for reuse across all pattern bindings.
+        let captures = if matches!(ty, Some(Type::Closure { .. })) {
+            if let Expr::ClosureExpr {
+                params: cparams,
+                body,
+                ..
+            } = &**value
+            {
+                let param_set: HashSet<String> =
+                    cparams.iter().map(|p| p.name.name.clone()).collect();
+                Some(Self::collect_free_variables(body, &param_set))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         for binding in collect_bindings_from_pattern(pattern) {
+            if super::is_primitive_name(&binding.name) {
+                self.errors.push(CompilerError::PrimitiveRedefinition {
+                    name: binding.name.clone(),
+                    span: binding.span,
+                });
+                continue;
+            }
             let inferred_ty = self.infer_type(value, file);
+            // If annotated as a closure type, record param conventions for call-site enforcement
+            if let Some(Type::Closure { params, .. }) = ty {
+                let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(binding.name.clone(), conventions);
+            }
+            if let Some(caps) = &captures {
+                self.closure_binding_captures
+                    .insert(binding.name.clone(), caps.clone());
+                self.fn_scope_closure_captures
+                    .insert(binding.name.clone(), caps.clone());
+            }
             self.local_let_bindings
                 .insert(binding.name, (inferred_ty, *mutable));
         }
         self.validate_expr(body, file);
+        // Preserve consumption for outer-scope names (function locals, module
+        // lets, closure captures). Drop only names introduced by this LetExpr.
+        let mut restored_consumed = saved_consumed;
+        for name in &self.consumed_bindings {
+            let introduced_here = self.local_let_bindings.contains_key(name)
+                && !saved_let_bindings.contains_key(name);
+            if !introduced_here {
+                restored_consumed.insert(name.clone());
+            }
+        }
+        self.local_let_bindings = saved_let_bindings;
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.consumed_bindings = restored_consumed;
     }
 
     /// Validate a method call expression
@@ -569,16 +1809,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &mut self,
         receiver: &Expr,
         method: &crate::ast::Ident,
-        args: &[Expr],
+        args: &[(Option<crate::ast::Ident>, Expr)],
         span: Span,
         file: &File,
     ) {
         self.validate_expr(receiver, file);
-        for arg in args {
+        for (_, arg) in args {
             self.validate_expr(arg, file);
         }
         let receiver_type = self.infer_type(receiver, file);
-        if !self.method_exists_on_type(&receiver_type, &method.name, file) {
+        if let Some(fn_def) = self.find_method_fn_def(&receiver_type, &method.name, file) {
+            let params = fn_def.params.clone();
+            self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
+            self.validate_fn_param_conventions_args(&params, args, span, file);
+        } else if !self.method_exists_on_type(&receiver_type, &method.name, file) {
             self.errors.push(CompilerError::UndefinedReference {
                 name: format!("method '{}' on type '{}'", method.name, receiver_type),
                 span,
@@ -586,8 +1830,150 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// Find the `FnDef` for `method_name` on the given type by scanning the file's impl blocks.
+    fn find_method_fn_def<'f>(
+        &self,
+        type_name: &str,
+        method_name: &str,
+        file: &'f File,
+    ) -> Option<&'f crate::ast::FnDef> {
+        if type_name == "Unknown" || type_name.contains("Unknown") {
+            return None;
+        }
+        for stmt in &file.statements {
+            if let crate::ast::Statement::Definition(def) = stmt {
+                if let crate::ast::Definition::Impl(impl_def) = &**def {
+                    if impl_def.name.name == type_name {
+                        for func in &impl_def.functions {
+                            if func.name.name == method_name {
+                                return Some(func);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check `mut self` / `sink self` convention against the receiver expression.
+    fn validate_fn_param_conventions_receiver(
+        &mut self,
+        receiver: &Expr,
+        params: &[crate::ast::FnParam],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let Some(self_param) = params.iter().find(|p| p.name.name == "self") else {
+            return;
+        };
+        match self_param.convention {
+            ParamConvention::Mut => {
+                if !self.is_expr_mutable(receiver, file) {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: "self".to_string(),
+                        span,
+                    });
+                }
+            }
+            ParamConvention::Sink => {
+                if let Some(root) = Self::root_binding(receiver) {
+                    self.consumed_bindings.insert(root);
+                }
+            }
+            ParamConvention::Let => {}
+        }
+    }
+
+    /// Check `mut` / `sink` conventions on non-self parameters using AST `FnParam` directly.
+    fn validate_fn_param_conventions_args(
+        &mut self,
+        params: &[crate::ast::FnParam],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
+            let param = label_opt.as_ref().map_or_else(
+                || non_self.get(i).copied(),
+                |label| {
+                    non_self
+                        .iter()
+                        .find(|p| {
+                            p.external_label
+                                .as_ref()
+                                .is_some_and(|l| l.name == label.name)
+                                || p.name.name == label.name
+                        })
+                        .copied()
+                },
+            );
+            if let Some(param) = param {
+                if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
+                {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: param.name.name.clone(),
+                        span,
+                    });
+                }
+                if param.convention == ParamConvention::Sink {
+                    if let Some(root) = Self::root_binding(arg_expr) {
+                        self.consumed_bindings.insert(root);
+                    }
+                    // Escape analysis: sink-passed closure carries its captures away.
+                    self.escape_closure_value(arg_expr);
+                }
+            }
+        }
+    }
+
+    /// Enforce closure param conventions at a call site where the callee is a closure binding.
+    fn validate_closure_call_conventions(
+        &mut self,
+        conventions: &[crate::ast::ParamConvention],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        use crate::ast::ParamConvention;
+        for (i, (_, arg_expr)) in args.iter().enumerate() {
+            let Some(&convention) = conventions.get(i) else {
+                break;
+            };
+            match convention {
+                ParamConvention::Mut => {
+                    if !self.is_expr_mutable(arg_expr, file) {
+                        self.errors.push(CompilerError::MutabilityMismatch {
+                            param: format!("arg{i}"),
+                            span,
+                        });
+                    }
+                }
+                ParamConvention::Sink => {
+                    if let Some(root) = Self::root_binding(arg_expr) {
+                        self.consumed_bindings.insert(root);
+                    }
+                    // Escape analysis: sink-passed closure carries its captures away.
+                    self.escape_closure_value(arg_expr);
+                }
+                ParamConvention::Let => {}
+            }
+        }
+    }
+
     /// Validate a block expression (statements + result)
+    ///
+    /// Block-local let bindings, closure conventions, and sink-consumption flags
+    /// are isolated from the enclosing scope: snapshots are taken on entry and
+    /// restored on exit so block-internal names do not leak.
     fn validate_expr_block(&mut self, statements: &[BlockStatement], result: &Expr, file: &File) {
+        let saved_let_bindings = self.local_let_bindings.clone();
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_consumed = self.consumed_bindings.clone();
         for stmt in statements {
             match stmt {
                 BlockStatement::Let {
@@ -601,7 +1987,43 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     let ty_str = ty
                         .as_ref()
                         .map_or_else(|| self.infer_type(value, file), |t| Self::type_to_string(t));
+                    // Collect free variables once if this is a closure literal,
+                    // so we can reuse them across all bindings in the pattern.
+                    let captures = if matches!(ty, Some(Type::Closure { .. })) {
+                        if let Expr::ClosureExpr {
+                            params: cparams,
+                            body,
+                            ..
+                        } = value
+                        {
+                            let param_set: HashSet<String> =
+                                cparams.iter().map(|p| p.name.name.clone()).collect();
+                            Some(Self::collect_free_variables(body, &param_set))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     for binding in collect_bindings_from_pattern(pattern) {
+                        if super::is_primitive_name(&binding.name) {
+                            self.errors.push(CompilerError::PrimitiveRedefinition {
+                                name: binding.name.clone(),
+                                span: binding.span,
+                            });
+                            continue;
+                        }
+                        if let Some(Type::Closure { params, .. }) = ty {
+                            let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                            self.closure_binding_conventions
+                                .insert(binding.name.clone(), conventions);
+                        }
+                        if let Some(caps) = &captures {
+                            self.closure_binding_captures
+                                .insert(binding.name.clone(), caps.clone());
+                            self.fn_scope_closure_captures
+                                .insert(binding.name.clone(), caps.clone());
+                        }
                         self.local_let_bindings
                             .insert(binding.name, (ty_str.clone(), *mutable));
                     }
@@ -617,6 +2039,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.errors
                             .push(CompilerError::AssignmentToImmutable { span: *span });
                     }
+                    // Check that value type is compatible with target's declared type
+                    let value_type = self.infer_type(value, file);
+                    let target_type = self.infer_type(target, file);
+                    if !value_type.contains("Unknown")
+                        && !target_type.contains("Unknown")
+                        && !self.type_strings_compatible(&target_type, &value_type)
+                    {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: target_type,
+                            found: value_type,
+                            span: *span,
+                        });
+                    }
                 }
                 BlockStatement::Expr(expr) => {
                     self.validate_expr(expr, file);
@@ -624,6 +2059,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
         self.validate_expr(result, file);
+        // Restore outer let/closure-convention scope. For consumption flags, keep
+        // any binding consumed inside the block that belongs to an outer scope
+        // (block did not introduce it). This preserves consumption of outer
+        // locals AND module-level lets — dropping only flags for names the
+        // block itself introduced.
+        let mut restored_consumed = saved_consumed;
+        for name in &self.consumed_bindings {
+            let introduced_here = self.local_let_bindings.contains_key(name)
+                && !saved_let_bindings.contains_key(name);
+            if !introduced_here {
+                restored_consumed.insert(name.clone());
+            }
+        }
+        self.local_let_bindings = saved_let_bindings;
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.consumed_bindings = restored_consumed;
     }
 
     /// Validate struct field requirements: all required fields must be provided, no unknown fields
@@ -720,31 +2172,81 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
         span: Span,
     ) {
-        // Find the struct definition
-        for statement in &file.statements {
-            if let Statement::Definition(def) = statement {
-                if let Definition::Struct(struct_def) = &**def {
-                    if struct_def.name.name == struct_name {
-                        // Check each regular field argument
-                        for (arg_name, arg_expr) in args {
-                            // Find the corresponding field in the struct
-                            if let Some(field) = struct_def
+        // Collect closure-typed field names and mutability info from the struct def,
+        // dropping the borrow before mutating `self` for escape tracking.
+        let struct_info: Option<Vec<(String, bool, bool)>> = {
+            let mut found = None;
+            for statement in &file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Struct(struct_def) = &**def {
+                        if struct_def.name.name == struct_name {
+                            let info: Vec<(String, bool, bool)> = struct_def
                                 .fields
                                 .iter()
-                                .find(|f| f.name.name == arg_name.name)
-                            {
-                                // If field is mutable, check that the arg expression is mutable
-                                if field.mutable && !self.is_expr_mutable(arg_expr, file) {
-                                    self.errors.push(CompilerError::MutabilityMismatch {
-                                        param: arg_name.name.clone(),
-                                        span,
-                                    });
+                                .map(|f| {
+                                    (
+                                        f.name.name.clone(),
+                                        f.mutable,
+                                        matches!(f.ty, crate::ast::Type::Closure { .. }),
+                                    )
+                                })
+                                .collect();
+                            found = Some(info);
+                            break;
+                        }
+                    }
+                }
+            }
+            // Fall back to module cache if not found in current file.
+            if found.is_none() {
+                for (cached_file, _) in self.module_cache.values() {
+                    for statement in &cached_file.statements {
+                        if let Statement::Definition(def) = statement {
+                            if let Definition::Struct(struct_def) = &**def {
+                                if struct_def.name.name == struct_name {
+                                    let info: Vec<(String, bool, bool)> = struct_def
+                                        .fields
+                                        .iter()
+                                        .map(|f| {
+                                            (
+                                                f.name.name.clone(),
+                                                f.mutable,
+                                                matches!(f.ty, crate::ast::Type::Closure { .. }),
+                                            )
+                                        })
+                                        .collect();
+                                    found = Some(info);
+                                    break;
                                 }
                             }
                         }
-                        return;
+                    }
+                    if found.is_some() {
+                        break;
                     }
                 }
+            }
+            found
+        };
+        let Some(fields) = struct_info else {
+            return;
+        };
+        for (arg_name, arg_expr) in args {
+            let Some((_, field_mutable, field_is_closure)) =
+                fields.iter().find(|(n, _, _)| n == &arg_name.name)
+            else {
+                continue;
+            };
+            if *field_mutable && !self.is_expr_mutable(arg_expr, file) {
+                self.errors.push(CompilerError::MutabilityMismatch {
+                    param: arg_name.name.clone(),
+                    span,
+                });
+            }
+            // Escape analysis: a closure value stored in a struct field escapes
+            // with the struct — mark its captures as consumed.
+            if *field_is_closure {
+                self.escape_closure_value(arg_expr);
             }
         }
     }
@@ -760,6 +2262,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         let left_type = self.infer_type(left, file);
         let right_type = self.infer_type(right, file);
+
+        // Skip validation when either operand type is unknown (field access, method calls, etc.)
+        if left_type == "Unknown" || right_type == "Unknown" {
+            return;
+        }
 
         // Check type compatibility based on operator
         let valid = match op {
@@ -804,6 +2311,42 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// Check if two branch types unify via optional widening.
+    ///
+    /// Unifies:
+    /// - `T` and `Nil` -> `T?`
+    /// - `T` and `T?` (either order) -> `T?`
+    ///
+    /// Returns `true` when the two types unify under these rules. Other
+    /// compatibility checks (equality, GPU numeric) are handled elsewhere.
+    pub(super) fn types_unify_with_optional_widening(a: &str, b: &str) -> bool {
+        if a == "Nil" && b.ends_with('?') {
+            return true;
+        }
+        if b == "Nil" && a.ends_with('?') {
+            return true;
+        }
+        if a == "Nil" && b != "Nil" && !b.is_empty() {
+            // Any non-Nil, non-Unknown type T unifies with Nil as T?
+            return true;
+        }
+        if b == "Nil" && a != "Nil" && !a.is_empty() {
+            return true;
+        }
+        // T unifies with T? (either direction)
+        if let Some(inner) = a.strip_suffix('?') {
+            if inner == b {
+                return true;
+            }
+        }
+        if let Some(inner) = b.strip_suffix('?') {
+            if inner == a {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Check if two types are compatible GPU numeric types
     pub(super) fn are_gpu_numeric_compatible(left: &str, right: &str) -> bool {
         // GPU scalar types
@@ -838,12 +2381,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Validate for loop collection is an array
+    /// Validate for loop collection is an array or range
     pub(super) fn validate_for_loop(&mut self, collection: &Expr, span: Span, file: &File) {
         let collection_type = self.infer_type(collection, file);
 
-        // Check if it's an array type (starts with '[')
-        if !collection_type.starts_with('[') {
+        let is_iterable = collection_type.starts_with('[')
+            || collection_type.starts_with("Range<")
+            || collection_type == "Unknown";
+
+        if !is_iterable {
             self.errors.push(CompilerError::ForLoopNotArray {
                 actual: collection_type,
                 span,
@@ -861,14 +2407,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         let value_type = self.infer_type(value, file);
 
+        // Skip destructuring validation when value type is unknown (field access, etc.)
+        if value_type == "Unknown" {
+            return;
+        }
+
         match pattern {
-            BindingPattern::Array { .. } => {
+            BindingPattern::Array { elements, .. } => {
                 // Array destructuring requires an array type
                 if !value_type.starts_with('[') {
                     self.errors.push(CompilerError::ArrayDestructuringNotArray {
                         actual: value_type,
                         span,
                     });
+                } else if let Expr::Array {
+                    elements: literal_elems,
+                    ..
+                } = value
+                {
+                    // Known array length: pattern must not demand more fixed
+                    // elements than the array provides. Partial patterns that
+                    // cover fewer positions than the array (e.g.,
+                    // `let [a, b] = [1, 2, 3]`) are permitted — extra values
+                    // are simply unbound. A rest element accepts any tail.
+                    let pattern_fixed = elements
+                        .iter()
+                        .filter(|e| !matches!(e, crate::ast::ArrayPatternElement::Rest(_)))
+                        .count();
+                    let actual = literal_elems.len();
+                    if pattern_fixed > actual {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: format!("array with at least {pattern_fixed} element(s)"),
+                            found: format!("array with {actual} element(s)"),
+                            span,
+                        });
+                    }
                 }
             }
             BindingPattern::Struct { fields, .. } => {
@@ -896,8 +2469,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                 }
             }
-            BindingPattern::Tuple { .. } | BindingPattern::Simple(_) => {
-                // Tuple and simple patterns don't require type validation here
+            BindingPattern::Tuple { elements, .. } => {
+                // Gap 2: Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
+                if let Some(inner) = value_type
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                {
+                    let field_count = if inner.is_empty() {
+                        0
+                    } else {
+                        inner.split(", ").count()
+                    };
+                    let pattern_count = elements.len();
+                    if pattern_count > field_count && field_count > 0 {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: format!("tuple with {field_count} field(s)"),
+                            found: value_type,
+                            span,
+                        });
+                    }
+                }
+            }
+            BindingPattern::Simple(_) => {
+                // Simple patterns don't require type validation here
             }
         }
     }
@@ -905,6 +2499,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate if condition is boolean or optional
     pub(super) fn validate_if_condition(&mut self, condition: &Expr, span: Span, file: &File) {
         let condition_type = self.infer_type(condition, file);
+
+        // Skip when type is unknown (field access, method calls — IR lowering handles these)
+        if condition_type == "Unknown" {
+            return;
+        }
 
         // Condition must be Boolean or optional (ends with '?')
         if condition_type != "Boolean" && !condition_type.ends_with('?') {
@@ -925,6 +2524,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         // Infer scrutinee type - must be an enum
         let scrutinee_type = self.infer_type(scrutinee, file);
+
+        // Skip when type is unknown (field access, method calls — IR lowering handles these)
+        if scrutinee_type == "Unknown" {
+            return;
+        }
 
         // Check if scrutinee is an enum (look it up in symbol table)
         if !self.symbols.is_enum(&scrutinee_type) {
@@ -1153,27 +2757,61 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate function return type matches the body expression type
     pub(super) fn validate_function_return_type(&mut self, func: &crate::ast::FnDef, file: &File) {
-        // Clear local let bindings for this function
+        // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+        // Snapshot closure-binding maps so entries introduced in this function
+        // body don't leak into later functions.
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
+        let saved_param_conventions = self.current_fn_param_conventions.clone();
+        self.current_fn_param_conventions.clear();
+        self.fn_scope_closure_captures.clear();
 
         // Register function parameters as local bindings
-        // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
-            let ty_str = param
-                .ty
-                .as_ref()
-                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
-            // Register parameter as a local binding with its type (mutable=true for params)
+            let ty_str = param.ty.as_ref().map_or_else(
+                || {
+                    if param.name.name == "self" {
+                        self.current_impl_struct
+                            .clone()
+                            .unwrap_or_else(|| "Unknown".to_string())
+                    } else {
+                        "Unknown".to_string()
+                    }
+                },
+                |ty| Self::type_to_string(ty),
+            );
+            let mutable = matches!(
+                param.convention,
+                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
+            );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, true));
+                .insert(param.name.name.clone(), (ty_str, mutable));
+            self.current_fn_param_conventions
+                .insert(param.name.name.clone(), param.convention);
+            // Register closure-typed parameters so they're callable inside the
+            // body. Parameters have no captures of their own — no
+            // closure_binding_captures entry.
+            if let Some(Type::Closure {
+                params: closure_params,
+                ..
+            }) = &param.ty
+            {
+                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(param.name.name.clone(), conventions);
+            }
         }
 
         // Validate the function body expression (only if body exists)
         if let Some(body) = &func.body {
             self.validate_expr(body, file);
+            self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
@@ -1194,6 +2832,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.fn_scope_closure_captures = saved_fn_scope_captures;
+        self.current_fn_param_conventions = saved_param_conventions;
     }
 
     /// Validate a standalone function definition (outside of impl blocks)
@@ -1202,11 +2844,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func: &crate::ast::FunctionDef,
         file: &File,
     ) {
-        // Clear local let bindings for this function
+        // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
+        self.consumed_bindings.clear();
+        // Snapshot closure-binding maps so entries introduced in this function
+        // body don't leak into later functions.
+        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        let saved_closure_captures = self.closure_binding_captures.clone();
+        let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
+        let saved_param_conventions = self.current_fn_param_conventions.clone();
+        self.current_fn_param_conventions.clear();
+        self.fn_scope_closure_captures.clear();
 
         // Register function parameters as local bindings
-        // Function parameters are mutable by default (can be assigned to)
         for param in &func.params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
@@ -1215,9 +2865,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .ty
                 .as_ref()
                 .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
-            // Register parameter as a local binding with its type (mutable=true for params)
+            let mutable = matches!(
+                param.convention,
+                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
+            );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, true));
+                .insert(param.name.name.clone(), (ty_str, mutable));
+            self.current_fn_param_conventions
+                .insert(param.name.name.clone(), param.convention);
+            if let Some(Type::Closure {
+                params: closure_params,
+                ..
+            }) = &param.ty
+            {
+                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
+                self.closure_binding_conventions
+                    .insert(param.name.name.clone(), conventions);
+            }
         }
 
         // Validate return type if declared
@@ -1228,6 +2892,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Validate the function body if present
         if let Some(body) = &func.body {
             self.validate_expr(body, file);
+            self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
@@ -1248,11 +2913,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
+        self.closure_binding_conventions = saved_closure_conventions;
+        self.closure_binding_captures = saved_closure_captures;
+        self.fn_scope_closure_captures = saved_fn_scope_captures;
+        self.current_fn_param_conventions = saved_param_conventions;
     }
 
     /// Check if a method exists on a given type
     ///
-    /// Handles user-defined methods in impl blocks.
+    /// Handles user-defined methods in impl blocks and trait methods available
+    /// to types that implement the trait (directly or via a generic constraint).
     pub(super) fn method_exists_on_type(
         &self,
         type_name: &str,
@@ -1263,14 +2933,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if type_name == "Unknown" || type_name.contains("Unknown") {
             return true;
         }
+        // Strip optional marker and generic args for lookups
+        let base = type_name.trim_end_matches('?');
+        let lookup = base.split_once('<').map_or(base, |(n, _)| n);
 
         // Check if it's a struct with an impl block containing the method
-        if self.symbols.is_struct(type_name) {
+        if self.symbols.is_struct(lookup) {
             // Check impl blocks in the current file
             for statement in &file.statements {
                 if let Statement::Definition(def) = statement {
                     if let Definition::Impl(impl_def) = &**def {
-                        if impl_def.name.name == type_name {
+                        if impl_def.name.name == lookup {
+                            for func in &impl_def.functions {
+                                if func.name.name == method_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Check trait methods for traits this struct implements
+            let traits = self.symbols.get_all_traits_for_struct(lookup);
+            for trait_name in traits {
+                if let Some(info) = self.symbols.get_trait(&trait_name) {
+                    for sig in &info.methods {
+                        if sig.name.name == method_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check enum impl blocks
+        if self.symbols.get_enum_variants(lookup).is_some() {
+            for statement in &file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Impl(impl_def) = &**def {
+                        if impl_def.name.name == lookup {
                             for func in &impl_def.functions {
                                 if func.name.name == method_name {
                                     return true;
@@ -1282,6 +2983,67 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // If the receiver type is an in-scope generic parameter, look for the
+        // method on any of its trait constraints. generic_scopes is only
+        // populated during type resolution, so also fall back to scanning the
+        // current file's struct/impl definitions for a matching type parameter.
+        if let Some(constraints) = self.get_type_parameter_constraints(lookup) {
+            for trait_name in constraints {
+                if let Some(info) = self.symbols.get_trait(&trait_name) {
+                    for sig in &info.methods {
+                        if sig.name.name == method_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        if self.type_param_has_method(lookup, method_name, file) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Check whether `name` is a generic type parameter on some struct/impl/enum
+    /// in the file, and if so, whether any of its trait constraints provide
+    /// `method_name`.
+    fn type_param_has_method(&self, name: &str, method_name: &str, file: &File) -> bool {
+        use crate::ast::GenericConstraint;
+        let check_generics = |generics: &[crate::ast::GenericParam]| -> bool {
+            for gp in generics {
+                if gp.name.name != name {
+                    continue;
+                }
+                for constraint in &gp.constraints {
+                    let GenericConstraint::Trait(trait_ref) = constraint;
+                    if let Some(info) = self.symbols.get_trait(&trait_ref.name) {
+                        for sig in &info.methods {
+                            if sig.name.name == method_name {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            false
+        };
+        for stmt in &file.statements {
+            if let Statement::Definition(def) = stmt {
+                match &**def {
+                    Definition::Struct(s) if check_generics(&s.generics) => return true,
+                    Definition::Impl(i) if check_generics(&i.generics) => return true,
+                    Definition::Enum(e) if check_generics(&e.generics) => return true,
+                    Definition::Trait(t) if check_generics(&t.generics) => return true,
+                    Definition::Struct(_)
+                    | Definition::Impl(_)
+                    | Definition::Enum(_)
+                    | Definition::Trait(_)
+                    | Definition::Module(_)
+                    | Definition::Function(_) => {}
+                }
+            }
+        }
         false
     }
 }

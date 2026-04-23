@@ -90,6 +90,7 @@ impl<'a> ConstantFolder<'a> {
                 receiver,
                 method,
                 args,
+                dispatch,
                 ty,
             } => IrExpr::MethodCall {
                 receiver: Box::new(self.fold_expr(*receiver)),
@@ -98,13 +99,13 @@ impl<'a> ConstantFolder<'a> {
                     .into_iter()
                     .map(|(name, expr)| (name, self.fold_expr(expr)))
                     .collect(),
+                dispatch,
                 ty,
             },
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
-            | IrExpr::LetRef { .. }
-            | IrExpr::EventMapping { .. } => expr,
+            | IrExpr::LetRef { .. } => expr,
             IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
                 object: Box::new(self.fold_expr(*object)),
                 field,
@@ -283,8 +284,20 @@ impl<'a> ConstantFolder<'a> {
                     BinaryOperator::Le => Some(Literal::Boolean(l <= r)),
                     BinaryOperator::Gt => Some(Literal::Boolean(l > r)),
                     BinaryOperator::Ge => Some(Literal::Boolean(l >= r)),
-                    BinaryOperator::Eq => Some(Literal::Boolean((l - r).abs() < f64::EPSILON)),
-                    BinaryOperator::Ne => Some(Literal::Boolean((l - r).abs() >= f64::EPSILON)),
+                    // Use IEEE 754 semantics for equality: NaN != NaN and
+                    // +0.0 == -0.0, matching `f64::eq` and the ordering ops
+                    // above. A bit-level comparison would disagree with the
+                    // ordering operators on signed zero.
+                    #[expect(
+                        clippy::float_cmp,
+                        reason = "IEEE 754 equality is intentional for constant folding"
+                    )]
+                    BinaryOperator::Eq => Some(Literal::Boolean(*l == *r)),
+                    #[expect(
+                        clippy::float_cmp,
+                        reason = "IEEE 754 inequality is intentional for constant folding"
+                    )]
+                    BinaryOperator::Ne => Some(Literal::Boolean(*l != *r)),
                     BinaryOperator::Div
                     | BinaryOperator::Mod
                     | BinaryOperator::And
@@ -391,6 +404,11 @@ pub fn fold_constants(module: &IrModule) -> IrModule {
         for func in &mut impl_block.functions {
             func.body = func.body.take().map(|body| folder.fold_expr(body));
         }
+    }
+
+    // Fold constants in standalone functions
+    for func in &mut result.functions {
+        func.body = func.body.take().map(|body| folder.fold_expr(body));
     }
 
     // Fold constants in let bindings
@@ -714,7 +732,6 @@ mod tests {
             | IrExpr::Match { .. }
             | IrExpr::FunctionCall { .. }
             | IrExpr::MethodCall { .. }
-            | IrExpr::EventMapping { .. }
             | IrExpr::Closure { .. }
             | IrExpr::DictLiteral { .. }
             | IrExpr::DictAccess { .. }
@@ -755,5 +772,65 @@ mod tests {
             return Err(format!("Expected folded string literal, got {expr:?}").into());
         }
         Ok(())
+    }
+
+    #[test]
+    fn test_fold_float_eq_signed_zero() -> Result<(), Box<dyn std::error::Error>> {
+        // IEEE 754: +0.0 == -0.0 must fold to `true`.
+        let ir_module = IrModule::new();
+        let folder = ConstantFolder::new(&ir_module);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let expression = IrExpr::BinaryOp {
+            left: Box::new(IrExpr::Literal {
+                value: Literal::Number(0.0),
+                ty: number_ty.clone(),
+            }),
+            op: BinaryOperator::Eq,
+            right: Box::new(IrExpr::Literal {
+                value: Literal::Number(-0.0),
+                ty: number_ty,
+            }),
+            ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        };
+        let result = folder.fold_expr(expression);
+        if let IrExpr::Literal {
+            value: Literal::Boolean(true),
+            ..
+        } = result
+        {
+            Ok(())
+        } else {
+            Err(format!("Expected folded `true`, got {result:?}").into())
+        }
+    }
+
+    #[test]
+    fn test_fold_float_eq_nan() -> Result<(), Box<dyn std::error::Error>> {
+        // IEEE 754: NaN == NaN must fold to `false`.
+        let ir_module = IrModule::new();
+        let folder = ConstantFolder::new(&ir_module);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let expression = IrExpr::BinaryOp {
+            left: Box::new(IrExpr::Literal {
+                value: Literal::Number(f64::NAN),
+                ty: number_ty.clone(),
+            }),
+            op: BinaryOperator::Eq,
+            right: Box::new(IrExpr::Literal {
+                value: Literal::Number(f64::NAN),
+                ty: number_ty,
+            }),
+            ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        };
+        let result = folder.fold_expr(expression);
+        if let IrExpr::Literal {
+            value: Literal::Boolean(false),
+            ..
+        } = result
+        {
+            Ok(())
+        } else {
+            Err(format!("Expected folded `false`, got {result:?}").into())
+        }
     }
 }

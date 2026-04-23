@@ -20,8 +20,8 @@ mod type_resolution;
 mod validation;
 
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, Definition, File, Statement, Type, UseItems, UseStmt,
-    Visibility,
+    ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,
+    UseItems, UseStmt, Visibility,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -50,6 +50,19 @@ fn collect_bindings_from_pattern(pattern: &BindingPattern) -> Vec<PatternBinding
     let mut bindings = Vec::new();
     collect_bindings_recursive(pattern, &mut bindings);
     bindings
+}
+
+/// Return true if `name` is the name of a built-in primitive type.
+///
+/// Primitive names are not lexer keywords — they parse as regular identifiers
+/// and are mapped to `Type::Primitive` at type position by the parser. User
+/// definitions that reuse these names must be rejected here with
+/// `PrimitiveRedefinition` rather than silently shadowing the built-in.
+pub(crate) fn is_primitive_name(name: &str) -> bool {
+    matches!(
+        name,
+        "String" | "Number" | "Boolean" | "Path" | "Regex" | "Never"
+    )
 }
 
 fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<PatternBinding>) {
@@ -121,6 +134,54 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     closure_param_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context: (type, mutable)
     local_let_bindings: HashMap<String, (String, bool)>,
+    /// Bindings consumed by a `sink` parameter call — cannot be used after
+    consumed_bindings: HashSet<String>,
+    /// Conventions for closure-typed bindings: binding_name → param conventions in order
+    closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
+    /// Free-variable captures for closure-typed let bindings, used for
+    /// escape-aware ownership propagation.
+    ///
+    /// `binding_name` → list of outer binding names referenced from the
+    /// closure body (excluding the closure's own parameters and any bindings
+    /// introduced locally inside it).
+    ///
+    /// Model: MVS-style ownership with closure escape analysis.
+    ///
+    /// - A closure's captures are borrowed (view) as long as the closure
+    ///   stays in its defining scope — used at call sites to emit
+    ///   `UseAfterSink` when an invoked closure references a binding that has
+    ///   since been consumed by a sink parameter.
+    /// - When a closure escapes (sink-pass to function/method, struct field
+    ///   assignment, array/tuple/dict entry), ownership transfers with it:
+    ///   each captured binding is marked consumed at the escape site.
+    /// - Transitive: if closure A captures closure B and A escapes, B's
+    ///   captures are also consumed.
+    /// - Function-return escape: when a function's declared return type is
+    ///   a closure type, the returned closure's captures are validated
+    ///   against `current_fn_param_conventions`. Only `sink` parameters and
+    ///   outer-scope bindings (module-level or wider) may be captured; local
+    ///   `let` bindings and `let`/`mut` parameters would leave dangling
+    ///   captures and are rejected with
+    ///   `ClosureCaptureEscapesLocalBinding`. A `sink`-parameter capture
+    ///   that escapes is marked consumed in the function's scope.
+    ///
+    /// Not covered:
+    /// - Closures stored in arbitrary non-let places (e.g., assigned to a
+    ///   struct field after construction via field assignment); only
+    ///   construction-site field assignment is tracked.
+    pub(super) closure_binding_captures: HashMap<String, Vec<String>>,
+    /// All closure-binding captures created anywhere in the currently-validating
+    /// function body, flat across nested block scopes. Cleared at function
+    /// entry/exit. Used by the function-return escape check to classify captures
+    /// when a named closure binding is returned (see validate_function_return_escape).
+    pub(super) fn_scope_closure_captures: HashMap<String, Vec<String>>,
+    /// Parameter conventions for the currently-validated function body.
+    ///
+    /// Populated on entry to a function body and cleared on exit. Used by the
+    /// return-escape check to distinguish `sink` parameters (ownership
+    /// transfers into a returned closure) from `let`/`mut` parameters (views
+    /// that cannot escape) and from function-local `let` bindings.
+    pub(super) current_fn_param_conventions: HashMap<String, ParamConvention>,
     /// Recursion depth counter for `validate_expr` (to prevent stack overflow)
     validate_expr_depth: usize,
 }
@@ -149,6 +210,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
+            consumed_bindings: HashSet::new(),
+            closure_binding_conventions: HashMap::new(),
+            closure_binding_captures: HashMap::new(),
+            fn_scope_closure_captures: HashMap::new(),
+            current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -168,6 +234,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             loop_var_scopes: Vec::new(),
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
+            consumed_bindings: HashSet::new(),
+            closure_binding_conventions: HashMap::new(),
+            closure_binding_captures: HashMap::new(),
+            fn_scope_closure_captures: HashMap::new(),
+            current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
         }
     }
@@ -397,6 +468,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } else if let Statement::Let(let_binding) = statement {
                 // Register all bindings from the pattern (simple, array, struct, tuple)
                 for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                    if is_primitive_name(&binding.name) {
+                        module_errors.push(CompilerError::PrimitiveRedefinition {
+                            name: binding.name.clone(),
+                            span: binding.span,
+                        });
+                        continue;
+                    }
                     if let Some((kind, _)) = module_symbols.define_let(
                         binding.name.clone(),
                         let_binding.visibility,
@@ -535,6 +613,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             module_symbols,
             &imported_module_path,
             &path_segments,
+            module_errors,
+            use_stmt.span,
         );
     }
 
@@ -545,53 +625,80 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         target_symbols: &mut SymbolTable,
         module_path: &std::path::Path,
         path_segments: &[String],
+        errors: &mut Vec<CompilerError>,
+        use_span: Span,
     ) {
+        let module_name = path_segments.join("::");
         match items {
             UseItems::Single(ident) => {
-                Self::reexport_symbol(
+                if let Err(e) = target_symbols.import_symbol(
                     &ident.name,
                     source_symbols,
-                    target_symbols,
                     module_path.to_path_buf(),
                     path_segments.to_vec(),
-                );
+                ) {
+                    errors.push(Self::reexport_error_to_compiler_error(
+                        e,
+                        &module_name,
+                        ident.span,
+                    ));
+                }
             }
             UseItems::Multiple(idents) => {
                 for ident in idents {
-                    Self::reexport_symbol(
+                    if let Err(e) = target_symbols.import_symbol(
                         &ident.name,
                         source_symbols,
-                        target_symbols,
                         module_path.to_path_buf(),
                         path_segments.to_vec(),
-                    );
+                    ) {
+                        errors.push(Self::reexport_error_to_compiler_error(
+                            e,
+                            &module_name,
+                            ident.span,
+                        ));
+                    }
                 }
             }
             UseItems::Glob => {
+                // Glob imports iterate over all public symbols of the source module.
+                // Since `all_public_symbols()` only returns pub-visible names, these
+                // imports should never fail. If one does, surface the error rather
+                // than silently swallowing it so invariant violations are detectable.
                 for name in source_symbols.all_public_symbols() {
-                    Self::reexport_symbol(
+                    if let Err(e) = target_symbols.import_symbol(
                         &name,
                         source_symbols,
-                        target_symbols,
                         module_path.to_path_buf(),
                         path_segments.to_vec(),
-                    );
+                    ) {
+                        errors.push(Self::reexport_error_to_compiler_error(
+                            e,
+                            &module_name,
+                            use_span,
+                        ));
+                    }
                 }
             }
         }
     }
 
-    /// Re-export a symbol from one module into another module's symbol table
-    fn reexport_symbol(
-        name: &str,
-        source_symbols: &SymbolTable,
-        target_symbols: &mut SymbolTable,
-        module_path: PathBuf,
-        logical_path: Vec<String>,
-    ) {
-        // Import the symbol into the target symbol table with public visibility
-        // This makes it available for further re-export
-        let _ = target_symbols.import_symbol(name, source_symbols, module_path, logical_path);
+    fn reexport_error_to_compiler_error(
+        err: crate::semantic::symbol_table::ImportError,
+        module_name: &str,
+        span: crate::location::Span,
+    ) -> CompilerError {
+        match err {
+            crate::semantic::symbol_table::ImportError::PrivateItem { name, .. }
+            | crate::semantic::symbol_table::ImportError::ItemNotFound { name, .. } => {
+                CompilerError::ImportItemNotFound {
+                    item: name,
+                    module: module_name.to_string(),
+                    available: String::new(),
+                    span,
+                }
+            }
+        }
     }
 
     /// Helper to collect a definition into a symbol table (static version for module parsing)
@@ -619,33 +726,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Function(func_def) => {
                 Self::collect_function_into(symbols, errors, func_def);
             }
-            Definition::ExternType(extern_type_def) => {
-                Self::collect_extern_type_into(symbols, errors, extern_type_def);
-            }
-        }
-    }
-
-    fn collect_extern_type_into(
-        symbols: &mut SymbolTable,
-        errors: &mut Vec<CompilerError>,
-        extern_type_def: &crate::ast::ExternTypeDef,
-    ) {
-        if let Some((kind, _)) = symbols.define_struct(
-            extern_type_def.name.name.clone(),
-            extern_type_def.visibility,
-            extern_type_def.span,
-            extern_type_def.generics.clone(),
-            vec![],
-            true,
-        ) {
-            errors.push(CompilerError::DuplicateDefinition {
-                name: format!(
-                    "{} (already defined as {})",
-                    extern_type_def.name.name,
-                    kind.as_str()
-                ),
-                span: extern_type_def.name.span,
-            });
         }
     }
 
@@ -654,6 +734,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         trait_def: &crate::ast::TraitDef,
     ) {
+        if is_primitive_name(&trait_def.name.name) {
+            errors.push(CompilerError::PrimitiveRedefinition {
+                name: trait_def.name.name.clone(),
+                span: trait_def.name.span,
+            });
+            return;
+        }
+
         let fields: HashMap<String, Type> = trait_def
             .fields
             .iter()
@@ -688,6 +776,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         struct_def: &crate::ast::StructDef,
     ) {
         use symbol_table::FieldInfo;
+
+        if is_primitive_name(&struct_def.name.name) {
+            errors.push(CompilerError::PrimitiveRedefinition {
+                name: struct_def.name.name.clone(),
+                span: struct_def.name.span,
+            });
+            return;
+        }
+
         let fields: Vec<FieldInfo> = struct_def
             .fields
             .iter()
@@ -703,7 +800,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
-            false,
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -761,6 +857,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         enum_def: &crate::ast::EnumDef,
     ) {
+        if is_primitive_name(&enum_def.name.name) {
+            errors.push(CompilerError::PrimitiveRedefinition {
+                name: enum_def.name.name.clone(),
+                span: enum_def.name.span,
+            });
+            return;
+        }
+
         let variants = enum_def
             .variants
             .iter()
@@ -818,10 +922,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func_def: &crate::ast::FunctionDef,
     ) {
         use symbol_table::ParamInfo;
+
+        if is_primitive_name(&func_def.name.name) {
+            errors.push(CompilerError::PrimitiveRedefinition {
+                name: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+            return;
+        }
+
         let params: Vec<ParamInfo> = func_def
             .params
             .iter()
             .map(|p| ParamInfo {
+                convention: p.convention,
                 external_label: p.external_label.clone(),
                 name: p.name.clone(),
                 ty: p.ty.clone(),
@@ -834,6 +948,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
+            vec![],
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -971,7 +1086,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::ExternType(extern_type_def) => &extern_type_def.generics,
                     Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
                 };
 
@@ -1031,6 +1145,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Statement::Let(let_binding) => {
                     // Register all bindings from the pattern (simple, array, struct, tuple)
                     for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                        if is_primitive_name(&binding.name) {
+                            self.errors.push(CompilerError::PrimitiveRedefinition {
+                                name: binding.name.clone(),
+                                span: binding.span,
+                            });
+                            continue;
+                        }
                         if let Some((kind, _)) = self.symbols.define_let(
                             binding.name.clone(),
                             let_binding.visibility,
@@ -1063,17 +1184,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Enum(enum_def) => self.collect_definition_enum(enum_def),
             Definition::Module(module_def) => self.collect_definition_module(module_def),
             Definition::Function(func_def) => self.collect_definition_function(func_def),
-            Definition::ExternType(extern_type_def) => {
-                Self::collect_extern_type_into(
-                    &mut self.symbols,
-                    &mut self.errors,
-                    extern_type_def,
-                );
-            }
         }
     }
 
     fn collect_definition_trait(&mut self, trait_def: &crate::ast::TraitDef) {
+        if is_primitive_name(&trait_def.name.name) {
+            self.errors.push(CompilerError::PrimitiveRedefinition {
+                name: trait_def.name.name.clone(),
+                span: trait_def.name.span,
+            });
+            return;
+        }
+
         let fields: HashMap<String, Type> = trait_def
             .fields
             .iter()
@@ -1104,6 +1226,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     fn collect_definition_struct(&mut self, struct_def: &crate::ast::StructDef) {
         use symbol_table::FieldInfo;
+
+        if is_primitive_name(&struct_def.name.name) {
+            self.errors.push(CompilerError::PrimitiveRedefinition {
+                name: struct_def.name.name.clone(),
+                span: struct_def.name.span,
+            });
+            return;
+        }
+
         let fields: Vec<FieldInfo> = struct_def
             .fields
             .iter()
@@ -1119,7 +1250,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
-            false,
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1212,6 +1342,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn collect_definition_enum(&mut self, enum_def: &crate::ast::EnumDef) {
+        if is_primitive_name(&enum_def.name.name) {
+            self.errors.push(CompilerError::PrimitiveRedefinition {
+                name: enum_def.name.name.clone(),
+                span: enum_def.name.span,
+            });
+            return;
+        }
+
         let mut seen_variants = std::collections::HashSet::new();
         for variant in &enum_def.variants {
             if !seen_variants.insert(&variant.name.name) {
@@ -1274,10 +1412,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     fn collect_definition_function(&mut self, func_def: &crate::ast::FunctionDef) {
         use symbol_table::ParamInfo;
+
+        if is_primitive_name(&func_def.name.name) {
+            self.errors.push(CompilerError::PrimitiveRedefinition {
+                name: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+            return;
+        }
+
         let params: Vec<ParamInfo> = func_def
             .params
             .iter()
             .map(|p| ParamInfo {
+                convention: p.convention,
                 external_label: p.external_label.clone(),
                 name: p.name.clone(),
                 ty: p.ty.clone(),
@@ -1290,6 +1438,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
+            vec![],
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(

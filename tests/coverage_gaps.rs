@@ -584,13 +584,13 @@ fn test_default_array() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Extern Type Field Tests
+// Struct-typed Field Tests (types are normal structs, no extern type)
 // =============================================================================
 
 #[test]
 fn test_extern_field_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern type Content
+        struct Content {}
         struct Container {
             content: Content
         }
@@ -602,7 +602,7 @@ fn test_extern_field_basic() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_extern_field_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern type Item
+        struct Item {}
         struct List {
             items: [Item]
         }
@@ -614,7 +614,7 @@ fn test_extern_field_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_extern_field_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern type Footer
+        struct Footer {}
         struct Card {
             footer: Footer?
         }

@@ -13,6 +13,7 @@ impl IrLowerer<'_> {
             "Boolean" => ResolvedType::Primitive(PrimitiveType::Boolean),
             "Path" => ResolvedType::Primitive(PrimitiveType::Path),
             "Regex" => ResolvedType::Primitive(PrimitiveType::Regex),
+            "Never" => ResolvedType::Primitive(PrimitiveType::Never),
             name => self.module.struct_id(name).map_or_else(
                 || {
                     self.module.enum_id(name).map_or_else(

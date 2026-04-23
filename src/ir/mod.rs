@@ -34,7 +34,7 @@ mod visitor;
 pub use dce::{
     eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
 };
-pub use expr::{EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm};
+pub use expr::{DispatchKind, IrBlockStatement, IrExpr, IrMatchArm};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
 pub use types::{
@@ -48,7 +48,7 @@ pub use visitor::{
 
 use std::collections::HashMap;
 
-use crate::ast::{PrimitiveType, Visibility};
+use crate::ast::{ParamConvention, PrimitiveType, Visibility};
 use crate::error::CompilerError;
 use crate::location::Span;
 
@@ -127,6 +127,18 @@ pub struct EnumId(pub u32);
 )]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FunctionId(pub u32);
+
+/// ID for referencing impl blocks.
+///
+/// Use this to look up impl blocks in [`IrModule::impls`]. Impl IDs are
+/// stable for the lifetime of an `IrModule` as long as the `impls` vector
+/// is not reordered.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct ImplId(pub u32);
 
 /// Kind of external type reference.
 ///
@@ -256,17 +268,6 @@ pub enum ResolvedType {
         type_args: Vec<Self>,
     },
 
-    /// Event mapping type: `() -> E` or `T -> E`
-    ///
-    /// Represents a restricted closure that maps input to an enum variant.
-    /// Used for event handlers like `onChange: x -> .valueChanged(value: x)`.
-    EventMapping {
-        /// Parameter type (None for `() -> E`)
-        param_ty: Option<Box<Self>>,
-        /// Return type (the event enum type)
-        return_ty: Box<Self>,
-    },
-
     /// Dictionary type: `[K: V]`
     ///
     /// Maps keys of type K to values of type V.
@@ -279,12 +280,11 @@ pub enum ResolvedType {
 
     /// Closure/function type: `(T1, T2) -> R`
     ///
-    /// Represents a general closure type with multiple parameters.
-    /// Unlike `EventMapping` which is restricted to enum variant returns,
-    /// this represents arbitrary pure functions.
+    /// Represents a general closure type with multiple parameters for
+    /// arbitrary pure functions.
     Closure {
-        /// Parameter types
-        param_tys: Vec<Self>,
+        /// Parameter conventions and types
+        param_tys: Vec<(ParamConvention, Self)>,
         /// Return type
         return_ty: Box<Self>,
     },
@@ -622,15 +622,6 @@ impl ResolvedType {
                     format!("{}<{}>", name, args_str.join(", "))
                 }
             }
-            Self::EventMapping {
-                param_ty,
-                return_ty,
-            } => {
-                let param_str = param_ty
-                    .as_ref()
-                    .map_or_else(|| "()".to_string(), |ty| ty.display_name(module));
-                format!("{} -> {}", param_str, return_ty.display_name(module))
-            }
             Self::Dictionary { key_ty, value_ty } => {
                 format!(
                     "[{}: {}]",
@@ -642,7 +633,10 @@ impl ResolvedType {
                 param_tys,
                 return_ty,
             } => {
-                let params_str: Vec<_> = param_tys.iter().map(|t| t.display_name(module)).collect();
+                let params_str: Vec<_> = param_tys
+                    .iter()
+                    .map(|(_, t)| t.display_name(module))
+                    .collect();
                 format!(
                     "({}) -> {}",
                     params_str.join(", "),

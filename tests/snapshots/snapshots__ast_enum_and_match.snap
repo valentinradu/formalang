@@ -1,0 +1,476 @@
+---
+source: tests/snapshots.rs
+expression: file
+---
+File {
+    format_version: 1,
+    statements: [
+        Definition(
+            Enum(
+                EnumDef {
+                    visibility: Private,
+                    name: Ident {
+                        name: "Status",
+                        span: Span {
+                            start: Location {
+                                offset: 14,
+                                line: 2,
+                                column: 14,
+                            },
+                            end: Location {
+                                offset: 20,
+                                line: 2,
+                                column: 20,
+                            },
+                        },
+                    },
+                    generics: [],
+                    variants: [
+                        EnumVariant {
+                            name: Ident {
+                                name: "active",
+                                span: Span {
+                                    start: Location {
+                                        offset: 23,
+                                        line: 2,
+                                        column: 23,
+                                    },
+                                    end: Location {
+                                        offset: 29,
+                                        line: 2,
+                                        column: 29,
+                                    },
+                                },
+                            },
+                            fields: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 23,
+                                    line: 2,
+                                    column: 23,
+                                },
+                                end: Location {
+                                    offset: 29,
+                                    line: 2,
+                                    column: 29,
+                                },
+                            },
+                        },
+                        EnumVariant {
+                            name: Ident {
+                                name: "inactive",
+                                span: Span {
+                                    start: Location {
+                                        offset: 31,
+                                        line: 2,
+                                        column: 31,
+                                    },
+                                    end: Location {
+                                        offset: 39,
+                                        line: 2,
+                                        column: 39,
+                                    },
+                                },
+                            },
+                            fields: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 31,
+                                    line: 2,
+                                    column: 31,
+                                },
+                                end: Location {
+                                    offset: 39,
+                                    line: 2,
+                                    column: 39,
+                                },
+                            },
+                        },
+                        EnumVariant {
+                            name: Ident {
+                                name: "pending",
+                                span: Span {
+                                    start: Location {
+                                        offset: 41,
+                                        line: 2,
+                                        column: 41,
+                                    },
+                                    end: Location {
+                                        offset: 48,
+                                        line: 2,
+                                        column: 48,
+                                    },
+                                },
+                            },
+                            fields: [
+                                FieldDef {
+                                    mutable: false,
+                                    name: Ident {
+                                        name: "since",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 49,
+                                                line: 2,
+                                                column: 49,
+                                            },
+                                            end: Location {
+                                                offset: 54,
+                                                line: 2,
+                                                column: 54,
+                                            },
+                                        },
+                                    },
+                                    ty: Primitive(
+                                        Number,
+                                    ),
+                                    span: Span {
+                                        start: Location {
+                                            offset: 49,
+                                            line: 2,
+                                            column: 49,
+                                        },
+                                        end: Location {
+                                            offset: 62,
+                                            line: 2,
+                                            column: 62,
+                                        },
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: Location {
+                                    offset: 41,
+                                    line: 2,
+                                    column: 41,
+                                },
+                                end: Location {
+                                    offset: 63,
+                                    line: 2,
+                                    column: 63,
+                                },
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: Location {
+                            offset: 9,
+                            line: 2,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 65,
+                            line: 2,
+                            column: 65,
+                        },
+                    },
+                },
+            ),
+        ),
+        Definition(
+            Function(
+                FunctionDef {
+                    visibility: Public,
+                    name: Ident {
+                        name: "label",
+                        span: Span {
+                            start: Location {
+                                offset: 82,
+                                line: 4,
+                                column: 16,
+                            },
+                            end: Location {
+                                offset: 87,
+                                line: 4,
+                                column: 21,
+                            },
+                        },
+                    },
+                    params: [
+                        FnParam {
+                            convention: Let,
+                            external_label: None,
+                            name: Ident {
+                                name: "s",
+                                span: Span {
+                                    start: Location {
+                                        offset: 88,
+                                        line: 4,
+                                        column: 22,
+                                    },
+                                    end: Location {
+                                        offset: 89,
+                                        line: 4,
+                                        column: 23,
+                                    },
+                                },
+                            },
+                            ty: Some(
+                                Ident(
+                                    Ident {
+                                        name: "Status",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 91,
+                                                line: 4,
+                                                column: 25,
+                                            },
+                                            end: Location {
+                                                offset: 97,
+                                                line: 4,
+                                                column: 31,
+                                            },
+                                        },
+                                    },
+                                ),
+                            ),
+                            default: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 88,
+                                    line: 4,
+                                    column: 22,
+                                },
+                                end: Location {
+                                    offset: 97,
+                                    line: 4,
+                                    column: 31,
+                                },
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Number,
+                        ),
+                    ),
+                    body: Some(
+                        MatchExpr {
+                            scrutinee: Reference {
+                                path: [
+                                    Ident {
+                                        name: "s",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 129,
+                                                line: 5,
+                                                column: 19,
+                                            },
+                                            end: Location {
+                                                offset: 130,
+                                                line: 5,
+                                                column: 20,
+                                            },
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: Location {
+                                        offset: 129,
+                                        line: 5,
+                                        column: 19,
+                                    },
+                                    end: Location {
+                                        offset: 130,
+                                        line: 5,
+                                        column: 20,
+                                    },
+                                },
+                            },
+                            arms: [
+                                MatchArm {
+                                    pattern: Variant {
+                                        name: Ident {
+                                            name: "active",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 150,
+                                                    line: 6,
+                                                    column: 18,
+                                                },
+                                                end: Location {
+                                                    offset: 156,
+                                                    line: 6,
+                                                    column: 24,
+                                                },
+                                            },
+                                        },
+                                        bindings: [],
+                                    },
+                                    body: Literal(
+                                        Number(
+                                            1.0,
+                                        ),
+                                    ),
+                                    span: Span {
+                                        start: Location {
+                                            offset: 149,
+                                            line: 6,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 159,
+                                            line: 6,
+                                            column: 27,
+                                        },
+                                    },
+                                },
+                                MatchArm {
+                                    pattern: Variant {
+                                        name: Ident {
+                                            name: "inactive",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 178,
+                                                    line: 7,
+                                                    column: 18,
+                                                },
+                                                end: Location {
+                                                    offset: 186,
+                                                    line: 7,
+                                                    column: 26,
+                                                },
+                                            },
+                                        },
+                                        bindings: [],
+                                    },
+                                    body: Literal(
+                                        Number(
+                                            0.0,
+                                        ),
+                                    ),
+                                    span: Span {
+                                        start: Location {
+                                            offset: 177,
+                                            line: 7,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 189,
+                                            line: 7,
+                                            column: 29,
+                                        },
+                                    },
+                                },
+                                MatchArm {
+                                    pattern: Variant {
+                                        name: Ident {
+                                            name: "pending",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 208,
+                                                    line: 8,
+                                                    column: 18,
+                                                },
+                                                end: Location {
+                                                    offset: 215,
+                                                    line: 8,
+                                                    column: 25,
+                                                },
+                                            },
+                                        },
+                                        bindings: [
+                                            Ident {
+                                                name: "since",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 216,
+                                                        line: 8,
+                                                        column: 26,
+                                                    },
+                                                    end: Location {
+                                                        offset: 221,
+                                                        line: 8,
+                                                        column: 31,
+                                                    },
+                                                },
+                                            },
+                                        ],
+                                    },
+                                    body: Reference {
+                                        path: [
+                                            Ident {
+                                                name: "since",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 224,
+                                                        line: 8,
+                                                        column: 34,
+                                                    },
+                                                    end: Location {
+                                                        offset: 229,
+                                                        line: 8,
+                                                        column: 39,
+                                                    },
+                                                },
+                                            },
+                                        ],
+                                        span: Span {
+                                            start: Location {
+                                                offset: 224,
+                                                line: 8,
+                                                column: 34,
+                                            },
+                                            end: Location {
+                                                offset: 229,
+                                                line: 8,
+                                                column: 39,
+                                            },
+                                        },
+                                    },
+                                    span: Span {
+                                        start: Location {
+                                            offset: 207,
+                                            line: 8,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 229,
+                                            line: 8,
+                                            column: 39,
+                                        },
+                                    },
+                                },
+                            ],
+                            span: Span {
+                                start: Location {
+                                    offset: 123,
+                                    line: 5,
+                                    column: 13,
+                                },
+                                end: Location {
+                                    offset: 243,
+                                    line: 9,
+                                    column: 14,
+                                },
+                            },
+                        },
+                    ),
+                    span: Span {
+                        start: Location {
+                            offset: 75,
+                            line: 4,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 253,
+                            line: 10,
+                            column: 10,
+                        },
+                    },
+                },
+            ),
+        ),
+    ],
+    span: Span {
+        start: Location {
+            offset: 9,
+            line: 0,
+            column: 0,
+        },
+        end: Location {
+            offset: 253,
+            line: 0,
+            column: 0,
+        },
+    },
+}

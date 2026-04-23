@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Last Updated**: 2026-04-14
+**Last Updated**: 2026-04-22
 
 ## Design
 
@@ -24,7 +24,7 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 
 - **Lexer**: Tokenizes source with `logos`
 - **Parser**: Builds AST from tokens with `chumsky` (Pratt precedence)
-- **Semantic Analyzer**: 6-pass validation; builds symbol table, resolves
+- **Semantic Analyzer**: 5-pass validation; builds symbol table, resolves
   types, validates traits, detects cycles
 - **IR Lowering**: Converts the validated AST + symbol table into a
   fully type-resolved `IrModule`
@@ -51,7 +51,8 @@ IrModule → [IrPass, IrPass, ...] → IrModule → Backend → Output
 ```
 
 - **`IrPass`**: Takes ownership of `IrModule`, transforms it, returns
-  a new `IrModule`. Use for optimization, specialization, or lowering.
+  `Result<IrModule, Vec<CompilerError>>`. Use for optimization, specialization,
+  or lowering. A failing pass aborts the pipeline and returns its errors.
 - **`Backend`**: Borrows an `IrModule`, produces any `Output` type.
   Use for code generation.
 - **`Pipeline`**: Chains passes with `.pass(...)` and drives a backend

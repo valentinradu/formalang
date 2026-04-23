@@ -510,23 +510,6 @@ fn test_error_display_undefined_reference_again() -> Result<(), Box<dyn std::err
 }
 
 #[test]
-fn test_error_display_unknown_property() -> Result<(), Box<dyn std::error::Error>> {
-    let error = CompilerError::UnknownProperty {
-        component: "Button".to_string(),
-        property: "invalid_prop".to_string(),
-        span: Span::default(),
-    };
-    let display = format!("{error}");
-    if !(display.contains("invalid_prop") || display.contains("property")) {
-        return Err(format!(
-            "expected display to contain 'invalid_prop' or 'property', got: {display}"
-        )
-        .into());
-    }
-    Ok(())
-}
-
-#[test]
 fn test_error_display_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let error = CompilerError::TraitFieldTypeMismatch {
         field: "value".to_string(),
@@ -1067,23 +1050,6 @@ fn test_report_error_undefined_reference() -> Result<(), Box<dyn std::error::Err
     if !(report.contains("unknown_var") || report.contains("E999")) {
         return Err(
             format!("expected report to contain 'unknown_var' or 'E999', got: {report}").into(),
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn test_report_error_unknown_property() -> Result<(), Box<dyn std::error::Error>> {
-    let error = CompilerError::UnknownProperty {
-        component: "Button".to_string(),
-        property: "invalid".to_string(),
-        span: Span::default(),
-    };
-    let source = "Button { invalid: true }";
-    let report = report_error(&error, source, "test.fv");
-    if !(report.contains("invalid") || report.contains("E999")) {
-        return Err(
-            format!("expected report to contain 'invalid' or 'E999', got: {report}").into(),
         );
     }
     Ok(())

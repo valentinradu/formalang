@@ -65,9 +65,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Enum(_)
                     | Definition::Impl(_)
                     | Definition::Module(_)
-                    | Definition::Function(_)
-                    | Definition::ExternType(_) => {
-                        // Enums, impl blocks, modules, standalone functions, and extern types
+                    | Definition::Function(_) => {
+                        // Enums, impl blocks, modules, and standalone functions
                         // don't create type dependencies directly
                     }
                 }
@@ -246,7 +245,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::MethodCall { receiver, args, .. } => {
                 self.collect_let_references(receiver, refs);
-                for arg in args {
+                for (_, arg) in args {
                     self.collect_let_references(arg, refs);
                 }
             }

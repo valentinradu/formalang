@@ -1,6 +1,6 @@
 # AST Reference
 
-**Last Updated**: 2026-04-14
+**Last Updated**: 2026-04-22
 
 This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
 
@@ -124,7 +124,6 @@ pub enum Definition {
     Enum(EnumDef),
     Module(ModuleDef),
     Function(Box<FunctionDef>),
-    ExternType(ExternTypeDef),
 }
 ```
 
@@ -273,16 +272,52 @@ pub struct FnSig {
 }
 ```
 
+#### ParamConvention
+
+Controls how a parameter receives its argument (Mutable Value Semantics).
+
+```rust
+#[non_exhaustive]
+#[derive(Default)]
+pub enum ParamConvention {
+    #[default]
+    Let,   // Immutable reference — the callee cannot mutate the value
+    Mut,   // Exclusive mutable access — callee may mutate the value
+    Sink,  // Ownership transfer — the binding is consumed at the call site
+}
+```
+
+Syntax summary (`Let` is the Rust enum variant name — there is no `let` keyword in FormaLang parameter position):
+
+| Variant | FormaLang parameter syntax | Meaning                              |
+|---------|----------------------------|--------------------------------------|
+| `Let`   | `fn f(x: T)` (no keyword)  | Default; callee reads the value      |
+| `Mut`   | `fn f(mut x: T)`           | Callee may mutate; arg must be `mut` |
+| `Sink`  | `fn f(sink x: T)`          | Callee owns the value; arg is moved  |
+
+All three use the same call syntax: `f(x)`. There is no annotation at the call site.
+
+Semantic rules enforced during validation:
+
+- A `Mut` parameter requires that the argument binding is declared `let mut` (or is another `mut`/`sink` parameter). Passing an immutable binding produces `MutabilityMismatch`.
+- A `Sink` parameter consumes the argument binding. Any subsequent use of that binding produces `UseAfterSink`.
+
+`self` parameters follow the same conventions: `fn f(self)`, `fn f(mut self)`, `fn f(sink self)`.
+
 #### FnParam
 
 ```rust
 pub struct FnParam {
+    pub convention: ParamConvention, // Let (default), Mut, or Sink
+    pub external_label: Option<Ident>, // External call-site label (e.g., `to` in `fn send(to name: String)`)
     pub name: Ident,
-    pub ty: Option<Type>,      // None for `self` parameter
-    pub default: Option<Expr>, // Default value expression
+    pub ty: Option<Type>,            // None for bare `self` parameter
+    pub default: Option<Expr>,       // Default value expression
     pub span: Span,
 }
 ```
+
+`external_label` mirrors Swift's argument-label convention: `fn send(to recipient: String)` creates a parameter whose external label is `to` and whose internal name is `recipient`. Callers write `send(to: "Alice")`. When `external_label` is `None`, the internal `name` is used at the call site.
 
 ### Standalone Functions
 
@@ -293,19 +328,6 @@ pub struct FunctionDef {
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     pub body: Option<Expr>,    // None for `extern fn` declarations
-    pub span: Span,
-}
-```
-
-### Extern Type Declarations
-
-Opaque types provided by the host runtime.
-
-```rust
-pub struct ExternTypeDef {
-    pub visibility: Visibility,
-    pub name: Ident,
-    pub generics: Vec<GenericParam>,
     pub span: Span,
 }
 ```
@@ -387,9 +409,9 @@ pub enum Type {
         key: Box<Type>,
         value: Box<Type>,
     },
-    Closure {                        // (T1, T2) -> R
-        params: Vec<Type>,
-        return_type: Box<Type>,
+    Closure {                        // (T1, T2) -> R, with optional mut/sink per param
+        params: Vec<(ParamConvention, Type)>,
+        ret: Box<Type>,
     },
     Never,                           // Never type (!)
     TypeParameter(Ident),            // Reference to type parameter
@@ -567,11 +589,14 @@ pub enum BlockStatement {
 
 ```rust
 pub struct ClosureParam {
+    pub convention: ParamConvention,  // Let (default), Mut, or Sink
     pub name: Ident,
     pub ty: Option<Type>,
     pub span: Span,
 }
 ```
+
+`convention` on a `ClosureParam` constrains the **caller of the closure**, not the closure itself. `Sink` means the caller gives up the argument on each invocation; `Mut` means the caller must pass a mutable binding.
 
 #### Literal
 
@@ -868,12 +893,12 @@ File
         └── functions:
             ├── [0] FnDef
             │   ├── name: "increment"
-            │   ├── params: [FnParam { name: "self", ty: None }]
+            │   ├── params: [FnParam { convention: Let, external_label: None, name: "self", ty: None }]
             │   ├── return_type: Some(Type::Primitive(Number))
             │   └── body: Expr::BinaryOp { ... }
             └── [1] FnDef
                 ├── name: "display"
-                ├── params: [FnParam { name: "self", ty: None }]
+                ├── params: [FnParam { convention: Let, external_label: None, name: "self", ty: None }]
                 ├── return_type: Some(Type::Primitive(String))
                 └── body: Expr::IfExpr { ... }
 ```
@@ -995,19 +1020,28 @@ Expr::ForExpr
 
 ```formalang
 let add = |x: Number, y: Number| x + y
+let scale: mut Number -> Number = mut n -> n
 ```
 
 **AST structure:**
 
 ```text
-Statement::Let
+Statement::Let                          // let add = ...
 ├── pattern: BindingPattern::Simple("add")
 └── value: Expr::ClosureExpr
     ├── params:
-    │   ├── [0] ClosureParam { name: "x", ty: Some(Number) }
-    │   └── [1] ClosureParam { name: "y", ty: Some(Number) }
-    └── body: Expr::BinaryOp
-        ├── left: Expr::Reference { path: ["x"] }
-        ├── op: Add
-        └── right: Expr::Reference { path: ["y"] }
+    │   ├── [0] ClosureParam { convention: Let, name: "x", ty: Some(Number) }
+    │   └── [1] ClosureParam { convention: Let, name: "y", ty: Some(Number) }
+    └── body: Expr::BinaryOp { op: Add, ... }
+
+Statement::Let                          // let scale: mut Number -> Number = ...
+├── pattern: BindingPattern::Simple("scale")
+├── type_annotation: Some(Type::Closure {
+│       params: [(Mut, Number)],
+│       ret: Number
+│   })
+└── value: Expr::ClosureExpr
+    ├── params:
+    │   └── [0] ClosureParam { convention: Mut, name: "n", ty: None }
+    └── body: Expr::Reference { path: ["n"] }
 ```

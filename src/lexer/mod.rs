@@ -2,6 +2,7 @@ mod token;
 
 pub use token::{parse_regex, Token};
 
+use crate::error::CompilerError;
 use crate::location::Span;
 use logos::Logos;
 
@@ -9,6 +10,10 @@ use logos::Logos;
 #[derive(Debug)]
 pub struct Lexer<'source> {
     lexer: logos::Lexer<'source, Token>,
+    source: &'source str,
+    /// Errors accumulated during lexing. Each malformed token is reported, and
+    /// the lexer continues scanning rather than silently dropping it.
+    errors: Vec<CompilerError>,
 }
 
 impl<'source> Lexer<'source> {
@@ -16,21 +21,54 @@ impl<'source> Lexer<'source> {
     pub fn new(source: &'source str) -> Self {
         Self {
             lexer: Token::lexer(source),
+            source,
+            errors: Vec::new(),
         }
     }
 
-    /// Get the next token with its span
+    /// Get the next token with its span.
+    ///
+    /// On a lexer error, records a [`CompilerError`] and continues scanning.
     pub fn next_token(&mut self) -> Option<(Token, Span)> {
-        let token = self.lexer.next()?;
-        let span = self.lexer.span();
-        let span = Span::from_range(span.start, span.end);
+        loop {
+            let token = self.lexer.next()?;
+            let range = self.lexer.span();
+            let span = Span::from_range(range.start, range.end);
 
-        match token {
-            Ok(tok) => Some((tok, span)),
-            Err(()) => {
-                // Lexer error - skip this token and continue
-                self.next_token()
+            match token {
+                Ok(tok) => return Some((tok, span)),
+                Err(()) => {
+                    self.errors
+                        .push(Self::classify_error(self.source, range.start, range.end));
+                    // Continue and return the next successful token.
+                }
             }
+        }
+    }
+
+    /// Classify a lexer error span into a specific [`CompilerError`] variant.
+    ///
+    /// This inspects the offending source slice and distinguishes between:
+    /// - [`CompilerError::UnterminatedString`] — a `"` that never closes,
+    /// - [`CompilerError::InvalidNumber`] — a digit-led slice that is not a valid numeric literal,
+    /// - [`CompilerError::InvalidCharacter`] — anything else (default fall-back).
+    fn classify_error(source: &str, start: usize, end: usize) -> CompilerError {
+        let span = Span::from_range(start, end);
+        let slice = source.get(start..end).unwrap_or_default();
+
+        let first = slice.chars().next();
+
+        match first {
+            Some('"') => CompilerError::UnterminatedString { span },
+            Some(c) if c.is_ascii_digit() => CompilerError::InvalidNumber {
+                value: slice.to_string(),
+                span,
+            },
+            Some(c) => CompilerError::InvalidCharacter { character: c, span },
+            None => CompilerError::InvalidCharacter {
+                character: '\u{0}',
+                span,
+            },
         }
     }
 
@@ -41,9 +79,25 @@ impl<'source> Lexer<'source> {
         Span::from_range(range.start, range.end)
     }
 
-    /// Tokenize entire source (useful for testing and debugging)
+    /// Take accumulated errors, leaving the lexer's error list empty.
+    pub fn take_errors(&mut self) -> Vec<CompilerError> {
+        std::mem::take(&mut self.errors)
+    }
+
+    /// Tokenize entire source (useful for testing and debugging).
+    ///
+    /// Lexer errors are silently dropped; use [`tokenize_all_with_errors`](Self::tokenize_all_with_errors)
+    /// to recover them.
     #[must_use]
     pub fn tokenize_all(source: &'source str) -> Vec<(Token, Span)> {
+        Self::tokenize_all_with_errors(source).0
+    }
+
+    /// Tokenize entire source, returning both tokens and accumulated errors.
+    #[must_use]
+    pub fn tokenize_all_with_errors(
+        source: &'source str,
+    ) -> (Vec<(Token, Span)>, Vec<CompilerError>) {
         let mut lexer = Self::new(source);
         let mut tokens = Vec::new();
 
@@ -56,6 +110,34 @@ impl<'source> Lexer<'source> {
             tokens.push((token, span));
         }
 
-        tokens
+        let errors = lexer
+            .take_errors()
+            .into_iter()
+            .map(|e| fill_error_span_positions(e, source))
+            .collect();
+
+        (tokens, errors)
+    }
+}
+
+/// Return the given error with its span upgraded to have line/column info.
+///
+/// Only the three lexer-produced variants ([`CompilerError::InvalidCharacter`],
+/// [`CompilerError::UnterminatedString`], [`CompilerError::InvalidNumber`])
+/// are produced by [`Lexer::classify_error`]; any other variant would indicate
+/// a bug in the lexer's error-classification logic and is returned unchanged.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "Lexer::classify_error only produces InvalidCharacter / UnterminatedString / InvalidNumber; enumerating every CompilerError variant would be noisy without adding safety"
+)]
+fn fill_error_span_positions(error: CompilerError, source: &str) -> CompilerError {
+    let span = crate::location::fill_span_positions(error.span(), source);
+    match error {
+        CompilerError::InvalidCharacter { character, .. } => {
+            CompilerError::InvalidCharacter { character, span }
+        }
+        CompilerError::UnterminatedString { .. } => CompilerError::UnterminatedString { span },
+        CompilerError::InvalidNumber { value, .. } => CompilerError::InvalidNumber { value, span },
+        other => other,
     }
 }

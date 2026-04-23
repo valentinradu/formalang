@@ -5,8 +5,8 @@ use chumsky::pratt::{infix, left, postfix, prefix};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, Pattern,
-    UnaryOperator,
+    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention,
+    Pattern, UnaryOperator,
 };
 use crate::lexer::Token;
 
@@ -267,10 +267,19 @@ where
 
         // Closure expression: () -> expr, x -> expr, x, y -> expr, x: T -> expr
         // Also supports pipe syntax: |x, y| expr, |x: T, y: T| -> T { body }
-        // Closure parameter: identifier with optional type annotation
-        let closure_param = ident_parser()
+        // Closure parameter: [mut|sink]? identifier with optional type annotation
+        let closure_convention = choice((
+            just(Token::Mut).to(ParamConvention::Mut),
+            just(Token::Sink).to(ParamConvention::Sink),
+        ))
+        .or_not()
+        .map(|c| c.unwrap_or(ParamConvention::Let));
+
+        let closure_param = closure_convention
+            .then(ident_parser())
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
-            .map_with(|(name, ty), e| ClosureParam {
+            .map_with(|((convention, name), ty), e| ClosureParam {
+                convention,
                 name,
                 ty,
                 span: span_from_simple(e.span()),
@@ -453,14 +462,15 @@ where
             array_or_dict, // Handles both array and dictionary literals
             tuple,         // Must come before grouped (tuple is more specific)
             grouped,
-            pipe_closure,                // |x| expr or |x, y| -> T { body }
-            no_param_closure,            // () -> expr (must come before other closures and tuples)
-            param_closure, // x -> expr (must come before reference since starts with ident)
-            inferred_enum_instantiation, // .variant is most specific
+            pipe_closure.labelled("closure expression"), // |x| expr or |x, y| -> T { body }
+            no_param_closure.labelled("closure expression"), // () -> expr (must come before other closures and tuples)
+            param_closure.labelled("closure expression"), // x -> expr (must come before reference since starts with ident)
+            inferred_enum_instantiation,                  // .variant is most specific
             enum_instantiation, // Must come before invocation and reference (Type.variant(...))
             invocation, // Unified struct instantiation / function call - resolved in semantic analysis
             reference,  // Most general (ident), now includes 'self'
-        ));
+        ))
+        .labelled("expression");
 
         // Binary operators with precedence using pratt parser
         atom.pratt((
@@ -588,7 +598,7 @@ where
                 |receiver, (method, args): (Ident, MethodCallArgs), e| Expr::MethodCall {
                     receiver: Box::new(receiver),
                     method,
-                    args: args.into_iter().map(|(_, v)| v).collect(),
+                    args,
                     span: span_from_simple(e.span()),
                 },
             ),
@@ -658,6 +668,7 @@ where
             body,
             span: span_from_simple(e.span()),
         })
+        .labelled("match arm (pattern: expression)")
 }
 
 /// Parse a pattern: variant or variant(binding1, binding2) or .variant or .variant(binding1, binding2) or _

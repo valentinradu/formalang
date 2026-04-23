@@ -1,0 +1,237 @@
+/// A complete FormaLang program exercising every language feature.
+///
+/// Domain: a minimal task tracker with priorities, statuses, and scoring.
+
+// =============================================================================
+// Enums — variants with and without data fields
+// =============================================================================
+
+pub enum Priority {
+    low,
+    medium,
+    high(urgency: Number)
+}
+
+pub enum Status {
+    pending,
+    done(score: Number)
+}
+
+// =============================================================================
+// Traits — field declarations and inheritance
+// =============================================================================
+
+pub trait Labeled {
+    label: String
+}
+
+pub trait Tracked: Labeled {
+    label: String,
+    created_at: Number
+}
+
+// =============================================================================
+// Extern fn and extern impl (type is a normal struct)
+// =============================================================================
+
+struct Logger {}
+extern impl Logger { fn log(self, message: String) }
+extern fn get_logger() -> Logger
+
+// =============================================================================
+// Structs — fields, optional, mutable, default, trait impl
+// =============================================================================
+
+pub struct Task {
+    id: Number,
+    label: String,
+    created_at: Number,
+    priority: Priority,
+    status: Status,
+    tags: [String],
+    notes: String? = "none",
+    mut retry_count: Number = 0
+}
+
+pub struct Config {
+    max_retries: Number = 3,
+    debug: Boolean = false
+}
+
+// =============================================================================
+// Impl block — methods with self, params, return types, match, if/else
+// =============================================================================
+
+impl Task {
+    fn is_done(self) -> Boolean {
+        match self.status {
+            .pending: false,
+            .done(score): true
+        }
+    }
+
+    fn priority_score(self) -> Number {
+        match self.priority {
+            .low: 1,
+            .medium: 5,
+            .high(urgency): urgency
+        }
+    }
+
+    fn describe(self) -> String {
+        if self.is_done() {
+            self.label + " (done)"
+        } else {
+            self.label + " (pending)"
+        }
+    }
+
+    fn next_retry(self) -> Number {
+        self.retry_count + 1
+    }
+}
+
+// =============================================================================
+// Standalone functions — params, return type, block body
+// =============================================================================
+
+pub fn clamp(value: Number, min: Number, max: Number) -> Number {
+    if value < min {
+        min
+    } else {
+        if value > max { max } else { value }
+    }
+}
+
+pub fn score_label(score: Number) -> String {
+    if score > 7 { "high" } else { if score > 3 { "medium" } else { "low" } }
+}
+
+// =============================================================================
+// Parameter conventions — let (default), mut, sink
+// =============================================================================
+
+pub fn apply_bonus(mut score: Number, bonus: Number) -> Number {
+    score
+}
+
+pub fn consume_label(sink text: String) -> String {
+    text
+}
+
+pub fn describe_priority(priority: Priority) -> String {
+    match priority {
+        .low: "low",
+        .medium: "medium",
+        .high(urgency): "high"
+    }
+}
+
+// =============================================================================
+// Module-level let bindings — typed, untyped, mutable, pub
+// =============================================================================
+
+pub let max_retries: Number = 3
+pub let mut task_count: Number = 0
+let default_label: String = "untitled"
+
+// =============================================================================
+// Struct instantiation and enum instantiation
+// =============================================================================
+
+pub let sample = Task(
+    id: 1,
+    label: "Write integration test",
+    created_at: 1000000,
+    priority: Priority.high(urgency: 9),
+    status: Status.pending,
+    tags: ["testing", "compiler"]
+)
+
+pub let cfg = Config()
+
+// =============================================================================
+// Array destructuring
+// =============================================================================
+
+let [first_tag, second_tag] = sample.tags
+
+// =============================================================================
+// Struct destructuring
+// =============================================================================
+
+let { label, id } = sample
+
+// =============================================================================
+// Tuple expression and tuple destructuring
+// =============================================================================
+
+let coords: (x: Number, y: Number) = (x: 10, y: 20)
+let (x, y) = coords
+
+// =============================================================================
+// Dictionary literal and dict access
+// =============================================================================
+
+let metadata: [String: String] = ["version": "1.0", "env": "test"]
+let version: String = metadata["version"]
+
+// =============================================================================
+// Binary operators — arithmetic, comparison, logical
+// =============================================================================
+
+let raw_score: Number = sample.priority_score()
+let clamped: Number = clamp(raw_score, 0, 10)
+let is_urgent: Boolean = raw_score > 7
+let is_valid: Boolean = clamped >= 0 && clamped <= 10
+
+// =============================================================================
+// If/else expression
+// =============================================================================
+
+let status_text: String = if sample.is_done() { "done" } else { "pending" }
+
+// =============================================================================
+// For loop — iterates array, produces array
+// =============================================================================
+
+let upper_tags: [String] = for tag in sample.tags { tag }
+
+// =============================================================================
+// Match expression on let binding
+// =============================================================================
+
+let priority_name: String = match sample.priority {
+    .low: "low",
+    .medium: "medium",
+    .high(urgency): "high"
+}
+
+// =============================================================================
+// Inferred enum instantiation
+// =============================================================================
+
+let default_status: Status = .pending
+
+// =============================================================================
+// Closure expression — default, mut, and sink conventions
+// =============================================================================
+
+let format_tag: String -> String = |t: String| "[" + t + "]"
+let make_label: () -> String = () -> default_label
+
+// mut convention: callee receives an exclusive mutable view
+let bump_score: mut Number -> Number = mut n -> n
+
+// sink convention: callee takes ownership; caller cannot use arg after
+let consume_label: sink String -> String = sink s -> s
+
+// =============================================================================
+// Block expression with local lets (parenthesised)
+// =============================================================================
+
+let final_score: Number = (
+    let base: Number = sample.priority_score()
+    let bonus: Number = if is_urgent { 5 } else { 0 }
+    base + bonus
+)

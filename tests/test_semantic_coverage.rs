@@ -23,7 +23,7 @@ fn test_generic_arity_mismatch_too_many_args() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn test_generic_arity_mismatch_too_few_args() -> Result<(), Box<dyn std::error::Error>> {
+fn test_generic_type_without_args_is_opaque_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
         struct Container { item: Box }
@@ -1608,19 +1608,11 @@ fn test_string_multiplication_invalid() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_range_in_for_loop() -> Result<(), Box<dyn std::error::Error>> {
-    // Range expression - exercises the ForLoopNotArray path since Range<Number> is not [Number]
+    // Range expressions are valid iterables in for loops
     let source = r"
         let sum: [Number] = for i in 0..10 { i }
     ";
-    let result = compile(source);
-    // Range loops produce a type error since Range<Number> isn't [Number]
-    if result.is_ok() {
-        return Err(format!(
-            "Range in for loop should produce an error: {:?}",
-            result.ok()
-        )
-        .into());
-    }
+    compile(source).map_err(|e| format!("Range for loop should compile: {e:?}"))?;
     Ok(())
 }
 

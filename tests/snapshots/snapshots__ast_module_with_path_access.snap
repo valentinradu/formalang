@@ -1,0 +1,236 @@
+---
+source: tests/snapshots.rs
+expression: file
+---
+File {
+    format_version: 1,
+    statements: [
+        Definition(
+            Module(
+                ModuleDef {
+                    visibility: Public,
+                    name: Ident {
+                        name: "shapes",
+                        span: Span {
+                            start: Location {
+                                offset: 17,
+                                line: 2,
+                                column: 17,
+                            },
+                            end: Location {
+                                offset: 23,
+                                line: 2,
+                                column: 23,
+                            },
+                        },
+                    },
+                    definitions: [
+                        Struct(
+                            StructDef {
+                                visibility: Public,
+                                name: Ident {
+                                    name: "Circle",
+                                    span: Span {
+                                        start: Location {
+                                            offset: 49,
+                                            line: 3,
+                                            column: 24,
+                                        },
+                                        end: Location {
+                                            offset: 55,
+                                            line: 3,
+                                            column: 30,
+                                        },
+                                    },
+                                },
+                                generics: [],
+                                fields: [
+                                    StructField {
+                                        mutable: false,
+                                        name: Ident {
+                                            name: "radius",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 58,
+                                                    line: 3,
+                                                    column: 33,
+                                                },
+                                                end: Location {
+                                                    offset: 64,
+                                                    line: 3,
+                                                    column: 39,
+                                                },
+                                            },
+                                        },
+                                        ty: Primitive(
+                                            Number,
+                                        ),
+                                        optional: false,
+                                        default: None,
+                                        span: Span {
+                                            start: Location {
+                                                offset: 58,
+                                                line: 3,
+                                                column: 33,
+                                            },
+                                            end: Location {
+                                                offset: 72,
+                                                line: 3,
+                                                column: 47,
+                                            },
+                                        },
+                                    },
+                                ],
+                                span: Span {
+                                    start: Location {
+                                        offset: 38,
+                                        line: 3,
+                                        column: 13,
+                                    },
+                                    end: Location {
+                                        offset: 74,
+                                        line: 3,
+                                        column: 49,
+                                    },
+                                },
+                            },
+                        ),
+                    ],
+                    span: Span {
+                        start: Location {
+                            offset: 9,
+                            line: 2,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 84,
+                            line: 4,
+                            column: 10,
+                        },
+                    },
+                },
+            ),
+        ),
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "c",
+                        span: Span {
+                            start: Location {
+                                offset: 98,
+                                line: 6,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 99,
+                                line: 6,
+                                column: 14,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: None,
+                value: Invocation {
+                    path: [
+                        Ident {
+                            name: "shapes",
+                            span: Span {
+                                start: Location {
+                                    offset: 102,
+                                    line: 6,
+                                    column: 17,
+                                },
+                                end: Location {
+                                    offset: 108,
+                                    line: 6,
+                                    column: 23,
+                                },
+                            },
+                        },
+                        Ident {
+                            name: "Circle",
+                            span: Span {
+                                start: Location {
+                                    offset: 110,
+                                    line: 6,
+                                    column: 25,
+                                },
+                                end: Location {
+                                    offset: 116,
+                                    line: 6,
+                                    column: 31,
+                                },
+                            },
+                        },
+                    ],
+                    type_args: [],
+                    args: [
+                        (
+                            Some(
+                                Ident {
+                                    name: "radius",
+                                    span: Span {
+                                        start: Location {
+                                            offset: 117,
+                                            line: 6,
+                                            column: 32,
+                                        },
+                                        end: Location {
+                                            offset: 123,
+                                            line: 6,
+                                            column: 38,
+                                        },
+                                    },
+                                },
+                            ),
+                            Literal(
+                                Number(
+                                    10.0,
+                                ),
+                            ),
+                        ),
+                    ],
+                    span: Span {
+                        start: Location {
+                            offset: 102,
+                            line: 6,
+                            column: 17,
+                        },
+                        end: Location {
+                            offset: 128,
+                            line: 6,
+                            column: 43,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 94,
+                        line: 6,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 128,
+                        line: 6,
+                        column: 43,
+                    },
+                },
+            },
+        ),
+    ],
+    span: Span {
+        start: Location {
+            offset: 9,
+            line: 0,
+            column: 0,
+        },
+        end: Location {
+            offset: 128,
+            line: 0,
+            column: 0,
+        },
+    },
+}

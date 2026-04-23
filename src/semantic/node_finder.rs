@@ -351,9 +351,6 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
-            Definition::ExternType(_) => {
-                // ExternType definitions don't contain sub-nodes to visit
-            }
         }
     }
 
@@ -735,7 +732,7 @@ impl<'ast> NodeFinder<'ast> {
                 self.visit_type(value);
             }
             Type::Closure { params, ret } => {
-                for param in params {
+                for (_, param) in params {
                     self.visit_type(param);
                     if self.found_node.is_some() {
                         return;
