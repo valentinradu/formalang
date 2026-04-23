@@ -309,8 +309,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return true;
         }
 
-        // Unknown means type inference couldn't determine the type — accept conservatively
-        if actual == "Unknown" || actual.contains("Unknown") {
+        // Pure `Unknown` means type inference could not determine the type
+        // at all; accept conservatively so we don't emit noisy secondary
+        // errors on top of whatever caused the inference to fail.
+        //
+        // Composite types that merely *contain* `Unknown` (e.g. `[Unknown]`,
+        // `(x: Unknown, y: String)`) are matched structurally below — they
+        // must still agree on outer shape with the expected type.
+        if actual == "Unknown" || expected == "Unknown" {
             return true;
         }
 
@@ -321,6 +327,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if self.symbols.enums.contains_key(base_expected) {
                 return true;
             }
+        }
+
+        // Array shape: `[T]` vs `[U]` decomposes to `T` vs `U`.
+        if let (Some(exp_inner), Some(act_inner)) =
+            (strip_array_shape(expected), strip_array_shape(actual))
+        {
+            return self.type_strings_compatible(exp_inner, act_inner);
+        }
+
+        // Optional shape: `T?` vs `U?` decomposes to `T` vs `U`.
+        if let (Some(exp_inner), Some(act_inner)) =
+            (expected.strip_suffix('?'), actual.strip_suffix('?'))
+        {
+            return self.type_strings_compatible(exp_inner, act_inner);
         }
 
         // Closure types: compare structurally, allowing InferredEnum in return position
@@ -362,9 +382,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 false
             }
             Type::Generic { name, .. } => {
-                // For generic types, check if the base type implements the trait
-                let all_traits = self.symbols.get_all_traits_for_struct(&name.name);
-                all_traits.contains(&trait_name.to_string())
+                // For generic types, check if the base type (struct or enum)
+                // implements the trait. Generic arg bounds are validated at
+                // their respective definition site.
+                let trait_key = trait_name.to_string();
+                let struct_traits = self.symbols.get_all_traits_for_struct(&name.name);
+                if struct_traits.contains(&trait_key) {
+                    return true;
+                }
+                let enum_traits = self.symbols.get_all_traits_for_enum(&name.name);
+                enum_traits.contains(&trait_key)
             }
             Type::TypeParameter(param) => {
                 // Check if the type parameter has the constraint in scope
@@ -381,5 +408,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Type::Dictionary { .. }
             | Type::Closure { .. } => false,
         }
+    }
+}
+
+/// If `ty` is the shape `[T]`, return `T`. Rejects `[K: V]` (dictionary).
+fn strip_array_shape(ty: &str) -> Option<&str> {
+    let trimmed = ty.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains(':') {
+        Some(trimmed[1..trimmed.len().saturating_sub(1)].trim())
+    } else {
+        None
     }
 }

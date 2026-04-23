@@ -714,3 +714,63 @@ fn test_config_model() -> Result<(), Box<dyn std::error::Error>> {
     compile(source).map_err(|e| format!("Config model: {e:?}"))?;
     Ok(())
 }
+
+// =============================================================================
+// Type-mismatch negative tests (assert errors for bad programs)
+// =============================================================================
+
+#[test]
+fn test_nil_to_non_optional_string_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+let s: String = nil
+";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let has_nil_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::NilAssignedToNonOptional { .. }));
+    if !has_nil_error {
+        return Err(format!("expected NilAssignedToNonOptional, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_field_access_via_optional_ref_on_fieldaccess_node() -> Result<(), Box<dyn std::error::Error>>
+{
+    // A parenthesised expression keeps the dot-chain as FieldAccess
+    // rather than collapsing into a multi-segment Reference, which is
+    // the path that currently runs the optional-unwrap check.
+    let source = r"
+struct User { name: String }
+let u: User? = nil
+let n = (u).name
+";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let has_opt_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::OptionalUsedAsNonOptional { .. }));
+    if !has_opt_error {
+        return Err(format!("expected OptionalUsedAsNonOptional, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_unknown_field_on_fieldaccess_node() -> Result<(), Box<dyn std::error::Error>> {
+    // Parentheses around the receiver produce a FieldAccess node which
+    // exercises the field-existence check (multi-segment Reference paths
+    // currently skip that check — tracked as a follow-up).
+    let source = r"
+struct Point { x: Number, y: Number }
+let p = Point(x: 1, y: 2)
+let z = (p).q
+";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let has_field_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "q"));
+    if !has_field_error {
+        return Err(format!("expected UnknownField for 'q', got: {errors:?}").into());
+    }
+    Ok(())
+}

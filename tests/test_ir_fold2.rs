@@ -821,3 +821,88 @@ fn test_fold_range_not_folded() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+// =============================================================================
+// fold: modulo by zero is not folded
+// =============================================================================
+
+#[test]
+fn test_fold_no_modulo_by_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"struct Config { val: Number = 10 % 0 }";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = folded
+        .structs
+        .first()
+        .ok_or("index out of bounds")?
+        .fields
+        .first()
+        .ok_or("index out of bounds")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    // Modulo by zero must not fold to a literal — backends need to see the
+    // original operation and decide how to trap.
+    if !matches!(expr, IrExpr::BinaryOp { .. }) {
+        return Err(format!("Expected BinaryOp for 10 % 0, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// fold: negation of zero preserves a zero-valued literal (IEEE-754 sign bit
+// handling is deferred to backends).
+// =============================================================================
+
+#[test]
+fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"struct Config { val: Number = -0 }";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = folded
+        .structs
+        .first()
+        .ok_or("index out of bounds")?
+        .fields
+        .first()
+        .ok_or("index out of bounds")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    let IrExpr::Literal {
+        value: Literal::Number(n),
+        ..
+    } = expr
+    else {
+        return Err(format!("Expected folded literal for -0, got {expr:?}").into());
+    };
+    if *n != 0.0 {
+        return Err(format!("Expected 0 (any sign), got {n}").into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// fold: a non-foldable sub-expression blocks the outer fold
+// =============================================================================
+
+#[test]
+fn test_fold_chain_with_divide_by_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"struct Config { val: Number = (2 + 3) * (1 / 0) }";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = folded
+        .structs
+        .first()
+        .ok_or("index out of bounds")?
+        .fields
+        .first()
+        .ok_or("index out of bounds")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    if !matches!(expr, IrExpr::BinaryOp { .. }) {
+        return Err(format!("Expected outer multiply to stay unfolded, got {expr:?}").into());
+    }
+    Ok(())
+}

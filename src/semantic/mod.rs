@@ -163,7 +163,25 @@ fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<Patte
     }
 }
 
-/// Semantic analyzer validates the AST without evaluation or expansion
+/// Semantic analyser for a parsed `FormaLang` program.
+///
+/// `SemanticAnalyzer` runs name resolution, type inference, trait checking,
+/// and module resolution against a given AST. It is the source of truth for
+/// the compiler's symbol table and is consumed by IR lowering and by
+/// LSP-style consumers that need completion, hover, or go-to-definition.
+///
+/// # Typical use
+///
+/// Most callers should use [`compile_with_analyzer`](crate::compile_with_analyzer),
+/// which lexes, parses, and analyses in one step and returns both the AST
+/// and the analyser. Direct construction via [`Self::new_with_file`] is
+/// reserved for code that already has a parsed [`File`] in hand.
+///
+/// # Module resolution
+///
+/// Imports are resolved through the generic `R: ModuleResolver`. Use
+/// [`FileSystemResolver`](crate::FileSystemResolver) for disk-backed files,
+/// or provide your own resolver for in-memory or network-backed modules.
 pub struct SemanticAnalyzer<R: ModuleResolver> {
     symbols: SymbolTable,
     errors: Vec<CompilerError>,
@@ -914,6 +932,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         enum_def: &crate::ast::EnumDef,
     ) {
+        use symbol_table::FieldInfo;
         if is_primitive_name(&enum_def.name.name) {
             errors.push(CompilerError::PrimitiveRedefinition {
                 name: enum_def.name.name.clone(),
@@ -927,6 +946,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
             .collect();
+        let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
+            .variants
+            .iter()
+            .map(|v| {
+                (
+                    v.name.name.clone(),
+                    v.fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
 
         if let Some((kind, _)) = symbols.define_enum(
             enum_def.name.name.clone(),
@@ -934,6 +969,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             enum_def.span,
             enum_def.generics.clone(),
             variants,
+            variant_fields,
             Vec::new(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
@@ -1175,16 +1211,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Pass 1.6: Infer let binding types
-    /// Infer the type of each let binding from its value expression
+    /// Infer the type of each let binding from its value expression, preferring
+    /// the explicit type annotation when one is present.
     fn infer_let_types(&mut self, file: &File) {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                let inferred_type = self.infer_type(&let_binding.value, file);
+                let source_type = let_binding.type_annotation.as_ref().map_or_else(
+                    || self.infer_type(&let_binding.value, file),
+                    Self::type_to_string,
+                );
                 // Each binding in a destructuring pattern gets the type of the
                 // position it extracts (array element, tuple field, struct field).
                 // Simple patterns get the full source type.
-                let resolved =
-                    self.resolve_pattern_types(&let_binding.pattern, &inferred_type);
+                let resolved = self.resolve_pattern_types(&let_binding.pattern, &source_type);
                 for (name, ty) in resolved {
                     self.symbols.set_let_type(&name, ty);
                 }
@@ -1246,10 +1285,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .structs
                         .get(source_ty)
                         .and_then(|s| s.fields.iter().find(|f| f.name == field.name.name))
-                        .map_or_else(
-                            || source_ty.to_string(),
-                            |f| Self::type_to_string(&f.ty),
-                        );
+                        .map_or_else(|| source_ty.to_string(), |f| Self::type_to_string(&f.ty));
                     out.push((binding_ident.name.clone(), field_ty));
                 }
             }
@@ -1464,6 +1500,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn collect_definition_enum(&mut self, enum_def: &crate::ast::EnumDef) {
+        use symbol_table::FieldInfo;
         if is_primitive_name(&enum_def.name.name) {
             self.errors.push(CompilerError::PrimitiveRedefinition {
                 name: enum_def.name.name.clone(),
@@ -1490,6 +1527,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
             .collect();
+        let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
+            .variants
+            .iter()
+            .map(|v| {
+                (
+                    v.name.name.clone(),
+                    v.fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
 
         if let Some((kind, _)) = self.symbols.define_enum(
             enum_def.name.name.clone(),
@@ -1497,6 +1550,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             enum_def.span,
             enum_def.generics.clone(),
             variants,
+            variant_fields,
             Vec::new(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {

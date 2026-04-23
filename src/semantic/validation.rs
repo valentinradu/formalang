@@ -39,7 +39,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
         self.validate_expr(&let_binding.value, file);
-        // Gap 1: nil can only be assigned to optional types
+        // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(&let_binding.value, file);
@@ -377,7 +377,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
-                // Gap 3: Validate key type against declared dict type
+                // Validate key type against declared dict type
                 let dict_type = self.infer_type(dict, file);
                 if let Some(inner) = dict_type
                     .strip_prefix('[')
@@ -405,7 +405,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(object, file);
                 let obj_type = self.infer_type(object, file);
                 if obj_type != "Unknown" {
-                    // Gap 1: Field access on optional type requires unwrapping
+                    // Field access on an optional type requires unwrapping
                     if obj_type.ends_with('?') {
                         let base = obj_type.trim_end_matches('?');
                         if base != "Unknown" && self.symbols.get_struct(base).is_some() {
@@ -416,7 +416,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             });
                         }
                     } else {
-                        // Gap 5: Check field existence
+                        // Field must exist on the struct
                         let base_type = obj_type.trim_end_matches('?');
                         if let Some(struct_info) = self.symbols.get_struct(base_type) {
                             if !struct_info.fields.iter().any(|f| f.name == field.name) {
@@ -966,7 +966,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Gap 4: Validate generic type arguments against function's generic parameters
+        // Validate generic type arguments against the function's generic parameters
         if !type_args.is_empty() {
             let simple_name_for_lookup = name.rsplit("::").next().unwrap_or(name);
             let overloads_for_generics = {
@@ -1721,7 +1721,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann);
         }
         self.validate_expr(value, file);
-        // Gap 1: nil can only be assigned to optional types
+        // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = ty {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(value, file);
@@ -2460,7 +2460,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             BindingPattern::Tuple { elements, .. } => {
-                // Gap 2: Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
+                // Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
                 if let Some(inner) = value_type
                     .strip_prefix('(')
                     .and_then(|s| s.strip_suffix(')'))

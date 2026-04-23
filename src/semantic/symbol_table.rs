@@ -109,6 +109,11 @@ pub struct EnumInfo {
     pub generics: Vec<GenericParam>,
     /// Variant name -> (arity, span)
     pub variants: HashMap<String, (usize, Span)>,
+    /// Variant name -> ordered field definitions.
+    ///
+    /// Populated alongside `variants` so IR lowering of imported module
+    /// enums can emit the full variant shape instead of empty placeholders.
+    pub variant_fields: HashMap<String, Vec<FieldInfo>>,
     /// Traits this enum implements (from : Trait syntax)
     pub traits: Vec<String>,
 }
@@ -336,6 +341,10 @@ impl SymbolTable {
     }
 
     /// Define an enum with variants
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each field captures distinct EnumInfo state; grouping into a struct would add a parallel type with no semantic benefit"
+    )]
     pub fn define_enum(
         &mut self,
         name: String,
@@ -343,6 +352,7 @@ impl SymbolTable {
         span: Span,
         generics: Vec<GenericParam>,
         variants: HashMap<String, (usize, Span)>,
+        variant_fields: HashMap<String, Vec<FieldInfo>>,
         traits: Vec<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
@@ -357,6 +367,7 @@ impl SymbolTable {
                 span,
                 generics,
                 variants,
+                variant_fields,
                 traits,
             },
         );
@@ -667,9 +678,7 @@ impl SymbolTable {
         } else if let Some(overloads) = module_table.functions.get(name) {
             // Report as public if any overload is public, mirroring how the
             // parser attaches `pub` per declaration.
-            let any_public = overloads
-                .iter()
-                .any(|o| o.visibility == Visibility::Public);
+            let any_public = overloads.iter().any(|o| o.visibility == Visibility::Public);
             let visibility = if any_public {
                 Visibility::Public
             } else {

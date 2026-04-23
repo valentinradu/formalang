@@ -383,13 +383,14 @@ let output = Pipeline::new()
 Implement `IrPass` to write your own transforms, and `Backend` to emit code:
 
 ```rust
-use formalang::{IrPass, IrModule, Backend};
+use formalang::{Backend, CompilerError, IrPass};
+use formalang::ir::IrModule;
 
 struct MyPass;
 
 impl IrPass for MyPass {
     fn name(&self) -> &str { "my_pass" }
-    fn run(&self, module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
+    fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         // transform and return
         Ok(module)
     }
@@ -399,7 +400,9 @@ struct MyBackend;
 
 impl Backend for MyBackend {
     type Output = String;
-    fn generate(&self, module: &IrModule) -> Result<String, Box<dyn std::error::Error>> {
+    type Error = std::convert::Infallible;
+
+    fn generate(&self, module: &IrModule) -> Result<String, Self::Error> {
         Ok(format!("// {} structs", module.structs.len()))
     }
 }

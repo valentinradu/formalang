@@ -412,21 +412,65 @@ impl<'a> IrLowerer<'a> {
 
     /// Register types from a nested module recursively
     fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
-        // Register traits from this module (placeholder — filled in the second pass)
+        // Register traits from this module with their real shape. Composed
+        // traits are filled in after all names exist, since composition can
+        // forward-reference traits in the same module.
+        let mut pending_trait_composition: Vec<(String, Vec<String>)> = Vec::new();
         for (name, trait_info) in &module_symbols.traits {
             let qualified_name = format!("{module_prefix}::{name}");
+            let generic_params = self.lower_generic_params(&trait_info.generics);
+            let fields: Vec<IrField> = trait_info
+                .fields
+                .iter()
+                .map(|(field_name, ty)| IrField {
+                    name: field_name.clone(),
+                    ty: self.lower_type(ty),
+                    default: None,
+                    optional: matches!(ty, ast::Type::Optional(_)),
+                    mutable: false,
+                })
+                .collect();
+            let methods: Vec<IrFunctionSig> = trait_info
+                .methods
+                .iter()
+                .map(|m| self.lower_fn_sig(m))
+                .collect();
             if let Err(e) = self.module.add_trait(
                 qualified_name.clone(),
                 IrTrait {
-                    name: qualified_name,
+                    name: qualified_name.clone(),
                     visibility: trait_info.visibility,
                     composed_traits: Vec::new(),
-                    fields: Vec::new(),
-                    methods: Vec::new(),
-                    generic_params: Vec::new(),
+                    fields,
+                    methods,
+                    generic_params,
                 },
             ) {
                 self.errors.push(e);
+            }
+            if !trait_info.composed_traits.is_empty() {
+                pending_trait_composition
+                    .push((qualified_name, trait_info.composed_traits.clone()));
+            }
+        }
+
+        // Resolve composed-trait references after all traits from this module
+        // have been registered.
+        for (qualified_name, composed_names) in pending_trait_composition {
+            let composed: Vec<TraitId> = composed_names
+                .iter()
+                .filter_map(|c| {
+                    // Prefer the module-qualified lookup, fall back to simple
+                    // name for traits composed from the enclosing scope.
+                    self.module
+                        .trait_id(&format!("{module_prefix}::{c}"))
+                        .or_else(|| self.module.trait_id(c))
+                })
+                .collect();
+            if let Some(id) = self.module.trait_id(&qualified_name) {
+                if let Some(trait_def) = self.module.trait_mut(id) {
+                    trait_def.composed_traits = composed;
+                }
             }
         }
 
@@ -449,19 +493,34 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Helper method to register an enum
-    /// Note: `EnumInfo` doesn't preserve variant field details, so we create placeholder variants
+    /// Helper method to register an enum using `EnumInfo::variant_fields`
+    /// so imported-module enums carry real variant shapes into the IR.
     fn register_enum(&mut self, name: &str, enum_info: &EnumInfo) {
         let generic_params = self.lower_generic_params(&enum_info.generics);
 
-        // EnumInfo only stores variant names and arity, not field details
-        // We create placeholder variants with empty fields
         let variants: Vec<IrEnumVariant> = enum_info
             .variants
             .keys()
-            .map(|variant_name| IrEnumVariant {
-                name: variant_name.clone(),
-                fields: Vec::new(), // Field details not available in EnumInfo
+            .map(|variant_name| {
+                let fields = enum_info
+                    .variant_fields
+                    .get(variant_name)
+                    .map(|fs| {
+                        fs.iter()
+                            .map(|f| IrField {
+                                name: f.name.clone(),
+                                ty: self.lower_type(&f.ty),
+                                default: None,
+                                optional: matches!(f.ty, ast::Type::Optional(_)),
+                                mutable: false,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                IrEnumVariant {
+                    name: variant_name.clone(),
+                    fields,
+                }
             })
             .collect();
 
