@@ -342,14 +342,14 @@ fn resolved_type_display_name_type_param() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn resolved_type_display_name_external_no_args() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::ExternalKind;
+    use formalang::ir::ImportedKind;
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::External {
         module_path: vec!["utils".to_string()],
         name: "Helper".to_string(),
-        kind: ExternalKind::Struct,
+        kind: ImportedKind::Struct,
         type_args: vec![],
     };
     let name = ty.display_name(&module);
@@ -362,14 +362,14 @@ fn resolved_type_display_name_external_no_args() -> Result<(), Box<dyn std::erro
 #[test]
 fn resolved_type_display_name_external_with_args() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::PrimitiveType;
-    use formalang::ir::ExternalKind;
+    use formalang::ir::ImportedKind;
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::External {
         module_path: vec!["utils".to_string()],
         name: "Box".to_string(),
-        kind: ExternalKind::Struct,
+        kind: ImportedKind::Struct,
         type_args: vec![ResolvedType::Primitive(PrimitiveType::String)],
     };
     let name = ty.display_name(&module);

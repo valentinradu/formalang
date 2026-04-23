@@ -149,7 +149,7 @@ pub struct ImplId(pub u32);
     reason = "IR types are matched exhaustively by code generators"
 )]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ExternalKind {
+pub enum ImportedKind {
     /// External struct type
     Struct,
     /// External trait type
@@ -190,7 +190,7 @@ pub struct IrImportItem {
     /// Name of the imported type
     pub name: String,
     /// Kind of type (struct, trait, or enum)
-    pub kind: ExternalKind,
+    pub kind: ImportedKind,
 }
 
 /// A fully resolved type.
@@ -253,7 +253,7 @@ pub enum ResolvedType {
     /// External {
     ///     module_path: ["utils"],
     ///     name: "Helper",
-    ///     kind: ExternalKind::Struct,
+    ///     kind: ImportedKind::Struct,
     ///     type_args: [],
     /// }
     /// ```
@@ -263,7 +263,7 @@ pub enum ResolvedType {
         /// Type name in that module
         name: String,
         /// Kind of type (struct, trait, or enum)
-        kind: ExternalKind,
+        kind: ImportedKind,
         /// Type arguments for generic types (empty for non-generic)
         type_args: Vec<Self>,
     },

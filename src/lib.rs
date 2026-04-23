@@ -12,7 +12,7 @@ pub mod semantic;
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
 pub use ir::{
-    simple_type_name, EnumId, ExternalKind, FunctionId, IrFunction, IrFunctionParam, IrFunctionSig,
+    simple_type_name, EnumId, FunctionId, ImportedKind, IrFunction, IrFunctionParam, IrFunctionSig,
     IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
 };
 pub use lexer::{Lexer, Token};

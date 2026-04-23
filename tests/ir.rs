@@ -2900,7 +2900,7 @@ fn test_resolved_type_display_generic() -> Result<(), Box<dyn std::error::Error>
 // External Reference Tests
 // =============================================================================
 
-use formalang::ir::ExternalKind;
+use formalang::ir::ImportedKind;
 use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -2995,11 +2995,11 @@ struct Main {
                 )
                 .into());
             }
-            if *kind != ExternalKind::Struct {
+            if *kind != ImportedKind::Struct {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Struct
+                    ImportedKind::Struct
                 )
                 .into());
             }
@@ -3101,11 +3101,11 @@ struct Item {
                 )
                 .into());
             }
-            if *kind != ExternalKind::Enum {
+            if *kind != ImportedKind::Enum {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Enum
+                    ImportedKind::Enum
                 )
                 .into());
             }
@@ -3169,11 +3169,11 @@ struct Wrapper {
             if name != "Box" {
                 return Err(format!("expected {:?} but got {:?}", "Box", name).into());
             }
-            if *kind != ExternalKind::Struct {
+            if *kind != ImportedKind::Struct {
                 return Err(format!(
                     "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
                     *kind,
-                    ExternalKind::Struct
+                    ImportedKind::Struct
                 )
                 .into());
             }
