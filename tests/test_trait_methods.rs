@@ -3,12 +3,11 @@
 //! Traits can declare method signatures (no default bodies).
 //! Every `impl Trait for Type` must provide all declared methods with matching signatures.
 
-use formalang::{CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // Happy path: trait with method signatures
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)

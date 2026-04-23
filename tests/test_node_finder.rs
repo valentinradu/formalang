@@ -1927,7 +1927,6 @@ fn test_find_trait_mount_field() -> Result<(), Box<dyn std::error::Error>> {
 // (merged from former test_node_finder2.rs)
 // =============================================================================
 
-
 #[test]
 fn test_find_array_destructuring_ident() -> Result<(), Box<dyn std::error::Error>> {
     let source = "let [first, second] = arr";

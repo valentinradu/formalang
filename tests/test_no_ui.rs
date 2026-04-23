@@ -2,12 +2,11 @@
 //!
 //! Verifies that all UI/mount concepts are gone from the language surface.
 
-use formalang::{parse_only};
+use formalang::parse_only;
 
 // =============================================================================
 // mount keyword is gone
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)

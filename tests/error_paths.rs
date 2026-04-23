@@ -8,7 +8,6 @@ use formalang::CompilerError;
 // Type Error Tests
 // =============================================================================
 
-
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
 }

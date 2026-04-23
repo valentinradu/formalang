@@ -1007,13 +1007,10 @@ use utils::Helper
 struct Main { h: Helper }
 ";
     let mut resolver = MockModuleResolver::new();
-    resolver.add_module(
-        vec!["utils".to_string()],
-        "pub struct Helper { x: String }",
-    );
+    resolver.add_module(vec!["utils".to_string()], "pub struct Helper { x: String }");
     let tokens = Lexer::tokenize_all(source);
-    let file = parser::parse_file_with_source(&tokens, source)
-        .map_err(|errors| format!("{errors:?}"))?;
+    let file =
+        parser::parse_file_with_source(&tokens, source).map_err(|errors| format!("{errors:?}"))?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
     analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
 

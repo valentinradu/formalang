@@ -2,12 +2,11 @@
 //!
 //! Trait conformance is declared exclusively via `impl Trait for Type` blocks.
 
-use formalang::{CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // Happy path: impl Trait for Type
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)

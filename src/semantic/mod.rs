@@ -23,7 +23,9 @@ mod validation;
 /// Re-exports of the symbol-table shapes that IR lowering and downstream
 /// tooling consume. These are the minimal public contract between the
 /// semantic and IR layers.
-pub use symbol_table::{EnumInfo, LetInfo, ModuleInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo};
+pub use symbol_table::{
+    EnumInfo, LetInfo, ModuleInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo,
+};
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,

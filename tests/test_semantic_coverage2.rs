@@ -10,7 +10,6 @@ use std::path::PathBuf;
 // SemanticAnalyzer::new() — lines 125-141
 // =============================================================================
 
-
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
 }

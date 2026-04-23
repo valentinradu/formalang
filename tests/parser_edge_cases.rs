@@ -2,12 +2,11 @@
 //!
 //! Tests for parser edge cases and AST node coverage
 
-use formalang::{parse_only};
+use formalang::parse_only;
 
 // =============================================================================
 // Parse Function Tests
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)

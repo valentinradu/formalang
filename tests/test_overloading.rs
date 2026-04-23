@@ -3,12 +3,11 @@
 //! Same name, different signatures. Resolved by named-argument label set (Mode A)
 //! or first-positional-argument type (Mode B).
 
-use formalang::{CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // Happy path: overloading by named-argument label set (Mode A)
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)

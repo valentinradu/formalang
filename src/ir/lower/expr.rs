@@ -1030,10 +1030,8 @@ impl IrLowerer<'_> {
         let body_ir = self.lower_expr(body);
         let return_ty = body_ir.ty().clone();
 
-        let param_names: std::collections::HashSet<String> = lowered_params
-            .iter()
-            .map(|(_, n, _)| n.clone())
-            .collect();
+        let param_names: std::collections::HashSet<String> =
+            lowered_params.iter().map(|(_, n, _)| n.clone()).collect();
         let mut captures: Vec<(String, ResolvedType)> = Vec::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         collect_free_refs(&body_ir, &param_names, &mut captures, &mut seen);

@@ -85,9 +85,7 @@ impl<'a> IrLowerer<'a> {
     /// failure rather than panicking.
     fn record_missing_id(&mut self, kind: &'static str, id: u32) {
         self.errors.push(CompilerError::InternalError {
-            detail: format!(
-                "{kind} id {id} produced by registration lookup is no longer valid"
-            ),
+            detail: format!("{kind} id {id} produced by registration lookup is no longer valid"),
             span: crate::location::Span::default(),
         });
     }

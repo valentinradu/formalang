@@ -164,7 +164,15 @@ impl User {
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let json = serde_json::to_string(&module).map_err(|e| format!("serialize: {e}"))?;
     // Sanity: key fields appear in the JSON payload
-    for expected in ["structs", "traits", "enums", "functions", "impls", "lets", "imports"] {
+    for expected in [
+        "structs",
+        "traits",
+        "enums",
+        "functions",
+        "impls",
+        "lets",
+        "imports",
+    ] {
         if !json.contains(expected) {
             return Err(format!("IR JSON missing '{expected}' key: {json}").into());
         }

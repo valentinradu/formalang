@@ -9,12 +9,11 @@
 //! impractical to construct) and `ModuleReadError` (already covered by
 //! `module_resolution.rs`).
 
-use formalang::{CompilerError};
+use formalang::CompilerError;
 
 // =============================================================================
 // ExpressionDepthExceeded — deep nesting exhausts MAX_EXPR_DEPTH (500)
 // =============================================================================
-
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
