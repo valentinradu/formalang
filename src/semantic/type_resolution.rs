@@ -385,6 +385,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Validate a generic type application (e.g., `Container<T, U>`).
+    ///
+    /// Recurses into nested generic arguments so that constraint violations at
+    /// any depth are reported (e.g., `S<S<BadType>>` checks `BadType` too).
     fn validate_generic_type(
         &mut self,
         name: &crate::ast::Ident,
@@ -426,6 +429,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        // Recurse into each argument. `validate_type` will re-enter
+        // `validate_generic_type` for any nested Type::Generic, so inner
+        // constraints are checked too.
         for arg in args {
             self.validate_type(arg);
         }

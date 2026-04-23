@@ -183,6 +183,7 @@ where
         let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
         definition_parser().map(|d| Statement::Definition(Box::new(d))),
     ))
+    .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
 }
 
 /// Parse a use statement

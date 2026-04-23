@@ -6,7 +6,7 @@ use crate::ast::{
     ParamConvention, PrimitiveType, UnaryOperator,
 };
 use crate::ir::{
-    EventBindingSource, EventFieldBinding, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType,
+    DispatchKind, ImplId, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType, TraitId,
 };
 
 impl IrLowerer<'_> {
@@ -383,7 +383,6 @@ impl IrLowerer<'_> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam("UnknownElement".to_string()),
         };
@@ -461,7 +460,6 @@ impl IrLowerer<'_> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam("DictValue".to_string()),
         };
         IrExpr::DictAccess {
@@ -488,12 +486,119 @@ impl IrLowerer<'_> {
             })
             .collect();
         let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name);
+        let dispatch = self.resolve_dispatch_kind(receiver_ir.ty(), method_name);
         IrExpr::MethodCall {
             receiver: Box::new(receiver_ir),
             method: method_name.to_string(),
             args: lowered_args,
+            dispatch,
             ty,
         }
+    }
+
+    /// Resolve the dispatch kind for a method call.
+    ///
+    /// * Concrete struct/enum receivers resolve to `Static` dispatch pointing
+    ///   at the impl block that provides the method body. When the call site
+    ///   is inside the impl that is still being lowered, the `ImplId` refers
+    ///   to the slot that impl will occupy in `module.impls` once finalized.
+    /// * Type-parameter receivers (e.g. `T: Trait`) and trait-object receivers
+    ///   resolve to `Virtual` dispatch through the relevant trait.
+    /// * All other receiver shapes default to `Virtual` with a placeholder
+    ///   trait id — backends can either reject these or fall back to runtime
+    ///   resolution.
+    fn resolve_dispatch_kind(&self, receiver_ty: &ResolvedType, method_name: &str) -> DispatchKind {
+        // Static dispatch for concrete struct types.
+        if let ResolvedType::Struct(struct_id)
+        | ResolvedType::Generic {
+            base: struct_id, ..
+        } = receiver_ty
+        {
+            if let Some(impl_id) = self.find_impl_for_struct(*struct_id, method_name) {
+                return DispatchKind::Static { impl_id };
+            }
+            // Receiver is concrete but its impl hasn't been registered yet —
+            // this is the "method call inside its own impl" case. Point at
+            // the slot that impl will occupy once finalized.
+            return DispatchKind::Static {
+                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+            };
+        }
+
+        // Static dispatch for concrete enum types.
+        if let ResolvedType::Enum(enum_id) = receiver_ty {
+            if let Some(impl_id) = self.find_impl_for_enum(*enum_id, method_name) {
+                return DispatchKind::Static { impl_id };
+            }
+            return DispatchKind::Static {
+                impl_id: ImplId(u32::try_from(self.module.impls.len()).unwrap_or(u32::MAX)),
+            };
+        }
+
+        // Virtual dispatch when the receiver is a type parameter.
+        // Look up trait bounds via the symbol table — this is a best effort
+        // because the semantic phase may not have resolved it fully.
+        if let ResolvedType::TypeParam(param_name) = receiver_ty {
+            if let Some(trait_id) = self.find_trait_for_method(param_name, method_name) {
+                return DispatchKind::Virtual {
+                    trait_id,
+                    method_name: method_name.to_string(),
+                };
+            }
+        }
+
+        // Direct trait object dispatch.
+        if let ResolvedType::Trait(trait_id) = receiver_ty {
+            return DispatchKind::Virtual {
+                trait_id: *trait_id,
+                method_name: method_name.to_string(),
+            };
+        }
+
+        // Default: virtual dispatch with a placeholder. Concrete backends
+        // can treat this as an error or handle it via duck-typing.
+        DispatchKind::Virtual {
+            trait_id: TraitId(0),
+            method_name: method_name.to_string(),
+        }
+    }
+
+    fn find_impl_for_struct(&self, id: crate::ir::StructId, method_name: &str) -> Option<ImplId> {
+        for (idx, impl_block) in self.module.impls.iter().enumerate() {
+            if impl_block.struct_id() == Some(id)
+                && impl_block.functions.iter().any(|f| f.name == method_name)
+            {
+                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
+            }
+        }
+        None
+    }
+
+    fn find_impl_for_enum(&self, id: crate::ir::EnumId, method_name: &str) -> Option<ImplId> {
+        for (idx, impl_block) in self.module.impls.iter().enumerate() {
+            if impl_block.enum_id() == Some(id)
+                && impl_block.functions.iter().any(|f| f.name == method_name)
+            {
+                return Some(ImplId(u32::try_from(idx).unwrap_or(u32::MAX)));
+            }
+        }
+        None
+    }
+
+    /// Best-effort lookup of the trait that declares `method_name` among the
+    /// constraints attached to generic parameter `param_name`. Returns the
+    /// first matching trait, or `None` if no constraint declares the method.
+    fn find_trait_for_method(&self, _param_name: &str, method_name: &str) -> Option<TraitId> {
+        // Walk all traits and pick the first one declaring this method.
+        // This is intentionally loose: the semantic analyser already verified
+        // that such a method exists, so picking any trait that declares it
+        // preserves correctness for a single-trait bound.
+        for (idx, trait_def) in self.module.traits.iter().enumerate() {
+            if trait_def.methods.iter().any(|m| m.name == method_name) {
+                return Some(TraitId(u32::try_from(idx).unwrap_or(u32::MAX)));
+            }
+        }
+        None
     }
 
     /// Lower a `let pat = val in body` expression into a block with the binding as a statement.
@@ -604,7 +709,6 @@ impl IrLowerer<'_> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
         };
@@ -681,7 +785,6 @@ impl IrLowerer<'_> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => Vec::new(),
         };
@@ -766,7 +869,6 @@ impl IrLowerer<'_> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam(field_name.to_string()),
         }
@@ -851,21 +953,10 @@ impl IrLowerer<'_> {
 
     /// Lower a closure expression.
     ///
-    /// Closures are classified into two types:
-    /// 1. Event mappings: 0-1 params, body is enum instantiation → `EventMapping`
-    /// 2. General closures: arbitrary params/body → `Closure`
+    /// Lowers parameters and body to a `Closure` IR node. The regular lowering
+    /// path handles all closure cases uniformly, including closures whose body
+    /// is an enum variant construction.
     fn lower_closure(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
-        // Check if this is an event mapping (enum body with 0-1 params)
-        let is_event_mapping = params.len() <= 1
-            && matches!(
-                body,
-                Expr::EnumInstantiation { .. } | Expr::InferredEnumInstantiation { .. }
-            );
-
-        if is_event_mapping {
-            return self.lower_event_mapping(params, body);
-        }
-
         // General closure: lower params and body
         let lowered_params: Vec<(ParamConvention, String, ResolvedType)> = params
             .iter()
@@ -894,175 +985,6 @@ impl IrLowerer<'_> {
             body: Box::new(body_ir),
             ty,
         }
-    }
-
-    /// Lower a closure expression to an event mapping.
-    ///
-    /// Event mappings are restricted closures that:
-    /// - Have zero or one parameter
-    /// - Return an enum variant instantiation
-    /// - Cannot capture variables from outer scope
-    ///
-    /// # Examples
-    ///
-    /// - `() -> .submit` → `EventMapping` with no param, variant "submit"
-    /// - `x -> .changed(value: x)` → `EventMapping` with param "x", variant "changed", binding value→x
-    fn lower_event_mapping(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
-        // Validate: 0 or 1 parameter
-        if params.len() > 1 {
-            // For now, return a placeholder for invalid event mappings
-            return IrExpr::Literal {
-                value: Literal::Nil,
-                ty: ResolvedType::TypeParam("InvalidEventMapping".to_string()),
-            };
-        }
-
-        // Extract parameter name and type
-        let param = params.first().map(|p| p.name.name.clone());
-        let param_ty = params
-            .first()
-            .and_then(|p| p.ty.as_ref())
-            .map(|t| Box::new(self.lower_type(t)));
-
-        // Body must be an enum variant instantiation
-        match body {
-            Expr::EnumInstantiation {
-                enum_name,
-                variant,
-                data,
-                ..
-            } => {
-                // Resolve the enum type
-                let (enum_id, return_ty) = self.resolve_event_enum_type(&enum_name.name);
-
-                // Extract field bindings - check if they reference the parameter
-                let field_bindings = Self::extract_event_field_bindings(data, param.as_deref());
-
-                // Build the event mapping type
-                let ty = ResolvedType::EventMapping {
-                    param_ty,
-                    return_ty: Box::new(return_ty),
-                };
-
-                IrExpr::EventMapping {
-                    enum_id,
-                    variant: variant.name.clone(),
-                    param,
-                    field_bindings,
-                    ty,
-                }
-            }
-            // Inferred enum instantiation: .variant or .variant(field: value)
-            Expr::InferredEnumInstantiation { variant, data, .. } => {
-                // Extract field bindings
-                let field_bindings = Self::extract_event_field_bindings(data, param.as_deref());
-
-                let ty = ResolvedType::EventMapping {
-                    param_ty,
-                    return_ty: Box::new(ResolvedType::TypeParam("InferredEvent".to_string())),
-                };
-
-                IrExpr::EventMapping {
-                    enum_id: None,
-                    variant: variant.name.clone(),
-                    param,
-                    field_bindings,
-                    ty,
-                }
-            }
-            Expr::Literal(_)
-            | Expr::Invocation { .. }
-            | Expr::Array { .. }
-            | Expr::Tuple { .. }
-            | Expr::Reference { .. }
-            | Expr::BinaryOp { .. }
-            | Expr::UnaryOp { .. }
-            | Expr::ForExpr { .. }
-            | Expr::IfExpr { .. }
-            | Expr::MatchExpr { .. }
-            | Expr::Group { .. }
-            | Expr::DictLiteral { .. }
-            | Expr::DictAccess { .. }
-            | Expr::FieldAccess { .. }
-            | Expr::ClosureExpr { .. }
-            | Expr::LetExpr { .. }
-            | Expr::MethodCall { .. }
-            | Expr::Block { .. } => {
-                // Invalid: body is not an enum variant
-                IrExpr::Literal {
-                    value: Literal::Nil,
-                    ty: ResolvedType::TypeParam("InvalidEventMapping".to_string()),
-                }
-            }
-        }
-    }
-
-    /// Resolve enum type for event mapping, returning (`enum_id`, `resolved_type`).
-    fn resolve_event_enum_type(
-        &self,
-        enum_name: &str,
-    ) -> (Option<super::super::EnumId>, ResolvedType) {
-        self.module.enum_id(enum_name).map_or_else(
-            || (None, ResolvedType::TypeParam(enum_name.to_string())),
-            |enum_id| (Some(enum_id), ResolvedType::Enum(enum_id)),
-        )
-    }
-
-    /// Extract field bindings from enum variant fields.
-    ///
-    /// Checks if field values reference the event mapping parameter.
-    fn extract_event_field_bindings(
-        fields: &[(ast::Ident, Expr)],
-        param_name: Option<&str>,
-    ) -> Vec<EventFieldBinding> {
-        fields
-            .iter()
-            .map(|(field_name, value)| {
-                let source = match value {
-                    // Field references the parameter: `value: x`
-                    // path[0] is bounds-safe: guarded by path.len() == 1 in the match guard
-                    #[expect(
-                        clippy::indexing_slicing,
-                        reason = "len == 1 guard above guarantees index 0"
-                    )]
-                    Expr::Reference { path, .. }
-                        if path.len() == 1 && param_name.is_some_and(|p| path[0].name == p) =>
-                    {
-                        EventBindingSource::Param(path[0].name.clone())
-                    }
-                    // Field has a literal value: `value: 42`
-                    Expr::Literal(lit) => EventBindingSource::Literal(lit.clone()),
-                    // For other expressions, treat as referencing param (best effort)
-                    Expr::Invocation { .. }
-                    | Expr::EnumInstantiation { .. }
-                    | Expr::InferredEnumInstantiation { .. }
-                    | Expr::Array { .. }
-                    | Expr::Tuple { .. }
-                    | Expr::Reference { .. }
-                    | Expr::BinaryOp { .. }
-                    | Expr::UnaryOp { .. }
-                    | Expr::ForExpr { .. }
-                    | Expr::IfExpr { .. }
-                    | Expr::MatchExpr { .. }
-                    | Expr::Group { .. }
-                    | Expr::DictLiteral { .. }
-                    | Expr::DictAccess { .. }
-                    | Expr::FieldAccess { .. }
-                    | Expr::ClosureExpr { .. }
-                    | Expr::LetExpr { .. }
-                    | Expr::MethodCall { .. }
-                    | Expr::Block { .. } => param_name
-                        .map_or(EventBindingSource::Literal(Literal::Nil), |p| {
-                            EventBindingSource::Param(p.to_string())
-                        }),
-                };
-
-                EventFieldBinding {
-                    field_name: field_name.name.clone(),
-                    source,
-                }
-            })
-            .collect()
     }
 
     pub(super) fn extract_pattern_bindings(

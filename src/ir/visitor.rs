@@ -270,8 +270,7 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             walk_expr(visitor, body);
         }
 
-        IrExpr::EventMapping { .. }
-        | IrExpr::Literal { .. }
+        IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
         | IrExpr::LetRef { .. } => {}

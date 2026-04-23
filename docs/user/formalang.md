@@ -868,6 +868,7 @@ From highest to lowest:
 6. **Equality**: `==`, `!=`
 7. **Logical AND**: `&&`
 8. **Logical OR**: `||`
+9. **Range**: `..`
 
 Examples:
 
@@ -877,6 +878,25 @@ Examples:
 x > 5 && y < 10          // Comparison before AND
 true || false && false   // true (AND before OR)
 user.age > 18 && user.verified  // Field access → comparison → AND
+```
+
+### Range Operator
+
+The `..` operator produces a range from a start value (inclusive) to an end
+value (exclusive). It is the lowest-precedence binary operator, so its
+operands are evaluated before the range itself.
+
+```formalang
+// A simple range
+let digits = 0..10
+
+// Iterating over a range in a for-expression
+for i in 0..n {
+    process(i)
+}
+
+// Range with arithmetic on the bounds
+let window = start..(start + length)
 ```
 
 ---

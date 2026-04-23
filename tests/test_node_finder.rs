@@ -1717,10 +1717,11 @@ fn test_query_provider_find_definition_not_found() -> Result<(), Box<dyn std::er
 
 #[test]
 fn test_query_provider_completion_view_trait() -> Result<(), Box<dyn std::error::Error>> {
-    // A trait with mount fields is a ViewTrait
+    // Trait kind is classified purely by ordinary fields now that mount fields
+    // (the `@name: Type` syntax) have been removed.
     let source = r"
         trait Displayable {
-            @text: String
+            text: String
         }
     ";
     let (_, analyzer) =
@@ -1742,10 +1743,11 @@ fn test_query_provider_completion_view_trait() -> Result<(), Box<dyn std::error:
 
 #[test]
 fn test_query_provider_completion_view_struct() -> Result<(), Box<dyn std::error::Error>> {
-    // A struct with mount fields is a View
+    // Struct kind is classified purely by ordinary fields now that mount fields
+    // (the `@name: Type` syntax) have been removed.
     let source = r"
         struct Button {
-            @label: String
+            label: String
         }
     ";
     let (_, analyzer) =
@@ -1828,18 +1830,17 @@ fn test_query_provider_completion_candidate_new() -> Result<(), Box<dyn std::err
 
 #[test]
 fn test_find_struct_mount_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct View { @label: String }";
+    // Formerly `@label`: now tests a plain field since mount fields have been removed.
+    let source = r"struct View { label: String }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "label")?;
     let ctx = find_node_at_offset(&file, off);
     let valid = matches!(
         ctx.node,
-        NodeAtPosition::Identifier(_)
-            | NodeAtPosition::MountField(_)
-            | NodeAtPosition::StructField(_)
+        NodeAtPosition::Identifier(_) | NodeAtPosition::StructField(_)
     );
     if !valid {
-        return Err(format!("Expected mount field-related node, got {:?}", ctx.node).into());
+        return Err(format!("Expected struct field-related node, got {:?}", ctx.node).into());
     }
     Ok(())
 }
@@ -1902,7 +1903,8 @@ fn test_find_array_pattern_rest_named() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_find_trait_mount_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"trait T { @child: String }";
+    // Formerly `@child`: now tests a plain field since mount fields have been removed.
+    let source = r"trait T { child: String }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "child")?;
     let ctx = find_node_at_offset(&file, off);

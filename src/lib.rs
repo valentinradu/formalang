@@ -92,13 +92,22 @@ pub fn compile_with_resolver<R>(source: &str, resolver: R) -> Result<File, Vec<C
 where
     R: semantic::module_resolver::ModuleResolver,
 {
-    let tokens = Lexer::tokenize_all(source);
-    let mut file = parse_file_with_source(&tokens, source).map_err(|errors| {
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
+    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
-    })?;
+    });
+    let mut file = match parse_result {
+        Ok(f) if lex_errors.is_empty() => f,
+        Ok(_) => return Err(lex_errors),
+        Err(mut parse_errors) => {
+            let mut all = lex_errors;
+            all.append(&mut parse_errors);
+            return Err(all);
+        }
+    };
     // Use a synthetic root path so import-graph cycle detection is active even
     // when there is no real file on disk.
     let mut analyzer =
@@ -136,13 +145,22 @@ pub fn compile_with_analyzer_and_resolver<R>(
 where
     R: semantic::module_resolver::ModuleResolver,
 {
-    let tokens = Lexer::tokenize_all(source);
-    let mut file = parse_file_with_source(&tokens, source).map_err(|errors| {
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
+    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
-    })?;
+    });
+    let mut file = match parse_result {
+        Ok(f) if lex_errors.is_empty() => f,
+        Ok(_) => return Err(lex_errors),
+        Err(mut parse_errors) => {
+            let mut all = lex_errors;
+            all.append(&mut parse_errors);
+            return Err(all);
+        }
+    };
     let mut analyzer =
         SemanticAnalyzer::new_with_file(resolver, std::path::PathBuf::from("<root>"));
     analyzer.analyze_and_classify(&mut file)?;
@@ -188,14 +206,22 @@ pub fn compile_and_report(source: &str, filename: &str) -> Result<File, String> 
 /// let _file = parse_only(source).unwrap();
 /// ```
 pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
-    let tokens = Lexer::tokenize_all(source);
-    let file = parse_file_with_source(&tokens, source).map_err(|errors| {
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
+    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
-    })?;
-    Ok(file)
+    });
+    match parse_result {
+        Ok(f) if lex_errors.is_empty() => Ok(f),
+        Ok(_) => Err(lex_errors),
+        Err(mut parse_errors) => {
+            let mut all = lex_errors;
+            all.append(&mut parse_errors);
+            Err(all)
+        }
+    }
 }
 
 /// Compile `FormaLang` source code into an IR module.

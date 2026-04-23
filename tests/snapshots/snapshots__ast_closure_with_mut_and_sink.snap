@@ -1,0 +1,277 @@
+---
+source: tests/snapshots.rs
+expression: file
+---
+File {
+    format_version: 1,
+    statements: [
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "bump",
+                        span: Span {
+                            start: Location {
+                                offset: 13,
+                                line: 2,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 17,
+                                line: 2,
+                                column: 17,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: Some(
+                    Closure {
+                        params: [
+                            (
+                                Mut,
+                                Primitive(
+                                    Number,
+                                ),
+                            ),
+                        ],
+                        ret: Primitive(
+                            Number,
+                        ),
+                    },
+                ),
+                value: ClosureExpr {
+                    params: [
+                        ClosureParam {
+                            convention: Mut,
+                            name: Ident {
+                                name: "n",
+                                span: Span {
+                                    start: Location {
+                                        offset: 46,
+                                        line: 2,
+                                        column: 46,
+                                    },
+                                    end: Location {
+                                        offset: 47,
+                                        line: 2,
+                                        column: 47,
+                                    },
+                                },
+                            },
+                            ty: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 42,
+                                    line: 2,
+                                    column: 42,
+                                },
+                                end: Location {
+                                    offset: 47,
+                                    line: 2,
+                                    column: 47,
+                                },
+                            },
+                        },
+                    ],
+                    body: Reference {
+                        path: [
+                            Ident {
+                                name: "n",
+                                span: Span {
+                                    start: Location {
+                                        offset: 51,
+                                        line: 2,
+                                        column: 51,
+                                    },
+                                    end: Location {
+                                        offset: 52,
+                                        line: 2,
+                                        column: 52,
+                                    },
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: Location {
+                                offset: 51,
+                                line: 2,
+                                column: 51,
+                            },
+                            end: Location {
+                                offset: 52,
+                                line: 2,
+                                column: 52,
+                            },
+                        },
+                    },
+                    span: Span {
+                        start: Location {
+                            offset: 42,
+                            line: 2,
+                            column: 42,
+                        },
+                        end: Location {
+                            offset: 52,
+                            line: 2,
+                            column: 52,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 9,
+                        line: 2,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 52,
+                        line: 2,
+                        column: 52,
+                    },
+                },
+            },
+        ),
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "consume",
+                        span: Span {
+                            start: Location {
+                                offset: 65,
+                                line: 3,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 72,
+                                line: 3,
+                                column: 20,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: Some(
+                    Closure {
+                        params: [
+                            (
+                                Sink,
+                                Primitive(
+                                    String,
+                                ),
+                            ),
+                        ],
+                        ret: Primitive(
+                            String,
+                        ),
+                    },
+                ),
+                value: ClosureExpr {
+                    params: [
+                        ClosureParam {
+                            convention: Sink,
+                            name: Ident {
+                                name: "s",
+                                span: Span {
+                                    start: Location {
+                                        offset: 103,
+                                        line: 3,
+                                        column: 51,
+                                    },
+                                    end: Location {
+                                        offset: 104,
+                                        line: 3,
+                                        column: 52,
+                                    },
+                                },
+                            },
+                            ty: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 98,
+                                    line: 3,
+                                    column: 46,
+                                },
+                                end: Location {
+                                    offset: 104,
+                                    line: 3,
+                                    column: 52,
+                                },
+                            },
+                        },
+                    ],
+                    body: Reference {
+                        path: [
+                            Ident {
+                                name: "s",
+                                span: Span {
+                                    start: Location {
+                                        offset: 108,
+                                        line: 3,
+                                        column: 56,
+                                    },
+                                    end: Location {
+                                        offset: 109,
+                                        line: 3,
+                                        column: 57,
+                                    },
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: Location {
+                                offset: 108,
+                                line: 3,
+                                column: 56,
+                            },
+                            end: Location {
+                                offset: 109,
+                                line: 3,
+                                column: 57,
+                            },
+                        },
+                    },
+                    span: Span {
+                        start: Location {
+                            offset: 98,
+                            line: 3,
+                            column: 46,
+                        },
+                        end: Location {
+                            offset: 109,
+                            line: 3,
+                            column: 57,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 61,
+                        line: 3,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 109,
+                        line: 3,
+                        column: 57,
+                    },
+                },
+            },
+        ),
+    ],
+    span: Span {
+        start: Location {
+            offset: 9,
+            line: 0,
+            column: 0,
+        },
+        end: Location {
+            offset: 109,
+            line: 0,
+            column: 0,
+        },
+    },
+}

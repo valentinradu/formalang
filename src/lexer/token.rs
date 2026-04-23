@@ -56,26 +56,32 @@ pub enum Token {
     #[token("fn")]
     Fn,
 
-    // Primitive type keywords
-    #[token("String")]
-    StringType,
-    #[token("Number")]
-    NumberType,
-    #[token("Boolean")]
-    BooleanType,
-    #[token("Path")]
-    PathType,
-    #[token("Regex")]
-    RegexType,
-    #[token("Never")]
-    NeverType,
-
     // Literals
-    #[regex(r#""([^"\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
-    #[regex(r#""""([^\\]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#, |lex| parse_multiline_string(lex.slice()))]
+    //
+    // Single-line string: `"..."` with escape sequences from the spec:
+    //   \"  \\  \n  \t  \r  \uXXXX
+    // No raw newlines allowed.
+    #[regex(r#""([^"\\\n]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
+    // Multi-line string: `"""..."""` — raw newlines, tabs and carriage returns
+    // are permitted. Logos' regex engine does not match `\n`/`\r`/`\t` inside
+    // negated character classes by default, so they are enumerated explicitly.
+    // The regex greedily matches to the final `"""` delimiter.
+    #[regex(
+        r#""""([^"\\\n\r\t]|\n|\r|\t|"[^"]|""[^"]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#,
+        |lex| parse_multiline_string(lex.slice())
+    )]
     String(String),
 
-    #[regex(r"[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
+    // Number literal supporting underscores and scientific notation:
+    //   1_000_000          integer with underscores
+    //   1.5                simple fractional
+    //   1_000.500_5        fractional with underscores
+    //   1e5, 2E+10, 1.5e-3 scientific notation (with optional sign)
+    // Underscores are stripped before parsing to f64.
+    #[regex(
+        r"[0-9][0-9_]*(\.[0-9][0-9_]*)?([eE][+-]?[0-9]+)?",
+        |lex| parse_number(lex.slice())
+    )]
     Number(f64),
 
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
@@ -157,6 +163,15 @@ pub enum Token {
 
     // Special
     Eof,
+}
+
+/// Parse a numeric literal slice, stripping underscores before calling `f64::parse`.
+///
+/// Returns `None` on parse failure so logos emits an error that the lexer converts
+/// into [`crate::error::CompilerError::InvalidNumber`].
+fn parse_number(s: &str) -> Option<f64> {
+    let cleaned: String = s.chars().filter(|c| *c != '_').collect();
+    cleaned.parse::<f64>().ok()
 }
 
 fn parse_string(s: &str) -> String {
@@ -254,19 +269,6 @@ impl Token {
     }
 
     #[must_use]
-    pub const fn is_type_keyword(&self) -> bool {
-        matches!(
-            self,
-            Self::StringType
-                | Self::NumberType
-                | Self::BooleanType
-                | Self::PathType
-                | Self::RegexType
-                | Self::NeverType
-        )
-    }
-
-    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Trait => "trait",
@@ -291,12 +293,6 @@ impl Token {
             Self::As => "as",
             Self::SelfKeyword => "self",
             Self::Fn => "fn",
-            Self::StringType => "String",
-            Self::NumberType => "Number",
-            Self::BooleanType => "Boolean",
-            Self::PathType => "Path",
-            Self::RegexType => "Regex",
-            Self::NeverType => "Never",
             Self::Dot => ".",
             Self::Colon => ":",
             Self::DoubleColon => "::",
@@ -368,12 +364,6 @@ impl std::fmt::Display for Token {
             | Self::As
             | Self::SelfKeyword
             | Self::Fn
-            | Self::StringType
-            | Self::NumberType
-            | Self::BooleanType
-            | Self::PathType
-            | Self::RegexType
-            | Self::NeverType
             | Self::Dot
             | Self::Colon
             | Self::DoubleColon

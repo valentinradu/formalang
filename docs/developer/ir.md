@@ -702,7 +702,7 @@ pub enum IrExpr {
     },
 
     // ... (additional variants: FunctionCall, MethodCall, FieldAccess,
-    //      LetRef, DictLiteral, DictAccess, EventMapping, UnaryOp, Block)
+    //      SelfFieldRef, LetRef, DictLiteral, DictAccess, UnaryOp, Block)
 }
 ```
 

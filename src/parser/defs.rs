@@ -704,5 +704,6 @@ where
             module_def_parser(def).map(Definition::Module),
             function_def_parser().map(|f| Definition::Function(Box::new(f))),
         ))
+        .labelled("definition (struct, enum, trait, impl, fn, extern, or mod)")
     })
 }

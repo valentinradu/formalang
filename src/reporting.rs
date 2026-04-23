@@ -8,9 +8,15 @@ use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
     let mut output = Vec::new();
     let report = build_error_report(error, filename);
-    let _ = report
+    if let Err(write_error) = report
         .finish()
-        .write((filename, Source::from(source)), &mut output);
+        .write((filename, Source::from(source)), &mut output)
+    {
+        // Writing to a Vec<u8> buffer cannot fail for I/O reasons, so reaching this
+        // branch indicates a formatter bug. Fall back to the error's Display impl so
+        // the caller still sees a useful message instead of an empty string.
+        return format!("failed to render error: {write_error}\n{error}");
+    }
     String::from_utf8_lossy(&output).into_owned()
 }
 
@@ -392,18 +398,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                 )
         }
 
-        CompilerError::MixedIndentation { .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E033")
-                .with_message("Mixed tabs and spaces in indentation")
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message("indentation mixes tabs and spaces")
-                        .with_color(Color::Red),
-                )
-                .with_help("Use only spaces or only tabs consistently")
-        }
-
         // Parser errors
         CompilerError::UnexpectedToken {
             expected, found, ..
@@ -419,31 +413,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                     ))
                     .with_color(Color::Red),
             ),
-
-        CompilerError::ExpectedComponentOrProperty { found, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E041")
-                .with_message(format!("Expected component or property, found '{found}'"))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "found '{}', expected a struct, enum, trait, or property definition",
-                            found.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
-        }
-
-        CompilerError::InvalidIndentation { .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E042")
-                .with_message("Invalid indentation")
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message("indentation level is inconsistent")
-                        .with_color(Color::Red),
-                )
-        }
 
         CompilerError::UnexpectedEof { .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
@@ -470,20 +439,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                         .with_color(Color::Red),
                 )
                 .with_help(format!("Check that '{name}' is defined before it is used"))
-        }
-
-        CompilerError::UndefinedComponent { name, .. } => {
-            Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E051")
-                .with_message(format!("Undefined component '{name}'"))
-                .with_label(
-                    Label::new((filename, span.start.offset..span.end.offset))
-                        .with_message(format!(
-                            "'{}' is not a known struct or component",
-                            name.fg(Color::Red)
-                        ))
-                        .with_color(Color::Red),
-                )
         }
 
         CompilerError::PrimitiveRedefinition { name, .. } => {
@@ -528,63 +483,6 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
 
         // Struct/enum field errors
-        CompilerError::UnknownProperty {
-            component,
-            property,
-            ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E060")
-            .with_message(format!("Unknown property '{property}'"))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(format!(
-                        "'{}' has no property '{}'",
-                        component,
-                        property.fg(Color::Red)
-                    ))
-                    .with_color(Color::Red),
-            ),
-
-        CompilerError::MissingRequiredProperty {
-            component,
-            property,
-            ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E061")
-            .with_message(format!("Missing required property '{property}'"))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(format!(
-                        "'{}' is required by '{}'",
-                        property.fg(Color::Red),
-                        component
-                    ))
-                    .with_color(Color::Red),
-            )
-            .with_help(format!("Add '{property}: ...' to the instantiation")),
-
-        CompilerError::InvalidPropertyValue {
-            property, message, ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E062")
-            .with_message(format!("Invalid value for property '{property}'"))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(message.as_str())
-                    .with_color(Color::Red),
-            ),
-
-        CompilerError::InvalidComponentPosition {
-            component, message, ..
-        } => Report::build(ReportKind::Error, filename, span.start.offset)
-            .with_code("E063")
-            .with_message(format!("'{component}' cannot be used in this context"))
-            .with_label(
-                Label::new((filename, span.start.offset..span.end.offset))
-                    .with_message(message.as_str())
-                    .with_color(Color::Red),
-            ),
-
         CompilerError::MissingField {
             field, type_name, ..
         } => Report::build(ReportKind::Error, filename, span.start.offset)

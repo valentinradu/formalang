@@ -24,7 +24,7 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 
 - **Lexer**: Tokenizes source with `logos`
 - **Parser**: Builds AST from tokens with `chumsky` (Pratt precedence)
-- **Semantic Analyzer**: 6-pass validation; builds symbol table, resolves
+- **Semantic Analyzer**: 5-pass validation; builds symbol table, resolves
   types, validates traits, detects cycles
 - **IR Lowering**: Converts the validated AST + symbol table into a
   fully type-resolved `IrModule`

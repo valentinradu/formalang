@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::panic)]
+
 use formalang::ast::ParamConvention;
 use formalang::error::CompilerError;
 /// Tests for `mut`/`sink` parameter conventions (Mutable Value Semantics).
@@ -453,5 +455,161 @@ fn test_closure_sink_param_consumes_binding() {
          let _a: Number = f(y)
          let _b: Number = y",
         |e| matches!(e, CompilerError::UseAfterSink { .. }),
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// Closure capture tracking: detect UseAfterSink when a closure captures a
+// binding that is later consumed by a sink parameter, then the closure is
+// invoked.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_closure_captures_binding_consumed_after_creation() {
+    // Closure `c` captures `y`. After `consume(y)` marks `y` as consumed,
+    // invoking `c()` should trigger UseAfterSink because `c`'s body references
+    // the consumed `y`.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _a: Number = consume(y)
+         let _b: Number = c()",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
+    ));
+}
+
+#[test]
+fn test_closure_captures_binding_not_consumed_compiles() {
+    // Positive control: if `y` is never consumed, calling `c()` is fine.
+    let result = compile(
+        "let y: Number = 5
+         let c: () -> Number = () -> y
+         let _b: Number = c()",
+    );
+    assert!(
+        result.is_ok(),
+        "expected clean compile, got {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_closure_captures_consumed_but_not_invoked_compiles() {
+    // Negative control: if the closure is never called, capturing a consumed
+    // binding is not an error (the closure body is just dormant code).
+    let result = compile(
+        "pub fn consume(sink n: Number) -> Number { n }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _a: Number = consume(y)",
+    );
+    assert!(
+        result.is_ok(),
+        "expected clean compile, got {:?}",
+        result.err()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Closure escape analysis: when a closure escapes (sink-pass, struct field,
+// array/dict entry), its captures are consumed at the escape site. Subsequent
+// sink-consumption of a captured binding must be flagged.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_closure_escape_into_struct_field_consumes_captures() {
+    // Closure stored in a struct field → captures escape with the struct.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         pub struct Handler { callback: () -> Number }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _h: Handler = Handler(callback: c)
+         let _gone: Number = consume(y)",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
+    ));
+}
+
+#[test]
+fn test_closure_sink_pass_consumes_captures() {
+    // Closure sink-passed to a function → captures escape.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         pub fn store(sink cb: () -> Number) -> Number { cb() }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _r: Number = store(c)
+         let _gone: Number = consume(y)",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
+    ));
+}
+
+#[test]
+fn test_closure_let_pass_does_not_consume_captures() {
+    // Positive control: let-pass is a borrow, not escape — the captured `y`
+    // remains live after a let-pass of `c`.
+    let result = compile(
+        "pub fn run(cb: () -> Number) -> Number { 0 }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _r: Number = run(c)
+         let _still_live: Number = y",
+    );
+    assert!(
+        result.is_ok(),
+        "let-pass should not consume captures; got {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_nested_closure_escape_consumes_transitive_captures() {
+    // `outer` captures `inner`; when `outer` escapes into a struct, `inner`'s
+    // captures (y) are consumed transitively.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         pub struct Outer { cb: () -> Number }
+         let y: Number = 5
+         let inner: () -> Number = () -> y
+         let outer: () -> Number = () -> inner()
+         let _o: Outer = Outer(cb: outer)
+         let _gone: Number = consume(y)",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
+    ));
+}
+
+#[test]
+fn test_closure_in_array_consumes_captures() {
+    // Closure stored as an array element → captures escape with the array.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let _arr: [() -> Number] = [c]
+         let _gone: Number = consume(y)",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
+    ));
+}
+
+#[test]
+fn test_closure_conditional_escape_consumes_captures() {
+    // Closure escapes in one branch but not the other: branch union means
+    // the capture is conservatively considered consumed after the merge.
+    assert!(has_error(
+        "pub fn consume(sink n: Number) -> Number { n }
+         pub struct Handler { cb: () -> Number }
+         pub fn run(cb: () -> Number) -> Number { 0 }
+         let y: Number = 5
+         let c: () -> Number = () -> y
+         let flag: Boolean = true
+         let _r: Number = if flag {
+             run(c)
+         } else {
+             let _h: Handler = Handler(cb: c)
+             0
+         }
+         let _gone: Number = consume(y)",
+        |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }

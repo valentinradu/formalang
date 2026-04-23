@@ -2,6 +2,8 @@
 //! vector field access, `lower_block_statement` patterns, event mapping edge cases,
 //! `resolve_field_type` for vectors, `get_variant_fields` in self context.
 
+#![allow(clippy::expect_used)]
+
 use formalang::ast::{BinaryOperator, PrimitiveType};
 use formalang::compile_to_ir;
 use formalang::ir::{IrExpr, ResolvedType};
@@ -178,11 +180,11 @@ fn test_lower_enum_impl_match_self() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Lower: event mapping with inferred enum external
+// Lower: closure with inferred enum without context
 // =============================================================================
 
 #[test]
-fn test_lower_event_mapping_inferred_no_context() -> Result<(), Box<dyn std::error::Error>> {
+fn test_lower_closure_inferred_enum_no_context() -> Result<(), Box<dyn std::error::Error>> {
     // Inferred enum with no return type context
     let source = r"
         struct Button {
@@ -191,7 +193,7 @@ fn test_lower_event_mapping_inferred_no_context() -> Result<(), Box<dyn std::err
     ";
     // Inferred enum with no return type context — the compiler lowers it with placeholder types
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
-    // The on_click field should lower to an EventMapping with unknown/inferred return type
+    // The on_click field should lower with an unknown/inferred return type
     if module.structs.is_empty() {
         return Err("Module should contain the Button struct".into());
     }
@@ -203,7 +205,7 @@ fn test_lower_event_mapping_inferred_no_context() -> Result<(), Box<dyn std::err
         .first()
         .ok_or("no field")?;
     if field.default.is_none() {
-        return Err("on_click field should have a default (EventMapping)".into());
+        return Err("on_click field should have a default expression".into());
     }
     Ok(())
 }
@@ -745,11 +747,11 @@ fn test_dce_mark_used_in_field_access() -> Result<(), Box<dyn std::error::Error>
 }
 
 // =============================================================================
-// DCE: mark_used_in_type for EventMapping field
+// DCE: mark_used_in_type for closure field
 // =============================================================================
 
 #[test]
-fn test_dce_mark_used_event_mapping_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_dce_mark_used_closure_field() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"

@@ -23,7 +23,7 @@ fn test_generic_arity_mismatch_too_many_args() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn test_generic_arity_mismatch_too_few_args() -> Result<(), Box<dyn std::error::Error>> {
+fn test_generic_type_without_args_is_opaque_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
         struct Container { item: Box }

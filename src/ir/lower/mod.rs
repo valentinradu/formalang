@@ -143,15 +143,14 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
+        let value = self.lower_expr(&let_binding.value);
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
             self.string_to_resolved_type(let_type)
         } else {
-            let expr = self.lower_expr(&let_binding.value);
-            expr.ty().clone()
+            value.ty().clone()
         };
-        let value = self.lower_expr(&let_binding.value);
         self.module.add_let(IrLet {
             name: ident_name.to_string(),
             visibility: let_binding.visibility,
@@ -179,7 +178,6 @@ impl<'a> IrLowerer<'a> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
         };
@@ -258,7 +256,6 @@ impl<'a> IrLowerer<'a> {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::EventMapping { .. }
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => Vec::new(),
         };
@@ -372,7 +369,7 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_struct(name, struct_info);
-                // Track this import for WGSL codegen (to find impl blocks)
+                // Track this import for backend use (to find impl blocks)
                 self.try_track_external_import(name, ExternalKind::Struct);
             }
         }
@@ -382,7 +379,7 @@ impl<'a> IrLowerer<'a> {
             // Check if this is an imported symbol
             if self.symbols.get_module_origin(name).is_some() {
                 self.register_enum(name, enum_info);
-                // Track this import for WGSL codegen (to find impl blocks)
+                // Track this import for backend use (to find impl blocks)
                 self.try_track_external_import(name, ExternalKind::Enum);
             }
         }

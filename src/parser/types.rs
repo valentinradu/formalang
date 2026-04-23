@@ -9,6 +9,22 @@ use crate::lexer::Token;
 use super::ident_parser;
 use super::span_from_simple;
 
+/// Map a single-segment type identifier to its primitive type, if any.
+///
+/// Returns `Some(primitive)` for the six primitive names (`String`, `Number`,
+/// `Boolean`, `Path`, `Regex`, `Never`) and `None` for any other identifier.
+fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
+    match name {
+        "String" => Some(PrimitiveType::String),
+        "Number" => Some(PrimitiveType::Number),
+        "Boolean" => Some(PrimitiveType::Boolean),
+        "Path" => Some(PrimitiveType::Path),
+        "Regex" => Some(PrimitiveType::Regex),
+        "Never" => Some(PrimitiveType::Never),
+        _ => None,
+    }
+}
+
 /// Parse a type expression
 #[expect(
     clippy::too_many_lines,
@@ -20,16 +36,13 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     recursive(|type_ref| {
-        let primitive = choice((
-            just(Token::StringType).to(Type::Primitive(PrimitiveType::String)),
-            just(Token::NumberType).to(Type::Primitive(PrimitiveType::Number)),
-            just(Token::BooleanType).to(Type::Primitive(PrimitiveType::Boolean)),
-            just(Token::PathType).to(Type::Primitive(PrimitiveType::Path)),
-            just(Token::RegexType).to(Type::Primitive(PrimitiveType::Regex)),
-            just(Token::NeverType).to(Type::Primitive(PrimitiveType::Never)),
-        ));
-
-        // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments
+        // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments.
+        //
+        // Primitive type names (`String`, `Number`, `Boolean`, `Path`, `Regex`, `Never`)
+        // are recognized here by string-matching a single-segment identifier, and are
+        // mapped to `Type::Primitive`. This lets struct/enum/trait/fn definitions with
+        // those names parse successfully so the semantic pass can emit
+        // `PrimitiveRedefinition` for them.
         let ident_or_generic = ident_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
@@ -46,6 +59,16 @@ where
                     .or_not(),
             )
             .map_with(|(path, args), e| {
+                // Map single-segment primitive names to `Type::Primitive` (only when no
+                // generic args are supplied — `Number<T>` etc. are not primitives).
+                if args.is_none() && path.len() == 1 {
+                    if let Some(first) = path.first() {
+                        if let Some(prim) = primitive_from_name(first.name.as_str()) {
+                            return Type::Primitive(prim);
+                        }
+                    }
+                }
+
                 // Join path with :: to create a single identifier name
                 let name_str = path
                     .iter()
@@ -108,13 +131,7 @@ where
             .clone()
             .delimited_by(just(Token::LParen), just(Token::RParen));
 
-        let base_type = choice((
-            primitive,
-            ident_or_generic,
-            array_or_dict,
-            tuple,
-            grouped_type,
-        ));
+        let base_type = choice((ident_or_generic, array_or_dict, tuple, grouped_type));
 
         // Type with optional modifier: Type?
         let optionable_type = base_type
@@ -161,6 +178,6 @@ where
             });
 
         // Try closure types first (more specific), then fall back to regular type
-        choice((no_param_closure, param_closure, optionable_type))
+        choice((no_param_closure, param_closure, optionable_type)).labelled("type")
     })
 }

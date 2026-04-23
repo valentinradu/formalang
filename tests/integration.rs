@@ -1059,11 +1059,14 @@ fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>
     }
 
     // Impl block
-    let task_struct_id = module
-        .structs
-        .iter()
-        .position(|s| s.name == "Task")
-        .ok_or("Task struct not found")? as u32;
+    let task_struct_id = u32::try_from(
+        module
+            .structs
+            .iter()
+            .position(|s| s.name == "Task")
+            .ok_or("Task struct not found")?,
+    )
+    .map_err(|e| format!("Task struct index out of range: {e}"))?;
     let task_impl = module
         .impls
         .iter()
@@ -1083,7 +1086,11 @@ fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>
             return Err(format!("let binding '{expected}' missing from IR").into());
         }
     }
-    let task_count = module.lets.iter().find(|l| l.name == "task_count").unwrap();
+    let task_count = module
+        .lets
+        .iter()
+        .find(|l| l.name == "task_count")
+        .ok_or("task_count let binding missing from IR")?;
     if !task_count.mutable {
         return Err("task_count should be mutable".into());
     }

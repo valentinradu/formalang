@@ -1,0 +1,143 @@
+---
+source: tests/snapshots.rs
+expression: module
+---
+IrModule {
+    structs: [],
+    traits: [],
+    enums: [
+        IrEnum {
+            name: "Status",
+            visibility: Private,
+            variants: [
+                IrEnumVariant {
+                    name: "active",
+                    fields: [],
+                },
+                IrEnumVariant {
+                    name: "inactive",
+                    fields: [],
+                },
+                IrEnumVariant {
+                    name: "pending",
+                    fields: [
+                        IrField {
+                            name: "since",
+                            ty: Primitive(
+                                Number,
+                            ),
+                            mutable: false,
+                            optional: false,
+                            default: None,
+                        },
+                    ],
+                },
+            ],
+            generic_params: [],
+        },
+    ],
+    impls: [],
+    lets: [],
+    functions: [
+        IrFunction {
+            name: "label",
+            params: [
+                IrFunctionParam {
+                    name: "s",
+                    ty: Some(
+                        Enum(
+                            EnumId(
+                                0,
+                            ),
+                        ),
+                    ),
+                    default: None,
+                    convention: Let,
+                },
+            ],
+            return_type: Some(
+                Primitive(
+                    Number,
+                ),
+            ),
+            body: Some(
+                Match {
+                    scrutinee: Reference {
+                        path: [
+                            "s",
+                        ],
+                        ty: TypeParam(
+                            "s",
+                        ),
+                    },
+                    arms: [
+                        IrMatchArm {
+                            variant: "active",
+                            is_wildcard: false,
+                            bindings: [],
+                            body: Literal {
+                                value: Number(
+                                    1.0,
+                                ),
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                        },
+                        IrMatchArm {
+                            variant: "inactive",
+                            is_wildcard: false,
+                            bindings: [],
+                            body: Literal {
+                                value: Number(
+                                    0.0,
+                                ),
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                        },
+                        IrMatchArm {
+                            variant: "pending",
+                            is_wildcard: false,
+                            bindings: [
+                                (
+                                    "since",
+                                    TypeParam(
+                                        "Unknown",
+                                    ),
+                                ),
+                            ],
+                            body: Reference {
+                                path: [
+                                    "since",
+                                ],
+                                ty: TypeParam(
+                                    "since",
+                                ),
+                            },
+                        },
+                    ],
+                    ty: Primitive(
+                        Number,
+                    ),
+                },
+            ),
+            is_extern: false,
+        },
+    ],
+    imports: [],
+    struct_names: {},
+    trait_names: {},
+    enum_names: {
+        "Status": EnumId(
+            0,
+        ),
+    },
+    function_names: {
+        "label": FunctionId(
+            0,
+        ),
+    },
+    let_names: {},
+}

@@ -1,0 +1,121 @@
+---
+source: tests/snapshots.rs
+expression: module
+---
+IrModule {
+    structs: [
+        IrStruct {
+            name: "Square",
+            visibility: Private,
+            traits: [
+                TraitId(
+                    0,
+                ),
+            ],
+            fields: [
+                IrField {
+                    name: "side",
+                    ty: Primitive(
+                        Number,
+                    ),
+                    mutable: false,
+                    optional: false,
+                    default: None,
+                },
+            ],
+            generic_params: [],
+        },
+    ],
+    traits: [
+        IrTrait {
+            name: "Area",
+            visibility: Private,
+            composed_traits: [],
+            fields: [],
+            methods: [
+                IrFunctionSig {
+                    name: "area",
+                    params: [
+                        IrFunctionParam {
+                            name: "self",
+                            ty: None,
+                            default: None,
+                            convention: Let,
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Number,
+                        ),
+                    ),
+                },
+            ],
+            generic_params: [],
+        },
+    ],
+    enums: [],
+    impls: [
+        IrImpl {
+            target: Struct(
+                StructId(
+                    0,
+                ),
+            ),
+            functions: [
+                IrFunction {
+                    name: "area",
+                    params: [
+                        IrFunctionParam {
+                            name: "self",
+                            ty: None,
+                            default: None,
+                            convention: Let,
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Number,
+                        ),
+                    ),
+                    body: Some(
+                        BinaryOp {
+                            left: SelfFieldRef {
+                                field: "side",
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                            op: Mul,
+                            right: SelfFieldRef {
+                                field: "side",
+                                ty: Primitive(
+                                    Number,
+                                ),
+                            },
+                            ty: Primitive(
+                                Number,
+                            ),
+                        },
+                    ),
+                    is_extern: false,
+                },
+            ],
+        },
+    ],
+    lets: [],
+    functions: [],
+    imports: [],
+    struct_names: {
+        "Square": StructId(
+            0,
+        ),
+    },
+    trait_names: {
+        "Area": TraitId(
+            0,
+        ),
+    },
+    enum_names: {},
+    function_names: {},
+    let_names: {},
+}

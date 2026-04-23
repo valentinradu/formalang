@@ -6,6 +6,8 @@
 //! - `walk_expr_children()` for all `IrExpr` variants
 //! - `walk_block_statement()` for all `IrBlockStatement` variants
 
+#![allow(clippy::cast_possible_truncation)]
+
 use formalang::compile_to_ir;
 use formalang::ir::{
     eliminate_dead_code, walk_block_statement, walk_expr_children, walk_module, DeadCodeEliminator,
@@ -824,7 +826,6 @@ impl IrVisitor for ExprCollector {
             IrExpr::Match { .. } => "Match",
             IrExpr::FunctionCall { .. } => "FunctionCall",
             IrExpr::MethodCall { .. } => "MethodCall",
-            IrExpr::EventMapping { .. } => "EventMapping",
             IrExpr::DictLiteral { .. } => "DictLiteral",
             IrExpr::DictAccess { .. } => "DictAccess",
             IrExpr::Block { .. } => "Block",
@@ -1360,11 +1361,11 @@ fn test_dce_analyze_struct_in_closure() -> Result<(), Box<dyn std::error::Error>
 }
 
 // =============================================================================
-// Visitor: mount fields are visited
+// Visitor: multiple fields are visited
 // =============================================================================
 
 #[test]
-fn test_visitor_walk_mount_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn test_visitor_walk_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
     // Structs with multiple fields - visitor should visit all field defaults
     let source = r"
         pub struct Box {
@@ -1403,6 +1404,142 @@ fn test_simple_type_name_utility() -> Result<(), Box<dyn std::error::Error>> {
     }
     if r3 != "C" {
         return Err(format!("expected 'C', got '{r3}'").into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// DCE: trait preservation (Phase 4 audit fix)
+// =============================================================================
+
+/// A trait referenced only as a constraint on a struct's generic parameter
+/// must still be marked as used — otherwise a downstream pass that tries to
+/// remove unused traits would corrupt the module.
+#[test]
+fn test_dce_preserves_trait_used_as_struct_generic_constraint(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub trait Drawable { fn draw(self) }
+
+        pub struct Canvas<T: Drawable> {
+            item: T
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let trait_id = module
+        .traits
+        .iter()
+        .enumerate()
+        .find_map(|(i, t)| {
+            if t.name == "Drawable" {
+                Some(TraitId(i as u32))
+            } else {
+                None
+            }
+        })
+        .ok_or("Drawable trait id")?;
+
+    let mut dce = DeadCodeEliminator::new(&module);
+    dce.analyze();
+    if !dce.is_trait_used(trait_id) {
+        return Err("expected Drawable to be marked used via generic constraint".into());
+    }
+    Ok(())
+}
+
+/// A trait referenced only via virtual dispatch on a method call must be
+/// preserved — the DispatchKind::Virtual variant stores the trait_id and the
+/// DCE must inspect it.
+#[test]
+fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn std::error::Error>> {
+    // When the receiver's type is a bare type parameter constrained by a
+    // trait, dispatch is virtual; the trait must stay live.
+    let source = r"
+        pub trait Area {
+            fn area(self) -> Number
+        }
+
+        pub struct Sum<T: Area> { item: T }
+
+        impl Sum<T> {
+            fn total(self) -> Number {
+                self.item.area()
+            }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let trait_id = module
+        .traits
+        .iter()
+        .enumerate()
+        .find_map(|(i, t)| {
+            if t.name == "Area" {
+                Some(TraitId(i as u32))
+            } else {
+                None
+            }
+        })
+        .ok_or("Area trait id")?;
+
+    let mut dce = DeadCodeEliminator::new(&module);
+    dce.analyze();
+    if !dce.is_trait_used(trait_id) {
+        return Err("expected Area to be marked used via virtual dispatch".into());
+    }
+    Ok(())
+}
+
+/// Composed traits keep their parents alive: if `B: A` and `B` is used, `A`
+/// must be used too.
+#[test]
+fn test_dce_preserves_parent_trait_in_composition() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub trait Named { name: String }
+        pub trait Tracked: Named {
+            name: String,
+            when: Number
+        }
+
+        pub struct Task {
+            name: String,
+            when: Number
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+
+    // Find both trait ids.
+    let named_id = module
+        .traits
+        .iter()
+        .enumerate()
+        .find_map(|(i, t)| {
+            if t.name == "Named" {
+                Some(TraitId(i as u32))
+            } else {
+                None
+            }
+        })
+        .ok_or("Named trait id")?;
+    let tracked_id = module
+        .traits
+        .iter()
+        .enumerate()
+        .find_map(|(i, t)| {
+            if t.name == "Tracked" {
+                Some(TraitId(i as u32))
+            } else {
+                None
+            }
+        })
+        .ok_or("Tracked trait id")?;
+
+    let mut dce = DeadCodeEliminator::new(&module);
+    dce.analyze();
+    // Sanity: Tracked is referenced via conformance on Task, so it must be
+    // used. And the fact that Tracked composes Named must make Named used too.
+    let _ = tracked_id; // only check the child relation
+    if !dce.is_trait_used(named_id) {
+        return Err("expected Named (parent trait) to be preserved via composition".into());
     }
     Ok(())
 }

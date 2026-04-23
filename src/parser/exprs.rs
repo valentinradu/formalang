@@ -462,14 +462,15 @@ where
             array_or_dict, // Handles both array and dictionary literals
             tuple,         // Must come before grouped (tuple is more specific)
             grouped,
-            pipe_closure,                // |x| expr or |x, y| -> T { body }
-            no_param_closure,            // () -> expr (must come before other closures and tuples)
-            param_closure, // x -> expr (must come before reference since starts with ident)
-            inferred_enum_instantiation, // .variant is most specific
+            pipe_closure.labelled("closure expression"), // |x| expr or |x, y| -> T { body }
+            no_param_closure.labelled("closure expression"), // () -> expr (must come before other closures and tuples)
+            param_closure.labelled("closure expression"), // x -> expr (must come before reference since starts with ident)
+            inferred_enum_instantiation,                  // .variant is most specific
             enum_instantiation, // Must come before invocation and reference (Type.variant(...))
             invocation, // Unified struct instantiation / function call - resolved in semantic analysis
             reference,  // Most general (ident), now includes 'self'
-        ));
+        ))
+        .labelled("expression");
 
         // Binary operators with precedence using pratt parser
         atom.pratt((
@@ -667,6 +668,7 @@ where
             body,
             span: span_from_simple(e.span()),
         })
+        .labelled("match arm (pattern: expression)")
 }
 
 /// Parse a pattern: variant or variant(binding1, binding2) or .variant or .variant(binding1, binding2) or _

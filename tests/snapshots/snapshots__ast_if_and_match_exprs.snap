@@ -1,0 +1,449 @@
+---
+source: tests/snapshots.rs
+expression: file
+---
+File {
+    format_version: 1,
+    statements: [
+        Definition(
+            Enum(
+                EnumDef {
+                    visibility: Private,
+                    name: Ident {
+                        name: "Choice",
+                        span: Span {
+                            start: Location {
+                                offset: 14,
+                                line: 2,
+                                column: 14,
+                            },
+                            end: Location {
+                                offset: 20,
+                                line: 2,
+                                column: 20,
+                            },
+                        },
+                    },
+                    generics: [],
+                    variants: [
+                        EnumVariant {
+                            name: Ident {
+                                name: "yes",
+                                span: Span {
+                                    start: Location {
+                                        offset: 23,
+                                        line: 2,
+                                        column: 23,
+                                    },
+                                    end: Location {
+                                        offset: 26,
+                                        line: 2,
+                                        column: 26,
+                                    },
+                                },
+                            },
+                            fields: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 23,
+                                    line: 2,
+                                    column: 23,
+                                },
+                                end: Location {
+                                    offset: 26,
+                                    line: 2,
+                                    column: 26,
+                                },
+                            },
+                        },
+                        EnumVariant {
+                            name: Ident {
+                                name: "no",
+                                span: Span {
+                                    start: Location {
+                                        offset: 28,
+                                        line: 2,
+                                        column: 28,
+                                    },
+                                    end: Location {
+                                        offset: 30,
+                                        line: 2,
+                                        column: 30,
+                                    },
+                                },
+                            },
+                            fields: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 28,
+                                    line: 2,
+                                    column: 28,
+                                },
+                                end: Location {
+                                    offset: 30,
+                                    line: 2,
+                                    column: 30,
+                                },
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: Location {
+                            offset: 9,
+                            line: 2,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 32,
+                            line: 2,
+                            column: 32,
+                        },
+                    },
+                },
+            ),
+        ),
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "pick",
+                        span: Span {
+                            start: Location {
+                                offset: 46,
+                                line: 4,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 50,
+                                line: 4,
+                                column: 17,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: Some(
+                    Ident(
+                        Ident {
+                            name: "Choice",
+                            span: Span {
+                                start: Location {
+                                    offset: 52,
+                                    line: 0,
+                                    column: 0,
+                                },
+                                end: Location {
+                                    offset: 58,
+                                    line: 0,
+                                    column: 0,
+                                },
+                            },
+                        },
+                    ),
+                ),
+                value: EnumInstantiation {
+                    enum_name: Ident {
+                        name: "Choice",
+                        span: Span {
+                            start: Location {
+                                offset: 61,
+                                line: 4,
+                                column: 28,
+                            },
+                            end: Location {
+                                offset: 71,
+                                line: 4,
+                                column: 38,
+                            },
+                        },
+                    },
+                    variant: Ident {
+                        name: "yes",
+                        span: Span {
+                            start: Location {
+                                offset: 68,
+                                line: 4,
+                                column: 35,
+                            },
+                            end: Location {
+                                offset: 71,
+                                line: 4,
+                                column: 38,
+                            },
+                        },
+                    },
+                    data: [],
+                    span: Span {
+                        start: Location {
+                            offset: 61,
+                            line: 4,
+                            column: 28,
+                        },
+                        end: Location {
+                            offset: 71,
+                            line: 4,
+                            column: 38,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 42,
+                        line: 4,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 71,
+                        line: 4,
+                        column: 38,
+                    },
+                },
+            },
+        ),
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "label",
+                        span: Span {
+                            start: Location {
+                                offset: 84,
+                                line: 5,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 89,
+                                line: 5,
+                                column: 18,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: Some(
+                    Primitive(
+                        String,
+                    ),
+                ),
+                value: MatchExpr {
+                    scrutinee: Reference {
+                        path: [
+                            Ident {
+                                name: "pick",
+                                span: Span {
+                                    start: Location {
+                                        offset: 106,
+                                        line: 5,
+                                        column: 35,
+                                    },
+                                    end: Location {
+                                        offset: 110,
+                                        line: 5,
+                                        column: 39,
+                                    },
+                                },
+                            },
+                        ],
+                        span: Span {
+                            start: Location {
+                                offset: 106,
+                                line: 5,
+                                column: 35,
+                            },
+                            end: Location {
+                                offset: 110,
+                                line: 5,
+                                column: 39,
+                            },
+                        },
+                    },
+                    arms: [
+                        MatchArm {
+                            pattern: Variant {
+                                name: Ident {
+                                    name: "yes",
+                                    span: Span {
+                                        start: Location {
+                                            offset: 126,
+                                            line: 6,
+                                            column: 14,
+                                        },
+                                        end: Location {
+                                            offset: 129,
+                                            line: 6,
+                                            column: 17,
+                                        },
+                                    },
+                                },
+                                bindings: [],
+                            },
+                            body: Literal(
+                                String(
+                                    "y",
+                                ),
+                            ),
+                            span: Span {
+                                start: Location {
+                                    offset: 125,
+                                    line: 6,
+                                    column: 13,
+                                },
+                                end: Location {
+                                    offset: 134,
+                                    line: 6,
+                                    column: 22,
+                                },
+                            },
+                        },
+                        MatchArm {
+                            pattern: Variant {
+                                name: Ident {
+                                    name: "no",
+                                    span: Span {
+                                        start: Location {
+                                            offset: 149,
+                                            line: 7,
+                                            column: 14,
+                                        },
+                                        end: Location {
+                                            offset: 151,
+                                            line: 7,
+                                            column: 16,
+                                        },
+                                    },
+                                },
+                                bindings: [],
+                            },
+                            body: Literal(
+                                String(
+                                    "n",
+                                ),
+                            ),
+                            span: Span {
+                                start: Location {
+                                    offset: 148,
+                                    line: 7,
+                                    column: 13,
+                                },
+                                end: Location {
+                                    offset: 156,
+                                    line: 7,
+                                    column: 21,
+                                },
+                            },
+                        },
+                    ],
+                    span: Span {
+                        start: Location {
+                            offset: 100,
+                            line: 5,
+                            column: 29,
+                        },
+                        end: Location {
+                            offset: 166,
+                            line: 8,
+                            column: 10,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 80,
+                        line: 5,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 166,
+                        line: 8,
+                        column: 10,
+                    },
+                },
+            },
+        ),
+        Let(
+            LetBinding {
+                visibility: Private,
+                mutable: false,
+                pattern: Simple(
+                    Ident {
+                        name: "flag",
+                        span: Span {
+                            start: Location {
+                                offset: 179,
+                                line: 9,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 183,
+                                line: 9,
+                                column: 17,
+                            },
+                        },
+                    },
+                ),
+                type_annotation: Some(
+                    Primitive(
+                        Number,
+                    ),
+                ),
+                value: IfExpr {
+                    condition: Literal(
+                        Boolean(
+                            true,
+                        ),
+                    ),
+                    then_branch: Literal(
+                        Number(
+                            1.0,
+                        ),
+                    ),
+                    else_branch: Some(
+                        Literal(
+                            Number(
+                                0.0,
+                            ),
+                        ),
+                    ),
+                    span: Span {
+                        start: Location {
+                            offset: 194,
+                            line: 9,
+                            column: 28,
+                        },
+                        end: Location {
+                            offset: 218,
+                            line: 9,
+                            column: 52,
+                        },
+                    },
+                },
+                span: Span {
+                    start: Location {
+                        offset: 175,
+                        line: 9,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 218,
+                        line: 9,
+                        column: 52,
+                    },
+                },
+            },
+        ),
+    ],
+    span: Span {
+        start: Location {
+            offset: 9,
+            line: 0,
+            column: 0,
+        },
+        end: Location {
+            offset: 218,
+            line: 0,
+            column: 0,
+        },
+    },
+}

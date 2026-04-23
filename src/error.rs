@@ -18,9 +18,6 @@ pub enum CompilerError {
     #[error("Invalid number format: {value}")]
     InvalidNumber { value: String, span: Span },
 
-    #[error("Mixed tabs and spaces in indentation")]
-    MixedIndentation { span: Span },
-
     // Syntax errors
     #[error("Expected {expected}, found {found}")]
     UnexpectedToken {
@@ -28,12 +25,6 @@ pub enum CompilerError {
         found: String,
         span: Span,
     },
-
-    #[error("Expected component or property, found {found}")]
-    ExpectedComponentOrProperty { found: String, span: Span },
-
-    #[error("Invalid indentation")]
-    InvalidIndentation { span: Span },
 
     #[error("Unexpected end of file")]
     UnexpectedEof { span: Span },
@@ -49,39 +40,8 @@ pub enum CompilerError {
         span: Span,
     },
 
-    #[error("Unknown property '{property}' for component '{component}'")]
-    UnknownProperty {
-        component: String,
-        property: String,
-        span: Span,
-    },
-
-    #[error("Missing required property '{property}' for component '{component}'")]
-    MissingRequiredProperty {
-        component: String,
-        property: String,
-        span: Span,
-    },
-
-    #[error("Invalid value for property '{property}': {message}")]
-    InvalidPropertyValue {
-        property: String,
-        message: String,
-        span: Span,
-    },
-
-    #[error("Component '{component}' cannot be used in this context")]
-    InvalidComponentPosition {
-        component: String,
-        message: String,
-        span: Span,
-    },
-
     #[error("Duplicate definition: {name}")]
     DuplicateDefinition { name: String, span: Span },
-
-    #[error("Undefined component: {name}")]
-    UndefinedComponent { name: String, span: Span },
 
     // Module resolution errors
     #[error("Module not found: '{name}'")]
@@ -356,19 +316,11 @@ impl CompilerError {
             Self::InvalidCharacter { span, .. }
             | Self::UnterminatedString { span }
             | Self::InvalidNumber { span, .. }
-            | Self::MixedIndentation { span }
             | Self::UnexpectedToken { span, .. }
-            | Self::ExpectedComponentOrProperty { span, .. }
-            | Self::InvalidIndentation { span }
             | Self::UnexpectedEof { span }
             | Self::UndefinedReference { span, .. }
             | Self::TypeMismatch { span, .. }
-            | Self::UnknownProperty { span, .. }
-            | Self::MissingRequiredProperty { span, .. }
-            | Self::InvalidPropertyValue { span, .. }
-            | Self::InvalidComponentPosition { span, .. }
             | Self::DuplicateDefinition { span, .. }
-            | Self::UndefinedComponent { span, .. }
             | Self::ModuleNotFound { span, .. }
             | Self::ModuleReadError { span, .. }
             | Self::CircularImport { span, .. }

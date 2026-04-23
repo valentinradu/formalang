@@ -71,81 +71,6 @@ pub mod shapes {
 }
 
 // =============================================================================
-// Bug 3: Enum variant binding in match arms
-// =============================================================================
-
-#[test]
-fn event_mapping_explicit_enum_instantiation() -> Result<(), Box<dyn std::error::Error>> {
-    // A closure whose body uses an explicit `EnumName.Variant(...)` syntax
-    // must lower to an EventMapping node, not a generic Closure node.
-    let source = r"
-enum Event { changed(value: Number) }
-struct Slider {
-    onChange: (Number -> Event)? = x -> Event.changed(value: x)
-}
-";
-    let module =
-        compile_to_ir(source).map_err(|e| format!("should compile without errors: {e:?}"))?;
-
-    // The default expression on the field should be an EventMapping.
-    let slider = module
-        .structs
-        .iter()
-        .find(|s| s.name == "Slider")
-        .ok_or("Slider struct should exist")?;
-
-    let field = slider
-        .fields
-        .iter()
-        .find(|f| f.name == "onChange")
-        .ok_or("onChange field should exist")?;
-
-    let default_expr = field
-        .default
-        .as_ref()
-        .ok_or("onChange field should have a default")?;
-
-    match default_expr {
-        IrExpr::EventMapping { variant, param, .. } => {
-            if variant != "changed" {
-                return Err(format!("expected {:?} but got {:?}", "changed", variant).into());
-            }
-            if param.as_deref() != Some("x") {
-                return Err(
-                    format!("expected {:?} but got {:?}", Some("x"), param.as_deref()).into(),
-                );
-            }
-        }
-        other @ (IrExpr::Literal { .. }
-        | IrExpr::StructInst { .. }
-        | IrExpr::EnumInst { .. }
-        | IrExpr::Array { .. }
-        | IrExpr::Tuple { .. }
-        | IrExpr::Reference { .. }
-        | IrExpr::SelfFieldRef { .. }
-        | IrExpr::FieldAccess { .. }
-        | IrExpr::LetRef { .. }
-        | IrExpr::BinaryOp { .. }
-        | IrExpr::UnaryOp { .. }
-        | IrExpr::If { .. }
-        | IrExpr::For { .. }
-        | IrExpr::Match { .. }
-        | IrExpr::FunctionCall { .. }
-        | IrExpr::MethodCall { .. }
-        | IrExpr::Closure { .. }
-        | IrExpr::DictLiteral { .. }
-        | IrExpr::DictAccess { .. }
-        | IrExpr::Block { .. }) => {
-            return Err(format!(
-                "Expected IrExpr::EventMapping for explicit enum closure, got: {other:?}"
-            )
-            .into())
-        }
-    }
-    Ok(())
-}
-
-// =============================================================================
 // IrModule lookup methods: struct_id, trait_id, enum_id, function_id
 // =============================================================================
 
@@ -450,46 +375,6 @@ fn resolved_type_display_name_external_with_args() -> Result<(), Box<dyn std::er
     let name = ty.display_name(&module);
     if name != "Box<String>" {
         return Err(format!("expected {:?}, got {:?}", "Box<String>", name).into());
-    }
-    Ok(())
-}
-
-#[test]
-fn resolved_type_display_name_event_mapping_no_param() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ResolvedType;
-
-    let module = formalang::ir::IrModule::new();
-    let ty = ResolvedType::EventMapping {
-        param_ty: None,
-        return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
-    };
-    let name = ty.display_name(&module);
-    if !name.contains("()") {
-        return Err(format!("expected () in {name}").into());
-    }
-    if !name.contains("Boolean") {
-        return Err(format!("expected Boolean in {name}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn resolved_type_display_name_event_mapping_with_param() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ResolvedType;
-
-    let module = formalang::ir::IrModule::new();
-    let ty = ResolvedType::EventMapping {
-        param_ty: Some(Box::new(ResolvedType::Primitive(PrimitiveType::Number))),
-        return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
-    };
-    let name = ty.display_name(&module);
-    if !name.contains("Number") {
-        return Err(format!("expected Number in {name}").into());
-    }
-    if !name.contains("Boolean") {
-        return Err(format!("expected Boolean in {name}").into());
     }
     Ok(())
 }
@@ -1752,9 +1637,6 @@ fn compiler_error_display_messages() -> Result<(), Box<dyn std::error::Error>> {
             value: "abc".to_string(),
             span: Span::default(),
         },
-        CompilerError::MixedIndentation {
-            span: Span::default(),
-        },
         CompilerError::UnexpectedToken {
             expected: "ident".to_string(),
             found: "number".to_string(),
@@ -2025,14 +1907,7 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             actual: "Number".to_string(),
             span: Span::default(),
         },
-        CompilerError::InvalidIndentation {
-            span: Span::default(),
-        },
         CompilerError::UnexpectedEof {
-            span: Span::default(),
-        },
-        CompilerError::UndefinedComponent {
-            name: "Xyz".to_string(),
             span: Span::default(),
         },
         CompilerError::NoMatchingOverload {
@@ -2043,21 +1918,6 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             variant: "x".to_string(),
             span: Span::default(),
         },
-        CompilerError::UnknownProperty {
-            component: "Button".to_string(),
-            property: "foo".to_string(),
-            span: Span::default(),
-        },
-        CompilerError::MissingRequiredProperty {
-            component: "Button".to_string(),
-            property: "label".to_string(),
-            span: Span::default(),
-        },
-        CompilerError::InvalidPropertyValue {
-            property: "size".to_string(),
-            message: "must be positive".to_string(),
-            span: Span::default(),
-        },
         CompilerError::FunctionReturnTypeMismatch {
             function: "foo".to_string(),
             expected: "Number".to_string(),
@@ -2065,11 +1925,6 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             span: Span::default(),
         },
         CompilerError::ExpressionDepthExceeded {
-            span: Span::default(),
-        },
-        CompilerError::InvalidComponentPosition {
-            component: "Card".to_string(),
-            message: "must be nested".to_string(),
             span: Span::default(),
         },
         CompilerError::PrimitiveRedefinition {
@@ -2734,7 +2589,7 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
 fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dyn std::error::Error>>
 {
     use formalang::ast::{Literal, PrimitiveType};
-    use formalang::ir::{walk_expr, walk_expr_children, IrExpr, IrVisitor};
+    use formalang::ir::{walk_expr, walk_expr_children, DispatchKind, IrExpr, IrVisitor, TraitId};
     use formalang::ResolvedType;
 
     struct LiteralCounter(usize);
@@ -2762,6 +2617,10 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
                 ty: num_ty.clone(),
             },
         )],
+        dispatch: DispatchKind::Virtual {
+            trait_id: TraitId(0),
+            method_name: "scale".to_string(),
+        },
         ty: num_ty,
     };
 
@@ -2896,47 +2755,6 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
     walk_expr(&mut counter, &expr);
     if counter.0 != 1 {
         return Err(format!("Expected 1 literal from closure body, got {}", counter.0).into());
-    }
-    Ok(())
-}
-
-#[test]
-fn visitor_walk_expr_visits_event_mapping_no_children() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ir::{walk_expr, walk_expr_children, IrExpr, IrVisitor};
-    use formalang::ResolvedType;
-
-    struct AnyCounter(usize);
-    impl IrVisitor for AnyCounter {
-        fn visit_expr(&mut self, e: &IrExpr) {
-            self.0 += 1;
-            walk_expr_children(self, e);
-        }
-    }
-
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
-    let bool_ty = ResolvedType::Primitive(PrimitiveType::Boolean);
-
-    let expr = IrExpr::EventMapping {
-        enum_id: None,
-        variant: "changed".to_string(),
-        param: Some("x".to_string()),
-        field_bindings: vec![],
-        ty: ResolvedType::EventMapping {
-            param_ty: Some(Box::new(num_ty)),
-            return_ty: Box::new(bool_ty),
-        },
-    };
-
-    let mut counter = AnyCounter(0);
-    walk_expr(&mut counter, &expr);
-    // EventMapping has no child expressions to walk, so only 1 visit (itself)
-    if counter.0 != 1 {
-        return Err(format!(
-            "EventMapping has no children, so only 1 visit, got {}",
-            counter.0
-        )
-        .into());
     }
     Ok(())
 }

@@ -1,6 +1,6 @@
 //! Tests for Token type methods and helper functions
 //!
-//! Targets: `is_keyword`, `is_type_keyword`, `as_str`, Display
+//! Targets: `is_keyword`, `as_str`, Display
 
 use formalang::lexer::{parse_regex, Lexer, Token};
 
@@ -68,48 +68,6 @@ fn test_token_is_keyword_false() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// Token::is_type_keyword() Tests
-// =============================================================================
-
-#[test]
-fn test_token_is_type_keyword_true() -> Result<(), Box<dyn std::error::Error>> {
-    let type_keywords = [
-        Token::StringType,
-        Token::NumberType,
-        Token::BooleanType,
-        Token::PathType,
-        Token::RegexType,
-        Token::NeverType,
-    ];
-
-    for tk in type_keywords {
-        if !tk.is_type_keyword() {
-            return Err(format!("Expected {tk:?} to be a type keyword").into());
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn test_token_is_type_keyword_false() -> Result<(), Box<dyn std::error::Error>> {
-    let non_type_keywords = [
-        Token::Struct,
-        Token::Trait,
-        Token::Let,
-        Token::String("test".to_string()),
-        Token::Number(42.0),
-        Token::Ident("name".to_string()),
-    ];
-
-    for tok in non_type_keywords {
-        if tok.is_type_keyword() {
-            return Err(format!("Expected {tok:?} to not be a type keyword").into());
-        }
-    }
-    Ok(())
-}
-
-// =============================================================================
 // Token::as_str() Tests
 // =============================================================================
 
@@ -135,25 +93,6 @@ fn test_token_as_str_keywords() -> Result<(), Box<dyn std::error::Error>> {
         (Token::False, "false"),
         (Token::Nil, "nil"),
         (Token::As, "as"),
-    ];
-    for (tok, expected) in cases {
-        let got = tok.as_str();
-        if got != expected {
-            return Err(format!("expected {expected:?} but got {got:?}").into());
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn test_token_as_str_type_keywords() -> Result<(), Box<dyn std::error::Error>> {
-    let cases = [
-        (Token::StringType, "String"),
-        (Token::NumberType, "Number"),
-        (Token::BooleanType, "Boolean"),
-        (Token::PathType, "Path"),
-        (Token::RegexType, "Regex"),
-        (Token::NeverType, "Never"),
     ];
     for (tok, expected) in cases {
         let got = tok.as_str();
