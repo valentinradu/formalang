@@ -279,14 +279,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
-                // Each branch is a separate control-flow path. Snapshot consumed_bindings
-                // before each branch and take the union afterward so that a binding consumed
-                // in either branch is considered consumed in the join point (conservative but
-                // never unsound: it can only produce false-positive UseAfterSink, never miss one).
+                // Each branch is a separate control-flow path. Snapshot
+                // consumed_bindings before entering either branch so we can
+                // compute the conservative post-join union. Conservative (never
+                // unsound): may produce false-positive UseAfterSink but never
+                // miss one.
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
-                let after_then = self.consumed_bindings.clone();
-                self.consumed_bindings.clone_from(&pre_if);
+                // after_then takes over `self.consumed_bindings`; swap pre_if in
+                // so the else branch starts from pre-branch state.
+                let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
                 if let Some(else_expr) = else_branch {
                     self.validate_expr(else_expr, file);
                     // Check that both branch types are compatible.
@@ -306,10 +308,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                     }
                 }
-                let after_else = self.consumed_bindings.clone();
-                // Union: consumed if consumed in then OR else
-                self.consumed_bindings = after_then;
-                self.consumed_bindings.extend(after_else);
+                // Current state = after_else (or pre_if if no else branch).
+                // Fold in after_then to produce union.
+                self.consumed_bindings.extend(after_then);
                 self.validate_if_condition(condition, *span, file);
             }
             Expr::MatchExpr {
@@ -319,7 +320,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } => {
                 self.validate_expr(scrutinee, file);
                 let pre_match = self.consumed_bindings.clone();
-                let mut post_union = pre_match.clone();
+                let mut post_union: HashSet<String> = HashSet::new();
                 let mut arm_types: Vec<String> = Vec::new();
                 for arm in arms {
                     self.consumed_bindings.clone_from(&pre_match);
@@ -335,8 +336,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     let arm_type = self.infer_type(&arm.body, file);
                     arm_types.push(arm_type);
-                    post_union.extend(self.consumed_bindings.iter().cloned());
+                    // Drain the per-arm state into post_union without cloning.
+                    post_union.extend(self.consumed_bindings.drain());
                 }
+                // Include pre_match (pass-through when no arm is taken).
+                post_union.extend(pre_match);
                 self.consumed_bindings = post_union;
                 // Check that all arm types are compatible with the first arm's type.
                 // Widening: variations of T and T?/Nil unify to T?.
