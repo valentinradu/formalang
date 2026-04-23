@@ -1,4 +1,5 @@
 // Semantic analysis (validation only - no evaluation or expansion)
+// Pass 0: Resolve modules and imports
 // Pass 1: Build symbol table
 // Pass 2: Resolve type references
 // Pass 3: Validate expressions (operators, for/if/match)

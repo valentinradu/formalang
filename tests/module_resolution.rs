@@ -943,7 +943,7 @@ impl Modal {
 }
 
 #[test]
-fn test_simple_self_with_stdlib() -> Result<(), Box<dyn std::error::Error>> {
+fn test_simple_self_with_imported_module() -> Result<(), Box<dyn std::error::Error>> {
     // self references are only valid in impl functions
     let simple_source = r#"
 use mylib::*
