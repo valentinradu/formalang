@@ -92,14 +92,17 @@ with a constant condition, method or function calls on constants, or dict
 and array literals. Those are left as-is for backends or project-local
 passes to handle.
 
-## 5. Dead code elimination (partial)
+## 5. Dead code elimination (covered)
 
-`DeadCodeEliminationPass` analyses and reports unused structs, traits, and
-enums, and prunes unreachable branches of `if` expressions with constant
-conditions. It does **not** physically remove unused definitions — doing
-so would require rewriting every `StructId` / `TraitId` / `EnumId` in the
-module to account for the shifted indices. Until a full reference rewriter
-is implemented, the IR contains unused definitions even after DCE runs.
+`DeadCodeEliminationPass` analyses used structs, traits, and enums, prunes
+unreachable branches of `if` expressions with constant conditions, and
+physically removes unused definitions by rewriting every `StructId` /
+`TraitId` / `EnumId` reference across the module. Impl blocks whose
+target is removed are also dropped.
+
+DCE semantics: a bare `impl` block does **not** keep its target type
+alive. The type must be referenced from a field, a function parameter,
+an expression, or a trait constraint for it to survive.
 
 ## 6. Escape analysis and lifetime elision
 

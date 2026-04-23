@@ -402,4 +402,30 @@ impl IrExpr {
             | Self::Block { ty, .. } => ty,
         }
     }
+
+    /// Get a mutable reference to the resolved type of this expression.
+    pub const fn ty_mut(&mut self) -> &mut ResolvedType {
+        match self {
+            Self::Literal { ty, .. }
+            | Self::StructInst { ty, .. }
+            | Self::EnumInst { ty, .. }
+            | Self::Array { ty, .. }
+            | Self::Tuple { ty, .. }
+            | Self::Reference { ty, .. }
+            | Self::SelfFieldRef { ty, .. }
+            | Self::FieldAccess { ty, .. }
+            | Self::LetRef { ty, .. }
+            | Self::BinaryOp { ty, .. }
+            | Self::UnaryOp { ty, .. }
+            | Self::If { ty, .. }
+            | Self::For { ty, .. }
+            | Self::Match { ty, .. }
+            | Self::FunctionCall { ty, .. }
+            | Self::MethodCall { ty, .. }
+            | Self::Closure { ty, .. }
+            | Self::DictLiteral { ty, .. }
+            | Self::DictAccess { ty, .. }
+            | Self::Block { ty, .. } => ty,
+        }
+    }
 }

@@ -760,16 +760,16 @@ fn test_dce_mark_used_closure_field() -> Result<(), Box<dyn std::error::Error>> 
             on_click: () -> Action = () -> Action.submit
         }
         impl Button {}
+        pub fn make_button() -> Button { Button() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
     dce.analyze();
-    // DCE should have analyzed the module and found at least one used struct
     let button_id = module
         .struct_id("Button")
         .ok_or("Button struct should exist in module")?;
     if !dce.used_structs().contains(&button_id) {
-        return Err("Button struct should be marked used after DCE analysis".into());
+        return Err("Button struct should be marked used (returned by make_button)".into());
     }
     Ok(())
 }

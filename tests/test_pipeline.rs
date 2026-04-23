@@ -155,8 +155,11 @@ fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn std::error::Error>> {
+    // Keep Config alive through a standalone function parameter, so
+    // DeadCodeEliminationPass (which now removes unused types) does not drop it.
     let source = r"
         pub struct Config { scale: Number = 2 * 3 }
+        pub fn use_config(c: Config) -> Number { c.scale }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
