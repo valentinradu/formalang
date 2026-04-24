@@ -86,6 +86,11 @@ struct IrLowerer<'a> {
     /// within the same impl block (`self.other_method()`) resolve without
     /// needing the impl to already be installed in `module.impls`.
     pub(super) current_impl_method_returns: Option<HashMap<String, Option<ResolvedType>>>,
+    /// Stack of generic-parameter scopes active during lowering. Each frame
+    /// records the param names in scope together with their trait
+    /// constraints; used by `find_trait_for_method` to resolve which trait
+    /// declares a method on a generic parameter (`T: Foo + Bar`).
+    pub(super) generic_scopes: Vec<Vec<IrGenericParam>>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -145,6 +150,7 @@ impl<'a> IrLowerer<'a> {
             current_function_return_type: None,
             local_binding_scopes: Vec::new(),
             current_impl_method_returns: None,
+            generic_scopes: Vec::new(),
         }
     }
 
@@ -1035,8 +1041,40 @@ impl<'a> IrLowerer<'a> {
         }
         self.current_impl_method_returns = Some(impl_returns);
 
-        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
         let generic_params = self.lower_generic_params(&i.generics);
+        // The impl's methods reference type parameters whose trait
+        // constraints are declared on the *target* struct/enum
+        // (e.g. `struct Box<T: Foo>` plus `impl Box<T> { ... }`). The impl
+        // header itself carries the param names without constraints, so we
+        // merge constraints from the target definition under each matching
+        // name so `find_trait_for_method` resolves correctly.
+        let mut scope = generic_params.clone();
+        let target_params: Vec<IrGenericParam> = match target {
+            super::ImplTarget::Struct(id) => self
+                .module
+                .get_struct(id)
+                .map(|s| s.generic_params.clone())
+                .unwrap_or_default(),
+            super::ImplTarget::Enum(id) => self
+                .module
+                .get_enum(id)
+                .map(|e| e.generic_params.clone())
+                .unwrap_or_default(),
+        };
+        for target_param in target_params {
+            if let Some(existing) = scope.iter_mut().find(|q| q.name == target_param.name) {
+                for c in target_param.constraints {
+                    if !existing.constraints.contains(&c) {
+                        existing.constraints.push(c);
+                    }
+                }
+            } else {
+                scope.push(target_param);
+            }
+        }
+        self.generic_scopes.push(scope);
+        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+        self.generic_scopes.pop();
         let trait_id = i
             .trait_name
             .as_ref()
@@ -1058,6 +1096,8 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_function(&mut self, f: &FunctionDef) {
+        let generic_params = self.lower_generic_params(&f.generics);
+        self.generic_scopes.push(generic_params.clone());
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
@@ -1093,10 +1133,13 @@ impl<'a> IrLowerer<'a> {
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
 
+        self.generic_scopes.pop();
+
         if let Err(e) = self.module.add_function(
             f.name.name.clone(),
             IrFunction {
                 name: f.name.name.clone(),
+                generic_params,
                 params,
                 return_type,
                 body,
@@ -1152,6 +1195,9 @@ impl<'a> IrLowerer<'a> {
 
         IrFunction {
             name: f.name.name.clone(),
+            // Method-level generics aren't yet supported; enclosing type
+            // generics live on the containing IrImpl.
+            generic_params: Vec::new(),
             params,
             return_type,
             body,

@@ -46,6 +46,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "magnitude",
+                    generic_params: [],
                     params: [
                         IrFunctionParam {
                             name: "self",

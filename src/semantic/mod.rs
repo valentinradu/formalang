@@ -1041,7 +1041,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
+                    Definition::Function(func_def) => &func_def.generics,
+                    // Module definitions don't carry generics themselves;
+                    // nested definitions are validated via their own arms.
+                    Definition::Module(_) => continue,
                 };
 
                 // Check for duplicate generic parameters
@@ -1541,6 +1544,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// This is primarily used by LSP features for completion, hover, etc.
     pub const fn symbols(&self) -> &SymbolTable {
         &self.symbols
+    }
+
+    /// Return the cached AST+symbol-table pairs for every imported module.
+    /// LSP features use this to answer queries about symbols that live
+    /// outside the current file.
+    pub const fn module_cache(&self) -> &HashMap<PathBuf, (File, SymbolTable)> {
+        &self.module_cache
     }
 
     /// Get all cached IR modules from imports.

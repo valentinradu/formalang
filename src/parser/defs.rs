@@ -338,22 +338,26 @@ where
         .then_ignore(just(Token::Extern))
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
-        .map_with(|(((visibility, name), params), return_type), e| {
-            let span = span_from_simple(e.span());
-            FunctionDef {
-                visibility,
-                name,
-                params,
-                return_type,
-                body: None,
-                span,
-            }
-        })
+        .map_with(
+            |((((visibility, name), generics), params), return_type), e| {
+                let span = span_from_simple(e.span());
+                FunctionDef {
+                    visibility,
+                    name,
+                    generics,
+                    params,
+                    return_type,
+                    body: None,
+                    span,
+                }
+            },
+        )
 }
 
 /// Parse an extern impl block: `extern impl Trait for Name<T> { fn_sig* }`
@@ -584,6 +588,7 @@ where
     visibility_parser()
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
@@ -593,17 +598,20 @@ where
             // Function body in braces - parsed as a block with statements
             fn_body_parser(),
         )
-        .map_with(|((((visibility, name), params), return_type), body), e| {
-            let span = span_from_simple(e.span());
-            FunctionDef {
-                visibility,
-                name,
-                params,
-                return_type,
-                body: Some(body),
-                span,
-            }
-        })
+        .map_with(
+            |(((((visibility, name), generics), params), return_type), body), e| {
+                let span = span_from_simple(e.span());
+                FunctionDef {
+                    visibility,
+                    name,
+                    generics,
+                    params,
+                    return_type,
+                    body: Some(body),
+                    span,
+                }
+            },
+        )
 }
 
 /// Parse an enum definition

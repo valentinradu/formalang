@@ -185,6 +185,7 @@ File {
                             },
                         },
                     },
+                    generics: [],
                     params: [
                         FnParam {
                             convention: Let,

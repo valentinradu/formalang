@@ -827,6 +827,45 @@ fn test_module_nested_function_body_is_validated() -> Result<(), Box<dyn std::er
 }
 
 #[test]
+fn test_generic_standalone_function_parses_and_validates() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Audit #11: `pub fn identity<T>(value: T) -> T { value }` must parse,
+    // validate, and lower. Previously FunctionDef had no generics field.
+    let source = r"
+        pub fn identity<T>(value: T) -> T { value }
+    ";
+    compile(source).map_err(|e| format!("generic fn should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_generic_extern_function_parses() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub extern fn make<T>() -> T
+    ";
+    compile(source).map_err(|e| format!("generic extern fn should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_generic_fn_duplicate_param_errors() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #36: validate_generic_parameters used to skip Function; duplicate
+    // `T` must now be flagged.
+    let source = r"
+        pub fn bad<T, T>(value: T) -> T { value }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected DuplicateGenericParam on fn".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("DuplicateGenericParam") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_struct_literal_field_value_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Previously validate_struct_fields checked arity/names only. Provide a
     // Number where the field declares String — must now type-error.

@@ -7,6 +7,7 @@
 use super::symbol_table::{EnumInfo, LetInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo};
 use crate::ast::Visibility;
 use crate::location::Span;
+use std::path::PathBuf;
 
 /// Kind of completion item
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,13 +79,34 @@ pub struct DefinitionInfo {
 #[non_exhaustive]
 pub struct QueryProvider<'a> {
     pub symbols: &'a SymbolTable,
+    /// Optional cache of imported modules, used to extend hover,
+    /// go-to-definition, and completion across module boundaries.
+    pub module_cache:
+        Option<&'a std::collections::HashMap<PathBuf, (crate::ast::File, SymbolTable)>>,
 }
 
 impl<'a> QueryProvider<'a> {
-    /// Create a new query provider
+    /// Create a new query provider bound to a single-file symbol table.
+    /// For multi-file projects use [`QueryProvider::with_modules`].
     #[must_use]
     pub const fn new(symbols: &'a SymbolTable) -> Self {
-        Self { symbols }
+        Self {
+            symbols,
+            module_cache: None,
+        }
+    }
+
+    /// Create a query provider that also searches an imported-module cache
+    /// when resolving hover / go-to-definition / completion candidates.
+    #[must_use]
+    pub const fn with_modules(
+        symbols: &'a SymbolTable,
+        module_cache: &'a std::collections::HashMap<PathBuf, (crate::ast::File, SymbolTable)>,
+    ) -> Self {
+        Self {
+            symbols,
+            module_cache: Some(module_cache),
+        }
     }
 
     /// Get all visible symbols as completions
@@ -191,6 +213,24 @@ impl<'a> QueryProvider<'a> {
             return Some(Self::let_info_to_hover(name, info));
         }
 
+        // Cross-module: search the imported-module cache when provided.
+        if let Some(cache) = self.module_cache {
+            for (_, symbols) in cache.values() {
+                if let Some(info) = symbols.traits.get(name) {
+                    return Some(Self::trait_info_to_hover(name, info, SymbolKind::Trait));
+                }
+                if let Some(info) = symbols.structs.get(name) {
+                    return Some(Self::struct_info_to_hover(name, info));
+                }
+                if let Some(info) = symbols.enums.get(name) {
+                    return Some(Self::enum_info_to_hover(name, info));
+                }
+                if let Some(info) = symbols.lets.get(name) {
+                    return Some(Self::let_info_to_hover(name, info));
+                }
+            }
+        }
+
         None
     }
 
@@ -231,6 +271,40 @@ impl<'a> QueryProvider<'a> {
                 kind: SymbolKind::Let,
                 span: info.span,
             });
+        }
+
+        // Cross-module: search the imported-module cache if provided.
+        if let Some(cache) = self.module_cache {
+            for (_, symbols) in cache.values() {
+                if let Some(info) = symbols.traits.get(name) {
+                    return Some(DefinitionInfo {
+                        symbol_name: name.to_string(),
+                        kind: SymbolKind::Trait,
+                        span: info.span,
+                    });
+                }
+                if let Some(info) = symbols.structs.get(name) {
+                    return Some(DefinitionInfo {
+                        symbol_name: name.to_string(),
+                        kind: SymbolKind::Struct,
+                        span: info.span,
+                    });
+                }
+                if let Some(info) = symbols.enums.get(name) {
+                    return Some(DefinitionInfo {
+                        symbol_name: name.to_string(),
+                        kind: SymbolKind::Enum,
+                        span: info.span,
+                    });
+                }
+                if let Some(info) = symbols.lets.get(name) {
+                    return Some(DefinitionInfo {
+                        symbol_name: name.to_string(),
+                        kind: SymbolKind::Let,
+                        span: info.span,
+                    });
+                }
+            }
         }
 
         None

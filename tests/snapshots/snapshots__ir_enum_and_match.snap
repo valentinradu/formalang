@@ -41,6 +41,7 @@ IrModule {
     functions: [
         IrFunction {
             name: "label",
+            generic_params: [],
             params: [
                 IrFunctionParam {
                     name: "s",

@@ -102,6 +102,7 @@ pub enum Definition {
 pub struct FunctionDef {
     pub visibility: Visibility,
     pub name: Ident,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.

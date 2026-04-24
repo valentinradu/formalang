@@ -71,6 +71,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "area",
+                    generic_params: [],
                     params: [
                         IrFunctionParam {
                             name: "self",

@@ -673,25 +673,42 @@ impl IrLowerer<'_> {
         Some(self.impl_id_from_idx(found_idx))
     }
 
-    /// Best-effort lookup of the trait that declares `method_name` among the
-    /// constraints attached to generic parameter `param_name`. Returns the
-    /// first matching trait, or `None` if no constraint declares the method.
-    fn find_trait_for_method(&mut self, _param_name: &str, method_name: &str) -> Option<TraitId> {
-        // Walk all traits and pick the first one declaring this method.
-        // This is intentionally loose: the semantic analyser already verified
-        // that such a method exists, so picking any trait that declares it
-        // preserves correctness for a single-trait bound.
+    /// Look up the trait that declares `method_name` among the constraints
+    /// attached to generic parameter `param_name`. Walks the innermost
+    /// generic scope outwards, finds the param by name, then scans its
+    /// trait constraints. Falls back to a module-wide search only when the
+    /// param is not in any active scope (e.g. a lowering invariant was
+    /// violated upstream) — this matches the pre-#12 behaviour so we don't
+    /// regress on cases where the scope hasn't been populated.
+    fn find_trait_for_method(&mut self, param_name: &str, method_name: &str) -> Option<TraitId> {
+        for frame in self.generic_scopes.iter().rev() {
+            if let Some(param) = frame.iter().find(|p| p.name == param_name) {
+                for trait_id in &param.constraints {
+                    let idx = trait_id.0 as usize;
+                    if let Some(trait_def) = self.module.traits.get(idx) {
+                        if trait_def.methods.iter().any(|m| m.name == method_name) {
+                            return Some(*trait_id);
+                        }
+                    }
+                }
+                // Param is in scope but none of its constraints declare the
+                // method — the semantic analyser should already have flagged
+                // this; return None rather than picking an unrelated trait.
+                return None;
+            }
+        }
+        // Fallback: no matching scope frame — behave as before.
         let found_idx = self
             .module
             .traits
             .iter()
             .enumerate()
             .find_map(|(idx, trait_def)| {
-                if trait_def.methods.iter().any(|m| m.name == method_name) {
-                    Some(idx)
-                } else {
-                    None
-                }
+                trait_def
+                    .methods
+                    .iter()
+                    .any(|m| m.name == method_name)
+                    .then_some(idx)
             })?;
         Some(self.trait_id_from_idx(found_idx))
     }

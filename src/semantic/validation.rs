@@ -102,6 +102,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn validate_function_body(&mut self, func_def: &crate::ast::FunctionDef, file: &File) {
+        // Push the function's generic params so uses of `T` inside the
+        // body and in param/return annotations don't trip the
+        // OutOfScopeTypeParameter check.
+        self.push_generic_scope(&func_def.generics);
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
         // Snapshot closure-binding maps so entries introduced in
@@ -149,6 +153,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
+        self.pop_generic_scope();
     }
 
     /// Validate expressions in struct field defaults
@@ -2930,6 +2935,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func: &crate::ast::FunctionDef,
         file: &File,
     ) {
+        // Push the function's own generic parameters so its param/return
+        // types and body can reference them without triggering
+        // OutOfScopeTypeParameter.
+        self.push_generic_scope(&func.generics);
         // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
@@ -3003,6 +3012,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
+        self.pop_generic_scope();
     }
 
     /// Check if a method exists on a given type
@@ -3086,6 +3096,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         if self.type_param_has_method(lookup, method_name, file) {
             return true;
+        }
+
+        // Cross-module lookup: the receiver's type may have been imported
+        // via `use mod::Type`, in which case the impl lives in the module's
+        // cached AST. Scan every cached module for a matching impl.
+        for (cached_file, _) in self.module_cache.values() {
+            for statement in &cached_file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Impl(impl_def) = &**def {
+                        if impl_def.name.name == lookup {
+                            for func in &impl_def.functions {
+                                if func.name.name == method_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         false
