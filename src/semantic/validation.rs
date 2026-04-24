@@ -868,7 +868,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } else {
                 return;
             };
-            self.validate_field_chain(&root_type_string, &path[1..], span);
+            if let Some(rest) = path.get(1..) {
+                self.validate_field_chain(&root_type_string, rest, span);
+            }
         }
     }
 
@@ -884,20 +886,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let Some(struct_info) = self.symbols.get_struct(&current) else {
                 return;
             };
-            match struct_info.fields.iter().find(|f| f.name == seg.name) {
-                Some(field) => {
-                    current = Self::type_to_string(&field.ty)
-                        .trim_end_matches('?')
-                        .to_string();
-                }
-                None => {
-                    self.errors.push(CompilerError::UnknownField {
-                        field: seg.name.clone(),
-                        type_name: current.clone(),
-                        span,
-                    });
-                    return;
-                }
+            if let Some(field) = struct_info.fields.iter().find(|f| f.name == seg.name) {
+                current = Self::type_to_string(&field.ty)
+                    .trim_end_matches('?')
+                    .to_string();
+            } else {
+                self.errors.push(CompilerError::UnknownField {
+                    field: seg.name.clone(),
+                    type_name: current.clone(),
+                    span,
+                });
+                return;
             }
         }
     }
