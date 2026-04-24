@@ -77,6 +77,7 @@ impl IrLowerer<'_> {
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Dictionary { .. }

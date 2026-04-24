@@ -125,6 +125,18 @@ fn check_command(input_path: &str, module_root: Option<PathBuf>) -> ExitCode {
     }
 }
 
+/// Watch mode: re-run `check` every time the input file's mtime changes.
+///
+/// This subcommand is intended for interactive development. It loops
+/// forever (until SIGINT / Ctrl+C) polling the filesystem every 500 ms
+/// and never returns an exit code for a single check — each recheck
+/// prints its OK/error output and then the loop continues. If you need a
+/// per-run exit code for CI, use `fvc check` instead.
+///
+/// Audit finding #33: the exit-code semantics here are intentional; the
+/// single-check path already exists via `check_command`. The watch loop
+/// surfaces compile failures through the error-reporter output, not
+/// through the process exit code.
 fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> ExitCode {
     use std::thread;
     use std::time::Duration;
@@ -133,6 +145,9 @@ fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> Exi
 
     let path = PathBuf::from(input_path);
     let mut last_modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
+    // Run an initial check so the user sees the current state immediately
+    // instead of having to touch the file first.
+    let _ = check_command(input_path, module_root.map(PathBuf::from));
 
     loop {
         thread::sleep(Duration::from_millis(500));
@@ -142,7 +157,7 @@ fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> Exi
         if current_modified != last_modified {
             last_modified = current_modified;
             println!("\n--- File changed, rechecking... ---\n");
-            check_command(input_path, module_root.map(PathBuf::from));
+            let _ = check_command(input_path, module_root.map(PathBuf::from));
         }
     }
 }

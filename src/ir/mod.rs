@@ -235,6 +235,13 @@ pub enum ResolvedType {
     /// Array type: `[T]`
     Array(Box<Self>),
 
+    /// Range type: `T..T` — an iterable sequence over numeric `T`.
+    /// Used as the type of `start..end` expressions and as the iterator
+    /// type consumed by `for x in start..end { ... }` loops. Backends
+    /// decide whether to emit a native range type or desugar to a
+    /// counted loop.
+    Range(Box<Self>),
+
     /// Optional type: `T?`
     Optional(Box<Self>),
 
@@ -328,6 +335,12 @@ pub enum ResolvedType {
 /// let struct_def = module.get_struct(struct_id).expect("struct exists");
 /// assert_eq!(struct_def.name, "User");
 /// ```
+/// **Serde note:** the private name→id index maps (`struct_names`,
+/// `trait_names`, `enum_names`, `function_names`, `let_names`) are marked
+/// `#[serde(skip)]` so round-tripped modules don't carry stale entries.
+/// After deserialising, callers must call [`IrModule::rebuild_indices`]
+/// before any `struct_id` / `trait_id` / `get_function` lookups, or those
+/// helpers will return `None`. See audit finding #34.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct IrModule {
     /// All struct definitions, indexed by `StructId`
@@ -359,19 +372,26 @@ pub struct IrModule {
     /// enabling code generators to emit proper import statements.
     pub imports: Vec<IrImport>,
 
-    /// Mapping from struct names to IDs for lookup during lowering
+    /// Mapping from struct names to IDs for lookup during lowering.
+    /// Skipped during serde round-trips; rebuilt on load via
+    /// `rebuild_indices`. See audit finding #34.
+    #[serde(skip)]
     struct_names: HashMap<String, StructId>,
 
-    /// Mapping from trait names to IDs for lookup during lowering
+    /// Mapping from trait names to IDs for lookup during lowering.
+    #[serde(skip)]
     trait_names: std::collections::HashMap<String, TraitId>,
 
-    /// Mapping from enum names to IDs for lookup during lowering
+    /// Mapping from enum names to IDs for lookup during lowering.
+    #[serde(skip)]
     enum_names: std::collections::HashMap<String, EnumId>,
 
-    /// Mapping from function names to IDs for lookup during lowering
+    /// Mapping from function names to IDs for lookup during lowering.
+    #[serde(skip)]
     function_names: HashMap<String, FunctionId>,
 
-    /// Mapping from let binding names to their index in the lets vector
+    /// Mapping from let binding names to their index in the lets vector.
+    #[serde(skip)]
     let_names: HashMap<String, usize>,
 }
 
@@ -688,6 +708,11 @@ impl ResolvedType {
                 .get_enum(*id)
                 .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
             Self::Array(inner) => format!("[{}]", inner.display_name(module)),
+            Self::Range(inner) => format!(
+                "{}..{}",
+                inner.display_name(module),
+                inner.display_name(module)
+            ),
             Self::Optional(inner) => format!("{}?", inner.display_name(module)),
             Self::Tuple(fields) => {
                 let fields_str: Vec<_> = fields

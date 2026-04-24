@@ -161,7 +161,7 @@ fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiation>) {
             }
             out.insert((*base, args.clone()));
         }
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
             collect_from_type(inner, out);
         }
         ResolvedType::Tuple(fields) => {
@@ -390,6 +390,10 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
             out.push_str("Arr_");
             type_suffix(inner, out);
         }
+        ResolvedType::Range(inner) => {
+            out.push_str("Rng_");
+            type_suffix(inner, out);
+        }
         ResolvedType::Optional(inner) => {
             out.push_str("Opt_");
             type_suffix(inner, out);
@@ -466,7 +470,7 @@ fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) 
                 *ty = concrete.clone();
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
             substitute_type(inner, subs);
         }
         ResolvedType::Tuple(fields) => {
@@ -522,7 +526,7 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericB
     // try to look up the outer key (the mapping keys hold fully-rewritten
     // inner types, so we must rewrite inner before outer lookup).
     match ty {
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
             rewrite_type(inner, mapping);
         }
         ResolvedType::Tuple(fields) => {
@@ -754,7 +758,7 @@ fn remap_type(
                 *id = new;
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
             remap_type(inner, struct_remap, enum_remap);
         }
         ResolvedType::Tuple(fields) => {
@@ -864,7 +868,9 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
                 args.len()
             ))
         }
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => first_leftover(inner),
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
+            first_leftover(inner)
+        }
         ResolvedType::Tuple(fields) => fields.iter().find_map(|(_, t)| first_leftover(t)),
         ResolvedType::Dictionary { key_ty, value_ty } => {
             first_leftover(key_ty).or_else(|| first_leftover(value_ty))
@@ -1060,7 +1066,7 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
             for (_, _, ty) in params {
                 visit(ty);
             }
-            for (_, ty) in captures {
+            for (_, _, ty) in captures {
                 visit(ty);
             }
             walk_expr_types(body, visit);
@@ -1301,7 +1307,7 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
             for (_, _, ty) in params {
                 visit(ty);
             }
-            for (_, ty) in captures {
+            for (_, _, ty) in captures {
                 visit(ty);
             }
             walk_expr_types_mut_inner(body, visit);

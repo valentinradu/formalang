@@ -91,6 +91,11 @@ struct IrLowerer<'a> {
     /// constraints; used by `find_trait_for_method` to resolve which trait
     /// declares a method on a generic parameter (`T: Foo + Bar`).
     pub(super) generic_scopes: Vec<Vec<IrGenericParam>>,
+    /// Span of the AST node currently being lowered. Updated at the top of
+    /// `lower_expr` and a few other lowering entry points so that
+    /// `InternalError` diagnostics can cite a meaningful source location
+    /// instead of `Span::default()`. See audit finding #31.
+    pub(super) current_span: crate::location::Span,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -116,7 +121,7 @@ impl<'a> IrLowerer<'a> {
     pub(super) fn internal_error_type(&mut self, detail: String) -> ResolvedType {
         self.errors.push(CompilerError::InternalError {
             detail,
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         ResolvedType::TypeParam("Unknown".to_string())
     }
@@ -151,6 +156,7 @@ impl<'a> IrLowerer<'a> {
             local_binding_scopes: Vec::new(),
             current_impl_method_returns: None,
             generic_scopes: Vec::new(),
+            current_span: crate::location::Span::default(),
         }
     }
 

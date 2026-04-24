@@ -12,6 +12,17 @@ use crate::ir::{
 
 impl IrLowerer<'_> {
     pub(super) fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
+        // Track the span of the current expression so that InternalError
+        // diagnostics surfaced during lowering carry a real source
+        // location. See audit finding #31.
+        let prev_span = self.current_span;
+        self.current_span = expr.span();
+        let out = self.lower_expr_inner(expr);
+        self.current_span = prev_span;
+        out
+    }
+
+    fn lower_expr_inner(&mut self, expr: &Expr) -> IrExpr {
         match expr {
             Expr::Literal { value: lit, .. } => IrExpr::Literal {
                 value: lit.clone(),
@@ -354,8 +365,8 @@ impl IrLowerer<'_> {
             | BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
-            | BinaryOperator::Mod
-            | BinaryOperator::Range => left_ir.ty().clone(),
+            | BinaryOperator::Mod => left_ir.ty().clone(),
+            BinaryOperator::Range => ResolvedType::Range(Box::new(left_ir.ty().clone())),
         };
         IrExpr::BinaryOp {
             left: Box::new(left_ir),
@@ -403,7 +414,9 @@ impl IrLowerer<'_> {
         let collection_ir = self.lower_expr(collection);
         let body_ir = self.lower_expr(body);
         let bad_collection = collection_ir.ty().clone();
-        let var_ty = if let ResolvedType::Array(inner) = &bad_collection {
+        let var_ty = if let ResolvedType::Array(inner) | ResolvedType::Range(inner) =
+            &bad_collection
+        {
             (**inner).clone()
         } else {
             self.internal_error_type_if_concrete(
@@ -551,6 +564,7 @@ impl IrLowerer<'_> {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::TypeParam(_)
@@ -1001,6 +1015,7 @@ impl IrLowerer<'_> {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -1194,6 +1209,18 @@ impl IrLowerer<'_> {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         collect_free_refs(&body_ir, &param_names, &mut captures, &mut seen);
 
+        // Audit #32: tag each capture with a convention. Today the IR
+        // lowerer doesn't have access to the outer binding's declared
+        // convention (the semantic layer has that in
+        // `current_fn_param_conventions` and `closure_binding_conventions`
+        // but those aren't plumbed into IrLowerer). For now every capture
+        // defaults to `Let` (immutable view); backends requiring
+        // move / mut / sink semantics can refine with a follow-up pass.
+        let captures_with_mode: Vec<(String, ParamConvention, ResolvedType)> = captures
+            .into_iter()
+            .map(|(name, ty)| (name, ParamConvention::Let, ty))
+            .collect();
+
         let ty = ResolvedType::Closure {
             param_tys: lowered_params
                 .iter()
@@ -1204,7 +1231,7 @@ impl IrLowerer<'_> {
 
         IrExpr::Closure {
             params: lowered_params,
-            captures,
+            captures: captures_with_mode,
             body: Box::new(body_ir),
             ty,
         }
@@ -1357,7 +1384,7 @@ fn collect_free_refs(
             // free at this level; the rest bubble up as outer-closure captures.
             let inner_params: std::collections::HashSet<String> =
                 params.iter().map(|(_, n, _)| n.clone()).collect();
-            for (name, ty) in captures {
+            for (name, _, ty) in captures {
                 if !inner_params.contains(name)
                     && !bound.contains(name)
                     && seen.insert(name.clone())

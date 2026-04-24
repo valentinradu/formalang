@@ -168,9 +168,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .return_type
                 .as_ref()
                 .map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty))
+        } else if path.len() >= 2 {
+            // Audit #27: resolve impl-block static method calls
+            // (`Type::method(...)`) and enum variant constructors
+            // (`Enum::variant(...)`) that weren't rewritten to
+            // EnumInstantiation at parse time.
+            let (Some(first), Some(last)) = (path.first(), path.last()) else {
+                return "Unknown".to_string();
+            };
+            let receiver = &first.name;
+            let method_name = &last.name;
+            if self.symbols.is_struct(receiver) {
+                if let Some(ret) = self.infer_method_return_from_impls(receiver, method_name) {
+                    return ret;
+                }
+            }
+            if self.symbols.get_enum_variants(receiver).is_some() {
+                return receiver.clone();
+            }
+            "Unknown".to_string()
         } else {
             "Unknown".to_string()
         }
+    }
+
+    /// Walk `self.symbols` for a method declared on an impl block whose
+    /// target is `struct_name` and whose name is `method_name`; return the
+    /// method's declared return type as a string if found. Used by
+    /// `infer_type_invocation` for impl static calls.
+    fn infer_method_return_from_impls(
+        &self,
+        struct_name: &str,
+        method_name: &str,
+    ) -> Option<String> {
+        let trait_names = self.symbols.get_all_traits_for_struct(struct_name);
+        for trait_name in trait_names {
+            if let Some(trait_info) = self.symbols.get_trait(&trait_name) {
+                for m in &trait_info.methods {
+                    if m.name.name == method_name {
+                        return Some(
+                            m.return_type
+                                .as_ref()
+                                .map_or_else(|| "nil".to_string(), Self::type_to_string),
+                        );
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Infer the type of a reference expression.
@@ -437,7 +482,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return b.to_string();
             }
         }
-        a.to_string()
+        // Audit #26: for truly incompatible branches we used to silently
+        // return `a`, which both hid real type errors and let a wrong
+        // inferred type flow downstream. Return "Unknown" so the validator
+        // sees an indeterminate type (rejected by type_strings_compatible
+        // unless the expected side is also Unknown, which would itself
+        // surface upstream once the inference cleanup lands).
+        "Unknown".to_string()
     }
 
     /// Infer the type of a field access given the receiver's type string.

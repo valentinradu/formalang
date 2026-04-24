@@ -1498,6 +1498,7 @@ fn type_name(ty: &ResolvedType) -> String {
         ResolvedType::Enum(_) => "Enum".to_string(),
         ResolvedType::Array(_) => "Array".to_string(),
         ResolvedType::Trait(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3012,6 +3013,7 @@ struct Main {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3115,6 +3117,7 @@ struct Item {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3192,6 +3195,7 @@ struct Wrapper {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3285,6 +3289,7 @@ struct Container {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3482,6 +3487,7 @@ struct Collection {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3495,6 +3501,7 @@ struct Collection {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3548,6 +3555,7 @@ struct Container {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3562,6 +3570,7 @@ struct Container {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
@@ -3663,6 +3672,7 @@ struct Main {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3711,7 +3721,9 @@ struct Main {
                     collect_struct_ids(arg, ids);
                 }
             }
-            ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+            ResolvedType::Array(inner)
+            | ResolvedType::Range(inner)
+            | ResolvedType::Optional(inner) => {
                 collect_struct_ids(inner, ids);
             }
             ResolvedType::Tuple(fields) => {
@@ -3825,6 +3837,7 @@ struct Container { h: Helper = Helper(name: "test") }
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3896,6 +3909,7 @@ struct Item { status: Status = Status.active }
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -4298,6 +4312,7 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }

@@ -998,7 +998,7 @@ fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("expected Closure, got {body:?}").into());
     };
     // The closure body references `n`, which is a parameter of make_adder.
-    let captured: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    let captured: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
     if !captured.contains(&"n") {
         return Err(format!("expected `n` in captures, got {captured:?}").into());
     }
@@ -1046,7 +1046,7 @@ fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::
     let IrExpr::Closure { captures, .. } = body else {
         return Err(format!("expected Closure, got {body:?}").into());
     };
-    let names: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    let names: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
     if names.contains(&"x") {
         return Err(format!("closure param `x` leaked into captures: {names:?}").into());
     }

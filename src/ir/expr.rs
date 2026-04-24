@@ -245,7 +245,11 @@ pub enum IrExpr {
         /// Parameter conventions, names, and types
         params: Vec<(ParamConvention, String, ResolvedType)>,
         /// Free variables referenced by the body that are bound in an
-        /// enclosing scope. Each entry is `(binding_name, resolved_type)`.
+        /// enclosing scope. Each entry is
+        /// `(binding_name, capture_mode, resolved_type)` — the mode
+        /// mirrors the `ParamConvention` of the outer binding (or `Let`
+        /// for a plain immutable capture) so backends can choose between
+        /// copy, move, reference, or sink semantics. Audit finding #32.
         ///
         /// Populated during IR lowering by walking the body and collecting
         /// every [`Reference`](Self::Reference) / [`LetRef`](Self::LetRef)
@@ -256,7 +260,7 @@ pub enum IrExpr {
         ///
         /// Capture entries are deduplicated by name and ordered by the
         /// first reference encountered during the traversal.
-        captures: Vec<(String, ResolvedType)>,
+        captures: Vec<(String, ParamConvention, ResolvedType)>,
         /// Closure body
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
