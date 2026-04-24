@@ -515,26 +515,63 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
 }
 
 // =============================================================================
-// Monomorphisation stub (§2 IR gaps)
+// Monomorphisation pass
 // =============================================================================
 
 #[test]
-fn test_monomorphise_stub_rejects_generics() -> Result<(), Box<dyn std::error::Error>> {
+fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
+    // A defined-but-never-instantiated generic has no specialisations to
+    // produce, so it is simply dropped from the module.
     let source = r"
         pub struct Box<T> { value: T }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
-    let result = pipeline.run(module);
-    if result.is_ok() {
-        return Err("expected MonomorphisePass stub to reject a generic module".into());
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should accept an uninstantiated generic, got: {e:?}"))?;
+    if result.structs.iter().any(|s| s.name == "Box") {
+        return Err("generic `Box<T>` should have been removed after monomorphisation".into());
     }
     Ok(())
 }
 
 #[test]
-fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
+fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct Box<T> { value: T }
+        pub let b: Box<Number> = Box<Number>(value: 1)
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
+    // The original `Box<T>` generic definition should be gone.
+    if result.structs.iter().any(|s| s.name == "Box") {
+        return Err(
+            "generic definition `Box` should have been replaced by a specialised clone".into(),
+        );
+    }
+    // A specialised clone whose name starts with `Box__` should exist.
+    if !result.structs.iter().any(|s| s.name.starts_with("Box__")) {
+        return Err(format!(
+            "expected a `Box__...` specialisation, got structs: {:?}",
+            result
+                .structs
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
         pub struct User { name: String, age: Number }
@@ -544,6 +581,6 @@ fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::e
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
     pipeline
         .run(module)
-        .map_err(|e| format!("expected stub to accept concrete module, got: {e:?}"))?;
+        .map_err(|e| format!("expected pass to accept concrete module, got: {e:?}"))?;
     Ok(())
 }
