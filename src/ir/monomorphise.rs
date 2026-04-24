@@ -852,12 +852,14 @@ impl LeftoverScanner {
 }
 
 fn first_leftover(ty: &ResolvedType) -> Option<String> {
-    // NOTE: `TypeParam(name)` is *not* treated as a leftover here. The IR
-    // lowering layer currently emits `TypeParam` as a placeholder for
-    // unresolved field-access receivers and similar best-effort shapes
-    // (tracked as a separate follow-up). Once that is tightened, the
-    // `TypeParam` arm below should be re-enabled.
+    // After audit findings #4, #8, and #27, IR lowering no longer emits
+    // `TypeParam` as a "best-effort placeholder" — every reachable lowering
+    // path either resolves to a concrete type or pushes an
+    // `InternalError`. A `TypeParam` survival here therefore means a real
+    // monomorphisation gap (a type parameter that wasn't substituted) and
+    // should be reported.
     match ty {
+        ResolvedType::TypeParam(name) => Some(format!("unresolved TypeParam(`{name}`)")),
         ResolvedType::Generic { base, args } => {
             let (kind, id) = match base {
                 GenericBase::Struct(s) => ("struct", s.0),
@@ -886,8 +888,7 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
         ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => None,
+        | ResolvedType::Enum(_) => None,
     }
 }
 

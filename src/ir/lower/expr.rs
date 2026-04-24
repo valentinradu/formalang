@@ -241,8 +241,12 @@ impl IrLowerer<'_> {
 
     fn lower_array_expr(&mut self, elements: &[Expr]) -> IrExpr {
         let lowered: Vec<IrExpr> = elements.iter().map(|e| self.lower_expr(e)).collect();
+        // Empty array literal: type element as `Never` ("no values yet").
+        // Matches `nil`'s representation as `Optional(Never)` and lets
+        // the existing array-shape compatibility check accept assignment
+        // to `let xs: [T] = []`. Audit finding #8.
         let elem_ty = lowered.first().map_or_else(
-            || ResolvedType::TypeParam("UnknownElement".to_string()),
+            || ResolvedType::Primitive(PrimitiveType::Never),
             |e| e.ty().clone(),
         );
         IrExpr::Array {
@@ -468,6 +472,9 @@ impl IrLowerer<'_> {
             .iter()
             .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
             .collect();
+        // Empty dict literal: both type args are `Never` (audit #8). The
+        // shape stays a `Dictionary`, so assignment to `let d: [K: V] = [:]`
+        // matches via the existing structural compatibility check.
         let ty = if let Some((k, v)) = lowered_entries.first() {
             ResolvedType::Dictionary {
                 key_ty: Box::new(k.ty().clone()),
@@ -475,8 +482,8 @@ impl IrLowerer<'_> {
             }
         } else {
             ResolvedType::Dictionary {
-                key_ty: Box::new(ResolvedType::TypeParam("K".to_string())),
-                value_ty: Box::new(ResolvedType::TypeParam("V".to_string())),
+                key_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Never)),
+                value_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Never)),
             }
         };
         IrExpr::DictLiteral {
@@ -970,7 +977,13 @@ impl IrLowerer<'_> {
             Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
             Literal::Path(_) => ResolvedType::Primitive(PrimitiveType::Path),
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),
-            Literal::Nil => ResolvedType::TypeParam("Nil".to_string()),
+            // `nil` is the zero value of every optional type. Modelled as
+            // `Optional(Never)` — backends destructure this as "missing
+            // value, no payload" and assignments to `T?` widen via the
+            // existing `Optional` matching path. Audit finding #8.
+            Literal::Nil => {
+                ResolvedType::Optional(Box::new(ResolvedType::Primitive(PrimitiveType::Never)))
+            }
         }
     }
 
