@@ -195,6 +195,20 @@ pub struct IrImportItem {
     pub kind: ImportedKind,
 }
 
+/// The target of a [`ResolvedType::Generic`] instantiation — either a
+/// generic struct or a generic enum.
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "every generic target is either a struct or an enum; other kinds have their own ResolvedType variants"
+)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum GenericBase {
+    /// A generic struct base, e.g. `Box` in `Box<T>`.
+    Struct(StructId),
+    /// A generic enum base, e.g. `Option` in `Option<T>`.
+    Enum(EnumId),
+}
+
 /// A fully resolved type.
 ///
 /// Unlike AST types which use string names, resolved types use IDs that
@@ -227,10 +241,10 @@ pub enum ResolvedType {
     /// Named tuple type: `(name1: T1, name2: T2)`
     Tuple(Vec<(String, Self)>),
 
-    /// Generic type instantiation: `Box<String>`
+    /// Generic type instantiation: `Box<String>` or `Option<Number>`.
     Generic {
-        /// The generic struct being instantiated
-        base: StructId,
+        /// The generic struct or enum being instantiated.
+        base: GenericBase,
         /// Type arguments
         args: Vec<Self>,
     },
@@ -683,10 +697,14 @@ impl ResolvedType {
                 format!("({})", fields_str.join(", "))
             }
             Self::Generic { base, args } => {
-                let base_name = module.get_struct(*base).map_or_else(
-                    || format!("<invalid-struct-{}>", base.0),
-                    |s| s.name.clone(),
-                );
+                let base_name = match base {
+                    GenericBase::Struct(id) => module
+                        .get_struct(*id)
+                        .map_or_else(|| format!("<invalid-struct-{}>", id.0), |s| s.name.clone()),
+                    GenericBase::Enum(id) => module
+                        .get_enum(*id)
+                        .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
+                };
                 let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))
             }

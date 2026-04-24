@@ -584,3 +584,63 @@ fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error:
         .map_err(|e| format!("expected pass to accept concrete module, got: {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // Exercise a generic enum used as a field type. `Option<Number>` is
+    // what the lowering layer turns into a `ResolvedType::Generic` with a
+    // `GenericBase::Enum` base.
+    let source = r"
+        pub enum Option<T> {
+            some(value: T),
+            none
+        }
+        pub struct Container {
+            maybe: Option<Number>
+        }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;
+    // The original `Option<T>` generic definition should be gone.
+    if result.enums.iter().any(|e| e.name == "Option") {
+        return Err(
+            "generic definition `Option` should have been replaced by a specialised clone".into(),
+        );
+    }
+    // A specialised clone whose name starts with `Option__` should exist.
+    if !result.enums.iter().any(|e| e.name.starts_with("Option__")) {
+        return Err(format!(
+            "expected a `Option__...` specialisation, got enums: {:?}",
+            result
+                .enums
+                .iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>()
+        )
+        .into());
+    }
+    // `Container.maybe` should now point at the specialised enum by Enum id
+    // rather than at a Generic wrapper.
+    let container = result
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .ok_or("Container missing")?;
+    let maybe_field = container
+        .fields
+        .iter()
+        .find(|f| f.name == "maybe")
+        .ok_or("maybe field missing")?;
+    if !matches!(maybe_field.ty, formalang::ir::ResolvedType::Enum(_)) {
+        return Err(format!(
+            "expected Container.maybe to be a concrete Enum type after monomorphisation, got: {:?}",
+            maybe_field.ty
+        )
+        .into());
+    }
+    Ok(())
+}

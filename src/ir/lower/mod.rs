@@ -1201,14 +1201,22 @@ impl<'a> IrLowerer<'a> {
                 if let Some(external) = self.try_external_type(&name.name, type_args.clone()) {
                     return external;
                 }
-                // Otherwise try local types
-                self.module.struct_id(&name.name).map_or_else(
-                    || ResolvedType::TypeParam(name.name.clone()),
-                    |base| ResolvedType::Generic {
-                        base,
+                // Local generic struct
+                if let Some(id) = self.module.struct_id(&name.name) {
+                    return ResolvedType::Generic {
+                        base: crate::ir::GenericBase::Struct(id),
                         args: type_args,
-                    },
-                )
+                    };
+                }
+                // Local generic enum
+                if let Some(id) = self.module.enum_id(&name.name) {
+                    return ResolvedType::Generic {
+                        base: crate::ir::GenericBase::Enum(id),
+                        args: type_args,
+                    };
+                }
+                // Fallback: type parameter (e.g. `T` in a generic definition)
+                ResolvedType::TypeParam(name.name.clone())
             }
 
             Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),

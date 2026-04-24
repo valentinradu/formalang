@@ -194,7 +194,14 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.used_traits.insert(*id);
             }
             ResolvedType::Generic { base, args } => {
-                self.used_structs.insert(*base);
+                match base {
+                    crate::ir::GenericBase::Struct(id) => {
+                        self.used_structs.insert(*id);
+                    }
+                    crate::ir::GenericBase::Enum(id) => {
+                        self.used_enums.insert(*id);
+                    }
+                }
                 for arg in args {
                     self.mark_used_in_type(arg);
                 }
@@ -751,8 +758,17 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
             }
         }
         ResolvedType::Generic { base, args } => {
-            if let Some(new) = remap.struct_of(*base) {
-                *base = new;
+            match base {
+                crate::ir::GenericBase::Struct(id) => {
+                    if let Some(new) = remap.struct_of(*id) {
+                        *id = new;
+                    }
+                }
+                crate::ir::GenericBase::Enum(id) => {
+                    if let Some(new) = remap.enum_of(*id) {
+                        *id = new;
+                    }
+                }
             }
             for a in args {
                 remap_type(a, remap);

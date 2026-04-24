@@ -1,29 +1,29 @@
 //! Monomorphisation pass.
 //!
 //! `FormaLang`'s IR preserves generics after lowering: `ResolvedType::Generic`
-//! wraps a [`StructId`] with concrete type arguments, and
-//! `ResolvedType::TypeParam` appears inside the body of a generic definition
-//! where the parameter has not yet been substituted. Most statically-typed
-//! code-generation targets (C, WGSL, `TypeScript` with typed emission,
-//! Swift, Kotlin) cannot emit parametric types directly — they need one
-//! concrete specialisation per instantiation.
+//! wraps a [`GenericBase`] (a struct or enum id) with concrete type
+//! arguments, and `ResolvedType::TypeParam` appears inside the body of a
+//! generic definition where the parameter has not yet been substituted.
+//! Most statically-typed code-generation targets (C, WGSL, `TypeScript`
+//! with typed emission, Swift, Kotlin) cannot emit parametric types
+//! directly — they need one concrete specialisation per instantiation.
 //!
 //! The pass walks the IR, collects every unique `(base, type_args)` tuple
-//! in use, clones each generic struct once per unique tuple while
+//! in use, clones each generic struct or enum once per unique tuple while
 //! substituting [`ResolvedType::TypeParam`] references with the concrete
 //! argument, rewrites every [`ResolvedType::Generic`] in the module to
 //! point at the specialised copy, then removes the original generic
 //! definitions (and rebuilds name indices).
 //!
-//! After the pass runs, no `ResolvedType::Generic` or `ResolvedType::TypeParam`
-//! references remain in the IR.
+//! After the pass runs, no `ResolvedType::Generic` references remain in
+//! the IR.
 //!
 //! # Limitations
 //!
-//! - Only generic **structs** are fully monomorphised. Generic traits and
-//!   generic enums are not currently instantiated via
-//!   [`ResolvedType::Generic`]; if a generic enum or trait definition
-//!   remains after this pass, it is reported as an [`InternalError`].
+//! - Generic **traits** are not supported — the IR has no way to
+//!   instantiate a generic trait today. A trait definition with
+//!   non-empty `generic_params` that survives the pass is reported as
+//!   an `InternalError`.
 //! - The pass does not yet chase through external module imports
 //!   (`ResolvedType::External`) — generic arguments on imported types
 //!   are walked but not specialised.
@@ -44,8 +44,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::CompilerError;
 use crate::ir::{
-    IrBlockStatement, IrEnum, IrExpr, IrField, IrFunction, IrImpl, IrModule, IrStruct, IrTrait,
-    PrimitiveType, ResolvedType, StructId,
+    EnumId, GenericBase, IrBlockStatement, IrEnum, IrExpr, IrField, IrFunction, IrImpl, IrModule,
+    IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId,
 };
 use crate::location::Span;
 use crate::pipeline::IrPass;
@@ -73,23 +73,23 @@ impl IrPass for MonomorphisePass {
         // the module. The worklist processes args recursively when a
         // specialisation itself references more generics.
         let initial = collect_all_instantiations(&module);
-        let mut worklist: VecDeque<(StructId, Vec<ResolvedType>)> = initial.into_iter().collect();
-        let mut mapping: HashMap<(StructId, Vec<ResolvedType>), StructId> = HashMap::new();
+        let mut worklist: VecDeque<Instantiation> = initial.into_iter().collect();
+        let mut mapping: HashMap<Instantiation, GenericBase> = HashMap::new();
 
         while let Some(inst) = worklist.pop_front() {
             if mapping.contains_key(&inst) {
                 continue;
             }
-            match specialise_struct(&mut module, &inst) {
-                Ok((spec_id, more)) => {
-                    mapping.insert(inst, spec_id);
+            match specialise(&mut module, &inst) {
+                Ok((spec_base, more)) => {
+                    mapping.insert(inst, spec_base);
                     worklist.extend(more);
                 }
                 Err(e) => {
                     errors.push(e);
                     // Record a sentinel so we don't keep retrying the same
                     // broken instantiation.
-                    mapping.insert(inst, StructId(u32::MAX));
+                    mapping.insert(inst, GenericBase::Struct(StructId(u32::MAX)));
                 }
             }
         }
@@ -101,15 +101,16 @@ impl IrPass for MonomorphisePass {
         // Phase 2: rewrite every Generic reference to its specialisation.
         rewrite_module(&mut module, &mapping);
 
-        // Phase 3: compact — drop original generic structs, remap remaining
-        // struct IDs. Traits/enums with lingering generic parameters are
-        // surfaced as InternalError since this pass does not handle them.
+        // Phase 3: compact — drop the original generic structs and enums,
+        // remap surviving IDs for each kind.
         let struct_remap = build_struct_remap(&module);
-        apply_struct_remap(&mut module, &struct_remap);
-        compact_structs(&mut module);
+        let enum_remap = build_enum_remap(&module);
+        apply_remaps(&mut module, &struct_remap, &enum_remap);
+        module.structs.retain(|s| s.generic_params.is_empty());
+        module.enums.retain(|e| e.generic_params.is_empty());
         module.rebuild_indices();
 
-        // Phase 4: sanity — no Generic / TypeParam should remain anywhere.
+        // Phase 4: sanity — no Generic should remain anywhere.
         let mut leftovers = LeftoverScanner::default();
         leftovers.scan(&module);
         if let Some(detail) = leftovers.first_error() {
@@ -127,14 +128,14 @@ impl IrPass for MonomorphisePass {
 // Phase 1: collection
 // =============================================================================
 
-fn collect_all_instantiations(module: &IrModule) -> HashSet<(StructId, Vec<ResolvedType>)> {
+fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantiation> {
     let mut out = HashSet::new();
     let mut collector = |ty: &ResolvedType| collect_from_type(ty, &mut out);
     walk_module_types(module, &mut collector);
     out
 }
 
-fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<(StructId, Vec<ResolvedType>)>) {
+fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiation>) {
     match ty {
         ResolvedType::Generic { base, args } => {
             for a in args {
@@ -180,24 +181,39 @@ fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<(StructId, Vec<Resolve
 // Phase 1b: specialisation
 // =============================================================================
 
-/// A single generic instantiation key: `(base_struct_id, type_args)`.
-type Instantiation = (StructId, Vec<ResolvedType>);
+/// A single generic instantiation key: `(base, type_args)`.
+type Instantiation = (GenericBase, Vec<ResolvedType>);
 
 /// Outcome of specialising a single generic instantiation.
-type SpecialiseOk = (StructId, Vec<Instantiation>);
+type SpecialiseOk = (GenericBase, Vec<Instantiation>);
 
-/// Specialise a single generic struct instantiation, appending the clone
-/// to the module and returning its new id plus any further instantiations
-/// introduced by the clone's field types.
+/// Specialise a single generic instantiation (struct or enum), appending
+/// the clone to the module and returning its new base plus any further
+/// instantiations introduced by the clone's field types.
+#[expect(
+    clippy::result_large_err,
+    reason = "CompilerError is large by design; errors are bounded to a Vec<CompilerError> at the pass boundary"
+)]
+fn specialise(
+    module: &mut IrModule,
+    (base, args): &Instantiation,
+) -> Result<SpecialiseOk, CompilerError> {
+    match base {
+        GenericBase::Struct(id) => specialise_struct(module, *id, args),
+        GenericBase::Enum(id) => specialise_enum(module, *id, args),
+    }
+}
+
 #[expect(
     clippy::result_large_err,
     reason = "CompilerError is large by design; errors are bounded to a Vec<CompilerError> at the pass boundary"
 )]
 fn specialise_struct(
     module: &mut IrModule,
-    (base_id, args): &Instantiation,
+    base_id: StructId,
+    args: &[ResolvedType],
 ) -> Result<SpecialiseOk, CompilerError> {
-    let Some(source) = module.get_struct(*base_id).cloned() else {
+    let Some(source) = module.get_struct(base_id).cloned() else {
         return Err(CompilerError::InternalError {
             detail: format!(
                 "monomorphise: missing struct id {} for instantiation",
@@ -216,7 +232,6 @@ fn specialise_struct(
         });
     }
 
-    // Parameter-name → concrete-type substitution map.
     let subs: HashMap<String, ResolvedType> = source
         .generic_params
         .iter()
@@ -235,14 +250,75 @@ fn specialise_struct(
         }
     }
 
-    // Discover further instantiations introduced by substitution.
-    let mut discovered: HashSet<(StructId, Vec<ResolvedType>)> = HashSet::new();
+    let mut discovered: HashSet<Instantiation> = HashSet::new();
     for field in &spec.fields {
         collect_from_type(&field.ty, &mut discovered);
     }
 
     let new_id = module.add_struct(mangled, spec)?;
-    Ok((new_id, discovered.into_iter().collect()))
+    Ok((
+        GenericBase::Struct(new_id),
+        discovered.into_iter().collect(),
+    ))
+}
+
+#[expect(
+    clippy::result_large_err,
+    reason = "CompilerError is large by design; errors are bounded to a Vec<CompilerError> at the pass boundary"
+)]
+fn specialise_enum(
+    module: &mut IrModule,
+    base_id: EnumId,
+    args: &[ResolvedType],
+) -> Result<SpecialiseOk, CompilerError> {
+    let Some(source) = module.get_enum(base_id).cloned() else {
+        return Err(CompilerError::InternalError {
+            detail: format!(
+                "monomorphise: missing enum id {} for instantiation",
+                base_id.0
+            ),
+            span: Span::default(),
+        });
+    };
+
+    if source.generic_params.len() != args.len() {
+        return Err(CompilerError::GenericArityMismatch {
+            name: source.name.clone(),
+            expected: source.generic_params.len(),
+            actual: args.len(),
+            span: Span::default(),
+        });
+    }
+
+    let subs: HashMap<String, ResolvedType> = source
+        .generic_params
+        .iter()
+        .zip(args.iter())
+        .map(|(p, a)| (p.name.clone(), a.clone()))
+        .collect();
+
+    let mangled = mangle_name(&source.name, args, module);
+    let mut spec = source;
+    spec.name.clone_from(&mangled);
+    spec.generic_params.clear();
+    for variant in &mut spec.variants {
+        for field in &mut variant.fields {
+            substitute_type(&mut field.ty, &subs);
+            if let Some(expr) = &mut field.default {
+                substitute_expr_types(expr, &subs);
+            }
+        }
+    }
+
+    let mut discovered: HashSet<Instantiation> = HashSet::new();
+    for variant in &spec.variants {
+        for field in &variant.fields {
+            collect_from_type(&field.ty, &mut discovered);
+        }
+    }
+
+    let new_id = module.add_enum(mangled, spec)?;
+    Ok((GenericBase::Enum(new_id), discovered.into_iter().collect()))
 }
 
 /// Build a stable mangled name for a specialisation. Collisions with
@@ -326,7 +402,14 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
             type_suffix(return_ty, out);
         }
         ResolvedType::Generic { base, args } => {
-            let _ = write_usize(out, "G", usize::try_from(base.0).unwrap_or(0));
+            match base {
+                GenericBase::Struct(id) => {
+                    let _ = write_usize(out, "GS", usize::try_from(id.0).unwrap_or(0));
+                }
+                GenericBase::Enum(id) => {
+                    let _ = write_usize(out, "GE", usize::try_from(id.0).unwrap_or(0));
+                }
+            }
             for a in args {
                 out.push('_');
                 type_suffix(a, out);
@@ -411,15 +494,12 @@ fn substitute_expr_types(expr: &mut IrExpr, subs: &HashMap<String, ResolvedType>
 // Phase 2: rewrite Generic → Struct(spec)
 // =============================================================================
 
-fn rewrite_module(
-    module: &mut IrModule,
-    mapping: &HashMap<(StructId, Vec<ResolvedType>), StructId>,
-) {
+fn rewrite_module(module: &mut IrModule, mapping: &HashMap<Instantiation, GenericBase>) {
     let rewrite = |ty: &mut ResolvedType| rewrite_type(ty, mapping);
     walk_module_types_mut(module, rewrite);
 }
 
-fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<(StructId, Vec<ResolvedType>), StructId>) {
+fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericBase>) {
     // Recurse first so nested generics inside args are resolved before we
     // try to look up the outer key (the mapping keys hold fully-rewritten
     // inner types, so we must rewrite inner before outer lookup).
@@ -450,7 +530,10 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<(StructId, Vec<Resolved
                 rewrite_type(a, mapping);
             }
             if let Some(&spec) = mapping.get(&(*base, args.clone())) {
-                *ty = ResolvedType::Struct(spec);
+                *ty = match spec {
+                    GenericBase::Struct(id) => ResolvedType::Struct(id),
+                    GenericBase::Enum(id) => ResolvedType::Enum(id),
+                };
             }
         }
         ResolvedType::External { type_args, .. } => {
@@ -467,20 +550,18 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<(StructId, Vec<Resolved
 }
 
 // =============================================================================
-// Phase 3: compact — drop original generic structs, remap IDs
+// Phase 3: compact — drop original generic definitions, remap IDs
 // =============================================================================
 
-/// Build a remap table: every struct with a non-empty `generic_params`
-/// becomes `None` (to be removed); every other struct maps to its new
-/// post-compaction id.
+/// Build an old-id → new-id remap table for structs. Structs with non-empty
+/// `generic_params` become `None` (they will be dropped on compaction);
+/// surviving structs map to their new post-compaction position.
 fn build_struct_remap(module: &IrModule) -> Vec<Option<StructId>> {
     let mut out = Vec::with_capacity(module.structs.len());
     let mut next: u32 = 0;
     for s in &module.structs {
         if s.generic_params.is_empty() {
             out.push(Some(StructId(next)));
-            // safe: next is bounded by len() which fit in u32 when the
-            // struct was added.
             next = next.saturating_add(1);
         } else {
             out.push(None);
@@ -489,71 +570,107 @@ fn build_struct_remap(module: &IrModule) -> Vec<Option<StructId>> {
     out
 }
 
-fn apply_struct_remap(module: &mut IrModule, remap: &[Option<StructId>]) {
-    walk_module_types_mut(module, |ty| remap_type_struct_ids(ty, remap));
-    // Impl targets reference struct IDs directly.
+/// Matching remap for enums.
+fn build_enum_remap(module: &IrModule) -> Vec<Option<EnumId>> {
+    let mut out = Vec::with_capacity(module.enums.len());
+    let mut next: u32 = 0;
+    for e in &module.enums {
+        if e.generic_params.is_empty() {
+            out.push(Some(EnumId(next)));
+            next = next.saturating_add(1);
+        } else {
+            out.push(None);
+        }
+    }
+    out
+}
+
+fn apply_remaps(
+    module: &mut IrModule,
+    struct_remap: &[Option<StructId>],
+    enum_remap: &[Option<EnumId>],
+) {
+    walk_module_types_mut(module, |ty| remap_type(ty, struct_remap, enum_remap));
     for imp in &mut module.impls {
-        if let crate::ir::ImplTarget::Struct(id) = &mut imp.target {
-            if let Some(Some(new)) = remap.get(id.0 as usize).copied() {
-                *id = new;
+        match &mut imp.target {
+            crate::ir::ImplTarget::Struct(id) => {
+                if let Some(Some(new)) = struct_remap.get(id.0 as usize).copied() {
+                    *id = new;
+                }
+            }
+            crate::ir::ImplTarget::Enum(id) => {
+                if let Some(Some(new)) = enum_remap.get(id.0 as usize).copied() {
+                    *id = new;
+                }
             }
         }
     }
-    // A struct that implements traits carries no struct-id references
-    // itself, but the struct's own index (its position in the vector)
-    // changes when we compact — that's handled by the final retain.
 }
 
-fn remap_type_struct_ids(ty: &mut ResolvedType, remap: &[Option<StructId>]) {
+fn remap_type(
+    ty: &mut ResolvedType,
+    struct_remap: &[Option<StructId>],
+    enum_remap: &[Option<EnumId>],
+) {
     match ty {
         ResolvedType::Struct(id) => {
-            if let Some(Some(new)) = remap.get(id.0 as usize).copied() {
+            if let Some(Some(new)) = struct_remap.get(id.0 as usize).copied() {
+                *id = new;
+            }
+        }
+        ResolvedType::Enum(id) => {
+            if let Some(Some(new)) = enum_remap.get(id.0 as usize).copied() {
                 *id = new;
             }
         }
         ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
-            remap_type_struct_ids(inner, remap);
+            remap_type(inner, struct_remap, enum_remap);
         }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
-                remap_type_struct_ids(t, remap);
+                remap_type(t, struct_remap, enum_remap);
             }
         }
         ResolvedType::Dictionary { key_ty, value_ty } => {
-            remap_type_struct_ids(key_ty, remap);
-            remap_type_struct_ids(value_ty, remap);
+            remap_type(key_ty, struct_remap, enum_remap);
+            remap_type(value_ty, struct_remap, enum_remap);
         }
         ResolvedType::Closure {
             param_tys,
             return_ty,
         } => {
             for (_, t) in param_tys {
-                remap_type_struct_ids(t, remap);
+                remap_type(t, struct_remap, enum_remap);
             }
-            remap_type_struct_ids(return_ty, remap);
+            remap_type(return_ty, struct_remap, enum_remap);
         }
         ResolvedType::Generic { base, args } => {
-            if let Some(Some(new)) = remap.get(base.0 as usize).copied() {
-                *base = new;
+            // Defensive: by Phase 3 every Generic should have been
+            // rewritten to a concrete Struct/Enum, but remap the base just
+            // in case a caller is inspecting state mid-pass.
+            match base {
+                GenericBase::Struct(id) => {
+                    if let Some(Some(new)) = struct_remap.get(id.0 as usize).copied() {
+                        *id = new;
+                    }
+                }
+                GenericBase::Enum(id) => {
+                    if let Some(Some(new)) = enum_remap.get(id.0 as usize).copied() {
+                        *id = new;
+                    }
+                }
             }
             for a in args {
-                remap_type_struct_ids(a, remap);
+                remap_type(a, struct_remap, enum_remap);
             }
         }
         ResolvedType::External { type_args, .. } => {
             for a in type_args {
-                remap_type_struct_ids(a, remap);
+                remap_type(a, struct_remap, enum_remap);
             }
         }
-        ResolvedType::Primitive(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => {}
+        ResolvedType::Primitive(_) | ResolvedType::Trait(_) | ResolvedType::TypeParam(_) => {}
     }
-}
-
-fn compact_structs(module: &mut IrModule) {
-    module.structs.retain(|s| s.generic_params.is_empty());
 }
 
 // =============================================================================
@@ -578,19 +695,14 @@ impl LeftoverScanner {
     }
 
     fn scan(&mut self, module: &IrModule) {
+        // Traits with generic_params are still unsupported — the IR has no
+        // way to instantiate a generic trait today. Generic structs and
+        // enums are compacted in Phase 3.
         for t in &module.traits {
             if !t.generic_params.is_empty() {
                 self.note(format!(
                     "generic trait `{}` remains (generic traits are not supported)",
                     t.name
-                ));
-            }
-        }
-        for e in &module.enums {
-            if !e.generic_params.is_empty() {
-                self.note(format!(
-                    "generic enum `{}` remains (generic enums are not supported)",
-                    e.name
                 ));
             }
         }
@@ -611,11 +723,16 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
     // (tracked as a separate follow-up). Once that is tightened, the
     // `TypeParam` arm below should be re-enabled.
     match ty {
-        ResolvedType::Generic { base, args } => Some(format!(
-            "unresolved Generic(base_id={}, {} args)",
-            base.0,
-            args.len()
-        )),
+        ResolvedType::Generic { base, args } => {
+            let (kind, id) = match base {
+                GenericBase::Struct(s) => ("struct", s.0),
+                GenericBase::Enum(e) => ("enum", e.0),
+            };
+            Some(format!(
+                "unresolved Generic(base={kind}_id={id}, {} args)",
+                args.len()
+            ))
+        }
         ResolvedType::Array(inner) | ResolvedType::Optional(inner) => first_leftover(inner),
         ResolvedType::Tuple(fields) => fields.iter().find_map(|(_, t)| first_leftover(t)),
         ResolvedType::Dictionary { key_ty, value_ty } => {

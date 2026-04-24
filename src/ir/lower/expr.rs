@@ -106,7 +106,7 @@ impl IrLowerer<'_> {
                 ResolvedType::Struct(id)
             } else {
                 ResolvedType::Generic {
-                    base: id,
+                    base: crate::ir::GenericBase::Struct(id),
                     args: type_args_resolved.clone(),
                 }
             };
@@ -534,11 +534,29 @@ impl IrLowerer<'_> {
         receiver_ty: &ResolvedType,
         method_name: &str,
     ) -> DispatchKind {
-        if let ResolvedType::Struct(struct_id)
-        | ResolvedType::Generic {
-            base: struct_id, ..
-        } = receiver_ty
-        {
+        // Unwrap a Generic wrapper to its base so `Box<T>.method()` and
+        // `Option<T>.method()` dispatch the same way a concrete Struct/Enum
+        // receiver would.
+        let concrete = match receiver_ty {
+            ResolvedType::Generic { base, .. } => match base {
+                crate::ir::GenericBase::Struct(id) => Some(ResolvedType::Struct(*id)),
+                crate::ir::GenericBase::Enum(id) => Some(ResolvedType::Enum(*id)),
+            },
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => None,
+        };
+        let effective_ty = concrete.as_ref().unwrap_or(receiver_ty);
+
+        if let ResolvedType::Struct(struct_id) = effective_ty {
             if let Some(impl_id) = self.find_impl_for_struct(*struct_id, method_name) {
                 return DispatchKind::Static { impl_id };
             }
@@ -547,7 +565,7 @@ impl IrLowerer<'_> {
             };
         }
 
-        if let ResolvedType::Enum(enum_id) = receiver_ty {
+        if let ResolvedType::Enum(enum_id) = effective_ty {
             if let Some(impl_id) = self.find_impl_for_enum(*enum_id, method_name) {
                 return DispatchKind::Static { impl_id };
             }

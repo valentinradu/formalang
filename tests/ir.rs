@@ -3704,7 +3704,9 @@ struct Main {
         match ty {
             ResolvedType::Struct(id) => ids.push(*id),
             ResolvedType::Generic { base, args } => {
-                ids.push(*base);
+                if let formalang::ir::GenericBase::Struct(id) = base {
+                    ids.push(*id);
+                }
                 for arg in args {
                     collect_struct_ids(arg, ids);
                 }
