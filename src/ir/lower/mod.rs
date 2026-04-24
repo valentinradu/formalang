@@ -101,6 +101,39 @@ impl<'a> IrLowerer<'a> {
         });
     }
 
+    /// Record an `InternalError` at an IR-lowering site that should be
+    /// unreachable under a passing semantic analysis, and return a
+    /// placeholder `ResolvedType` so the surrounding lowering code can
+    /// continue assembling the IR. The caller's error will surface via
+    /// `self.errors` at the end of lowering; the returned placeholder only
+    /// exists so we don't have to plumb `Result` through every lowering
+    /// helper. See audit finding #8.
+    pub(super) fn internal_error_type(&mut self, detail: String) -> ResolvedType {
+        self.errors.push(CompilerError::InternalError {
+            detail,
+            span: crate::location::Span::default(),
+        });
+        ResolvedType::TypeParam("Unknown".to_string())
+    }
+
+    /// Like `internal_error_type`, but skips the error push when the
+    /// offending type is already a `TypeParam` — that indicates an upstream
+    /// lowering step already produced a placeholder (unresolved path, tuple
+    /// type rendered as a string, etc.) and will have errored on its own
+    /// behalf. This avoids a cascade of secondary errors until the upstream
+    /// `TypeParam` sources are removed (audit finding #8 follow-up).
+    pub(super) fn internal_error_type_if_concrete(
+        &mut self,
+        bad_ty: &ResolvedType,
+        detail: String,
+    ) -> ResolvedType {
+        if matches!(bad_ty, ResolvedType::TypeParam(_)) {
+            ResolvedType::TypeParam("Unknown".to_string())
+        } else {
+            self.internal_error_type(detail)
+        }
+    }
+
     fn new(symbols: &'a SymbolTable) -> Self {
         Self {
             module: IrModule::new(),
@@ -210,19 +243,14 @@ impl<'a> IrLowerer<'a> {
         elements: &[ast::ArrayPatternElement],
     ) {
         let value_expr = self.lower_expr(&let_binding.value);
-        let elem_ty = match value_expr.ty() {
-            ResolvedType::Array(inner) => (**inner).clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
+        let bad_recv = value_expr.ty().clone();
+        let elem_ty = if let ResolvedType::Array(inner) = &bad_recv {
+            (**inner).clone()
+        } else {
+            self.internal_error_type_if_concrete(
+                &bad_recv,
+                format!("array-destructuring let receiver lowered to non-array type {bad_recv:?}"),
+            )
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_binding_name(element) {
@@ -288,29 +316,29 @@ impl<'a> IrLowerer<'a> {
         elements: &[BindingPattern],
     ) {
         let value_expr = self.lower_expr(&let_binding.value);
-        let tuple_types = match value_expr.ty() {
-            ResolvedType::Tuple(fields) => fields.clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => Vec::new(),
+        let bad_recv = value_expr.ty().clone();
+        let tuple_types = if let ResolvedType::Tuple(fields) = &bad_recv {
+            fields.clone()
+        } else {
+            let _ = self.internal_error_type_if_concrete(
+                &bad_recv,
+                format!("tuple-destructuring let receiver lowered to non-tuple type {bad_recv:?}"),
+            );
+            Vec::new()
+        };
+        let overflow_ty = if elements.len() > tuple_types.len() && !tuple_types.is_empty() {
+            self.internal_error_type(format!(
+                "tuple-destructuring pattern binds {} names but the receiver has {} fields",
+                elements.len(),
+                tuple_types.len(),
+            ))
+        } else {
+            ResolvedType::TypeParam("Unknown".to_string())
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_simple_binding_name(element) {
                 let (field_name, ty) = tuple_types.get(i).map_or_else(
-                    || {
-                        (
-                            i.to_string(),
-                            ResolvedType::TypeParam("Unknown".to_string()),
-                        )
-                    },
+                    || (i.to_string(), overflow_ty.clone()),
                     |(n, t)| (n.clone(), t.clone()),
                 );
                 // `value.field_name` — tuple fields are accessed by their declared name
@@ -351,24 +379,56 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Resolve the type of a self.field reference using current impl context
+    /// Resolve the type of a self.field reference using current impl context.
+    /// Searches the top-level symbol table first, then any current module
+    /// prefix (so impl blocks inside `pub mod foo { ... }` resolve correctly).
     pub(super) fn resolve_self_field_type(&mut self, field_name: &str) -> ResolvedType {
         if let Some(struct_name) = self.current_impl_struct.clone() {
-            // Look up the struct in the symbol table
-            if let Some(struct_info) = self.symbols.structs.get(&struct_name) {
-                // Check regular fields
+            if let Some(ty) = self.find_struct_field_ty(&struct_name, field_name) {
+                return ty;
+            }
+        }
+        self.internal_error_type(format!(
+            "`self.{field_name}` has no matching field on the current impl target; semantic should have caught this"
+        ))
+    }
+
+    /// Look up a struct's field type by searching the top-level symbol
+    /// table, then walking the current module prefix if any. Returns the
+    /// lowered `ResolvedType` if found.
+    fn find_struct_field_ty(
+        &mut self,
+        struct_name: &str,
+        field_name: &str,
+    ) -> Option<ResolvedType> {
+        if let Some(struct_info) = self.symbols.structs.get(struct_name) {
+            if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
+                let ty = field.ty.clone();
+                return Some(self.lower_type(&ty));
+            }
+        }
+        if !self.current_module_prefix.is_empty() {
+            let parts: Vec<&str> = self.current_module_prefix.split("::").collect();
+            let mut current = self.symbols;
+            for part in &parts {
+                match current.modules.get(*part) {
+                    Some(info) => current = &info.symbols,
+                    None => return None,
+                }
+            }
+            if let Some(struct_info) = current.structs.get(struct_name) {
                 if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
                     let ty = field.ty.clone();
-                    return self.lower_type(&ty);
+                    return Some(self.lower_type(&ty));
                 }
             }
         }
-        ResolvedType::TypeParam(format!("self.{field_name}"))
+        None
     }
 
     /// Resolve the type of `self` in an impl block context.
     /// Returns the `ResolvedType` for the struct or enum being implemented.
-    pub(super) fn resolve_impl_self_type(&self, impl_name: &str) -> ResolvedType {
+    pub(super) fn resolve_impl_self_type(&mut self, impl_name: &str) -> ResolvedType {
         // First try as a struct
         if let Some(id) = self.module.struct_id(impl_name) {
             return ResolvedType::Struct(id);
@@ -377,8 +437,9 @@ impl<'a> IrLowerer<'a> {
         if let Some(id) = self.module.enum_id(impl_name) {
             return ResolvedType::Enum(id);
         }
-        // Fall back to TypeParam if not found
-        ResolvedType::TypeParam("self".to_string())
+        self.internal_error_type(format!(
+            "impl-self type `{impl_name}` was not registered in the module before lowering referenced it",
+        ))
     }
 
     /// Look up all traits for a struct that lives inside a module.
@@ -975,12 +1036,23 @@ impl<'a> IrLowerer<'a> {
         self.current_impl_method_returns = Some(impl_returns);
 
         let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+        let generic_params = self.lower_generic_params(&i.generics);
+        let trait_id = i
+            .trait_name
+            .as_ref()
+            .and_then(|t| self.module.trait_id(&t.name));
 
         // Clear the context
         self.current_impl_struct = None;
         self.current_impl_method_returns = saved_impl_returns;
 
-        if let Err(err) = self.module.add_impl(IrImpl { target, functions }) {
+        if let Err(err) = self.module.add_impl(IrImpl {
+            target,
+            trait_id,
+            is_extern: i.is_extern,
+            generic_params,
+            functions,
+        }) {
             self.errors.push(err);
         }
     }
@@ -1061,9 +1133,11 @@ impl<'a> IrLowerer<'a> {
                 frame.insert(p.name.clone(), ty.clone());
             }
         }
-        if let Some(impl_struct) = self.current_impl_struct.clone() {
-            if let Some(struct_id) = self.module.struct_id(&impl_struct) {
+        if let Some(impl_name) = self.current_impl_struct.clone() {
+            if let Some(struct_id) = self.module.struct_id(&impl_name) {
                 frame.insert("self".to_string(), ResolvedType::Struct(struct_id));
+            } else if let Some(enum_id) = self.module.enum_id(&impl_name) {
+                frame.insert("self".to_string(), ResolvedType::Enum(enum_id));
             }
         }
         self.local_binding_scopes.push(frame);

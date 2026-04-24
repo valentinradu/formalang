@@ -4456,3 +4456,127 @@ impl Color {
     }
     Ok(())
 }
+
+#[test]
+fn test_impl_trait_id_and_is_extern_propagated() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #10: `impl Trait for Type` must set IrImpl.trait_id; inherent
+    // impl must leave it None; `extern impl` must set is_extern = true.
+    let source = r#"
+pub trait Greeter {
+    fn greet(self) -> String
+}
+
+pub struct Person {}
+
+impl Greeter for Person {
+    fn greet(self) -> String { "hi" }
+}
+
+impl Person {
+    fn shout(self) -> String { "HI" }
+}
+
+pub struct Printer {}
+
+extern impl Printer {
+    fn print(self, msg: String)
+}
+"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+
+    let person_id = module.struct_id("Person").ok_or("Person missing")?;
+    let printer_id = module.struct_id("Printer").ok_or("Printer missing")?;
+    let greeter_id = module.trait_id("Greeter").ok_or("Greeter missing")?;
+
+    let person_impls: Vec<&formalang::ir::IrImpl> = module
+        .impls
+        .iter()
+        .filter(|i| i.struct_id() == Some(person_id))
+        .collect();
+    if person_impls.len() != 2 {
+        return Err(format!(
+            "expected 2 Person impls (trait + inherent), got {}",
+            person_impls.len()
+        )
+        .into());
+    }
+    let trait_impl = person_impls
+        .iter()
+        .find(|i| i.trait_id == Some(greeter_id))
+        .ok_or("no impl records trait_id = Greeter for Person")?;
+    if trait_impl.is_extern {
+        return Err("Greeter-for-Person impl should not be is_extern".into());
+    }
+    let inherent = person_impls
+        .iter()
+        .find(|i| i.trait_id.is_none())
+        .ok_or("no inherent impl on Person")?;
+    if inherent.is_extern {
+        return Err("inherent Person impl should not be is_extern".into());
+    }
+
+    let printer_impl = module
+        .impls
+        .iter()
+        .find(|i| i.struct_id() == Some(printer_id))
+        .ok_or("no impl for Printer")?;
+    if !printer_impl.is_extern {
+        return Err("extern impl Printer should have is_extern = true".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_enum_impl_self_typed_as_enum() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #9a: `self` inside an enum impl must be typed as
+    // `ResolvedType::Enum(id)`, not silently fall through to a
+    // `TypeParam("self")` placeholder.
+    let source = r#"
+pub enum Signal {
+    stop,
+    go(velocity: Number)
+}
+
+impl Signal {
+    fn describe(self) -> String {
+        match self {
+            .stop: "halt",
+            .go(velocity): "move"
+        }
+    }
+}
+"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let signal_id = module
+        .enums
+        .iter()
+        .position(|e| e.name == "Signal")
+        .ok_or("Signal enum not present")?;
+    let signal_id_u32 = u32::try_from(signal_id).map_err(|e| format!("id overflow: {e}"))?;
+    let signal_impl = module
+        .impls
+        .iter()
+        .find(|i| i.enum_id() == Some(EnumId(signal_id_u32)))
+        .ok_or("Signal enum impl not present")?;
+    let describe = signal_impl
+        .functions
+        .iter()
+        .find(|f| f.name == "describe")
+        .ok_or("describe fn missing")?;
+    // Body is a match expression whose scrutinee is `self`. That reference
+    // must resolve to `ResolvedType::Enum(Signal)`, not
+    // `ResolvedType::TypeParam("self")`.
+    let body = describe.body.as_ref().ok_or("describe has no body")?;
+    let scrutinee_ty = if let IrExpr::Match { scrutinee, .. } = body {
+        scrutinee.ty().clone()
+    } else {
+        return Err(format!("expected match body, got {body:?}").into());
+    };
+    if !matches!(scrutinee_ty, ResolvedType::Enum(id) if id.0 == signal_id_u32) {
+        return Err(format!(
+            "match scrutinee `self` in enum impl should resolve to Enum(Signal), got {scrutinee_ty:?}"
+        )
+        .into());
+    }
+    Ok(())
+}

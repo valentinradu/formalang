@@ -192,21 +192,31 @@ impl IrLowerer<'_> {
         variant: &str,
         data: &[(crate::ast::Ident, Expr)],
     ) -> IrExpr {
-        let (enum_id, ty) = self.current_function_return_type.clone().map_or_else(
-            || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
-            |return_type_name| {
-                self.module.enum_id(&return_type_name).map_or_else(
-                    || {
-                        self.try_external_type(&return_type_name, vec![])
-                            .map_or_else(
-                                || (None, ResolvedType::TypeParam("InferredEnum".to_string())),
-                                |external_ty| (None, external_ty),
-                            )
-                    },
-                    |id| (Some(id), ResolvedType::Enum(id)),
-                )
-            },
-        );
+        // Inferred-enum uses outside a return-typed context (e.g. struct
+        // field defaults, top-level lets) are a known gap — the upstream
+        // context-threading work in audit finding #27 will surface the
+        // real signal, so we leave a TypeParam placeholder without error.
+        #[expect(
+            clippy::option_if_let_else,
+            reason = "three-branch resolution (local enum / external / error) reads clearer as if/else"
+        )]
+        let (enum_id, ty) = match self.current_function_return_type.clone() {
+            None => (None, ResolvedType::TypeParam("InferredEnum".to_string())),
+            Some(name) => {
+                if let Some(id) = self.module.enum_id(&name) {
+                    (Some(id), ResolvedType::Enum(id))
+                } else if let Some(external_ty) = self.try_external_type(&name, vec![]) {
+                    (None, external_ty)
+                } else {
+                    (
+                        None,
+                        self.internal_error_type(format!(
+                            "inferred-enum `.{variant}` has no resolvable return-type enum `{name}`",
+                        )),
+                    )
+                }
+            }
+        };
         IrExpr::EnumInst {
             enum_id,
             variant: variant.to_string(),
@@ -268,8 +278,8 @@ impl IrLowerer<'_> {
             reason = "len == 1 check above guarantees index 0"
         )]
         if path_strs.len() == 1 && path_strs[0] == "self" {
-            if let Some(ref impl_name) = self.current_impl_struct {
-                let ty = self.resolve_impl_self_type(impl_name);
+            if let Some(impl_name) = self.current_impl_struct.clone() {
+                let ty = self.resolve_impl_self_type(&impl_name);
                 return IrExpr::Reference {
                     path: path_strs,
                     ty,
@@ -392,19 +402,16 @@ impl IrLowerer<'_> {
     ) -> IrExpr {
         let collection_ir = self.lower_expr(collection);
         let body_ir = self.lower_expr(body);
-        let var_ty = match collection_ir.ty() {
-            ResolvedType::Array(inner) => (**inner).clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("UnknownElement".to_string()),
+        let bad_collection = collection_ir.ty().clone();
+        let var_ty = if let ResolvedType::Array(inner) = &bad_collection {
+            (**inner).clone()
+        } else {
+            self.internal_error_type_if_concrete(
+                &bad_collection,
+                format!(
+                    "for-loop collection lowered to non-iterable type {bad_collection:?}; semantic should have caught this",
+                ),
+            )
         };
         IrExpr::For {
             var: var.name.clone(),
@@ -433,7 +440,7 @@ impl IrLowerer<'_> {
             })
             .collect();
         let ty = arms_ir.first().map_or_else(
-            || ResolvedType::TypeParam("Unknown".to_string()),
+            || self.internal_error_type("match expression with no arms reached IR lowering".into()),
             |a| a.body.ty().clone(),
         );
         IrExpr::Match {
@@ -468,19 +475,16 @@ impl IrLowerer<'_> {
     fn lower_dict_access(&mut self, dict: &Expr, key: &Expr) -> IrExpr {
         let dict_ir = self.lower_expr(dict);
         let key_ir = self.lower_expr(key);
-        let ty = match dict_ir.ty() {
-            ResolvedType::Dictionary { value_ty, .. } => (**value_ty).clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("DictValue".to_string()),
+        let bad_dict = dict_ir.ty().clone();
+        let ty = if let ResolvedType::Dictionary { value_ty, .. } = &bad_dict {
+            (**value_ty).clone()
+        } else {
+            self.internal_error_type_if_concrete(
+                &bad_dict,
+                format!(
+                    "dict-access receiver lowered to non-dictionary type {bad_dict:?}; semantic should have caught this",
+                ),
+            )
         };
         IrExpr::DictAccess {
             dict: Box::new(dict_ir),
@@ -762,13 +766,13 @@ impl IrLowerer<'_> {
                         value: ir_value,
                     }],
                     BindingPattern::Array { elements, .. } => {
-                        Self::lower_let_array_destructure(elements, *mutable, &ir_value)
+                        self.lower_let_array_destructure(elements, *mutable, &ir_value)
                     }
                     BindingPattern::Struct { fields, .. } => {
                         self.lower_let_struct_destructure(fields, *mutable, &ir_value)
                     }
                     BindingPattern::Tuple { elements, .. } => {
-                        Self::lower_let_tuple_destructure(elements, *mutable, &ir_value)
+                        self.lower_let_tuple_destructure(elements, *mutable, &ir_value)
                     }
                 }
             }
@@ -785,23 +789,19 @@ impl IrLowerer<'_> {
     }
 
     fn lower_let_array_destructure(
+        &mut self,
         elements: &[crate::ast::ArrayPatternElement],
         mutable: bool,
         ir_value: &IrExpr,
     ) -> Vec<IrBlockStatement> {
-        let elem_ty = match ir_value.ty() {
-            ResolvedType::Array(inner) => (**inner).clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
+        let bad_recv = ir_value.ty().clone();
+        let elem_ty = if let ResolvedType::Array(inner) = &bad_recv {
+            (**inner).clone()
+        } else {
+            self.internal_error_type_if_concrete(
+                &bad_recv,
+                format!("let array-destructure receiver lowered to non-array type {bad_recv:?}"),
+            )
         };
         elements
             .iter()
@@ -832,7 +832,7 @@ impl IrLowerer<'_> {
     }
 
     fn lower_let_struct_destructure(
-        &self,
+        &mut self,
         fields: &[crate::ast::StructPatternField],
         mutable: bool,
         ir_value: &IrExpr,
@@ -861,23 +861,32 @@ impl IrLowerer<'_> {
     }
 
     fn lower_let_tuple_destructure(
+        &mut self,
         elements: &[crate::ast::BindingPattern],
         mutable: bool,
         ir_value: &IrExpr,
     ) -> Vec<IrBlockStatement> {
-        let tuple_types = match ir_value.ty() {
-            ResolvedType::Tuple(fields) => fields.clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => Vec::new(),
+        let bad_tuple = ir_value.ty().clone();
+        let tuple_types = if let ResolvedType::Tuple(fields) = &bad_tuple {
+            fields.clone()
+        } else {
+            let _ = self.internal_error_type_if_concrete(
+                &bad_tuple,
+                format!("let tuple-destructure receiver lowered to non-tuple type {bad_tuple:?}"),
+            );
+            Vec::new()
+        };
+        // The "out-of-range" placeholder is only used if a binding index
+        // overshoots the tuple's fields; we lazily build it to avoid
+        // pushing a spurious error on every well-formed destructure.
+        let out_of_range_ty = if elements.len() > tuple_types.len() && !tuple_types.is_empty() {
+            self.internal_error_type(format!(
+                "let tuple-destructure binds {} names but receiver has {} fields",
+                elements.len(),
+                tuple_types.len(),
+            ))
+        } else {
+            ResolvedType::TypeParam("Unknown".to_string())
         };
         elements
             .iter()
@@ -885,12 +894,7 @@ impl IrLowerer<'_> {
             .filter_map(|(i, elem)| {
                 IrLowerer::extract_simple_binding_name(elem).map(|name| {
                     let (field_name, ty) = tuple_types.get(i).map_or_else(
-                        || {
-                            (
-                                i.to_string(),
-                                ResolvedType::TypeParam("Unknown".to_string()),
-                            )
-                        },
+                        || (i.to_string(), out_of_range_ty.clone()),
                         |(n, t)| (n.clone(), t.clone()),
                     );
                     IrBlockStatement::Let {
@@ -1181,7 +1185,7 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn extract_pattern_bindings(
-        &self,
+        &mut self,
         pattern: &ast::Pattern,
         scrutinee: &IrExpr,
     ) -> Vec<(String, ResolvedType)> {
@@ -1189,7 +1193,22 @@ impl IrLowerer<'_> {
             ast::Pattern::Variant { name, bindings } => {
                 // Try to find variant field types from the enum
                 let variant_fields = self.get_variant_fields(scrutinee.ty(), &name.name);
-
+                let has_overflow = bindings.len() > variant_fields.len();
+                // Only emit an error when the scrutinee's type is already a
+                // concrete enum; if it's a TypeParam (unresolved path), the
+                // overflow is a downstream artefact of the upstream gap.
+                let out_of_range_ty = if has_overflow
+                    && !matches!(scrutinee.ty(), ResolvedType::TypeParam(_))
+                {
+                    self.internal_error_type(format!(
+                        "match pattern `{}` binds more names ({}) than the variant has fields ({}); semantic should have caught this",
+                        name.name,
+                        bindings.len(),
+                        variant_fields.len(),
+                    ))
+                } else {
+                    ResolvedType::TypeParam("Unknown".to_string())
+                };
                 bindings
                     .iter()
                     .enumerate()
@@ -1197,7 +1216,7 @@ impl IrLowerer<'_> {
                         let ty = variant_fields
                             .get(i)
                             .cloned()
-                            .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()));
+                            .unwrap_or_else(|| out_of_range_ty.clone());
                         (ident.name.clone(), ty)
                     })
                     .collect()

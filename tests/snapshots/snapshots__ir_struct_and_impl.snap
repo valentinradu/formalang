@@ -40,6 +40,9 @@ IrModule {
                     0,
                 ),
             ),
+            trait_id: None,
+            is_extern: false,
+            generic_params: [],
             functions: [
                 IrFunction {
                     name: "magnitude",

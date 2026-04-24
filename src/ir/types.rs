@@ -170,7 +170,12 @@ pub enum ImplTarget {
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide methods for a struct or enum.
+/// Impl blocks provide methods for a struct or enum. Backends that need to
+/// emit trait-conformance declarations (e.g. `TypeScript` / Kotlin
+/// `implements`) can read `trait_id` to learn which trait the block
+/// implements — it is `None` for inherent impls. `is_extern` mirrors the
+/// `extern impl` syntax and indicates that the impl's methods have no
+/// `FormaLang` body. `generic_params` captures `impl<T>` constraints.
 #[expect(
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
@@ -179,6 +184,16 @@ pub enum ImplTarget {
 pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
+
+    /// `Some(id)` for `impl Trait for Type`, `None` for inherent impls.
+    pub trait_id: Option<TraitId>,
+
+    /// Whether this is an `extern impl` block (all methods `is_extern = true`).
+    pub is_extern: bool,
+
+    /// Generic parameters declared on the impl block itself
+    /// (`impl<T: Bound> Box<T>`).
+    pub generic_params: Vec<IrGenericParam>,
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,

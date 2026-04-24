@@ -61,6 +61,13 @@ IrModule {
                     0,
                 ),
             ),
+            trait_id: Some(
+                TraitId(
+                    0,
+                ),
+            ),
+            is_extern: false,
+            generic_params: [],
             functions: [
                 IrFunction {
                     name: "area",
