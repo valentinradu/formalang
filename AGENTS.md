@@ -179,6 +179,8 @@ Before any PR:
 - All tests pass
 - `cargo fmt --check` passes
 - `cargo clippy` passes
+- `cargo audit` passes (install with `cargo install cargo-audit --locked`
+  if not present; CI runs it via `rustsec/audit-check`)
 - `markdownlint-cli2` passes
 - `cspell` passes
 - VSCode shows zero errors

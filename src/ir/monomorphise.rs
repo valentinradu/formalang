@@ -52,8 +52,8 @@ use crate::pipeline::IrPass;
 
 /// Monomorphisation pass.
 ///
-/// See the [module documentation](self) for the full algorithm and
-/// limitations.
+/// See the module-level documentation in `src/ir/monomorphise.rs` for the
+/// full algorithm and limitations.
 #[expect(
     clippy::exhaustive_structs,
     reason = "zero-sized marker type; no fields to add"
