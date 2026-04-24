@@ -21,8 +21,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.resolve_struct_types(struct_def);
                     }
                     Definition::Impl(impl_def) => {
-                        // Push generic scope for this definition
-                        self.push_generic_scope(&impl_def.generics);
+                        // Audit #12/#27: merge target struct/enum generics into the
+                        // impl scope so method bodies see trait bounds declared on T.
+                        self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
 
                         // Set current impl struct for field type resolution
                         self.current_impl_struct = Some(impl_def.name.name.clone());
@@ -84,7 +85,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.resolve_struct_types(struct_def);
                                 }
                                 Definition::Impl(impl_def) => {
-                                    self.push_generic_scope(&impl_def.generics);
+                                    self.push_impl_generic_scope(
+                                        &impl_def.generics,
+                                        &impl_def.name.name,
+                                    );
                                     self.current_impl_struct = Some(impl_def.name.name.clone());
                                     self.local_let_bindings.clear();
                                     for func in &impl_def.functions {
@@ -242,7 +246,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // return-type validation, so module-nested impl
                     // methods (e.g. `pub mod m { impl Foo { fn bar() -> X
                     // { ... } } }`) escaped Pass 2.
-                    self.push_generic_scope(&impl_def.generics);
+                    self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
                     self.current_impl_struct = Some(impl_def.name.name.clone());
                     self.local_let_bindings.clear();
                     for func in &impl_def.functions {

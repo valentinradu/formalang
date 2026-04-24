@@ -90,6 +90,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn validate_impl_expressions(&mut self, impl_def: &crate::ast::ImplDef, file: &File) {
+        // Push the impl's generic scope (merging target struct/enum
+        // generics) so method bodies see trait bounds on type
+        // parameters during expression validation. Audit #4/#27.
+        self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
         self.current_impl_struct = Some(impl_def.name.name.clone());
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
@@ -99,6 +103,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.current_impl_struct = None;
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
+        self.pop_generic_scope();
     }
 
     fn validate_function_body(&mut self, func_def: &crate::ast::FunctionDef, file: &File) {

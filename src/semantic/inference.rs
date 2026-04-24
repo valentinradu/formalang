@@ -1,6 +1,7 @@
 use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
 use crate::ast::{BinaryOperator, Definition, Expr, File, Literal, Statement, UnaryOperator};
+use std::collections::HashMap;
 
 use super::collect_bindings_from_pattern;
 
@@ -60,11 +61,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     },
                 )
             }
-            Expr::MatchExpr { arms, .. } => {
-                let mut types: Vec<String> = arms
-                    .iter()
-                    .map(|arm| self.infer_type(&arm.body, file))
-                    .collect();
+            Expr::MatchExpr {
+                scrutinee, arms, ..
+            } => {
+                // Audit #27: pre-populate each arm's pattern bindings into
+                // an inference-scope frame so references inside the arm
+                // body resolve to concrete types instead of "Unknown".
+                let scrutinee_ty = self.infer_type(scrutinee, file);
+                let enum_name = scrutinee_ty.trim_end_matches('?');
+                let mut types: Vec<String> = Vec::with_capacity(arms.len());
+                for arm in arms {
+                    let frame = self.build_match_arm_scope(enum_name, &arm.pattern);
+                    self.inference_scope_stack.borrow_mut().push(frame);
+                    types.push(self.infer_type(&arm.body, file));
+                    self.inference_scope_stack.borrow_mut().pop();
+                }
                 let Some(mut result) = types.pop() else {
                     return "Unknown".to_string();
                 };
@@ -110,7 +121,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.infer_method_return_type(&receiver_type, &method.name, file)
             }
             Expr::ClosureExpr { params, body, .. } => {
+                // Push closure params into the inference-scope stack so
+                // references inside the body resolve to their declared
+                // types instead of "Unknown".
+                let mut frame = HashMap::new();
+                for p in params {
+                    if let Some(ty) = &p.ty {
+                        frame.insert(p.name.name.clone(), Self::type_to_string(ty));
+                    }
+                }
+                self.inference_scope_stack.borrow_mut().push(frame);
                 let body_type = self.infer_type(body, file);
+                self.inference_scope_stack.borrow_mut().pop();
                 match params.split_first() {
                     None => format!("() -> {body_type}"),
                     Some((only, [])) => {
@@ -133,7 +155,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Expr::LetExpr { body, .. } => self.infer_type(body, file),
-            Expr::Block { result, .. } => self.infer_type(result, file),
+            Expr::Block {
+                statements, result, ..
+            } => {
+                // Audit #4/#27: walk the block's statements to push each
+                // let binding into the inference-scope stack before
+                // inferring the trailing expression. Without this the
+                // function-return-type check below loses sight of any
+                // bindings created inside a block body (validation
+                // tears them down before the post-body infer_type call).
+                let mut frame = HashMap::new();
+                for stmt in statements {
+                    if let crate::ast::BlockStatement::Let {
+                        pattern, ty, value, ..
+                    } = stmt
+                    {
+                        let value_ty = ty
+                            .as_ref()
+                            .map_or_else(|| self.infer_type(value, file), Self::type_to_string);
+                        if let crate::ast::BindingPattern::Simple(ident) = pattern {
+                            frame.insert(ident.name.clone(), value_ty);
+                        }
+                    }
+                }
+                self.inference_scope_stack.borrow_mut().push(frame);
+                let out = self.infer_type(result, file);
+                self.inference_scope_stack.borrow_mut().pop();
+                out
+            }
         }
     }
 
@@ -150,6 +199,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .map(|id| id.name.as_str())
             .collect::<Vec<_>>()
             .join("::");
+
+        // Closure-typed binding called as a function (`cb()` where
+        // `cb: (...) -> R`). Strip the parameter list and use R.
+        if path.len() == 1 {
+            let scope_lookup = {
+                let stack = self.inference_scope_stack.borrow();
+                stack
+                    .iter()
+                    .rev()
+                    .find_map(|frame| frame.get(&name).cloned())
+            };
+            let ty_str =
+                scope_lookup.or_else(|| self.local_let_bindings.get(&name).map(|(t, _)| t.clone()));
+            if let Some(t) = ty_str {
+                if let Some(arrow) = t.rfind(" -> ") {
+                    return t[arrow.saturating_add(4)..].to_string();
+                }
+            }
+        }
 
         if self.symbols.is_struct(&name) {
             // Struct instantiation — return the struct type, with generic args if present
@@ -170,9 +238,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty))
         } else if path.len() >= 2 {
             // Audit #27: resolve impl-block static method calls
-            // (`Type::method(...)`) and enum variant constructors
+            // (`Type::method(...)`), enum variant constructors
             // (`Enum::variant(...)`) that weren't rewritten to
-            // EnumInstantiation at parse time.
+            // EnumInstantiation at parse time, and module-qualified
+            // function calls (`math::compute(...)`).
             let (Some(first), Some(last)) = (path.first(), path.last()) else {
                 return "Unknown".to_string();
             };
@@ -186,10 +255,102 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if self.symbols.get_enum_variants(receiver).is_some() {
                 return receiver.clone();
             }
+            // Module-qualified function: walk through module symbol tables.
+            if let Some(ret) = self.lookup_qualified_function_return(path) {
+                return ret;
+            }
             "Unknown".to_string()
         } else {
             "Unknown".to_string()
         }
+    }
+
+    /// Resolve a qualified function path (`a::b::compute`) by walking
+    /// `self.symbols.modules` segment by segment, then through the
+    /// imported-module cache. Returns the function's declared return
+    /// type as a string when found.
+    fn lookup_qualified_function_return(&self, path: &[crate::ast::Ident]) -> Option<String> {
+        let last = path.last()?;
+        let segments: Vec<&str> = path
+            .iter()
+            .take(path.len().saturating_sub(1))
+            .map(|i| i.name.as_str())
+            .collect();
+        let look = |symbols: &super::SymbolTable| -> Option<String> {
+            let mut current = symbols;
+            for part in &segments {
+                match current.modules.get(*part) {
+                    Some(info) => current = &info.symbols,
+                    None => return None,
+                }
+            }
+            current.get_function(&last.name).map(|f| {
+                f.return_type
+                    .as_ref()
+                    .map_or_else(|| "nil".to_string(), Self::type_to_string)
+            })
+        };
+        if let Some(ty) = look(&self.symbols) {
+            return Some(ty);
+        }
+        for (_, symbols) in self.module_cache.values() {
+            if let Some(ty) = look(symbols) {
+                return Some(ty);
+            }
+        }
+        None
+    }
+
+    /// Build a per-arm inference scope from a match pattern's bindings.
+    /// `enum_name` is the (optionally optional-stripped) name of the
+    /// scrutinee's type. For a `Variant { name, bindings }` pattern with
+    /// `n` bindings, looks up the variant's field types on the named
+    /// enum and zips them with the binding identifiers. Variants on
+    /// imported enums fall back through the module cache. Returns an
+    /// empty map for `Wildcard` and for variants that can't be resolved
+    /// (the body then falls back to existing inference behaviour).
+    fn build_match_arm_scope(
+        &self,
+        enum_name: &str,
+        pattern: &crate::ast::Pattern,
+    ) -> HashMap<String, String> {
+        use crate::ast::Pattern;
+        let mut frame = HashMap::new();
+        let Pattern::Variant { name, bindings } = pattern else {
+            return frame;
+        };
+        let variant_field_tys = self
+            .lookup_enum_variant_field_types(enum_name, &name.name)
+            .unwrap_or_default();
+        for (i, ident) in bindings.iter().enumerate() {
+            if let Some(ty) = variant_field_tys.get(i) {
+                frame.insert(ident.name.clone(), ty.clone());
+            }
+        }
+        frame
+    }
+
+    /// Look up an enum variant's field types as type-strings, in the
+    /// current symbol table first, then through any imported module
+    /// cache. Returns `None` if the enum or variant isn't found.
+    fn lookup_enum_variant_field_types(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> Option<Vec<String>> {
+        if let Some(info) = self.symbols.enums.get(enum_name) {
+            if let Some(fields) = info.variant_fields.get(variant_name) {
+                return Some(fields.iter().map(|f| Self::type_to_string(&f.ty)).collect());
+            }
+        }
+        for (_, symbols) in self.module_cache.values() {
+            if let Some(info) = symbols.enums.get(enum_name) {
+                if let Some(fields) = info.variant_fields.get(variant_name) {
+                    return Some(fields.iter().map(|f| Self::type_to_string(&f.ty)).collect());
+                }
+            }
+        }
+        None
     }
 
     /// Walk `self.symbols` for a method declared on an impl block whose
@@ -228,8 +389,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return "Unknown".to_string();
         };
 
-        // Resolve the root type.
-        let root_type: String = if first.name == "self" {
+        // Resolve the root type. Audit #27: consult the inference-scope
+        // stack first so match-arm pattern bindings (and similar
+        // pattern-introduced bindings) resolve to their concrete types
+        // instead of falling through to "Unknown".
+        let scope_lookup = {
+            let stack = self.inference_scope_stack.borrow();
+            stack
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(&first.name).cloned())
+        };
+        #[expect(
+            clippy::option_if_let_else,
+            reason = "five-branch resolution: if/else-if reads clearer than chained map_or_else"
+        )]
+        let root_type: String = if let Some(scope_ty) = scope_lookup {
+            scope_ty
+        } else if first.name == "self" {
             self.current_impl_struct
                 .clone()
                 .unwrap_or_else(|| "Unknown".to_string())
@@ -505,6 +682,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .map_or((obj_type, false), |s| (s, true));
         // Strip generic args like Container<T> -> Container for struct lookup
         let lookup_name = base.split_once('<').map_or(base, |(n, _)| n);
+        // Top-level struct lookup.
         if let Some(struct_info) = self.symbols.get_struct(lookup_name) {
             for field in &struct_info.fields {
                 if field.name == field_name {
@@ -513,7 +691,65 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        // Trait-used-as-type field lookup. Traits in FormaLang declare
+        // required fields; an `item: SomeTrait` parameter must allow
+        // `item.field` access.
+        if let Some(trait_info) = self.symbols.get_trait(lookup_name) {
+            if let Some(ty) = trait_info.fields.get(field_name) {
+                let ty_str = Self::type_to_string(ty);
+                return if is_optional {
+                    format!("{ty_str}?")
+                } else {
+                    ty_str
+                };
+            }
+        }
+        // Module-nested struct: walk the symbol table's modules.
+        if let Some(ty) = Self::lookup_field_in_modules(&self.symbols, lookup_name, field_name) {
+            return if is_optional { format!("{ty}?") } else { ty };
+        }
+        // Imported-module struct: walk the analyser's module cache.
+        for (_, symbols) in self.module_cache.values() {
+            if let Some(struct_info) = symbols.get_struct(lookup_name) {
+                for field in &struct_info.fields {
+                    if field.name == field_name {
+                        let ty = Self::type_to_string(&field.ty);
+                        return if is_optional { format!("{ty}?") } else { ty };
+                    }
+                }
+            }
+            if let Some(ty) = Self::lookup_field_in_modules(symbols, lookup_name, field_name) {
+                return if is_optional { format!("{ty}?") } else { ty };
+            }
+        }
         "Unknown".to_string()
+    }
+
+    /// Walk a `SymbolTable`'s module hierarchy looking for a struct by
+    /// (unqualified) name; if found, return the type-string of its
+    /// `field_name` field. Used by `infer_field_type_from_string` so a
+    /// struct nested inside `pub mod m { struct S { ... } }` resolves
+    /// even when the impl method body refers to it as just `S`.
+    fn lookup_field_in_modules(
+        symbols: &super::SymbolTable,
+        struct_name: &str,
+        field_name: &str,
+    ) -> Option<String> {
+        for module_info in symbols.modules.values() {
+            if let Some(struct_info) = module_info.symbols.get_struct(struct_name) {
+                for field in &struct_info.fields {
+                    if field.name == field_name {
+                        return Some(Self::type_to_string(&field.ty));
+                    }
+                }
+            }
+            if let Some(ty) =
+                Self::lookup_field_in_modules(&module_info.symbols, struct_name, field_name)
+            {
+                return Some(ty);
+            }
+        }
+        None
     }
 
     /// Infer the return type of a method call given the receiver's type.
@@ -559,6 +795,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(ret) = self.find_trait_method_return(lookup_name, method_name) {
             return wrap_if_optional(ret);
         }
+        // Generic type parameter: look up its trait bounds in the active
+        // generic-scope stack, then search those traits for the method.
+        if let Some(constraints) = self.get_type_parameter_constraints(lookup_name) {
+            for trait_name in &constraints {
+                if let Some(ret) = self.find_trait_method_return(trait_name, method_name) {
+                    return wrap_if_optional(ret);
+                }
+            }
+        }
         "Unknown".to_string()
     }
 
@@ -587,8 +832,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
-    /// Look up a trait method signature for a type that implements the trait.
+    /// Look up a trait method signature.
+    ///
+    /// Tries two interpretations of `type_name`:
+    /// 1. As a trait name itself — used when resolving methods on a
+    ///    generic type parameter via its trait constraints.
+    /// 2. As a struct name — walks every trait the struct implements
+    ///    and searches their methods.
     fn find_trait_method_return(&self, type_name: &str, method_name: &str) -> Option<String> {
+        if let Some(trait_info) = self.symbols.get_trait(type_name) {
+            for method in &trait_info.methods {
+                if method.name.name == method_name {
+                    return Some(
+                        method
+                            .return_type
+                            .as_ref()
+                            .map_or_else(|| "Nil".to_string(), Self::type_to_string),
+                    );
+                }
+            }
+        }
         let trait_names = self.symbols.get_all_traits_for_struct(type_name);
         for trait_name in trait_names {
             if let Some(trait_info) = self.symbols.get_trait(&trait_name) {
@@ -598,7 +861,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             method
                                 .return_type
                                 .as_ref()
-                                .map_or_else(|| "Nil".to_string(), |t| Self::type_to_string(t)),
+                                .map_or_else(|| "Nil".to_string(), Self::type_to_string),
                         );
                     }
                 }

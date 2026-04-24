@@ -208,6 +208,16 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     local_let_bindings: HashMap<String, (String, bool)>,
     /// Bindings consumed by a `sink` parameter call — cannot be used after
     consumed_bindings: HashSet<String>,
+    /// Scoped overrides used during inference. When inferring the body of
+    /// a match arm or a similar pattern-introducing construct, the
+    /// pattern's bindings (variant fields → element types) are pushed as
+    /// a frame here. `infer_type_reference` consults this stack first
+    /// (innermost frame wins) before falling back to `local_let_bindings`.
+    /// Wrapped in `RefCell` so the read-only `infer_type` family doesn't
+    /// have to thread `&mut self` through every helper.
+    ///
+    /// Audit finding #27.
+    pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, String>>>,
     /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Free-variable captures for closure-typed let bindings, used for
@@ -283,6 +293,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
+            inference_scope_stack: std::cell::RefCell::new(Vec::new()),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
@@ -307,6 +318,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
+            inference_scope_stack: std::cell::RefCell::new(Vec::new()),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
@@ -1519,6 +1531,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             scope.params.insert(param.name.name.clone(), constraints);
         }
 
+        self.generic_scopes.push(scope);
+    }
+
+    /// Push a generic scope for an impl block that combines the impl's own
+    /// `<T>` parameters with the constraints declared on the target
+    /// struct/enum. `impl Sum<T>` carries the param name without
+    /// constraints; the constraints (`T: Foo`) live on `struct Sum<T: Foo>`.
+    /// Without merging, methods inside the impl can't see the trait
+    /// bounds on T. Audit findings #12 and #4/#27.
+    pub(super) fn push_impl_generic_scope(
+        &mut self,
+        impl_generics: &[crate::ast::GenericParam],
+        target_name: &str,
+    ) {
+        let mut scope = GenericScope {
+            params: HashMap::new(),
+        };
+        // Start with the impl's own generic param names (often constraint-less).
+        for param in impl_generics {
+            let constraints: Vec<String> = param
+                .constraints
+                .iter()
+                .map(|c| match c {
+                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                })
+                .collect();
+            scope.params.insert(param.name.name.clone(), constraints);
+        }
+        // Merge constraints from the target struct/enum's own generics.
+        let target_generics = if let Some(s) = self.symbols.structs.get(target_name) {
+            s.generics.clone()
+        } else if let Some(e) = self.symbols.enums.get(target_name) {
+            e.generics.clone()
+        } else {
+            Vec::new()
+        };
+        for param in &target_generics {
+            let constraints: Vec<String> = param
+                .constraints
+                .iter()
+                .map(|c| match c {
+                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                })
+                .collect();
+            let entry = scope.params.entry(param.name.name.clone()).or_default();
+            for c in constraints {
+                if !entry.contains(&c) {
+                    entry.push(c);
+                }
+            }
+        }
         self.generic_scopes.push(scope);
     }
 
