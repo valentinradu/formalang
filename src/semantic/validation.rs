@@ -847,6 +847,58 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 name: name.clone(),
                 span,
             });
+            return;
+        }
+
+        // Multi-segment paths (e.g. `p.x.y`): walk each segment as a field
+        // access from the root's inferred type and surface an
+        // `UnknownField` error at the first broken link. Module-qualified
+        // paths (handled above by `check_module_visibility`) fall through
+        // this validation without firing since no let/local binding with
+        // that name will be in scope.
+        if path.len() >= 2 {
+            let Some(first) = path.first() else {
+                return;
+            };
+            // Root must be something we can infer a type for.
+            let root_type_string = if let Some(ty) = self.symbols.get_let_type(&first.name) {
+                ty.to_string()
+            } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
+                ty.clone()
+            } else {
+                return;
+            };
+            self.validate_field_chain(&root_type_string, &path[1..], span);
+        }
+    }
+
+    /// Walk a chain of field accesses starting from `root_type`, emitting
+    /// `UnknownField` at the first segment that does not name a field of
+    /// the current struct type. Bails silently if the type cannot be
+    /// resolved — type inference is best-effort and we don't want to
+    /// drown the user in spurious errors when inference itself is
+    /// unreliable.
+    fn validate_field_chain(&mut self, root_type: &str, rest: &[crate::ast::Ident], span: Span) {
+        let mut current = root_type.trim_end_matches('?').to_string();
+        for seg in rest {
+            let Some(struct_info) = self.symbols.get_struct(&current) else {
+                return;
+            };
+            match struct_info.fields.iter().find(|f| f.name == seg.name) {
+                Some(field) => {
+                    current = Self::type_to_string(&field.ty)
+                        .trim_end_matches('?')
+                        .to_string();
+                }
+                None => {
+                    self.errors.push(CompilerError::UnknownField {
+                        field: seg.name.clone(),
+                        type_name: current.clone(),
+                        span,
+                    });
+                    return;
+                }
+            }
         }
     }
 

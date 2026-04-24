@@ -964,26 +964,29 @@ fn test_fn_param_default_with_boolean() -> Result<(), Box<dyn std::error::Error>
 }
 
 // =============================================================================
-// Error recovery: surface at least one parse error on malformed input.
-//
-// Ideally the parser recovers and reports BOTH errors, but `chumsky`'s
-// current configuration bails at the first unrecoverable token. This test
-// pins the current behaviour (≥ 1 error) so regressions land noisily, and
-// documents the follow-up: tighten to ≥ 2 once recovery is wired up.
+// Error recovery: two independent malformed statements both surface
+// separate parse errors (the parser skips to the next statement-start
+// token on failure rather than bailing).
 // =============================================================================
 
 #[test]
 fn test_parse_reports_errors_on_malformed_input() -> Result<(), Box<dyn std::error::Error>> {
-    // Two independent syntactic problems: a number where an identifier is
-    // required, and a stray `}` terminator at top level.
+    // Two independent top-level statements start with tokens that can't
+    // begin a statement. The recovery strategy skips the bad tokens,
+    // parses the good statement between them, then errors on the
+    // second garbage run — so both surface.
     let source = r"
-struct 42 { x: Number }
+@@@
 struct Good { y: Number }
-}
+###
 ";
     let errors = parse_only(source).err().ok_or("expected parse errors")?;
-    if errors.is_empty() {
-        return Err("expected at least one parse error".into());
+    if errors.len() < 2 {
+        return Err(format!(
+            "expected at least 2 parse errors after recovery, got {}: {errors:?}",
+            errors.len()
+        )
+        .into());
     }
     Ok(())
 }

@@ -757,9 +757,7 @@ let n = (u).name
 
 #[test]
 fn test_unknown_field_on_fieldaccess_node() -> Result<(), Box<dyn std::error::Error>> {
-    // Parentheses around the receiver produce a FieldAccess node which
-    // exercises the field-existence check (multi-segment Reference paths
-    // currently skip that check — tracked as a follow-up).
+    // Parentheses around the receiver produce a FieldAccess node.
     let source = r"
 struct Point { x: Number, y: Number }
 let p = Point(x: 1, y: 2)
@@ -771,6 +769,45 @@ let z = (p).q
         .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "q"));
     if !has_field_error {
         return Err(format!("expected UnknownField for 'q', got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_unknown_field_on_multisegment_reference() -> Result<(), Box<dyn std::error::Error>> {
+    // Plain `p.z` parses as a multi-segment Reference; the validator
+    // walks the chain starting from `p`'s inferred type and reports
+    // UnknownField at the first broken link.
+    let source = r"
+struct Point { x: Number, y: Number }
+let p = Point(x: 1, y: 2)
+let z = p.z
+";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let has_field_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "z"));
+    if !has_field_error {
+        return Err(format!("expected UnknownField for 'z', got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_unknown_field_mid_reference_chain() -> Result<(), Box<dyn std::error::Error>> {
+    // The second segment resolves (`a.inner`), the third does not.
+    let source = r"
+struct Inner { value: Number }
+struct Outer { inner: Inner }
+let a = Outer(inner: Inner(value: 1))
+let bad = a.inner.missing
+";
+    let errors = compile(source).err().ok_or("expected error")?;
+    let has_field_error = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UnknownField { field, .. } if field == "missing"));
+    if !has_field_error {
+        return Err(format!("expected UnknownField for 'missing', got: {errors:?}").into());
     }
     Ok(())
 }

@@ -156,13 +156,37 @@ fn format_parse_error(error: &Rich<'_, Token>) -> String {
     }
 }
 
-/// Parse a complete file
+/// Parse a complete file.
+///
+/// Each statement carries a recovery strategy that, on parse failure,
+/// skips input tokens until the parser finds a token that can legally
+/// start the next top-level statement (or end of input). This lets the
+/// parser surface multiple independent syntax errors in one pass
+/// instead of bailing on the first bad token.
 fn file_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, File, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
+    let statement_start = one_of([
+        Token::Use,
+        Token::Let,
+        Token::Pub,
+        Token::Struct,
+        Token::Enum,
+        Token::Trait,
+        Token::Impl,
+        Token::Fn,
+        Token::Extern,
+        Token::Module,
+    ])
+    .ignored();
+
     statement_parser()
+        .recover_with(skip_then_retry_until(
+            any().ignored(),
+            statement_start.rewind().ignored().or(end()),
+        ))
         .repeated()
         .collect::<Vec<_>>()
         .map_with(|statements, e| File {
