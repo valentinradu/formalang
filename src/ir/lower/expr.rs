@@ -9,6 +9,57 @@ use crate::error::CompilerError;
 use crate::ir::{
     DispatchKind, ImplId, IrBlockStatement, IrExpr, IrMatchArm, ResolvedType, TraitId,
 };
+use std::collections::HashMap;
+
+/// Substitute `TypeParam(name)` references inside `ty` using `subs`.
+/// Used by `resolve_method_return_type` when the receiver is a
+/// `Generic { base, args }` so the impl method's return type
+/// (declared in terms of the struct's generic params) gets the
+/// concrete instantiation's type arguments.
+fn substitute_typeparam_in_resolved(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) {
+    match ty {
+        ResolvedType::TypeParam(name) => {
+            if let Some(concrete) = subs.get(name) {
+                *ty = concrete.clone();
+            }
+        }
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
+            substitute_typeparam_in_resolved(inner, subs);
+        }
+        ResolvedType::Tuple(fields) => {
+            for (_, t) in fields {
+                substitute_typeparam_in_resolved(t, subs);
+            }
+        }
+        ResolvedType::Dictionary { key_ty, value_ty } => {
+            substitute_typeparam_in_resolved(key_ty, subs);
+            substitute_typeparam_in_resolved(value_ty, subs);
+        }
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => {
+            for (_, t) in param_tys {
+                substitute_typeparam_in_resolved(t, subs);
+            }
+            substitute_typeparam_in_resolved(return_ty, subs);
+        }
+        ResolvedType::Generic { args, .. } => {
+            for a in args {
+                substitute_typeparam_in_resolved(a, subs);
+            }
+        }
+        ResolvedType::External { type_args, .. } => {
+            for a in type_args {
+                substitute_typeparam_in_resolved(a, subs);
+            }
+        }
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_) => {}
+    }
+}
 
 impl IrLowerer<'_> {
     pub(super) fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
@@ -777,11 +828,30 @@ impl IrLowerer<'_> {
     }
 
     fn lower_block_expr(&mut self, statements: &[BlockStatement], result: &Expr) -> IrExpr {
-        let ir_statements: Vec<IrBlockStatement> = statements
-            .iter()
-            .flat_map(|stmt| self.lower_block_statement(stmt))
-            .collect();
+        // Push a fresh binding-scope frame so each block-scoped `let`
+        // becomes visible to subsequent statements and to `result`. The
+        // frame is popped on exit so siblings don't see this block's
+        // bindings. Audit finding #5b (and a long-standing inference
+        // gap that surfaced once dispatch rewriting needed accurate
+        // receiver types).
+        self.local_binding_scopes.push(HashMap::new());
+        let mut ir_statements: Vec<IrBlockStatement> = Vec::new();
+        for stmt in statements {
+            for s in self.lower_block_statement(stmt) {
+                if let IrBlockStatement::Let {
+                    name, ty, value, ..
+                } = &s
+                {
+                    let resolved = ty.clone().unwrap_or_else(|| value.ty().clone());
+                    if let Some(frame) = self.local_binding_scopes.last_mut() {
+                        frame.insert(name.clone(), resolved);
+                    }
+                }
+                ir_statements.push(s);
+            }
+        }
         let ir_result = self.lower_expr(result);
+        self.local_binding_scopes.pop();
         let ty = ir_result.ty().clone();
         if ir_statements.is_empty() {
             return ir_result;
@@ -1053,6 +1123,10 @@ impl IrLowerer<'_> {
     /// `InternalError` when the method cannot be resolved on a concrete
     /// receiver — those cases should have been caught by semantic
     /// analysis and reaching here indicates a compiler bug.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive resolution: pre-installed methods, struct/enum/Generic/TypeParam/Trait dispatch arms"
+    )]
     pub(super) fn resolve_method_return_type(
         &mut self,
         receiver_ty: &ResolvedType,
@@ -1092,6 +1166,54 @@ impl IrLowerer<'_> {
                 span: crate::location::Span::default(),
             });
             return ResolvedType::Primitive(PrimitiveType::Never);
+        }
+
+        // Generic receiver (`Box<Number>`): look up the impl on the
+        // generic base, then substitute the impl method's TypeParams
+        // with the concrete type arguments.
+        if let ResolvedType::Generic { base, args } = receiver_ty {
+            let (target_struct_id, target_enum_id) = match base {
+                crate::ir::GenericBase::Struct(id) => (Some(*id), None),
+                crate::ir::GenericBase::Enum(id) => (None, Some(*id)),
+            };
+            let generic_params: Vec<String> = if let Some(sid) = target_struct_id {
+                self.module
+                    .get_struct(sid)
+                    .map(|s| s.generic_params.iter().map(|p| p.name.clone()).collect())
+                    .unwrap_or_default()
+            } else if let Some(eid) = target_enum_id {
+                self.module
+                    .get_enum(eid)
+                    .map(|e| e.generic_params.iter().map(|p| p.name.clone()).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            for impl_block in &self.module.impls {
+                let matches_target = match impl_block.target {
+                    crate::ir::ImplTarget::Struct(id) => Some(id) == target_struct_id,
+                    crate::ir::ImplTarget::Enum(id) => Some(id) == target_enum_id,
+                };
+                if !matches_target {
+                    continue;
+                }
+                for func in &impl_block.functions {
+                    if func.name == method_name {
+                        let mut ret = func
+                            .return_type
+                            .clone()
+                            .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                            .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
+                        let subs: std::collections::HashMap<String, ResolvedType> = generic_params
+                            .iter()
+                            .cloned()
+                            .zip(args.iter().cloned())
+                            .collect();
+                        substitute_typeparam_in_resolved(&mut ret, &subs);
+                        return ret;
+                    }
+                }
+            }
         }
 
         if let ResolvedType::Enum(enum_id) = receiver_ty {

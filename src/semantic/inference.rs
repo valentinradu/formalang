@@ -725,6 +725,79 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         "Unknown".to_string()
     }
 
+    /// Parse generic arguments from a receiver type-string. For
+    /// `"Box<Number>"` returns `["Number"]`; for `"Map<String, Item>"`
+    /// returns `["String", "Item"]`; for non-generic types returns `[]`.
+    /// Splits on the top-level commas inside the angle brackets so
+    /// nested generics (`Box<Pair<A, B>>`) survive.
+    fn parse_receiver_type_args(receiver: &str) -> Vec<String> {
+        let Some(open) = receiver.find('<') else {
+            return Vec::new();
+        };
+        let Some(close) = receiver.rfind('>') else {
+            return Vec::new();
+        };
+        if close <= open.saturating_add(1) {
+            return Vec::new();
+        }
+        let inner = &receiver[open.saturating_add(1)..close];
+        let mut args = Vec::new();
+        let mut depth: i32 = 0;
+        let mut start = 0;
+        for (i, ch) in inner.char_indices() {
+            match ch {
+                '<' | '(' | '[' => depth = depth.saturating_add(1),
+                '>' | ')' | ']' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    args.push(inner[start..i].trim().to_string());
+                    start = i.saturating_add(1);
+                }
+                _ => {}
+            }
+        }
+        let tail = inner[start..].trim();
+        if !tail.is_empty() {
+            args.push(tail.to_string());
+        }
+        args
+    }
+
+    /// Substitute every standalone occurrence of the type-parameter name
+    /// `param` in `ty` with `concrete`. "Standalone" means the name
+    /// isn't part of a longer identifier (so `T` in `Box<T>` is
+    /// substituted but `T` in `TList` is not).
+    fn substitute_type_string(ty: &str, param: &str, concrete: &str) -> String {
+        let mut out = String::with_capacity(ty.len());
+        let bytes = ty.as_bytes();
+        let plen = param.len();
+        let mut i = 0;
+        while i < bytes.len() {
+            let rest = &ty[i..];
+            if rest.starts_with(param) {
+                let prev_is_ident = i > 0
+                    && bytes
+                        .get(i.saturating_sub(1))
+                        .copied()
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_');
+                let next_is_ident = bytes
+                    .get(i.saturating_add(plen))
+                    .copied()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_');
+                if !prev_is_ident && !next_is_ident {
+                    out.push_str(concrete);
+                    i = i.saturating_add(plen);
+                    continue;
+                }
+            }
+            let Some(ch) = ty[i..].chars().next() else {
+                break;
+            };
+            out.push(ch);
+            i = i.saturating_add(ch.len_utf8());
+        }
+        out
+    }
+
     /// Walk a `SymbolTable`'s module hierarchy looking for a struct by
     /// (unqualified) name; if found, return the type-string of its
     /// `field_name` field. Used by `infer_field_type_from_string` so a
@@ -770,8 +843,38 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .strip_suffix('?')
             .map_or((receiver_type, false), |s| (s, true));
         let lookup_name = base.split_once('<').map_or(base, |(n, _)| n);
+        // Parse generic args from the receiver type, if any (`Box<Number>`
+        // → `["Number"]`). Used to substitute the impl method's
+        // `TypeParam` references with concrete types.
+        let receiver_type_args = Self::parse_receiver_type_args(base);
 
+        let substitute = |ret: String| -> String {
+            if receiver_type_args.is_empty() {
+                return ret;
+            }
+            // Look up the struct's generic parameter names and substitute.
+            let generics = self
+                .symbols
+                .structs
+                .get(lookup_name)
+                .map(|s| s.generics.clone())
+                .or_else(|| {
+                    self.symbols
+                        .enums
+                        .get(lookup_name)
+                        .map(|e| e.generics.clone())
+                })
+                .unwrap_or_default();
+            let mut out = ret;
+            for (i, param) in generics.iter().enumerate() {
+                if let Some(arg) = receiver_type_args.get(i) {
+                    out = Self::substitute_type_string(&out, &param.name.name, arg);
+                }
+            }
+            out
+        };
         let wrap_if_optional = |ret: String| -> String {
+            let ret = substitute(ret);
             if is_optional && !ret.ends_with('?') && ret != "Nil" {
                 format!("{ret}?")
             } else {
