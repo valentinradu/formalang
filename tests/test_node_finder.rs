@@ -1732,11 +1732,8 @@ fn test_query_provider_completion_view_trait() -> Result<(), Box<dyn std::error:
         .iter()
         .find(|c| c.label == "Displayable")
         .ok_or("Expected Displayable in completions")?;
-    if !matches!(
-        candidate.kind,
-        CompletionKind::ViewTrait | CompletionKind::ModelTrait
-    ) {
-        return Err("Expected ViewTrait or ModelTrait kind".into());
+    if !matches!(candidate.kind, CompletionKind::ModelTrait) {
+        return Err("Expected ModelTrait kind".into());
     }
     Ok(())
 }
@@ -1758,8 +1755,8 @@ fn test_query_provider_completion_view_struct() -> Result<(), Box<dyn std::error
         .iter()
         .find(|c| c.label == "Button")
         .ok_or("Expected Button in completions")?;
-    if !matches!(candidate.kind, CompletionKind::View | CompletionKind::Model) {
-        return Err("Expected View or Model kind".into());
+    if !matches!(candidate.kind, CompletionKind::Model) {
+        return Err("Expected Model kind".into());
     }
     Ok(())
 }

@@ -271,6 +271,13 @@ pub struct IrFunctionParam {
     /// Parameter name
     pub name: String,
 
+    /// External call-site label, for parameters declared as
+    /// `fn foo(label name: T)`. `None` when the parameter has no
+    /// distinct external label. Preserved so label-based calling
+    /// conventions (Swift, Kotlin) can emit the call-site name
+    /// distinct from the body-side name. Audit finding #39.
+    pub external_label: Option<String>,
+
     /// Parameter type (None for `self` parameter - type is inferred from impl block)
     pub ty: Option<ResolvedType>,
 

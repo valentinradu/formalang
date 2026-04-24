@@ -347,6 +347,13 @@ pub enum Type {
         ret: Box<Self>,
     },
 
+    /// Reserved for a future resolver pass that rewrites `Type::Ident(T)`
+    /// into `Type::TypeParameter(T)` once `T` has been verified to name a
+    /// generic parameter in the enclosing scope. Today the parser never
+    /// constructs this variant; semantic analysis walks `Type::Ident` with
+    /// the generic-scope stack instead. Pattern arms across the codebase
+    /// still cover it so the resolver pass can be added without churn.
+    /// See audit finding #49.
     TypeParameter(Ident),
 }
 

@@ -1123,8 +1123,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     self.validate_closure_call_conventions(&conventions, args, span, file);
                 } else if !self.resolve_qualified_function(name) {
-                    self.errors.push(CompilerError::UndefinedType {
-                        name: format!("function '{name}'"),
+                    // Audit #42: a missing function is an undefined
+                    // reference, not an undefined type — use the correct
+                    // error variant so downstream tooling can distinguish
+                    // the two cases.
+                    self.errors.push(CompilerError::UndefinedReference {
+                        name: name.to_string(),
                         span,
                     });
                 }
@@ -2505,7 +2509,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Check if two types are compatible GPU numeric types
+    /// Check if two types are compatible GPU numeric types.
+    ///
+    /// Audit finding #44: this is a backend-specific wart left over from
+    /// the retired WGSL codegen — the names `f32`, `vec2`, etc. aren't
+    /// `FormaLang` primitives, they're external identifiers that happened
+    /// to name WGSL types. The semantic validator special-cases them so
+    /// user code targeting GPU backends can still write arithmetic over
+    /// them without the type checker complaining. Proper fix: either
+    /// remove the special-case (and let backends implement their own
+    /// type-compat rules) or expose a backend registration hook for
+    /// numeric families. Deferred — removing here would break external
+    /// code using these identifiers today.
     pub(super) fn are_gpu_numeric_compatible(left: &str, right: &str) -> bool {
         // GPU scalar types
         const GPU_SCALARS: &[&str] = &["f32", "i32", "u32"];

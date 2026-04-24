@@ -38,6 +38,7 @@ IrModule {
                     params: [
                         IrFunctionParam {
                             name: "self",
+                            external_label: None,
                             ty: None,
                             default: None,
                             convention: Let,
@@ -75,6 +76,7 @@ IrModule {
                     params: [
                         IrFunctionParam {
                             name: "self",
+                            external_label: None,
                             ty: None,
                             default: None,
                             convention: Let,

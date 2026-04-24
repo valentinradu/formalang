@@ -777,7 +777,7 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
             }
         }
         ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            remap_type(inner, remap)
+            remap_type(inner, remap);
         }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {

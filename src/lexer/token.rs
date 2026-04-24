@@ -7,8 +7,15 @@ use logos::Logos;
 )]
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\n\r]+")] // Skip whitespace
-#[logos(skip r"//[^\n]*")] // Skip line comments
-#[logos(skip r"/\*([^*]|\*[^/])*\*/")] // Skip block comments
+#[logos(skip r"//[^\n]*")]
+// Skip line comments
+// Block comments — non-nested. Logos skip directives are regex-only and
+// cannot match recursively; `/* /* inner */ */` will terminate at the
+// first `*/` and leave ` */` as a syntax error. Nested block comments
+// require a stateful Logos extras callback — tracked in audit finding
+// #47 as a deliberate non-fix (low impact; easy to work around by
+// using `//` line comments).
+#[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token {
     // Keywords
     #[token("trait")]

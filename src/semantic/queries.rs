@@ -9,15 +9,15 @@ use crate::ast::Visibility;
 use crate::location::Span;
 use std::path::PathBuf;
 
-/// Kind of completion item
+/// Kind of completion item. `View` / `ViewTrait` were vestiges of the
+/// pre-"unified struct" design and were never produced by the completion
+/// code — removed per audit finding #43.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CompletionKind {
     Keyword,
     ModelTrait,
-    ViewTrait,
     Model,
-    View,
     Enum,
     Field,
     EnumVariant,

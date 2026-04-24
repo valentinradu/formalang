@@ -237,9 +237,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.resolve_struct_types(struct_def);
                 }
                 Definition::Impl(impl_def) => {
+                    // Audit #37: previously this arm pushed the generic
+                    // scope and immediately cleared it without running
+                    // return-type validation, so module-nested impl
+                    // methods (e.g. `pub mod m { impl Foo { fn bar() -> X
+                    // { ... } } }`) escaped Pass 2.
                     self.push_generic_scope(&impl_def.generics);
                     self.current_impl_struct = Some(impl_def.name.name.clone());
                     self.local_let_bindings.clear();
+                    for func in &impl_def.functions {
+                        self.validate_function_return_type(func, file);
+                    }
                     self.current_impl_struct = None;
                     self.local_let_bindings.clear();
                     self.pop_generic_scope();

@@ -45,6 +45,7 @@ IrModule {
             params: [
                 IrFunctionParam {
                     name: "s",
+                    external_label: None,
                     ty: Some(
                         Enum(
                             EnumId(

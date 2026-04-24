@@ -1109,6 +1109,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
@@ -1162,6 +1163,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
@@ -1217,6 +1219,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
