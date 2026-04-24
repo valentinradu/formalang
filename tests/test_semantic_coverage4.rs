@@ -1,9 +1,10 @@
 //! Final coverage tests targeting remaining uncovered lines in semantic/mod.rs.
 
-use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use formalang::CompilerError;
-use std::collections::HashMap;
-use std::path::PathBuf;
+
+#[path = "common/mod.rs"]
+mod common;
+use common::MemResolver;
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
@@ -14,39 +15,6 @@ fn compile_with_resolver<R: formalang::semantic::module_resolver::ModuleResolver
     resolver: R,
 ) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
     formalang::compile_with_analyzer_and_resolver(source, resolver).map(|(file, _)| file)
-}
-
-struct MemResolver {
-    modules: HashMap<Vec<String>, (String, PathBuf)>,
-}
-
-impl MemResolver {
-    fn new() -> Self {
-        Self {
-            modules: HashMap::new(),
-        }
-    }
-
-    fn add(&mut self, path: Vec<String>, source: &str) {
-        let file_path = PathBuf::from(format!("{}.forma", path.join("/")));
-        self.modules.insert(path, (source.to_string(), file_path));
-    }
-}
-
-impl ModuleResolver for MemResolver {
-    fn resolve(
-        &self,
-        path: &[String],
-        _current_file: Option<&PathBuf>,
-    ) -> Result<(String, PathBuf), ModuleError> {
-        self.modules
-            .get(path)
-            .cloned()
-            .ok_or_else(|| ModuleError::NotFound {
-                path: path.to_vec(),
-                searched_paths: vec![],
-            })
-    }
 }
 
 // =============================================================================

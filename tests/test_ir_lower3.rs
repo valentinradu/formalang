@@ -80,17 +80,17 @@ fn test_lower_block_let_tuple_pattern() -> Result<(), Box<dyn std::error::Error>
 // =============================================================================
 
 #[test]
-fn test_lower_vec2_field_access() -> Result<(), Box<dyn std::error::Error>> {
-    // vec2 component access - exercises vector field resolution
+fn test_lower_field_access_on_undefined_type_errors() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #53: renamed from `test_lower_vec2_field_access` — the test
+    // never exercised a real Vec2 type (it doesn't exist in FormaLang),
+    // it just verified that referencing an undefined type produces an
+    // error. Kept under a name that matches what it actually asserts.
     let source = r"
         fn get_x(v: Vec2) -> F32 { v.x }
     ";
-    // Vec2/F32 are external GPU types not defined in the source — expect undefined type errors
     let result = compile_to_ir(source);
     if result.is_ok() {
-        return Err(
-            "Vec2/F32 undefined types should produce errors but compilation succeeded".into(),
-        );
+        return Err("undefined types Vec2/F32 should produce errors".into());
     }
     Ok(())
 }
@@ -571,9 +571,10 @@ fn test_lower_function_call_lowering() -> Result<(), Box<dyn std::error::Error>>
 // =============================================================================
 
 #[test]
-fn test_lower_unsigned_int_literal() -> Result<(), Box<dyn std::error::Error>> {
-    // Test that a struct field with a numeric default lowers to IrExpr::Literal.
-    // (U32 type with 'u' suffix was not a supported language feature.)
+fn test_lower_struct_field_numeric_default() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #53: renamed from `test_lower_unsigned_int_literal` — FormaLang
+    // has no u32 / unsigned int suffix; this only verified that a struct
+    // field with a numeric default lowers to `IrExpr::Literal`.
     let source = r"
         struct Config { count: Number = 42 }
     ";
