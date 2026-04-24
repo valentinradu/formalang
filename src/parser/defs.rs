@@ -571,8 +571,27 @@ where
             span: span_from_simple(e.span()),
         });
 
-    // labeled_param must come before typed_param (longer match first)
-    choice((self_param, labeled_param, typed_param))
+    // `Type` only (Mode B overloading — no name, no label). Audit #23.
+    // The parameter is synthesised with a fresh name (`_argN`) so existing
+    // plumbing can continue to reference parameters by name; the name is
+    // not visible at the call site since these are always positional.
+    let type_only_param = convention
+        .clone()
+        .then(type_parser())
+        .map_with(|(convention, ty), e| FnParam {
+            convention,
+            external_label: None,
+            name: Ident::new("_arg", span_from_simple(e.span())),
+            ty: Some(ty),
+            default: None,
+            span: span_from_simple(e.span()),
+        });
+
+    // Order matters: longer matches first. `self_param` precedes the rest;
+    // `labeled_param` (ident ident :) before `typed_param` (ident :) before
+    // `type_only_param` (Type with no name) so a single `Foo: Bar` still
+    // parses as a typed param, not as type `Foo::Bar` followed by junk.
+    choice((self_param, labeled_param, typed_param, type_only_param))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect()

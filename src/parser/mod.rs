@@ -369,19 +369,28 @@ where
 fn block_statements_to_expr(mut statements: Vec<BlockStatement>, span: crate::Span) -> Expr {
     // Empty body -> Nil
     if statements.is_empty() {
-        return Expr::Literal(Literal::Nil);
+        return Expr::Literal {
+            value: Literal::Nil,
+            span,
+        };
     }
 
     // Last item becomes the result expression
     let Some(last) = statements.pop() else {
-        return Expr::Literal(Literal::Nil);
+        return Expr::Literal {
+            value: Literal::Nil,
+            span,
+        };
     };
     let result = match last {
         BlockStatement::Expr(expr) => expr,
         // If last is a statement (not expr), push it back and use Nil as result
         stmt @ (BlockStatement::Let { .. } | BlockStatement::Assign { .. }) => {
             statements.push(stmt);
-            Expr::Literal(Literal::Nil)
+            Expr::Literal {
+                value: Literal::Nil,
+                span,
+            }
         }
     };
 
@@ -811,7 +820,16 @@ mod tests {
                 )]
                 let (first_key, first_val) = (&entries[0].0, &entries[0].1);
                 match (first_key, first_val) {
-                    (Expr::Literal(Literal::String(k)), Expr::Literal(Literal::Number(v))) => {
+                    (
+                        Expr::Literal {
+                            value: Literal::String(k),
+                            ..
+                        },
+                        Expr::Literal {
+                            value: Literal::Number(v),
+                            ..
+                        },
+                    ) => {
                         if k != "key" {
                             return Err(format!("expected {:?} == {:?}", k, "key").into());
                         }
@@ -822,7 +840,7 @@ mod tests {
                     _ => return Err("Expected string key and number value".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -860,7 +878,7 @@ mod tests {
                     return Err("Expected empty entries".into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -894,7 +912,13 @@ mod tests {
         let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
-                (Expr::Reference { path, .. }, Expr::Literal(Literal::String(k))) => {
+                (
+                    Expr::Reference { path, .. },
+                    Expr::Literal {
+                        value: Literal::String(k),
+                        ..
+                    },
+                ) => {
                     let first = path.first().ok_or("expected at least one path segment")?;
                     if first.name != "data" {
                         return Err(format!("expected {:?} == {:?}", first.name, "data").into());
@@ -905,7 +929,7 @@ mod tests {
                 }
                 _ => return Err("Expected reference and string key".into()),
             },
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -943,7 +967,10 @@ mod tests {
             Expr::DictAccess { dict, key, .. } => {
                 // Outer access: dict is another DictAccess, key is "inner"
                 match (*key,) {
-                    (Expr::Literal(Literal::String(k)),) => {
+                    (Expr::Literal {
+                        value: Literal::String(k),
+                        ..
+                    },) => {
                         if k != "inner" {
                             return Err(format!("expected {:?} == {:?}", k, "inner").into());
                         }
@@ -957,7 +984,10 @@ mod tests {
                         ..
                     } => {
                         match (*inner_key,) {
-                            (Expr::Literal(Literal::String(k)),) => {
+                            (Expr::Literal {
+                                value: Literal::String(k),
+                                ..
+                            },) => {
                                 if k != "outer" {
                                     return Err(format!("expected {:?} == {:?}", k, "outer").into());
                                 }
@@ -976,7 +1006,7 @@ mod tests {
                                     .into());
                                 }
                             }
-                            Expr::Literal(_)
+                            Expr::Literal { .. }
                             | Expr::Invocation { .. }
                             | Expr::EnumInstantiation { .. }
                             | Expr::InferredEnumInstantiation { .. }
@@ -997,7 +1027,7 @@ mod tests {
                             | Expr::Block { .. } => return Err("Expected reference 'data'".into()),
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1018,7 +1048,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected inner DictAccess".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1066,7 +1096,7 @@ mod tests {
                 }
                 _ => return Err("Expected two references".into()),
             },
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1303,7 +1333,7 @@ mod tests {
                             );
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::Array { .. }
@@ -1328,7 +1358,7 @@ mod tests {
                     }
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1373,7 +1403,7 @@ mod tests {
                     return Err("params[0].ty should be None".into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1419,7 +1449,7 @@ mod tests {
                     return Err(format!("expected {:?} == {:?}", p1.name.name, "h").into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1465,7 +1495,7 @@ mod tests {
                     _ => return Err("Expected String type annotation".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1543,12 +1573,15 @@ mod tests {
                     return Err(format!("ty should be None but got {ty:?}").into());
                 }
                 match *value {
-                    Expr::Literal(Literal::Number(n)) => {
+                    Expr::Literal {
+                        value: Literal::Number(n),
+                        ..
+                    } => {
                         if (n - 42.0_f64).abs() > f64::EPSILON {
                             return Err(format!("{:?} != {:?}", n, 42.0).into());
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1576,7 +1609,7 @@ mod tests {
                             return Err(format!("{:?} != {:?}", first.name, "x").into());
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1597,7 +1630,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected reference in body".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1644,7 +1677,7 @@ mod tests {
                     _ => return Err("Expected Number type annotation".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1692,7 +1725,7 @@ mod tests {
                     | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1768,7 +1801,7 @@ mod tests {
                             return Err("Expected simple pattern".into())
                         }
                     },
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1789,7 +1822,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected nested LetExpr".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }

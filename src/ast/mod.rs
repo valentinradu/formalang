@@ -376,7 +376,10 @@ pub enum PrimitiveType {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
-    Literal(Literal),
+    Literal {
+        value: Literal,
+        span: Span,
+    },
 
     /// Struct instantiation or function call (disambiguated by semantic analysis)
     Invocation {
@@ -643,10 +646,10 @@ impl Ident {
 impl Expr {
     /// Get the span of an expression
     #[must_use]
-    pub fn span(&self) -> Span {
+    pub const fn span(&self) -> Span {
         match self {
-            Self::Literal(_) => Span::default(),
-            Self::Invocation { span, .. }
+            Self::Literal { span, .. }
+            | Self::Invocation { span, .. }
             | Self::EnumInstantiation { span, .. }
             | Self::InferredEnumInstantiation { span, .. }
             | Self::Array { span, .. }
@@ -776,7 +779,10 @@ mod tests {
 
     #[test]
     fn test_expr_span_literal() -> Result<(), Box<dyn std::error::Error>> {
-        let expr = Expr::Literal(Literal::Nil);
+        let expr = Expr::Literal {
+            value: Literal::Nil,
+            span: Span::default(),
+        };
         if expr.span() != Span::default() {
             return Err("Literal should return default span".into());
         }

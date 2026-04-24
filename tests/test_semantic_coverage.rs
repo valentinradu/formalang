@@ -827,6 +827,69 @@ fn test_module_nested_function_body_is_validated() -> Result<(), Box<dyn std::er
 }
 
 #[test]
+fn test_type_only_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #23: Mode B overloading accepts `fn process(Number) -> String`
+    // — a type-only param with no name. Must parse (name is synthesised).
+    let source = r#"
+        fn process(Number) -> String { "number" }
+        fn process(String) -> String { "string" }
+    "#;
+    compile(source).map_err(|e| format!("type-only param should parse: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #22: `if user.nickname { name: nickname }` must make
+    // `nickname` visible inside the then-branch with the unwrapped type.
+    let source = r#"
+        struct User { nickname: String? }
+        fn greet(name: String) -> String { name }
+        pub let u = User(nickname: "alice")
+        pub let out = if u.nickname {
+            greet(name: nickname)
+        } else {
+            "anon"
+        }
+    "#;
+    compile(source).map_err(|e| format!("auto-bind inside if should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_division_without_spaces_tokenises_as_division() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #20: `10/2` used to lex as Number(10), Path("2"). Now it must
+    // produce integer division.
+    let source = r"
+        pub let quotient: Number = 10/2
+    ";
+    compile(source).map_err(|e| format!("`10/2` must parse as division: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_circular_type_through_enum_variant_detected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #17: `struct A { b: B }` / `enum B { V(A) }` now produces a
+    // CircularDependency error. Previously enum variants weren't added to
+    // the type-dependency graph so the cycle was silently accepted.
+    let source = r"
+        struct A { b: B }
+        enum B {
+            v(inner: A)
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected CircularDependency through enum variant".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("CircularDependency") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_generic_standalone_function_parses_and_validates() -> Result<(), Box<dyn std::error::Error>>
 {
     // Audit #11: `pub fn identity<T>(value: T) -> T { value }` must parse,

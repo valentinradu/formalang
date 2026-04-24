@@ -12,7 +12,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     )]
     pub(super) fn infer_type(&self, expr: &Expr, file: &File) -> String {
         match expr {
-            Expr::Literal(lit) => match lit {
+            Expr::Literal { value: lit, .. } => match lit {
                 Literal::String(_) => "String".to_string(),
                 Literal::Number(_) => "Number".to_string(),
                 Literal::Boolean(_) => "Boolean".to_string(),
@@ -289,7 +289,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // for/if/match/closure/method-call expressions produce new values — not mutable
             Expr::Array { .. }
             | Expr::Tuple { .. }
-            | Expr::Literal(_)
+            | Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }

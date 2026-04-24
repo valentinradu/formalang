@@ -62,12 +62,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Note: Mount points are NOT added to the dependency graph.
                         // See comment above in trait handling for rationale.
                     }
-                    Definition::Enum(_)
-                    | Definition::Impl(_)
-                    | Definition::Module(_)
-                    | Definition::Function(_) => {
-                        // Enums, impl blocks, modules, and standalone functions
-                        // don't create type dependencies directly
+                    Definition::Enum(enum_def) => {
+                        // Enum variants that carry associated data produce
+                        // type dependencies: `enum E { V(T) }` depends on T.
+                        // Without this arm, cycles through enum variants
+                        // (struct A { x: B } / enum B { V(A) }) escape
+                        // detection. See audit finding #17.
+                        let enum_name = enum_def.name.name.clone();
+                        type_spans.insert(enum_name.clone(), enum_def.span);
+                        for variant in &enum_def.variants {
+                            for field in &variant.fields {
+                                Self::add_type_dependencies(&mut type_graph, &enum_name, &field.ty);
+                            }
+                        }
+                    }
+                    Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {
+                        // Impl blocks, modules, and standalone functions
+                        // don't create type dependencies directly.
                     }
                 }
             }
@@ -165,7 +176,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Recursive worker for `extract_let_references` — accumulates into an existing set
     fn collect_let_references(&self, expr: &Expr, refs: &mut HashSet<String>) {
         match expr {
-            Expr::Literal(_) => {}
+            Expr::Literal { .. } => {}
             Expr::Array { elements, .. } => {
                 for elem in elements {
                     self.collect_let_references(elem, refs);

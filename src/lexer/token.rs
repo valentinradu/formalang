@@ -87,7 +87,14 @@ pub enum Token {
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
     Regex(String), // Full regex string, parse later
 
-    #[regex(r"/([^/\s\\,(){}\[\]]|\\.)+(/([^/\s\\,(){}\[\]]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
+    // Path literals start with `/` and must be followed by a non-digit,
+    // non-operator character. This disambiguates them from integer
+    // division (`10/2` tokenises as Number, Slash, Number, not as
+    // Number followed by Path("2")). See audit finding #20.
+    #[regex(
+        r"/[a-zA-Z._~][^/\s\\,(){}\[\]]*(/([^/\s\\,(){}\[\]]|\\.)+)*",
+        |lex| lex.slice()[1..].to_string()
+    )]
     Path(String),
 
     // Identifier: starts with letter/underscore, contains alphanumerics/underscores

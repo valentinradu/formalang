@@ -74,34 +74,49 @@ impl FileSystemResolver {
         Self { root_dir }
     }
 
-    /// Try to find a module file for the given path
-    ///
-    /// Tries the following locations in order:
-    /// 1. `root_dir/path/to/module.fv`
-    /// 2. `root_dir/path/to.fv` (if module is the last segment)
-    fn find_module_file(&self, path: &[String]) -> Option<PathBuf> {
-        // Try: root_dir/path/to/module.fv
-        let mut file_path = self.root_dir.clone();
-        for segment in path {
-            file_path.push(segment);
-        }
-        file_path.set_extension("fv");
-
-        if file_path.exists() {
-            return Some(file_path);
-        }
-
-        // Try: root_dir/path/to.fv (treating init segments as path, last is inside the file)
-        if let Some((_last, init)) = path.split_last() {
-            if !init.is_empty() {
-                let mut dir_path = self.root_dir.clone();
-                for segment in init {
-                    dir_path.push(segment);
+    /// Try to find a module file for the given path, preferring a location
+    /// relative to `current_file`'s directory before falling back to
+    /// `root_dir`. See audit finding #18.
+    fn find_module_file(&self, path: &[String], current_file: Option<&PathBuf>) -> Option<PathBuf> {
+        // Search roots: current file's parent directory first, then the
+        // configured project root. This lets `foo/bar.fv` do `use other`
+        // and resolve `foo/other.fv` before `other.fv`.
+        let mut roots: Vec<PathBuf> = Vec::new();
+        if let Some(cf) = current_file {
+            if let Some(parent) = cf.parent() {
+                if parent.as_os_str().is_empty() {
+                    roots.push(PathBuf::from("."));
+                } else {
+                    roots.push(parent.to_path_buf());
                 }
-                dir_path.set_extension("fv");
+            }
+        }
+        if !roots.iter().any(|r| r == &self.root_dir) {
+            roots.push(self.root_dir.clone());
+        }
 
-                if dir_path.exists() {
-                    return Some(dir_path);
+        for root in &roots {
+            // Try: root/path/to/module.fv
+            let mut file_path = root.clone();
+            for segment in path {
+                file_path.push(segment);
+            }
+            file_path.set_extension("fv");
+            if file_path.exists() {
+                return Some(file_path);
+            }
+
+            // Try: root/path/to.fv (init segments as path, last inside the file)
+            if let Some((_last, init)) = path.split_last() {
+                if !init.is_empty() {
+                    let mut dir_path = root.clone();
+                    for segment in init {
+                        dir_path.push(segment);
+                    }
+                    dir_path.set_extension("fv");
+                    if dir_path.exists() {
+                        return Some(dir_path);
+                    }
                 }
             }
         }
@@ -114,27 +129,42 @@ impl ModuleResolver for FileSystemResolver {
     fn resolve(
         &self,
         path: &[String],
-        _current_file: Option<&PathBuf>,
+        current_file: Option<&PathBuf>,
     ) -> Result<(String, PathBuf), ModuleError> {
         // Find the module file
-        let module_file = self.find_module_file(path).ok_or_else(|| {
-            // Collect searched paths for better error messages
+        let module_file = self.find_module_file(path, current_file).ok_or_else(|| {
+            // Collect searched paths (both current-file-relative and root-
+            // relative) for a clearer not-found error.
             let mut searched = vec![];
-            let mut file_path = self.root_dir.clone();
-            for segment in path {
-                file_path.push(segment);
+            let mut search_roots: Vec<PathBuf> = Vec::new();
+            if let Some(cf) = current_file {
+                if let Some(parent) = cf.parent() {
+                    search_roots.push(if parent.as_os_str().is_empty() {
+                        PathBuf::from(".")
+                    } else {
+                        parent.to_path_buf()
+                    });
+                }
             }
-            file_path.set_extension("fv");
-            searched.push(file_path);
-
-            if let Some((_last, init)) = path.split_last() {
-                if !init.is_empty() {
-                    let mut dir_path = self.root_dir.clone();
-                    for segment in init {
-                        dir_path.push(segment);
+            if !search_roots.iter().any(|r| r == &self.root_dir) {
+                search_roots.push(self.root_dir.clone());
+            }
+            for root in &search_roots {
+                let mut file_path = root.clone();
+                for segment in path {
+                    file_path.push(segment);
+                }
+                file_path.set_extension("fv");
+                searched.push(file_path);
+                if let Some((_last, init)) = path.split_last() {
+                    if !init.is_empty() {
+                        let mut dir_path = root.clone();
+                        for segment in init {
+                            dir_path.push(segment);
+                        }
+                        dir_path.set_extension("fv");
+                        searched.push(dir_path);
                     }
-                    dir_path.set_extension("fv");
-                    searched.push(dir_path);
                 }
             }
 

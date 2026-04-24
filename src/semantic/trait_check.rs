@@ -74,6 +74,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             .zip(impl_non_self.iter())
                             .any(|(req, imp)| req.convention != imp.convention);
 
+                    // Audit finding #15: also compare parameter *types*.
+                    // Previously only arity and conventions were checked, so
+                    // an impl could return `fn foo(x: Int)` for a trait
+                    // method declared `fn foo(x: String)` without error.
+                    let param_type_mismatch = !param_count_mismatch
+                        && required_non_self
+                            .iter()
+                            .zip(impl_non_self.iter())
+                            .any(|(req, imp)| match (&req.ty, &imp.ty) {
+                                (Some(req_ty), Some(imp_ty)) => !Self::types_match(req_ty, imp_ty),
+                                (None, None) => false,
+                                _ => true,
+                            });
+
                     // Also check self convention if both have self
                     let self_convention_mismatch = {
                         let req_self = required_params.iter().find(|p| p.name.name == "self");
@@ -94,6 +108,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         || convention_mismatch
                         || self_convention_mismatch
                         || return_type_mismatch
+                        || param_type_mismatch
                     {
                         let expected = required_return
                             .as_ref()
@@ -118,9 +133,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Collect the methods declared directly in a trait (not inherited ones).
     ///
-    /// Each `impl Trait for Struct` block must provide only the methods declared
-    /// directly in that trait. Inherited methods from composed traits are expected
-    /// to be covered by separate impl blocks for those base traits.
+    /// Each `impl Trait for Struct` block must provide only the methods
+    /// declared directly in that trait. Inherited methods from composed
+    /// traits are expected to be covered by separate impl blocks for those
+    /// base traits — this is a deliberate design choice documented in the
+    /// language reference, not a gap. See audit finding #16 (closed as
+    /// "design is intentional").
     fn collect_all_trait_methods(
         &self,
         trait_name: &str,

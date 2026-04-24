@@ -31,24 +31,28 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     recursive(|expr| {
-        // Literals
-        let literal = choice((
-            select! { Token::String(s) => Expr::Literal(Literal::String(s)) },
-            select! { Token::Number(n) => Expr::Literal(Literal::Number(n)) },
+        // Literals — each chumsky branch produces a raw `Literal`, and the
+        // outer `map_with` attaches the span from the token range so
+        // diagnostics and LSP hover can point at the correct location.
+        let literal_value = choice((
+            select! { Token::String(s) => Literal::String(s) },
+            select! { Token::Number(n) => Literal::Number(n) },
             select! { Token::Regex(s) => {
-                // Parse regex at parse time
                 if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
-                    Expr::Literal(Literal::Regex { pattern, flags })
+                    Literal::Regex { pattern, flags }
                 } else {
-                    // Fallback
-                    Expr::Literal(Literal::Regex { pattern: String::new(), flags: String::new() })
+                    Literal::Regex { pattern: String::new(), flags: String::new() }
                 }
             }},
-            select! { Token::Path(p) => Expr::Literal(Literal::Path(p)) },
-            just(Token::True).to(Expr::Literal(Literal::Boolean(true))),
-            just(Token::False).to(Expr::Literal(Literal::Boolean(false))),
-            just(Token::Nil).to(Expr::Literal(Literal::Nil)),
+            select! { Token::Path(p) => Literal::Path(p) },
+            just(Token::True).to(Literal::Boolean(true)),
+            just(Token::False).to(Literal::Boolean(false)),
+            just(Token::Nil).to(Literal::Nil),
         ));
+        let literal = literal_value.map_with(|value, e| Expr::Literal {
+            value,
+            span: span_from_simple(e.span()),
+        });
 
         // Helper to parse invocation arguments: either named (name: expr) or positional (expr)
         // Returns Vec<(Option<Ident>, Expr)> where Some(name) is named, None is positional
@@ -619,7 +623,7 @@ where
                                 span: span_from_simple(e.span()),
                             }
                         }
-                        Expr::Literal(_)
+                        Expr::Literal { .. }
                         | Expr::Invocation { .. }
                         | Expr::EnumInstantiation { .. }
                         | Expr::InferredEnumInstantiation { .. }

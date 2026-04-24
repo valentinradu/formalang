@@ -213,7 +213,7 @@ pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
 )]
 pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
-        Expr::Literal(_) => {}
+        Expr::Literal { span, .. } => fill_span(span, source),
         Expr::Invocation {
             path,
             type_args,

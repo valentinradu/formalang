@@ -279,11 +279,23 @@ File {
                                 },
                                 bindings: [],
                             },
-                            body: Literal(
-                                String(
+                            body: Literal {
+                                value: String(
                                     "y",
                                 ),
-                            ),
+                                span: Span {
+                                    start: Location {
+                                        offset: 131,
+                                        line: 6,
+                                        column: 19,
+                                    },
+                                    end: Location {
+                                        offset: 134,
+                                        line: 6,
+                                        column: 22,
+                                    },
+                                },
+                            },
                             span: Span {
                                 start: Location {
                                     offset: 125,
@@ -316,11 +328,23 @@ File {
                                 },
                                 bindings: [],
                             },
-                            body: Literal(
-                                String(
+                            body: Literal {
+                                value: String(
                                     "n",
                                 ),
-                            ),
+                                span: Span {
+                                    start: Location {
+                                        offset: 153,
+                                        line: 7,
+                                        column: 18,
+                                    },
+                                    end: Location {
+                                        offset: 156,
+                                        line: 7,
+                                        column: 21,
+                                    },
+                                },
+                            },
                             span: Span {
                                 start: Location {
                                     offset: 148,
@@ -389,22 +413,58 @@ File {
                     ),
                 ),
                 value: IfExpr {
-                    condition: Literal(
-                        Boolean(
+                    condition: Literal {
+                        value: Boolean(
                             true,
                         ),
-                    ),
-                    then_branch: Literal(
-                        Number(
+                        span: Span {
+                            start: Location {
+                                offset: 197,
+                                line: 9,
+                                column: 31,
+                            },
+                            end: Location {
+                                offset: 201,
+                                line: 9,
+                                column: 35,
+                            },
+                        },
+                    },
+                    then_branch: Literal {
+                        value: Number(
                             1.0,
                         ),
-                    ),
+                        span: Span {
+                            start: Location {
+                                offset: 204,
+                                line: 9,
+                                column: 38,
+                            },
+                            end: Location {
+                                offset: 205,
+                                line: 9,
+                                column: 39,
+                            },
+                        },
+                    },
                     else_branch: Some(
-                        Literal(
-                            Number(
+                        Literal {
+                            value: Number(
                                 0.0,
                             ),
-                        ),
+                            span: Span {
+                                start: Location {
+                                    offset: 215,
+                                    line: 9,
+                                    column: 49,
+                                },
+                                end: Location {
+                                    offset: 216,
+                                    line: 9,
+                                    column: 50,
+                                },
+                            },
+                        },
                     ),
                     span: Span {
                         start: Location {

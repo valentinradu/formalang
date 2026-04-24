@@ -206,7 +206,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         match expr {
-            Expr::Literal(_) => {}
+            Expr::Literal { .. } => {}
             Expr::Array { elements, .. } => {
                 for elem in elements {
                     self.validate_expr(elem, file);
@@ -287,6 +287,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
+                // Audit #22: when the condition is an optional receiver
+                // like `if foo` or `if user.nickname`, introduce the
+                // unwrapped binding into the then-branch scope so the body
+                // can reference it by its trailing name.
+                let (auto_binding_name, auto_binding_prev) =
+                    self.bind_optional_auto_binding(condition, file);
                 // Each branch is a separate control-flow path. Snapshot
                 // consumed_bindings before entering either branch so we can
                 // compute the conservative post-join union. Conservative (never
@@ -294,6 +300,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // miss one.
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
+                // Restore any auto-binding we installed before entering the
+                // else branch (which does not see the unwrapped binding).
+                if let Some(name) = auto_binding_name.as_ref() {
+                    match auto_binding_prev {
+                        Some(prev) => {
+                            self.local_let_bindings.insert(name.clone(), prev);
+                        }
+                        None => {
+                            self.local_let_bindings.remove(name);
+                        }
+                    }
+                }
                 // after_then takes over `self.consumed_bindings`; swap pre_if in
                 // so the else branch starts from pre-branch state.
                 let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
@@ -475,7 +493,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Reference { path, .. } => path.first().map(|id| id.name.clone()),
             Expr::FieldAccess { object, .. } => Self::root_binding(object),
             Expr::Group { expr, .. } => Self::root_binding(expr),
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -517,7 +535,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Some(Self::collect_free_variables(body, &param_set))
             }
             Expr::Group { expr, .. } => self.closure_captures_of_expr(expr),
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -641,7 +659,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.collect_returned_closure_captures_rec(&arm.body, out);
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -1262,8 +1280,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 || first_param_type == "Unknown"
                 || self.type_strings_compatible(&first_param_type, &first_arg_type)
         } else {
-            // Mixed or empty args — accept (fallback)
-            true
+            // Mixed labeled / unlabeled args — reject. FormaLang's overload
+            // resolution modes are "all-labeled" (A) or "all-unlabeled" (B);
+            // a mix has no defined match and previously fell through to
+            // `true`, silently accepting overloads whose label patterns were
+            // incompatible. See audit finding #14.
+            false
         }
     }
 
@@ -1366,7 +1388,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Literal { .. } | Expr::InferredEnumInstantiation { .. } => {}
             Expr::Array { elements, .. } => {
                 for e in elements {
                     Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
@@ -1586,7 +1608,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Literal { .. } | Expr::InferredEnumInstantiation { .. } => {}
             Expr::Array { elements, .. } => {
                 for e in elements {
                     Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
@@ -2125,6 +2147,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_conventions = saved_closure_conventions;
         self.closure_binding_captures = saved_closure_captures;
         self.consumed_bindings = restored_consumed;
+    }
+
+    /// If `condition` is a reference or field access whose type is optional
+    /// (`T?`), install a local binding whose name matches the trailing
+    /// segment with the unwrapped type `T` and return the binding name
+    /// (plus the prior entry, if any, so the caller can restore it after
+    /// the then-branch). Otherwise returns (None, None). Audit #22.
+    fn bind_optional_auto_binding(
+        &mut self,
+        condition: &Expr,
+        file: &File,
+    ) -> (Option<String>, Option<(String, bool)>) {
+        let cond_ty = self.infer_type(condition, file);
+        let Some(unwrapped) = cond_ty.strip_suffix('?') else {
+            return (None, None);
+        };
+        let name_opt = match condition {
+            Expr::Reference { path, .. } => path.last().map(|id| id.name.clone()),
+            Expr::FieldAccess { field, .. } => Some(field.name.clone()),
+            Expr::Literal { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => None,
+        };
+        let Some(name) = name_opt else {
+            return (None, None);
+        };
+        let prev = self.local_let_bindings.get(&name).cloned();
+        self.local_let_bindings
+            .insert(name.clone(), (unwrapped.to_string(), false));
+        (Some(name), prev)
     }
 
     /// Validate struct field requirements: all required fields must be provided, no unknown fields

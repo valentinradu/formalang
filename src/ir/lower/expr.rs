@@ -13,7 +13,7 @@ use crate::ir::{
 impl IrLowerer<'_> {
     pub(super) fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
         match expr {
-            Expr::Literal(lit) => IrExpr::Literal {
+            Expr::Literal { value: lit, .. } => IrExpr::Literal {
                 value: lit.clone(),
                 ty: Self::literal_type(lit),
             },
@@ -713,7 +713,11 @@ impl IrLowerer<'_> {
         Some(self.trait_id_from_idx(found_idx))
     }
 
-    /// Lower a `let pat = val in body` expression into a block with the binding as a statement.
+    /// Lower a `let pat = val in body` expression into a block with the
+    /// binding as one or more statements. Destructuring patterns are
+    /// expanded into per-field let statements so the bindings actually
+    /// reach the body — previously they collapsed to a single `_let`
+    /// binding. See audit finding #21.
     fn lower_let_expr(
         &mut self,
         mutable: bool,
@@ -725,22 +729,27 @@ impl IrLowerer<'_> {
         let ir_value = self.lower_expr(value);
         let ir_ty = ty.map(|t| self.lower_type(t));
 
-        let name = match pattern {
-            BindingPattern::Simple(ident) => ident.name.clone(),
-            BindingPattern::Tuple { .. }
-            | BindingPattern::Struct { .. }
-            | BindingPattern::Array { .. } => "_let".to_string(),
-        };
-        let stmt = IrBlockStatement::Let {
-            name,
-            mutable,
-            ty: ir_ty,
-            value: ir_value,
+        let statements: Vec<IrBlockStatement> = match pattern {
+            BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
+                name: ident.name.clone(),
+                mutable,
+                ty: ir_ty,
+                value: ir_value,
+            }],
+            BindingPattern::Array { elements, .. } => {
+                self.lower_let_array_destructure(elements, mutable, &ir_value)
+            }
+            BindingPattern::Struct { fields, .. } => {
+                self.lower_let_struct_destructure(fields, mutable, &ir_value)
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                self.lower_let_tuple_destructure(elements, mutable, &ir_value)
+            }
         };
         let ir_body = self.lower_expr(body);
         let ty = ir_body.ty().clone();
         IrExpr::Block {
-            statements: vec![stmt],
+            statements,
             result: Box::new(ir_body),
             ty,
         }
