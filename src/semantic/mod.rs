@@ -72,6 +72,53 @@ pub(crate) fn is_primitive_name(name: &str) -> bool {
     )
 }
 
+/// If `ty` is `[T]`, return `T`. Otherwise, return None.
+fn strip_array_type(ty: &str) -> Option<&str> {
+    let trimmed = ty.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains(':') {
+        Some(trimmed[1..trimmed.len().saturating_sub(1)].trim())
+    } else {
+        None
+    }
+}
+
+/// Parse a tuple type string like `(a: Number, b: String)` into a flat list
+/// of field type strings `["Number", "String"]`. Commas inside nested
+/// generics/tuples/arrays are respected.
+fn parse_tuple_field_types(ty: &str) -> Vec<String> {
+    let trimmed = ty.trim();
+    if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+        return Vec::new();
+    }
+    let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
+    let mut fields = Vec::new();
+    let mut depth: u32 = 0;
+    let mut start = 0;
+    for (i, ch) in inner.char_indices() {
+        match ch {
+            '(' | '[' | '<' => depth = depth.saturating_add(1),
+            ')' | ']' | '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                fields.push(inner[start..i].to_string());
+                start = i.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+    if start < inner.len() {
+        fields.push(inner[start..].to_string());
+    }
+    fields
+        .into_iter()
+        .map(|part| {
+            let p = part.trim();
+            // Strip leading `name:` from "name: Type"
+            p.split_once(':')
+                .map_or_else(|| p.to_string(), |(_, ty)| ty.trim().to_string())
+        })
+        .collect()
+}
+
 fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<PatternBinding>) {
     match pattern {
         BindingPattern::Simple(ident) => {
@@ -116,7 +163,25 @@ fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<Patte
     }
 }
 
-/// Semantic analyzer validates the AST without evaluation or expansion
+/// Semantic analyser for a parsed `FormaLang` program.
+///
+/// `SemanticAnalyzer` runs name resolution, type inference, trait checking,
+/// and module resolution against a given AST. It is the source of truth for
+/// the compiler's symbol table and is consumed by IR lowering and by
+/// LSP-style consumers that need completion, hover, or go-to-definition.
+///
+/// # Typical use
+///
+/// Most callers should use [`compile_with_analyzer`](crate::compile_with_analyzer),
+/// which lexes, parses, and analyses in one step and returns both the AST
+/// and the analyser. Direct construction via [`Self::new_with_file`] is
+/// reserved for code that already has a parsed [`File`] in hand.
+///
+/// # Module resolution
+///
+/// Imports are resolved through the generic `R: ModuleResolver`. Use
+/// [`FileSystemResolver`](crate::FileSystemResolver) for disk-backed files,
+/// or provide your own resolver for in-memory or network-backed modules.
 pub struct SemanticAnalyzer<R: ModuleResolver> {
     symbols: SymbolTable,
     errors: Vec<CompilerError>,
@@ -417,7 +482,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .would_create_cycle(&current_path, &module_path_buf)
             {
                 let mut full_cycle = cycle;
-                full_cycle.push(current_path);
+                full_cycle.insert(0, current_path);
                 self.errors.push(CompilerError::CircularImport {
                     cycle: full_cycle
                         .iter()
@@ -570,7 +635,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .map(|ident| ident.name.clone())
             .collect();
 
-        let (source, imported_module_path) = match self.resolver.resolve(&path_segments, None) {
+        let (source, imported_module_path) = match self
+            .resolver
+            .resolve(&path_segments, self.current_file.as_ref())
+        {
             Ok(result) => result,
             Err(err) => {
                 let compiler_err = Self::module_error_to_compiler_error(err, use_stmt.span, true);
@@ -586,7 +654,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .would_create_cycle(&current_path, &imported_module_path)
             {
                 let mut full_cycle = cycle;
-                full_cycle.push(current_path.clone());
+                full_cycle.insert(0, current_path.clone());
                 module_errors.push(CompilerError::CircularImport {
                     cycle: full_cycle
                         .iter()
@@ -864,6 +932,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         enum_def: &crate::ast::EnumDef,
     ) {
+        use symbol_table::FieldInfo;
         if is_primitive_name(&enum_def.name.name) {
             errors.push(CompilerError::PrimitiveRedefinition {
                 name: enum_def.name.name.clone(),
@@ -877,6 +946,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
             .collect();
+        let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
+            .variants
+            .iter()
+            .map(|v| {
+                (
+                    v.name.name.clone(),
+                    v.fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
 
         if let Some((kind, _)) = symbols.define_enum(
             enum_def.name.name.clone(),
@@ -884,6 +969,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             enum_def.span,
             enum_def.generics.clone(),
             variants,
+            variant_fields,
             Vec::new(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
@@ -1125,17 +1211,82 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Pass 1.6: Infer let binding types
-    /// Infer the type of each let binding from its value expression
+    /// Infer the type of each let binding from its value expression, preferring
+    /// the explicit type annotation when one is present.
     fn infer_let_types(&mut self, file: &File) {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                let inferred_type = self.infer_type(&let_binding.value, file);
-                // Store type for all bindings in the pattern
-                // For destructuring, each binding gets the inferred type of its position
-                // (simplified: using source type for now, proper element types would need more work)
-                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
-                    self.symbols
-                        .set_let_type(&binding.name, inferred_type.clone());
+                let source_type = let_binding.type_annotation.as_ref().map_or_else(
+                    || self.infer_type(&let_binding.value, file),
+                    Self::type_to_string,
+                );
+                // Each binding in a destructuring pattern gets the type of the
+                // position it extracts (array element, tuple field, struct field).
+                // Simple patterns get the full source type.
+                let resolved = self.resolve_pattern_types(&let_binding.pattern, &source_type);
+                for (name, ty) in resolved {
+                    self.symbols.set_let_type(&name, ty);
+                }
+            }
+        }
+    }
+
+    /// Resolve per-binding types for a destructuring pattern given the
+    /// source type string. Falls back to the source type for bindings whose
+    /// position cannot be resolved (e.g., unknown struct field).
+    fn resolve_pattern_types(
+        &self,
+        pattern: &BindingPattern,
+        source_ty: &str,
+    ) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        self.collect_pattern_types_inner(pattern, source_ty, &mut out);
+        out
+    }
+
+    fn collect_pattern_types_inner(
+        &self,
+        pattern: &BindingPattern,
+        source_ty: &str,
+        out: &mut Vec<(String, String)>,
+    ) {
+        match pattern {
+            BindingPattern::Simple(ident) => {
+                out.push((ident.name.clone(), source_ty.to_string()));
+            }
+            BindingPattern::Array { elements, .. } => {
+                let element_ty = strip_array_type(source_ty).unwrap_or(source_ty);
+                for element in elements {
+                    match element {
+                        ArrayPatternElement::Binding(inner) => {
+                            self.collect_pattern_types_inner(inner, element_ty, out);
+                        }
+                        ArrayPatternElement::Rest(Some(ident)) => {
+                            out.push((ident.name.clone(), source_ty.to_string()));
+                        }
+                        ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {}
+                    }
+                }
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                let field_types = parse_tuple_field_types(source_ty);
+                for (idx, element) in elements.iter().enumerate() {
+                    let inner_ty = field_types
+                        .get(idx)
+                        .map_or(source_ty, std::string::String::as_str);
+                    self.collect_pattern_types_inner(element, inner_ty, out);
+                }
+            }
+            BindingPattern::Struct { fields, .. } => {
+                for field in fields {
+                    let binding_ident = field.alias.as_ref().unwrap_or(&field.name);
+                    let field_ty = self
+                        .symbols
+                        .structs
+                        .get(source_ty)
+                        .and_then(|s| s.fields.iter().find(|f| f.name == field.name.name))
+                        .map_or_else(|| source_ty.to_string(), |f| Self::type_to_string(&f.ty));
+                    out.push((binding_ident.name.clone(), field_ty));
                 }
             }
         }
@@ -1349,6 +1500,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn collect_definition_enum(&mut self, enum_def: &crate::ast::EnumDef) {
+        use symbol_table::FieldInfo;
         if is_primitive_name(&enum_def.name.name) {
             self.errors.push(CompilerError::PrimitiveRedefinition {
                 name: enum_def.name.name.clone(),
@@ -1375,6 +1527,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
             .collect();
+        let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
+            .variants
+            .iter()
+            .map(|v| {
+                (
+                    v.name.name.clone(),
+                    v.fields
+                        .iter()
+                        .map(|f| FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
 
         if let Some((kind, _)) = self.symbols.define_enum(
             enum_def.name.name.clone(),
@@ -1382,6 +1550,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             enum_def.span,
             enum_def.generics.clone(),
             variants,
+            variant_fields,
             Vec::new(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {

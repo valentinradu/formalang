@@ -208,3 +208,70 @@ pub fn make_counter(sink n: Number) -> (Number) -> Number {
     }
     Ok(())
 }
+
+// =============================================================================
+// IR round-trip on a mixed-feature fixture (structs + enums + traits + impls)
+// =============================================================================
+
+#[test]
+fn test_ir_round_trip_mixed_fixture() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+pub trait Named {
+    name: String
+}
+
+pub struct User {
+    name: String,
+    age: Number
+}
+
+impl User {
+    fn greet(self) -> String {
+        self.name
+    }
+}
+
+pub enum Status {
+    active,
+    banned(reason: String),
+    pending(since: Number, note: String)
+}
+
+pub let default_age: Number = 0
+";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let json = serde_json::to_string(&module).map_err(|e| format!("serialize: {e}"))?;
+    let restored: formalang::IrModule =
+        serde_json::from_str(&json).map_err(|e| format!("deserialize: {e}"))?;
+
+    // Re-serialise and compare for byte-for-byte stability.
+    let json2 = serde_json::to_string(&restored).map_err(|e| format!("re-serialize: {e}"))?;
+    if json != json2 {
+        return Err("mixed-feature IrModule round-trip diverged".into());
+    }
+
+    // Spot-check the structure: counts and at least one non-trivial variant.
+    if restored.structs.len() != module.structs.len() {
+        return Err("struct count changed across round-trip".into());
+    }
+    if restored.traits.len() != module.traits.len() {
+        return Err("trait count changed across round-trip".into());
+    }
+    if restored.enums.len() != module.enums.len() {
+        return Err("enum count changed across round-trip".into());
+    }
+    let enum_def = restored
+        .enums
+        .iter()
+        .find(|e| e.name == "Status")
+        .ok_or("Status enum missing after round-trip")?;
+    let banned = enum_def
+        .variants
+        .iter()
+        .find(|v| v.name == "banned")
+        .ok_or("banned variant missing")?;
+    if banned.fields.is_empty() {
+        return Err("banned(reason: String) lost its field shape during round-trip".into());
+    }
+    Ok(())
+}

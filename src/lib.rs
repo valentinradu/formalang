@@ -1,3 +1,24 @@
+//! # `FormaLang`
+//!
+//! A compiler frontend library for the `FormaLang` declarative language.
+//! Parsing, semantic analysis, and IR lowering are built-in; code generation
+//! is the responsibility of embedders via the plugin system.
+//!
+//! ## Entry points
+//!
+//! - [`compile_to_ir`] — compile source to a resolved [`IrModule`].
+//! - [`compile_to_ir_with_resolver`] — same, with a custom [`semantic::module_resolver::ModuleResolver`].
+//! - [`compile_with_analyzer`] — returns the AST plus [`SemanticAnalyzer`] for LSP-style use.
+//! - [`parse_only`] — lex + parse without semantic analysis.
+//! - [`compile_and_report`] — convenience wrapper that formats errors as a
+//!   human-readable report.
+//!
+//! ## Plugin system
+//!
+//! Embedders compose [`IrPass`] transforms and a [`Backend`] via [`Pipeline`].
+//! Built-in passes live in [`ir::DeadCodeEliminationPass`] and
+//! [`ir::ConstantFoldingPass`].
+
 pub mod ast;
 pub mod error;
 pub mod ir;
@@ -12,8 +33,8 @@ pub mod semantic;
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
 pub use ir::{
-    simple_type_name, EnumId, FunctionId, ImportedKind, IrFunction, IrFunctionParam, IrFunctionSig,
-    IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
+    simple_type_name, EnumId, FunctionId, GenericBase, ImportedKind, IrFunction, IrFunctionParam,
+    IrFunctionSig, IrImport, IrImportItem, IrModule, ResolvedType, StructId, TraitId,
 };
 pub use lexer::{Lexer, Token};
 pub use location::{Location, Span};

@@ -1,8 +1,8 @@
 //! `FormaLang` Compiler CLI
 //!
 //! Usage:
-//!   fvc check <file.fv> [--module-root <path>]
-//!   fvc watch <file.fv> [--module-root <path>]
+//!   `fvc check <file.fv> [--module-root <path>]`
+//!   `fvc watch <file.fv> [--module-root <path>]`
 
 #![expect(
     clippy::print_stdout,

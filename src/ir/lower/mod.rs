@@ -75,6 +75,17 @@ struct IrLowerer<'a> {
     pub(super) current_module_prefix: String,
     /// Current function's return type for inferring enum types
     pub(super) current_function_return_type: Option<String>,
+    /// Stack of local bindings in scope during lowering: each entry is a
+    /// frame pushed when entering a function/closure body, mapping the
+    /// binding name to its declared `ResolvedType`. Used so that a
+    /// `Reference` to a parameter resolves to the concrete type instead
+    /// of a `TypeParam(name)` placeholder.
+    pub(super) local_binding_scopes: Vec<HashMap<String, ResolvedType>>,
+    /// When lowering the body of an impl method, maps the current impl's
+    /// methods to their declared return types so that forward references
+    /// within the same impl block (`self.other_method()`) resolve without
+    /// needing the impl to already be installed in `module.impls`.
+    pub(super) current_impl_method_returns: Option<HashMap<String, Option<ResolvedType>>>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -99,7 +110,19 @@ impl<'a> IrLowerer<'a> {
             current_impl_struct: None,
             current_module_prefix: String::new(),
             current_function_return_type: None,
+            local_binding_scopes: Vec::new(),
+            current_impl_method_returns: None,
         }
+    }
+
+    /// Look up a local binding by name from the innermost scope outwards.
+    pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {
+        for frame in self.local_binding_scopes.iter().rev() {
+            if let Some(ty) = frame.get(name) {
+                return Some(ty);
+            }
+        }
+        None
     }
 
     fn lower_file(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
@@ -412,21 +435,65 @@ impl<'a> IrLowerer<'a> {
 
     /// Register types from a nested module recursively
     fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
-        // Register traits from this module (placeholder — filled in the second pass)
+        // Register traits from this module with their real shape. Composed
+        // traits are filled in after all names exist, since composition can
+        // forward-reference traits in the same module.
+        let mut pending_trait_composition: Vec<(String, Vec<String>)> = Vec::new();
         for (name, trait_info) in &module_symbols.traits {
             let qualified_name = format!("{module_prefix}::{name}");
+            let generic_params = self.lower_generic_params(&trait_info.generics);
+            let fields: Vec<IrField> = trait_info
+                .fields
+                .iter()
+                .map(|(field_name, ty)| IrField {
+                    name: field_name.clone(),
+                    ty: self.lower_type(ty),
+                    default: None,
+                    optional: matches!(ty, ast::Type::Optional(_)),
+                    mutable: false,
+                })
+                .collect();
+            let methods: Vec<IrFunctionSig> = trait_info
+                .methods
+                .iter()
+                .map(|m| self.lower_fn_sig(m))
+                .collect();
             if let Err(e) = self.module.add_trait(
                 qualified_name.clone(),
                 IrTrait {
-                    name: qualified_name,
+                    name: qualified_name.clone(),
                     visibility: trait_info.visibility,
                     composed_traits: Vec::new(),
-                    fields: Vec::new(),
-                    methods: Vec::new(),
-                    generic_params: Vec::new(),
+                    fields,
+                    methods,
+                    generic_params,
                 },
             ) {
                 self.errors.push(e);
+            }
+            if !trait_info.composed_traits.is_empty() {
+                pending_trait_composition
+                    .push((qualified_name, trait_info.composed_traits.clone()));
+            }
+        }
+
+        // Resolve composed-trait references after all traits from this module
+        // have been registered.
+        for (qualified_name, composed_names) in pending_trait_composition {
+            let composed: Vec<TraitId> = composed_names
+                .iter()
+                .filter_map(|c| {
+                    // Prefer the module-qualified lookup, fall back to simple
+                    // name for traits composed from the enclosing scope.
+                    self.module
+                        .trait_id(&format!("{module_prefix}::{c}"))
+                        .or_else(|| self.module.trait_id(c))
+                })
+                .collect();
+            if let Some(id) = self.module.trait_id(&qualified_name) {
+                if let Some(trait_def) = self.module.trait_mut(id) {
+                    trait_def.composed_traits = composed;
+                }
             }
         }
 
@@ -449,19 +516,34 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Helper method to register an enum
-    /// Note: `EnumInfo` doesn't preserve variant field details, so we create placeholder variants
+    /// Helper method to register an enum using `EnumInfo::variant_fields`
+    /// so imported-module enums carry real variant shapes into the IR.
     fn register_enum(&mut self, name: &str, enum_info: &EnumInfo) {
         let generic_params = self.lower_generic_params(&enum_info.generics);
 
-        // EnumInfo only stores variant names and arity, not field details
-        // We create placeholder variants with empty fields
         let variants: Vec<IrEnumVariant> = enum_info
             .variants
             .keys()
-            .map(|variant_name| IrEnumVariant {
-                name: variant_name.clone(),
-                fields: Vec::new(), // Field details not available in EnumInfo
+            .map(|variant_name| {
+                let fields = enum_info
+                    .variant_fields
+                    .get(variant_name)
+                    .map(|fs| {
+                        fs.iter()
+                            .map(|f| IrField {
+                                name: f.name.clone(),
+                                ty: self.lower_type(&f.ty),
+                                default: None,
+                                optional: matches!(f.ty, ast::Type::Optional(_)),
+                                mutable: false,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                IrEnumVariant {
+                    name: variant_name.clone(),
+                    fields,
+                }
             })
             .collect();
 
@@ -881,10 +963,22 @@ impl<'a> IrLowerer<'a> {
         // Set current impl struct/enum for self reference resolution
         self.current_impl_struct = Some(i.name.name.clone());
 
+        // Pre-compute method return types so lowering a body can resolve
+        // forward references like `self.other_method()` without needing
+        // the impl to already be in `module.impls`.
+        let saved_impl_returns = self.current_impl_method_returns.take();
+        let mut impl_returns: HashMap<String, Option<ResolvedType>> = HashMap::new();
+        for f in &i.functions {
+            let ret = f.return_type.as_ref().map(|t| self.lower_type(t));
+            impl_returns.insert(f.name.name.clone(), ret);
+        }
+        self.current_impl_method_returns = Some(impl_returns);
+
         let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
 
         // Clear the context
         self.current_impl_struct = None;
+        self.current_impl_method_returns = saved_impl_returns;
 
         if let Err(err) = self.module.add_impl(IrImpl { target, functions }) {
             self.errors.push(err);
@@ -909,8 +1003,20 @@ impl<'a> IrLowerer<'a> {
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
+        // Push a local scope so References inside the body resolve against
+        // the parameters' declared types.
+        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        for p in &params {
+            if let Some(ty) = &p.ty {
+                frame.insert(p.name.clone(), ty.clone());
+            }
+        }
+        self.local_binding_scopes.push(frame);
+
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
         let is_extern = body.is_none();
+
+        self.local_binding_scopes.pop();
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
@@ -947,8 +1053,25 @@ impl<'a> IrLowerer<'a> {
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
+        // Push a local scope so the body's References to parameters resolve
+        // to the declared param types rather than TypeParam(name) placeholders.
+        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        for p in &params {
+            if let Some(ty) = &p.ty {
+                frame.insert(p.name.clone(), ty.clone());
+            }
+        }
+        if let Some(impl_struct) = self.current_impl_struct.clone() {
+            if let Some(struct_id) = self.module.struct_id(&impl_struct) {
+                frame.insert("self".to_string(), ResolvedType::Struct(struct_id));
+            }
+        }
+        self.local_binding_scopes.push(frame);
+
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
         let is_extern = body.is_none();
+
+        self.local_binding_scopes.pop();
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
@@ -1078,14 +1201,22 @@ impl<'a> IrLowerer<'a> {
                 if let Some(external) = self.try_external_type(&name.name, type_args.clone()) {
                     return external;
                 }
-                // Otherwise try local types
-                self.module.struct_id(&name.name).map_or_else(
-                    || ResolvedType::TypeParam(name.name.clone()),
-                    |base| ResolvedType::Generic {
-                        base,
+                // Local generic struct
+                if let Some(id) = self.module.struct_id(&name.name) {
+                    return ResolvedType::Generic {
+                        base: crate::ir::GenericBase::Struct(id),
                         args: type_args,
-                    },
-                )
+                    };
+                }
+                // Local generic enum
+                if let Some(id) = self.module.enum_id(&name.name) {
+                    return ResolvedType::Generic {
+                        base: crate::ir::GenericBase::Enum(id),
+                        args: type_args,
+                    };
+                }
+                // Fallback: type parameter (e.g. `T` in a generic definition)
+                ResolvedType::TypeParam(name.name.clone())
             }
 
             Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),

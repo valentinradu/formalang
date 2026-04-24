@@ -16,13 +16,20 @@ path = "src/bin/fvc.rs"
 
 [dependencies]
 # Lexer
+#
+# Pinned at 0.14: 0.16 is functionally fine but its codegen for large
+# token enums makes CI runners (2-core, shared) time out during the
+# formalang crate compile. Tracked as a separate bench/tune task.
 logos = "0.14"
 
-# Parser
+# Parser (pinned on 1.0-alpha track; upstream 1.0 is still pre-release)
 chumsky = { version = "1.0.0-alpha.7", features = ["pratt"] }
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
+# Pinned at 0.4: upgrading to 0.5/0.6 requires rewriting every Report::build
+# call site (API moved from (kind, filename, offset) to (kind, (filename, range))).
+# Tracked as a separate migration.
 ariadne = "0.4"
 
 # Serialization
@@ -30,9 +37,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-rstest = "0.23"
+rstest = "0.26"
 pretty_assertions = "1.4"
-tempfile = "3.8"
+tempfile = "3.23"
 insta = "1.47.2"
 
 [lints.rust]

@@ -109,6 +109,11 @@ pub struct EnumInfo {
     pub generics: Vec<GenericParam>,
     /// Variant name -> (arity, span)
     pub variants: HashMap<String, (usize, Span)>,
+    /// Variant name -> ordered field definitions.
+    ///
+    /// Populated alongside `variants` so IR lowering of imported module
+    /// enums can emit the full variant shape instead of empty placeholders.
+    pub variant_fields: HashMap<String, Vec<FieldInfo>>,
     /// Traits this enum implements (from : Trait syntax)
     pub traits: Vec<String>,
 }
@@ -336,6 +341,10 @@ impl SymbolTable {
     }
 
     /// Define an enum with variants
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each field captures distinct EnumInfo state; grouping into a struct would add a parallel type with no semantic benefit"
+    )]
     pub fn define_enum(
         &mut self,
         name: String,
@@ -343,6 +352,7 @@ impl SymbolTable {
         span: Span,
         generics: Vec<GenericParam>,
         variants: HashMap<String, (usize, Span)>,
+        variant_fields: HashMap<String, Vec<FieldInfo>>,
         traits: Vec<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
@@ -357,6 +367,7 @@ impl SymbolTable {
                 span,
                 generics,
                 variants,
+                variant_fields,
                 traits,
             },
         );
@@ -415,7 +426,8 @@ impl SymbolTable {
     }
 
     /// Define a standalone function. Multiple definitions with the same name are
-    /// stored as overloads; only conflicts with non-function symbols are rejected.
+    /// stored as overloads; only conflicts with non-function symbols or with an
+    /// existing overload of identical signature are rejected.
     pub fn define_function(
         &mut self,
         name: String,
@@ -440,6 +452,17 @@ impl SymbolTable {
         }
         if let Some(info) = self.modules.get(&name) {
             return Some((SymbolKind::Module, info.span));
+        }
+
+        // Reject identical-signature duplicates (valid overloads must differ in
+        // arity or parameter types).
+        if let Some(existing) = self.functions.get(&name) {
+            let new_sig = param_signature(&params);
+            for prior in existing {
+                if param_signature(&prior.params) == new_sig {
+                    return Some((SymbolKind::Function, prior.span));
+                }
+            }
         }
 
         self.functions.entry(name).or_default().push(FunctionInfo {
@@ -652,6 +675,16 @@ impl SymbolTable {
             (SymbolKind::Let, info.visibility)
         } else if let Some(info) = module_table.modules.get(name) {
             (SymbolKind::Module, info.visibility)
+        } else if let Some(overloads) = module_table.functions.get(name) {
+            // Report as public if any overload is public, mirroring how the
+            // parser attaches `pub` per declaration.
+            let any_public = overloads.iter().any(|o| o.visibility == Visibility::Public);
+            let visibility = if any_public {
+                Visibility::Public
+            } else {
+                Visibility::Private
+            };
+            (SymbolKind::Function, visibility)
         } else {
             return Err(ImportError::ItemNotFound {
                 name: name.to_string(),
@@ -702,10 +735,12 @@ impl SymbolTable {
             }
             SymbolKind::Function => {
                 if let Some(overloads) = module_table.functions.get(name) {
-                    self.functions
-                        .entry(name.to_string())
-                        .or_default()
-                        .extend(overloads.iter().cloned());
+                    self.functions.entry(name.to_string()).or_default().extend(
+                        overloads
+                            .iter()
+                            .filter(|o| o.visibility == Visibility::Public)
+                            .cloned(),
+                    );
                 }
             }
             SymbolKind::Module => {
@@ -892,5 +927,61 @@ impl SymbolKind {
 impl Default for SymbolTable {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Normalised, span-free signature string for overload deduplication.
+///
+/// Includes the call-site label (external label if present, else the internal
+/// name) so that overloads distinguished purely by label are not treated as
+/// duplicates, matching the overload resolution rules.
+fn param_signature(params: &[ParamInfo]) -> String {
+    let mut out = String::new();
+    for (i, p) in params.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let label = p
+            .external_label
+            .as_ref()
+            .map_or(p.name.name.as_str(), |l| l.name.as_str());
+        out.push_str(label);
+        out.push(':');
+        match &p.ty {
+            Some(t) => out.push_str(&ty_shape(t)),
+            None => out.push('_'),
+        }
+    }
+    out
+}
+
+fn ty_shape(ty: &Type) -> String {
+    match ty {
+        Type::Primitive(p) => format!("{p:?}"),
+        Type::Ident(i) => i.name.clone(),
+        Type::Generic { name, args, .. } => {
+            let parts: Vec<String> = args.iter().map(ty_shape).collect();
+            format!("{}<{}>", name.name, parts.join(","))
+        }
+        Type::Array(inner) => format!("[{}]", ty_shape(inner)),
+        Type::Optional(inner) => format!("{}?", ty_shape(inner)),
+        Type::Tuple(fields) => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}:{}", f.name.name, ty_shape(&f.ty)))
+                .collect();
+            format!("({})", parts.join(","))
+        }
+        Type::Dictionary { key, value } => {
+            format!("[{}:{}]", ty_shape(key), ty_shape(value))
+        }
+        Type::Closure { params, ret } => {
+            let parts: Vec<String> = params
+                .iter()
+                .map(|(c, t)| format!("{c:?}_{}", ty_shape(t)))
+                .collect();
+            format!("({})->{}", parts.join(","), ty_shape(ret))
+        }
+        Type::TypeParameter(p) => p.name.clone(),
     }
 }

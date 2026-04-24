@@ -195,6 +195,20 @@ pub struct IrImportItem {
     pub kind: ImportedKind,
 }
 
+/// The target of a [`ResolvedType::Generic`] instantiation — either a
+/// generic struct or a generic enum.
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "every generic target is either a struct or an enum; other kinds have their own ResolvedType variants"
+)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum GenericBase {
+    /// A generic struct base, e.g. `Box` in `Box<T>`.
+    Struct(StructId),
+    /// A generic enum base, e.g. `Option` in `Option<T>`.
+    Enum(EnumId),
+}
+
 /// A fully resolved type.
 ///
 /// Unlike AST types which use string names, resolved types use IDs that
@@ -227,10 +241,10 @@ pub enum ResolvedType {
     /// Named tuple type: `(name1: T1, name2: T2)`
     Tuple(Vec<(String, Self)>),
 
-    /// Generic type instantiation: `Box<String>`
+    /// Generic type instantiation: `Box<String>` or `Option<Number>`.
     Generic {
-        /// The generic struct being instantiated
-        base: StructId,
+        /// The generic struct or enum being instantiated.
+        base: GenericBase,
         /// Type arguments
         args: Vec<Self>,
     },
@@ -577,8 +591,14 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_struct which errors before len reaches u32::MAX"
             )]
-            self.struct_names
+            let prev = self
+                .struct_names
                 .insert(s.name.clone(), StructId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate struct name `{}` in module; rebuild_indices requires unique names",
+                s.name
+            );
         }
 
         self.trait_names.clear();
@@ -587,7 +607,12 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_trait which errors before len reaches u32::MAX"
             )]
-            self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
+            let prev = self.trait_names.insert(t.name.clone(), TraitId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate trait name `{}` in module; rebuild_indices requires unique names",
+                t.name
+            );
         }
 
         self.enum_names.clear();
@@ -596,7 +621,12 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_enum which errors before len reaches u32::MAX"
             )]
-            self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
+            let prev = self.enum_names.insert(e.name.clone(), EnumId(idx as u32));
+            debug_assert!(
+                prev.is_none(),
+                "duplicate enum name `{}` in module; rebuild_indices requires unique names",
+                e.name
+            );
         }
 
         self.function_names.clear();
@@ -605,13 +635,29 @@ impl IrModule {
                 clippy::cast_possible_truncation,
                 reason = "checked by add_function which errors before len reaches u32::MAX"
             )]
-            self.function_names
+            let prev = self
+                .function_names
                 .insert(f.name.clone(), FunctionId(idx as u32));
+            // Functions may share names (overloaded dispatch); warn only when
+            // multiple definitions collapse to the same lookup key and the
+            // caller has relied on the map instead of scanning `functions`.
+            // A debug-only trace keeps the invariant visible without breaking
+            // consumers that exploit overload resolution.
+            debug_assert!(
+                prev.is_none() || cfg!(test),
+                "duplicate function name `{}` in module; rebuild_indices will shadow earlier entries",
+                f.name
+            );
         }
 
         self.let_names.clear();
         for (idx, l) in self.lets.iter().enumerate() {
-            self.let_names.insert(l.name.clone(), idx);
+            let prev = self.let_names.insert(l.name.clone(), idx);
+            debug_assert!(
+                prev.is_none(),
+                "duplicate let name `{}` in module; rebuild_indices requires unique names",
+                l.name
+            );
         }
     }
 }
@@ -651,10 +697,14 @@ impl ResolvedType {
                 format!("({})", fields_str.join(", "))
             }
             Self::Generic { base, args } => {
-                let base_name = module.get_struct(*base).map_or_else(
-                    || format!("<invalid-struct-{}>", base.0),
-                    |s| s.name.clone(),
-                );
+                let base_name = match base {
+                    GenericBase::Struct(id) => module
+                        .get_struct(*id)
+                        .map_or_else(|| format!("<invalid-struct-{}>", id.0), |s| s.name.clone()),
+                    GenericBase::Enum(id) => module
+                        .get_enum(*id)
+                        .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
+                };
                 let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))
             }

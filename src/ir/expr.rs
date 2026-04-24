@@ -102,7 +102,7 @@ pub enum IrExpr {
 
     /// Variable or field reference: `user` or `user.name`
     ///
-    /// Note: For `self.field` references within impl blocks, use [`SelfFieldRef`] instead.
+    /// Note: For `self.field` references within impl blocks, use [`IrExpr::SelfFieldRef`] instead.
     Reference {
         /// The reference path (single name or dotted path)
         path: Vec<String>,

@@ -66,8 +66,10 @@ IrModule {
                         path: [
                             "s",
                         ],
-                        ty: TypeParam(
-                            "s",
+                        ty: Enum(
+                            EnumId(
+                                0,
+                            ),
                         ),
                     },
                     arms: [
@@ -103,8 +105,8 @@ IrModule {
                             bindings: [
                                 (
                                     "since",
-                                    TypeParam(
-                                        "Unknown",
+                                    Primitive(
+                                        Number,
                                     ),
                                 ),
                             ],

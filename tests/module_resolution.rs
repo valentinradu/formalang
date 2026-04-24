@@ -1092,3 +1092,69 @@ fn test_filesystem_resolver_read_error_on_directory() -> Result<(), Box<dyn std:
     }
     Ok(())
 }
+
+// =============================================================================
+// Filesystem integration: end-to-end compile using real .fv files
+// =============================================================================
+
+#[test]
+fn test_filesystem_resolver_loads_nested_module() -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = tempfile::tempdir()?;
+    let utils_dir = tmp.path().join("utils");
+    std::fs::create_dir(&utils_dir)?;
+    std::fs::write(
+        utils_dir.join("helpers.fv"),
+        "pub struct Point { x: Number, y: Number }\n",
+    )?;
+    std::fs::write(
+        tmp.path().join("main.fv"),
+        "use utils::helpers::Point\nlet origin = Point(x: 0, y: 0)\n",
+    )?;
+
+    let resolver = FileSystemResolver::new(tmp.path().to_path_buf());
+    let source = std::fs::read_to_string(tmp.path().join("main.fv"))?;
+    let module = formalang::compile_to_ir_with_resolver(&source, resolver)
+        .map_err(|errors| format!("unexpected compile failure: {errors:?}"))?;
+    // The imported Point should be visible in the resulting IR.
+    if module.struct_id("utils::helpers::Point").is_none() && module.struct_id("Point").is_none() {
+        return Err("expected imported Point to appear in the IR module".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_filesystem_resolver_detects_circular_import() -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = tempfile::tempdir()?;
+    // `pub use` re-exports participate in cycle detection across modules.
+    // Root imports b::A, b re-exports A from a, a re-exports A from b.
+    std::fs::write(
+        tmp.path().join("a.fv"),
+        "pub use b::A\npub struct LocalA { x: Number }\n",
+    )?;
+    std::fs::write(
+        tmp.path().join("b.fv"),
+        "pub use a::A\npub struct LocalB { y: Number }\n",
+    )?;
+    std::fs::write(tmp.path().join("main.fv"), "use b::A\n")?;
+
+    let resolver = FileSystemResolver::new(tmp.path().to_path_buf());
+    let source = std::fs::read_to_string(tmp.path().join("main.fv"))?;
+    let errors = formalang::compile_to_ir_with_resolver(&source, resolver)
+        .err()
+        .ok_or("expected circular-import or item-not-found error")?;
+    // The cycle prevents A from ever being fully resolved; accept either
+    // CircularImport or ImportItemNotFound as evidence the resolver
+    // refused to loop forever.
+    let detected = errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::CircularImport { .. } | CompilerError::ImportItemNotFound { .. }
+        )
+    });
+    if !detected {
+        return Err(
+            format!("expected CircularImport or ImportItemNotFound, got: {errors:?}").into(),
+        );
+    }
+    Ok(())
+}

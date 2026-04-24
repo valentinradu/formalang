@@ -194,7 +194,14 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.used_traits.insert(*id);
             }
             ResolvedType::Generic { base, args } => {
-                self.used_structs.insert(*base);
+                match base {
+                    crate::ir::GenericBase::Struct(id) => {
+                        self.used_structs.insert(*id);
+                    }
+                    crate::ir::GenericBase::Enum(id) => {
+                        self.used_enums.insert(*id);
+                    }
+                }
                 for arg in args {
                     self.mark_used_in_type(arg);
                 }
@@ -358,7 +365,20 @@ impl<'a> DeadCodeEliminator<'a> {
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. } => {}
             IrExpr::FieldAccess { object, .. } => self.mark_used_in_expr(object),
-            IrExpr::Closure { body, .. } => self.mark_used_in_expr(body),
+            IrExpr::Closure {
+                params,
+                captures,
+                body,
+                ..
+            } => {
+                for (_, _, ty) in params {
+                    self.mark_used_in_type(ty);
+                }
+                for (_, ty) in captures {
+                    self.mark_used_in_type(ty);
+                }
+                self.mark_used_in_expr(body);
+            }
         }
     }
 
@@ -696,7 +716,15 @@ fn build_remap(
             let old = make(old_idx);
             if used.contains(&old) {
                 out.push(Some(make(next)));
-                next = next.wrapping_add(1);
+                // If we've exhausted the u32 id space, drop remaining
+                // items rather than wrap and alias ids.
+                let Some(n) = next.checked_add(1) else {
+                    for _ in i.saturating_add(1)..count {
+                        out.push(None);
+                    }
+                    break;
+                };
+                next = n;
             } else {
                 out.push(None);
             }
@@ -730,8 +758,17 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
             }
         }
         ResolvedType::Generic { base, args } => {
-            if let Some(new) = remap.struct_of(*base) {
-                *base = new;
+            match base {
+                crate::ir::GenericBase::Struct(id) => {
+                    if let Some(new) = remap.struct_of(*id) {
+                        *id = new;
+                    }
+                }
+                crate::ir::GenericBase::Enum(id) => {
+                    if let Some(new) = remap.enum_of(*id) {
+                        *id = new;
+                    }
+                }
             }
             for a in args {
                 remap_type(a, remap);

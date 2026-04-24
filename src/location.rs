@@ -8,7 +8,7 @@ pub struct Location {
     pub offset: usize,
     /// Line number (1-indexed)
     pub line: usize,
-    /// Column number (1-indexed, byte-based)
+    /// Column number (1-indexed, character-based)
     pub column: usize,
 }
 
@@ -105,7 +105,11 @@ impl Span {
     }
 }
 
-/// Convert a byte offset to a Location with line and column information
+/// Convert a byte offset to a Location with line and column information.
+///
+/// If the offset falls inside a multi-byte codepoint (e.g., a malformed span),
+/// the returned column is that of the enclosing codepoint rather than the
+/// codepoint past it.
 #[must_use]
 pub fn offset_to_location(offset: usize, source: &str) -> Location {
     let mut line: usize = 1;
@@ -117,6 +121,11 @@ pub fn offset_to_location(offset: usize, source: &str) -> Location {
             break;
         }
 
+        let next_offset = current_offset.saturating_add(ch.len_utf8());
+        if next_offset > offset {
+            break;
+        }
+
         if ch == '\n' {
             line = line.saturating_add(1);
             column = 1;
@@ -124,7 +133,7 @@ pub fn offset_to_location(offset: usize, source: &str) -> Location {
             column = column.saturating_add(1);
         }
 
-        current_offset = current_offset.saturating_add(ch.len_utf8());
+        current_offset = next_offset;
     }
 
     Location {

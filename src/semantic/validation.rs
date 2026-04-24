@@ -39,7 +39,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
         self.validate_expr(&let_binding.value, file);
-        // Gap 1: nil can only be assigned to optional types
+        // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(&let_binding.value, file);
@@ -377,7 +377,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
-                // Gap 3: Validate key type against declared dict type
+                // Validate key type against declared dict type
                 let dict_type = self.infer_type(dict, file);
                 if let Some(inner) = dict_type
                     .strip_prefix('[')
@@ -405,7 +405,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(object, file);
                 let obj_type = self.infer_type(object, file);
                 if obj_type != "Unknown" {
-                    // Gap 1: Field access on optional type requires unwrapping
+                    // Field access on an optional type requires unwrapping
                     if obj_type.ends_with('?') {
                         let base = obj_type.trim_end_matches('?');
                         if base != "Unknown" && self.symbols.get_struct(base).is_some() {
@@ -416,7 +416,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             });
                         }
                     } else {
-                        // Gap 5: Check field existence
+                        // Field must exist on the struct
                         let base_type = obj_type.trim_end_matches('?');
                         if let Some(struct_info) = self.symbols.get_struct(base_type) {
                             if !struct_info.fields.iter().any(|f| f.name == field.name) {
@@ -847,6 +847,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 name: name.clone(),
                 span,
             });
+            return;
+        }
+
+        // Multi-segment paths (e.g. `p.x.y`): walk each segment as a field
+        // access from the root's inferred type and surface an
+        // `UnknownField` error at the first broken link. Module-qualified
+        // paths (handled above by `check_module_visibility`) fall through
+        // this validation without firing since no let/local binding with
+        // that name will be in scope.
+        if path.len() >= 2 {
+            let Some(first) = path.first() else {
+                return;
+            };
+            // Root must be something we can infer a type for.
+            let root_type_string = if let Some(ty) = self.symbols.get_let_type(&first.name) {
+                ty.to_string()
+            } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
+                ty.clone()
+            } else {
+                return;
+            };
+            if let Some(rest) = path.get(1..) {
+                self.validate_field_chain(&root_type_string, rest, span);
+            }
+        }
+    }
+
+    /// Walk a chain of field accesses starting from `root_type`, emitting
+    /// `UnknownField` at the first segment that does not name a field of
+    /// the current struct type. Bails silently if the type cannot be
+    /// resolved — type inference is best-effort and we don't want to
+    /// drown the user in spurious errors when inference itself is
+    /// unreliable.
+    fn validate_field_chain(&mut self, root_type: &str, rest: &[crate::ast::Ident], span: Span) {
+        let mut current = root_type.trim_end_matches('?').to_string();
+        for seg in rest {
+            let Some(struct_info) = self.symbols.get_struct(&current) else {
+                return;
+            };
+            if let Some(field) = struct_info.fields.iter().find(|f| f.name == seg.name) {
+                current = Self::type_to_string(&field.ty)
+                    .trim_end_matches('?')
+                    .to_string();
+            } else {
+                self.errors.push(CompilerError::UnknownField {
+                    field: seg.name.clone(),
+                    type_name: current.clone(),
+                    span,
+                });
+                return;
+            }
         }
     }
 
@@ -966,7 +1017,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Gap 4: Validate generic type arguments against function's generic parameters
+        // Validate generic type arguments against the function's generic parameters
         if !type_args.is_empty() {
             let simple_name_for_lookup = name.rsplit("::").next().unwrap_or(name);
             let overloads_for_generics = {
@@ -1721,7 +1772,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann);
         }
         self.validate_expr(value, file);
-        // Gap 1: nil can only be assigned to optional types
+        // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = ty {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(value, file);
@@ -2460,7 +2511,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             BindingPattern::Tuple { elements, .. } => {
-                // Gap 2: Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
+                // Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
                 if let Some(inner) = value_type
                     .strip_prefix('(')
                     .and_then(|s| s.strip_suffix(')'))

@@ -515,26 +515,63 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
 }
 
 // =============================================================================
-// Monomorphisation stub (§2 IR gaps)
+// Monomorphisation pass
 // =============================================================================
 
 #[test]
-fn test_monomorphise_stub_rejects_generics() -> Result<(), Box<dyn std::error::Error>> {
+fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
+    // A defined-but-never-instantiated generic has no specialisations to
+    // produce, so it is simply dropped from the module.
     let source = r"
         pub struct Box<T> { value: T }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
-    let result = pipeline.run(module);
-    if result.is_ok() {
-        return Err("expected MonomorphisePass stub to reject a generic module".into());
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should accept an uninstantiated generic, got: {e:?}"))?;
+    if result.structs.iter().any(|s| s.name == "Box") {
+        return Err("generic `Box<T>` should have been removed after monomorphisation".into());
     }
     Ok(())
 }
 
 #[test]
-fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
+fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub struct Box<T> { value: T }
+        pub let b: Box<Number> = Box<Number>(value: 1)
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
+    // The original `Box<T>` generic definition should be gone.
+    if result.structs.iter().any(|s| s.name == "Box") {
+        return Err(
+            "generic definition `Box` should have been replaced by a specialised clone".into(),
+        );
+    }
+    // A specialised clone whose name starts with `Box__` should exist.
+    if !result.structs.iter().any(|s| s.name.starts_with("Box__")) {
+        return Err(format!(
+            "expected a `Box__...` specialisation, got structs: {:?}",
+            result
+                .structs
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
         pub struct User { name: String, age: Number }
@@ -544,6 +581,66 @@ fn test_monomorphise_stub_accepts_concrete_module() -> Result<(), Box<dyn std::e
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
     pipeline
         .run(module)
-        .map_err(|e| format!("expected stub to accept concrete module, got: {e:?}"))?;
+        .map_err(|e| format!("expected pass to accept concrete module, got: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // Exercise a generic enum used as a field type. `Option<Number>` is
+    // what the lowering layer turns into a `ResolvedType::Generic` with a
+    // `GenericBase::Enum` base.
+    let source = r"
+        pub enum Option<T> {
+            some(value: T),
+            none
+        }
+        pub struct Container {
+            maybe: Option<Number>
+        }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;
+    // The original `Option<T>` generic definition should be gone.
+    if result.enums.iter().any(|e| e.name == "Option") {
+        return Err(
+            "generic definition `Option` should have been replaced by a specialised clone".into(),
+        );
+    }
+    // A specialised clone whose name starts with `Option__` should exist.
+    if !result.enums.iter().any(|e| e.name.starts_with("Option__")) {
+        return Err(format!(
+            "expected a `Option__...` specialisation, got enums: {:?}",
+            result
+                .enums
+                .iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>()
+        )
+        .into());
+    }
+    // `Container.maybe` should now point at the specialised enum by Enum id
+    // rather than at a Generic wrapper.
+    let container = result
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .ok_or("Container missing")?;
+    let maybe_field = container
+        .fields
+        .iter()
+        .find(|f| f.name == "maybe")
+        .ok_or("maybe field missing")?;
+    if !matches!(maybe_field.ty, formalang::ir::ResolvedType::Enum(_)) {
+        return Err(format!(
+            "expected Container.maybe to be a concrete Enum type after monomorphisation, got: {:?}",
+            maybe_field.ty
+        )
+        .into());
+    }
     Ok(())
 }

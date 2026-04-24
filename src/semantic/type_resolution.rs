@@ -1,5 +1,5 @@
 use super::module_resolver::ModuleResolver;
-use super::symbol_table::{self, SymbolTable};
+use super::symbol_table::{self, FieldInfo, SymbolTable};
 use super::type_graph::TypeGraph;
 use super::SemanticAnalyzer;
 use crate::ast::{Definition, File, Statement, StructDef, TraitDef, Type};
@@ -180,12 +180,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .iter()
                         .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
                         .collect();
+                    let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
+                        .variants
+                        .iter()
+                        .map(|v| {
+                            (
+                                v.name.name.clone(),
+                                v.fields
+                                    .iter()
+                                    .map(|f| FieldInfo {
+                                        name: f.name.name.clone(),
+                                        ty: f.ty.clone(),
+                                    })
+                                    .collect(),
+                            )
+                        })
+                        .collect();
                     symbols.define_enum(
                         enum_def.name.name.clone(),
                         enum_def.visibility,
                         enum_def.span,
                         enum_def.generics.clone(),
                         variants,
+                        variant_fields,
                         Vec::new(), // Enums don't support inline trait syntax yet
                     );
                 }
