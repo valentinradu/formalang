@@ -807,6 +807,75 @@ fn test_doubly_nested_module() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn test_module_nested_function_body_is_validated() -> Result<(), Box<dyn std::error::Error>> {
+    // A function inside a `pub mod { ... }` has a body that references an
+    // undefined identifier. Pass 3 must recurse into the module and catch it;
+    // previously only nested `impl` blocks were visited, so this compiled.
+    let source = r"
+        pub mod util {
+            pub fn greet() -> String {
+                missing_binding
+            }
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected undefined-reference error inside module-nested function body".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_literal_field_value_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    // Previously validate_struct_fields checked arity/names only. Provide a
+    // Number where the field declares String — must now type-error.
+    let source = r"
+        struct Thing { name: String }
+        let t = Thing(name: 42)
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected TypeMismatch for wrong-typed struct field value".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("TypeMismatch") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_literal_generic_field_value_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+    // Field declared with a struct-level generic param — type substitution is
+    // deferred to IR monomorphisation, so no semantic-layer mismatch.
+    let source = r#"
+        struct Box<T> { value: T }
+        let b = Box<String>(value: "hello")
+    "#;
+    compile(source).map_err(|e| format!("generic param field must compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_module_nested_struct_field_default_is_validated() -> Result<(), Box<dyn std::error::Error>>
+{
+    // A field default inside a module must be validated, including the
+    // nil-vs-non-optional check that validate_struct_expressions performs.
+    let source = r"
+        pub mod m {
+            pub struct Thing {
+                name: String = nil
+            }
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: nil assigned to non-optional field inside module".into());
+    }
+    Ok(())
+}
+
 // =============================================================================
 // Let binding type inference
 // =============================================================================

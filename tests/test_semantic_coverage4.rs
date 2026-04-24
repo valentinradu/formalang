@@ -777,16 +777,19 @@ use b::Private
 struct Config {}
 ";
     let result = compile_with_resolver(source, resolver);
-    // The private item re-export error should propagate
+    // The private-item error in module `b` must propagate when the main file
+    // imports from `b`. The precise variant is `PrivateImport` because the
+    // item exists in `a` but is not publicly visible, so `b::Private` cannot
+    // be re-exported.
     if result.is_ok() {
         return Err(format!(
-            "expected ImportItemNotFound for pub use of private item: {:?}",
+            "expected PrivateImport for pub use of private item: {:?}",
             result.ok()
         )
         .into());
     }
     let err = format!("{:?}", result.err());
-    if !err.contains("ImportItemNotFound") {
+    if !err.contains("PrivateImport") {
         return Err(format!("wrong error: {err}").into());
     }
     Ok(())
@@ -955,6 +958,62 @@ fn test_trait_field_type_mismatch_with_array_type() -> Result<(), Box<dyn std::e
         .any(|e| matches!(e, CompilerError::TraitFieldTypeMismatch { .. }))
     {
         return Err(format!("expected TraitFieldTypeMismatch, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_imported_module_function_body_is_validated() -> Result<(), Box<dyn std::error::Error>> {
+    // The imported module contains a public function whose body references an
+    // undefined identifier. Previously only Pass 1 ran on modules, so the bad
+    // reference was silently accepted. With Passes 2-5 running on modules,
+    // the error must propagate.
+    let mut resolver = MemResolver::new();
+    resolver.add(
+        vec!["bad".to_string()],
+        r"
+pub fn broken() -> String {
+    missing_binding
+}
+",
+    );
+    let source = r"
+use bad::broken
+struct Config {}
+";
+    let result = compile_with_resolver(source, resolver);
+    if result.is_ok() {
+        return Err("expected UndefinedReference from imported module body".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("UndefinedReference") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_imported_module_circular_types_detected() -> Result<(), Box<dyn std::error::Error>> {
+    // Pass 5 (circular dependency detection) must run on imported modules.
+    let mut resolver = MemResolver::new();
+    resolver.add(
+        vec!["cycle".to_string()],
+        r"
+pub struct A { b: B }
+pub struct B { a: A }
+",
+    );
+    let source = r"
+use cycle::A
+struct Config {}
+";
+    let result = compile_with_resolver(source, resolver);
+    if result.is_ok() {
+        return Err("expected CircularDependency from imported module".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("CircularDependency") {
+        return Err(format!("wrong error: {err}").into());
     }
     Ok(())
 }

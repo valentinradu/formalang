@@ -101,10 +101,28 @@ impl IrPass for MonomorphisePass {
         // Phase 2: rewrite every Generic reference to its specialisation.
         rewrite_module(&mut module, &mapping);
 
-        // Phase 3: compact — drop the original generic structs and enums,
-        // remap surviving IDs for each kind.
+        // Phase 2b: clone each impl block once per specialisation of its
+        // target generic struct/enum, substituting the impl body with the
+        // concrete type arguments. Without this step, specialised structs
+        // have no methods after compaction (their source impl pointed at
+        // the original generic base, which is about to be dropped).
+        //
+        // NOTE: dispatch sites (`DispatchKind::Static { impl_id }`) still
+        // point at the original generic-impl slot after this pass. Backends
+        // that iterate `module.impls` to locate methods on a specialised
+        // struct/enum will find them correctly; backends that honour
+        // `impl_id` directly need the dispatch-rewrite follow-up
+        // (audit finding tracked separately).
+        specialise_impls(&mut module, &mapping);
+
+        // Phase 3: compact — drop the original generic structs, enums, and
+        // the generic impls that were expanded in Phase 2b; then remap
+        // surviving IDs for each kind. Order matters: drop generic-targeted
+        // impls before `apply_remaps` rewrites ids, because the retain
+        // predicate below indexes into the pre-compaction remap tables.
         let struct_remap = build_struct_remap(&module);
         let enum_remap = build_enum_remap(&module);
+        drop_specialised_generic_impls(&mut module, &struct_remap, &enum_remap);
         apply_remaps(&mut module, &struct_remap, &enum_remap);
         module.structs.retain(|s| s.generic_params.is_empty());
         module.enums.retain(|e| e.generic_params.is_empty());
@@ -546,6 +564,119 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericB
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::TypeParam(_) => {}
+    }
+}
+
+// =============================================================================
+// Phase 2b: specialise impl blocks targeting generic structs/enums
+// =============================================================================
+
+/// For each impl block whose target is a generic struct/enum, append one
+/// cloned impl per specialisation of that target (with `TypeParam`s
+/// substituted for the concrete type args of that specialisation). The
+/// originals are retained in `module.impls` for now; they are dropped in
+/// Phase 3 by `drop_specialised_generic_impls`.
+///
+/// Dispatch sites (`DispatchKind::Static { impl_id }`) still reference the
+/// original generic-impl slot after this runs. Backends that iterate
+/// `module.impls` to locate methods on a specialised type will find them
+/// correctly here; backends that honour the per-call `impl_id` need a
+/// follow-up pass to rewrite those ids based on the receiver type.
+fn specialise_impls(module: &mut IrModule, mapping: &HashMap<Instantiation, GenericBase>) {
+    // Group specialisations by original generic base.
+    type Spec = (Vec<ResolvedType>, GenericBase);
+    let mut by_base: HashMap<GenericBase, Vec<Spec>> = HashMap::new();
+    for ((orig_base, args), spec_base) in mapping {
+        by_base
+            .entry(*orig_base)
+            .or_default()
+            .push((args.clone(), *spec_base));
+    }
+    let mut new_impls: Vec<IrImpl> = Vec::new();
+
+    for imp in &module.impls {
+        let base = match imp.target {
+            crate::ir::ImplTarget::Struct(id) => GenericBase::Struct(id),
+            crate::ir::ImplTarget::Enum(id) => GenericBase::Enum(id),
+        };
+        let Some(specs) = by_base.get(&base) else {
+            continue;
+        };
+        let generic_param_names: Vec<String> = match base {
+            GenericBase::Struct(sid) => module
+                .get_struct(sid)
+                .map(|s| s.generic_params.iter().map(|p| p.name.clone()).collect())
+                .unwrap_or_default(),
+            GenericBase::Enum(eid) => module
+                .get_enum(eid)
+                .map(|e| e.generic_params.iter().map(|p| p.name.clone()).collect())
+                .unwrap_or_default(),
+        };
+        if generic_param_names.is_empty() {
+            continue;
+        }
+        for (args, spec_base) in specs {
+            if generic_param_names.len() != args.len() {
+                continue;
+            }
+            let subs: HashMap<String, ResolvedType> = generic_param_names
+                .iter()
+                .cloned()
+                .zip(args.iter().cloned())
+                .collect();
+            let mut clone = imp.clone();
+            clone.target = match spec_base {
+                GenericBase::Struct(id) => crate::ir::ImplTarget::Struct(*id),
+                GenericBase::Enum(id) => crate::ir::ImplTarget::Enum(*id),
+            };
+            for func in &mut clone.functions {
+                for param in &mut func.params {
+                    if let Some(ty) = &mut param.ty {
+                        substitute_type(ty, &subs);
+                    }
+                    if let Some(default) = &mut param.default {
+                        substitute_expr_types(default, &subs);
+                    }
+                }
+                if let Some(ret_ty) = &mut func.return_type {
+                    substitute_type(ret_ty, &subs);
+                }
+                if let Some(body) = &mut func.body {
+                    substitute_expr_types(body, &subs);
+                }
+            }
+            walk_impl_types_mut(&mut clone, &mut |ty| rewrite_type(ty, mapping));
+            new_impls.push(clone);
+        }
+    }
+
+    module.impls.extend(new_impls);
+}
+
+/// Drop impls whose target is a generic struct or enum that got specialised
+/// (and therefore survives in `module.impls` only through its Phase-2b
+/// clones). After this runs, every impl in the module targets a concrete
+/// (non-generic) struct or enum.
+fn drop_specialised_generic_impls(
+    module: &mut IrModule,
+    struct_remap: &[Option<StructId>],
+    enum_remap: &[Option<EnumId>],
+) {
+    module.impls.retain(|imp| match imp.target {
+        crate::ir::ImplTarget::Struct(id) => struct_remap
+            .get(id.0 as usize)
+            .copied()
+            .is_none_or(|slot| slot.is_some()),
+        crate::ir::ImplTarget::Enum(id) => enum_remap
+            .get(id.0 as usize)
+            .copied()
+            .is_none_or(|slot| slot.is_some()),
+    });
+}
+
+fn walk_impl_types_mut(imp: &mut IrImpl, visit: &mut impl FnMut(&mut ResolvedType)) {
+    for f in &mut imp.functions {
+        walk_function_types_mut(f, visit);
     }
 }
 

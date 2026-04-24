@@ -571,6 +571,83 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
 }
 
 #[test]
+fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // A generic impl block on Box<T> must be cloned for each specialisation,
+    // with TypeParam("T") substituted to the concrete type arg. Without the
+    // Phase 2b specialisation step, Box__Number would end up with zero
+    // methods after compaction.
+    let source = r"
+        pub struct Box<T> { value: T }
+        impl Box {
+            fn get(self) -> T { self.value }
+        }
+        pub let b: Box<Number> = Box<Number>(value: 1)
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    // Sanity: the source produces at least one impl block before
+    // monomorphisation. If this fires, the lowerer itself didn't produce
+    // the expected IR shape and the test is probing the wrong thing.
+    if module.impls.is_empty() {
+        return Err("pre-monomorphise module has no impls".into());
+    }
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Box<Number> impl, got: {e:?}"))?;
+
+    // Locate the specialised Box__Number struct.
+    let spec_struct = result
+        .structs
+        .iter()
+        .find(|s| s.name.starts_with("Box__"))
+        .ok_or("expected a Box__... specialised struct")?;
+    let spec_id = result
+        .struct_id(&spec_struct.name)
+        .ok_or("specialised struct has no id")?;
+
+    // There must be at least one impl targeting the specialised struct.
+    let has_impl = result.impls.iter().any(|imp| match imp.target {
+        formalang::ir::ImplTarget::Struct(id) => id == spec_id,
+        formalang::ir::ImplTarget::Enum(_) => false,
+    });
+    if !has_impl {
+        return Err(format!(
+            "expected an impl block targeting {}, but none found",
+            spec_struct.name
+        )
+        .into());
+    }
+
+    // No surviving impl may still target a dropped generic base. Every
+    // retained impl must point at a struct/enum that still exists in the
+    // module.
+    for imp in &result.impls {
+        match imp.target {
+            formalang::ir::ImplTarget::Struct(id) => {
+                if result.get_struct(id).is_none() {
+                    return Err(format!(
+                        "impl targets dropped struct id {}; specialise_impls left a dangling ref",
+                        id.0
+                    )
+                    .into());
+                }
+            }
+            formalang::ir::ImplTarget::Enum(id) => {
+                if result.get_enum(id).is_none() {
+                    return Err(format!(
+                        "impl targets dropped enum id {}; specialise_impls left a dangling ref",
+                        id.0
+                    )
+                    .into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"

@@ -302,21 +302,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Check if two type strings are compatible.
     ///
-    /// Handles exact matches, the `Unknown` placeholder (incomplete inference),
-    /// and `.variant(...)` inferred enum syntax.
+    /// Handles exact matches and `.variant(...)` inferred enum syntax.
+    ///
+    /// `actual == "Unknown"` is still accepted defensively: it means
+    /// inference could not determine the value's type (e.g. a match arm
+    /// binding that inference doesn't track). The remaining inference gaps
+    /// are followed up in audit finding #27; once those are closed this
+    /// clause can be removed. `expected == "Unknown"` is rejected because it
+    /// has no legitimate meaning — the caller is the one declaring the
+    /// expected type.
     pub(super) fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
         if expected == actual {
             return true;
         }
 
-        // Pure `Unknown` means type inference could not determine the type
-        // at all; accept conservatively so we don't emit noisy secondary
-        // errors on top of whatever caused the inference to fail.
-        //
-        // Composite types that merely *contain* `Unknown` (e.g. `[Unknown]`,
-        // `(x: Unknown, y: String)`) are matched structurally below — they
-        // must still agree on outer shape with the expected type.
-        if actual == "Unknown" || expected == "Unknown" {
+        if actual == "Unknown" {
             return true;
         }
 

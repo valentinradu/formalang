@@ -17,23 +17,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for statement in &file.statements {
             match statement {
                 Statement::Let(let_binding) => self.validate_let_statement(let_binding, file),
-                Statement::Definition(def) => match &**def {
-                    Definition::Struct(struct_def) => {
-                        self.validate_struct_expressions(struct_def, file);
-                    }
-                    Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
-                    Definition::Function(func_def) => self.validate_function_body(func_def, file),
-                    Definition::Module(module_def) => {
-                        for nested_def in &module_def.definitions {
-                            if let Definition::Impl(impl_def) = nested_def {
-                                self.validate_impl_expressions(impl_def, file);
-                            }
-                        }
-                    }
-                    Definition::Trait(_) | Definition::Enum(_) => {}
-                },
+                Statement::Definition(def) => self.validate_definition_expressions(def, file),
                 Statement::Use(_) => {}
             }
+        }
+    }
+
+    /// Dispatch expression validation for a single `Definition`, recursing
+    /// through nested modules so that function bodies, struct field defaults,
+    /// and impl blocks inside `module { ... }` all receive Pass 3 checks.
+    fn validate_definition_expressions(&mut self, def: &Definition, file: &File) {
+        match def {
+            Definition::Struct(struct_def) => self.validate_struct_expressions(struct_def, file),
+            Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
+            Definition::Function(func_def) => self.validate_function_body(func_def, file),
+            Definition::Module(module_def) => {
+                for nested_def in &module_def.definitions {
+                    self.validate_definition_expressions(nested_def, file);
+                }
+            }
+            Definition::Trait(_) | Definition::Enum(_) => {}
         }
     }
 
@@ -2127,12 +2130,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Find the struct definition in current file or module cache
-        // Clone necessary data to avoid borrow checker issues
-        let (field_names, required_fields) = {
+        // Find the struct definition in current file or module cache.
+        // Clone the field name + declared type pairs so we can release the
+        // borrow on `self` before recursing into type inference calls below.
+        let (field_names, field_types, required_fields, generic_params) = {
             if let Some(def) = self.find_struct_def_in_files(struct_name, file) {
                 let field_names: Vec<String> =
                     def.fields.iter().map(|f| f.name.name.clone()).collect();
+
+                let field_types: Vec<(String, String)> = def
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.name.clone(), Self::type_to_string(&f.ty)))
+                    .collect();
 
                 let required_fields: Vec<String> = def
                     .fields
@@ -2144,19 +2154,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .map(|f| f.name.name.clone())
                     .collect();
 
-                (field_names, required_fields)
+                let generic_params: Vec<String> =
+                    def.generics.iter().map(|g| g.name.name.clone()).collect();
+
+                (field_names, field_types, required_fields, generic_params)
             } else {
                 return; // Struct not found, skip validation
             }
         };
 
-        // Check all provided regular fields exist
-        for (arg_name, _) in args {
+        // Check all provided regular fields exist and type-check each value.
+        for (arg_name, arg_value) in args {
             if !field_names.contains(&arg_name.name) {
                 self.errors.push(CompilerError::UnknownField {
                     field: arg_name.name.clone(),
                     type_name: struct_name.to_string(),
                     span: arg_name.span,
+                });
+                continue;
+            }
+            let Some((_, declared)) = field_types.iter().find(|(n, _)| n == &arg_name.name) else {
+                continue;
+            };
+            // Skip the check if the declared type references a generic
+            // parameter of the struct — generic substitution is handled by
+            // the IR monomorphisation pass, not the string-level comparison
+            // here.
+            if generic_params.iter().any(|g| declared.contains(g)) {
+                continue;
+            }
+            let inferred = self.infer_type(arg_value, file);
+            // nil is compatible with any optional type
+            let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+            // T is compatible with T? (implicit wrapping)
+            let inner_to_optional =
+                declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+            // treat any type containing "Unknown" / "InferredEnum" as indeterminate
+            let has_unknown = inferred.contains("Unknown")
+                || inferred.contains("InferredEnum")
+                || declared.contains("Unknown");
+            if !nil_to_optional
+                && !inner_to_optional
+                && !has_unknown
+                && !self.type_strings_compatible(declared, &inferred)
+            {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: declared.clone(),
+                    found: inferred,
+                    span: arg_value.span(),
                 });
             }
         }
