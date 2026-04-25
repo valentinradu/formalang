@@ -527,7 +527,7 @@ fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::
         pub struct Box<T> { value: T }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should accept an uninstantiated generic, got: {e:?}"))?;
@@ -545,7 +545,7 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
         pub let b: Box<Number> = Box<Number>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
@@ -591,7 +591,7 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     if module.impls.is_empty() {
         return Err("pre-monomorphise module has no impls".into());
     }
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should specialise Box<Number> impl, got: {e:?}"))?;
@@ -691,7 +691,7 @@ fn test_monomorphise_rewrites_dispatch_impl_ids() -> Result<(), Box<dyn std::err
         }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
 
     let spec_struct = result
@@ -734,7 +734,7 @@ fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error:
         pub fn greet(user: User) -> String { user.name }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     pipeline
         .run(module)
         .map_err(|e| format!("expected pass to accept concrete module, got: {e:?}"))?;
@@ -757,7 +757,7 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
         }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;
