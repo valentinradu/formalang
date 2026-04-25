@@ -12,8 +12,8 @@ use chumsky::input::{Stream, ValueInput};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BlockStatement, Expr, File, Ident, LetBinding, Literal, Statement, UseItems, UseStmt,
-    Visibility,
+    BlockStatement, Definition, Expr, File, Ident, LetBinding, Literal, Statement, UseItems,
+    UseStmt, Visibility,
 };
 use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
@@ -196,18 +196,91 @@ where
         })
 }
 
-/// Parse a top-level statement
+/// Parse a top-level statement, optionally preceded by `///` doc-comment
+/// lines. The collected doc text is attached to the resulting definition
+/// or let binding (audit finding #51).
 fn statement_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Statement, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    choice((
-        use_stmt_parser().map(Statement::Use),
-        let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
-        definition_parser().map(|d| Statement::Definition(Box::new(d))),
-    ))
-    .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
+    doc_comments_parser()
+        .then(choice((
+            use_stmt_parser().map(Statement::Use),
+            let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
+            definition_parser().map(|d| Statement::Definition(Box::new(d))),
+        )))
+        .map(|(doc, stmt)| attach_doc_to_statement(doc, stmt))
+        .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
+}
+
+/// Consume zero or more leading `///` doc-comment lines and join them
+/// with newlines. Returns `None` when no doc comments precede the next
+/// item. Inner `//!` comments are skipped at this level — they belong
+/// to the enclosing scope and are handled by the file-level parser.
+pub(super) fn doc_comments_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Option<String>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    select! { Token::DocComment(s) => s }
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|lines| {
+            if lines.is_empty() {
+                None
+            } else {
+                Some(lines.join("\n"))
+            }
+        })
+}
+
+/// Attach a captured doc-comment string to whichever AST node the
+/// statement carries. `Use` statements don't currently support docs and
+/// silently drop the captured text.
+fn attach_doc_to_statement(doc: Option<String>, stmt: Statement) -> Statement {
+    let Some(doc) = doc else {
+        return stmt;
+    };
+    match stmt {
+        Statement::Let(mut lb) => {
+            lb.doc = Some(doc);
+            Statement::Let(lb)
+        }
+        Statement::Definition(def) => {
+            Statement::Definition(Box::new(attach_doc_to_definition(doc, *def)))
+        }
+        Statement::Use(_) => stmt,
+    }
+}
+
+fn attach_doc_to_definition(doc: String, def: Definition) -> Definition {
+    match def {
+        Definition::Function(mut f) => {
+            f.doc = Some(doc);
+            Definition::Function(f)
+        }
+        Definition::Struct(mut s) => {
+            s.doc = Some(doc);
+            Definition::Struct(s)
+        }
+        Definition::Trait(mut t) => {
+            t.doc = Some(doc);
+            Definition::Trait(t)
+        }
+        Definition::Enum(mut e) => {
+            e.doc = Some(doc);
+            Definition::Enum(e)
+        }
+        Definition::Impl(mut i) => {
+            i.doc = Some(doc);
+            Definition::Impl(i)
+        }
+        Definition::Module(mut m) => {
+            m.doc = Some(doc);
+            Definition::Module(m)
+        }
+    }
 }
 
 /// Parse a use statement
@@ -298,6 +371,7 @@ where
                 pattern,
                 type_annotation,
                 value,
+                doc: None,
                 span: span_from_simple(e.span()),
             },
         )

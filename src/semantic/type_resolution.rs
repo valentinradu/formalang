@@ -159,6 +159,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         fields,
                         composed_traits,
                         trait_def.methods.clone(),
+                        trait_def.doc.clone(),
                     );
                 }
                 Definition::Struct(struct_def) => {
@@ -176,6 +177,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         struct_def.span,
                         struct_def.generics.clone(),
                         fields,
+                        struct_def.doc.clone(),
                     );
                 }
                 Definition::Enum(enum_def) => {
@@ -208,6 +210,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         variants,
                         variant_fields,
                         Vec::new(), // Enums don't support inline trait syntax yet
+                        enum_def.doc.clone(),
                     );
                 }
                 Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}

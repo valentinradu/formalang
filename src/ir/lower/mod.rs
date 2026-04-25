@@ -256,6 +256,7 @@ impl<'a> IrLowerer<'a> {
             mutable: let_binding.mutable,
             ty,
             value,
+            doc: let_binding.doc.clone(),
         });
     }
 
@@ -297,6 +298,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: let_binding.mutable,
                     ty: elem_ty.clone(),
                     value: access_expr,
+                    doc: let_binding.doc.clone(),
                 });
             }
         }
@@ -328,6 +330,7 @@ impl<'a> IrLowerer<'a> {
                 mutable: let_binding.mutable,
                 ty: field_ty,
                 value: access_expr,
+                doc: let_binding.doc.clone(),
             });
         }
     }
@@ -376,6 +379,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: let_binding.mutable,
                     ty,
                     value: access_expr,
+                    doc: let_binding.doc.clone(),
                 });
             }
         }
@@ -551,6 +555,7 @@ impl<'a> IrLowerer<'a> {
                     fields,
                     methods,
                     generic_params,
+                    doc: None,
                 },
             ) {
                 self.errors.push(e);
@@ -638,6 +643,7 @@ impl<'a> IrLowerer<'a> {
                 visibility: enum_info.visibility,
                 variants,
                 generic_params,
+                doc: None,
             },
         ) {
             self.errors.push(e);
@@ -681,6 +687,7 @@ impl<'a> IrLowerer<'a> {
                 traits,
                 fields,
                 generic_params,
+                doc: None,
             },
         ) {
             self.errors.push(e);
@@ -702,6 +709,7 @@ impl<'a> IrLowerer<'a> {
                         fields: Vec::new(),
                         methods: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: t.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -717,6 +725,7 @@ impl<'a> IrLowerer<'a> {
                         traits: Vec::new(),
                         fields: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: s.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -731,6 +740,7 @@ impl<'a> IrLowerer<'a> {
                         visibility: e.visibility,
                         variants: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: e.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -1163,6 +1173,7 @@ impl<'a> IrLowerer<'a> {
                 return_type,
                 body,
                 is_extern,
+                doc: f.doc.clone(),
             },
         ) {
             self.errors.push(e);
@@ -1230,6 +1241,7 @@ impl<'a> IrLowerer<'a> {
             return_type,
             body,
             is_extern,
+            doc: f.doc.clone(),
         }
     }
 

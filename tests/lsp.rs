@@ -568,6 +568,61 @@ fn test_query_provider_hover_info() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_query_provider_hover_documentation_struct() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #51 + #50: leading `///` doc comments should reach
+    // `HoverInfo.documentation` so LSP hover can show them. Multi-line
+    // docs are joined with newlines.
+    let source = r"
+        /// First line of docs.
+        /// Second line of docs.
+        struct User {
+            name: String
+        }
+    ";
+    let (_, analyzer) = compile_with_analyzer(source).map_err(|e| format!("{e:?}"))?;
+    let provider = QueryProvider::new(analyzer.symbols());
+    let hover = provider
+        .get_hover_for_symbol("User")
+        .ok_or("expected hover for User")?;
+    let doc = hover
+        .documentation
+        .ok_or("expected hover.documentation to be populated")?;
+    if doc != "First line of docs.\nSecond line of docs." {
+        return Err(format!("unexpected doc: {doc:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_query_provider_hover_documentation_enum_and_let() -> Result<(), Box<dyn std::error::Error>>
+{
+    let source = r#"
+        /// Status of an order.
+        enum Status { pending, shipped }
+
+        /// API endpoint URL.
+        let endpoint: String = ""
+    "#;
+    let (_, analyzer) = compile_with_analyzer(source).map_err(|e| format!("{e:?}"))?;
+    let provider = QueryProvider::new(analyzer.symbols());
+
+    let status = provider
+        .get_hover_for_symbol("Status")
+        .ok_or("expected hover for Status")?;
+    if status.documentation.as_deref() != Some("Status of an order.") {
+        return Err(format!("unexpected Status doc: {:?}", status.documentation).into());
+    }
+
+    let endpoint = provider
+        .get_hover_for_symbol("endpoint")
+        .ok_or("expected hover for endpoint")?;
+    if endpoint.documentation.as_deref() != Some("API endpoint URL.") {
+        return Err(format!("unexpected endpoint doc: {:?}", endpoint.documentation).into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_query_provider_find_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named {

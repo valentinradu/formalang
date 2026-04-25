@@ -35,6 +35,10 @@ pub struct IrLet {
 
     /// The bound expression
     pub value: IrExpr,
+
+    /// Joined `///` doc comments preceding this binding. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A struct definition in the IR.
@@ -61,6 +65,10 @@ pub struct IrStruct {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this struct. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A trait definition in the IR.
@@ -89,6 +97,10 @@ pub struct IrTrait {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this trait. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A function signature in the IR (without a body).
@@ -139,6 +151,10 @@ pub struct IrEnum {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this enum. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// An enum variant.
@@ -259,6 +275,10 @@ pub struct IrFunction {
 
     /// Whether this function is extern (no body, defined outside `FormaLang`)
     pub is_extern: bool,
+
+    /// Joined `///` doc comments preceding this function. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A function parameter in the IR.

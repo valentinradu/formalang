@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 186
 expression: module
 ---
 IrModule {
@@ -24,6 +25,7 @@ IrModule {
                 },
             ],
             generic_params: [],
+            doc: None,
         },
     ],
     traits: [
@@ -52,6 +54,7 @@ IrModule {
                 },
             ],
             generic_params: [],
+            doc: None,
         },
     ],
     enums: [],
@@ -108,6 +111,7 @@ IrModule {
                         },
                     ),
                     is_extern: false,
+                    doc: None,
                 },
             ],
         },

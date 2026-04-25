@@ -107,6 +107,8 @@ pub struct FunctionDef {
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.
     pub body: Option<Expr>,
+    /// Joined `///` doc comments preceding this definition. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -147,6 +149,8 @@ pub struct LetBinding {
     pub pattern: BindingPattern,
     pub type_annotation: Option<Type>,
     pub value: Expr,
+    /// Joined `///` doc comments preceding this binding. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -175,6 +179,8 @@ pub struct TraitDef {
     pub fields: Vec<FieldDef>,
     /// Required method signatures (no default implementations)
     pub methods: Vec<FnSig>,
+    /// Joined `///` doc comments preceding this trait. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -186,6 +192,8 @@ pub struct StructDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<StructField>,
+    /// Joined `///` doc comments preceding this struct. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -215,6 +223,8 @@ pub struct ImplDef {
     pub functions: Vec<FnDef>,
     /// When `true`, this is `extern impl`; all contained `FnDef` bodies must be `None`.
     pub is_extern: bool,
+    /// Joined `///` doc comments preceding this impl block. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -229,6 +239,8 @@ pub struct FnDef {
     pub return_type: Option<Type>,
     /// `None` in `extern impl`; `Some(_)` in regular impl.
     pub body: Option<Expr>,
+    /// Joined `///` doc comments preceding this method. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -288,6 +300,8 @@ pub struct EnumDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<EnumVariant>,
+    /// Joined `///` doc comments preceding this enum. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -307,6 +321,8 @@ pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub definitions: Vec<Definition>,
+    /// Joined `///` doc comments preceding this module. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 

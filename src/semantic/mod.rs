@@ -563,6 +563,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         binding.name.clone(),
                         let_binding.visibility,
                         let_binding.span,
+                        let_binding.doc.clone(),
                     ) {
                         module_errors.push(CompilerError::DuplicateDefinition {
                             name: format!(
@@ -707,6 +708,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fields,
             composed_traits,
             trait_def.methods.clone(),
+            trait_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -749,6 +751,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
+            struct_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -845,6 +848,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             variants,
             variant_fields,
             Vec::new(),
+            enum_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -916,6 +920,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             params,
             func_def.return_type.clone(),
             vec![],
+            func_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1191,6 +1196,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             binding.name.clone(),
                             let_binding.visibility,
                             let_binding.span,
+                            let_binding.doc.clone(),
                         ) {
                             self.errors.push(CompilerError::DuplicateDefinition {
                                 name: format!(
@@ -1247,6 +1253,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fields,
             composed_traits,
             trait_def.methods.clone(),
+            trait_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1285,6 +1292,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
+            struct_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1429,6 +1437,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             variants,
             variant_fields,
             Vec::new(),
+            enum_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1501,6 +1510,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             params,
             func_def.return_type.clone(),
             vec![],
+            func_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(

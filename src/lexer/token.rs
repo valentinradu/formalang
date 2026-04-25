@@ -6,9 +6,14 @@ use logos::{Logos, Skip};
     reason = "token enum is matched exhaustively by the parser"
 )]
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\n\r]+")] // Skip whitespace
-#[logos(skip r"//[^\n]*")]
-// Skip line comments
+#[logos(skip r"[ \t\n\r]+")]
+// Skip whitespace
+// Skip plain line comments. Requires the third character to NOT be `/`
+// or `!` so `///` (item doc comment) and `//!` (module/parent doc
+// comment) reach their dedicated variants below. The `|//[/!]?$`
+// alternation handles the edge cases of a bare `//`, `///`, or `//!`
+// at end of input — those carry no content and are skipped.
+#[logos(skip r"//([^/!\n][^\n]*)?|//[/!][\n]")]
 pub enum Token {
     /// Phantom variant: matches the opening `/*` of a (possibly nested)
     /// block comment. The `skip_block_comment` callback consumes the
@@ -18,6 +23,19 @@ pub enum Token {
     /// to live on a variant. Closes audit finding #47.
     #[token("/*", skip_block_comment)]
     BlockComment,
+
+    /// Item doc comment: `/// text` attaches to the following definition.
+    /// Captured trimmed (leading `/// ` stripped, trailing whitespace
+    /// removed). Multiple consecutive doc-comment lines are joined by
+    /// the parser into a single attached docstring. Audit finding #51.
+    #[regex(r"///[^\n]*", parse_doc_comment)]
+    DocComment(String),
+
+    /// Module/parent doc comment: `//! text` attaches to the enclosing
+    /// definition or file. Captured the same way as `DocComment`.
+    /// Audit finding #51.
+    #[regex(r"//![^\n]*", parse_inner_doc_comment)]
+    InnerDocComment(String),
 
     // Keywords
     #[token("trait")]
@@ -179,6 +197,25 @@ pub enum Token {
 
     // Special
     Eof,
+}
+
+/// Strip the `///` prefix and a single leading space from a doc-comment
+/// slice. Returns the remaining text (trimmed of trailing whitespace).
+fn parse_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+    let raw = lex.slice();
+    let body = raw.strip_prefix("///").unwrap_or(raw);
+    let body = body.strip_prefix(' ').unwrap_or(body);
+    body.trim_end().to_string()
+}
+
+/// Strip the `//!` prefix and a single leading space from an inner
+/// doc-comment slice. Returns the remaining text (trimmed of trailing
+/// whitespace).
+fn parse_inner_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+    let raw = lex.slice();
+    let body = raw.strip_prefix("//!").unwrap_or(raw);
+    let body = body.strip_prefix(' ').unwrap_or(body);
+    body.trim_end().to_string()
 }
 
 /// Skip a nested block comment.
@@ -379,9 +416,13 @@ impl Token {
             Self::LBracket => "[",
             Self::RBracket => "]",
             Self::Eof => "<eof>",
-            Self::String(_) | Self::Number(_) | Self::Regex(_) | Self::Path(_) | Self::Ident(_) => {
-                "<complex token>"
-            }
+            Self::String(_)
+            | Self::Number(_)
+            | Self::Regex(_)
+            | Self::Path(_)
+            | Self::Ident(_)
+            | Self::DocComment(_)
+            | Self::InnerDocComment(_) => "<complex token>",
             // Phantom variant — `skip_block_comment` returns Skip so the
             // lexer never emits it. See `BlockComment` doc comment.
             Self::BlockComment => "<block comment>",
@@ -398,6 +439,8 @@ impl std::fmt::Display for Token {
             Self::Regex(_) => write!(f, "regex"),
             Self::Path(_) => write!(f, "path"),
             Self::Ident(_) => write!(f, "identifier"),
+            Self::DocComment(_) => write!(f, "doc comment"),
+            Self::InnerDocComment(_) => write!(f, "inner doc comment"),
             // For all other tokens, use the as_str() representation
             Self::Trait
             | Self::Struct

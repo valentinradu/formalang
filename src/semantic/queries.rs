@@ -336,7 +336,7 @@ impl<'a> QueryProvider<'a> {
             symbol_name: name.to_string(),
             kind,
             signature: format!("{vis}trait {name}{generics}"),
-            documentation: None,
+            documentation: info.doc.clone(),
             source_span: info.span,
         }
     }
@@ -365,7 +365,7 @@ impl<'a> QueryProvider<'a> {
             symbol_name: name.to_string(),
             kind: SymbolKind::Struct,
             signature: format!("{vis}struct {name}{generics}"),
-            documentation: None,
+            documentation: info.doc.clone(),
             source_span: info.span,
         }
     }
@@ -394,7 +394,7 @@ impl<'a> QueryProvider<'a> {
             symbol_name: name.to_string(),
             kind: SymbolKind::Enum,
             signature: format!("{vis}enum {name}{generics}"),
-            documentation: None,
+            documentation: info.doc.clone(),
             source_span: info.span,
         }
     }
@@ -415,7 +415,7 @@ impl<'a> QueryProvider<'a> {
             symbol_name: name.to_string(),
             kind: SymbolKind::Let,
             signature,
-            documentation: None,
+            documentation: info.doc.clone(),
             source_span: info.span,
         }
     }

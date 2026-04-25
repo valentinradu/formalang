@@ -148,12 +148,16 @@ where
 }
 
 /// Parse a field definition: mut? name: Type
+///
+/// Audit #51: optional leading `///` doc comments are consumed and
+/// ignored at this level (field-level docs aren't yet stored).
 pub(super) fn field_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FieldDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    mutability_parser()
+    super::doc_comments_parser()
+        .ignore_then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -166,12 +170,17 @@ where
 }
 
 /// Parse a function signature (no body): `fn name(params) -> Type`
+///
+/// Audit #51: optional leading `///` doc comments are consumed; the
+/// docstring is ignored at the `FnSig` level (signatures live inside
+/// traits where doc storage is on `FnDef` only).
 pub(super) fn fn_sig_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FnSig, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    just(Token::Fn)
+    super::doc_comments_parser()
+        .ignore_then(just(Token::Fn))
         .ignore_then(ident_parser())
         .then(fn_params_parser())
         .then(
@@ -239,6 +248,7 @@ where
                 traits,
                 fields,
                 methods,
+                doc: None,
                 span: span_from_simple(e.span()),
             }
         })
@@ -267,17 +277,24 @@ where
             name,
             generics,
             fields: fields.unwrap_or_default(),
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
 
 /// Parse a single struct field: mut? name: Type? = default
+///
+/// Audit #51: optional leading `///` doc comments are consumed and
+/// ignored — field-level doc storage isn't part of the IR yet, but the
+/// tokens must be accepted so users can document fields without
+/// breaking the parse.
 pub(super) fn struct_field_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructField, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    mutability_parser()
+    super::doc_comments_parser()
+        .ignore_then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -324,6 +341,7 @@ where
             generics,
             functions,
             is_extern: false,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -354,6 +372,7 @@ where
                     params,
                     return_type,
                     body: None,
+                    doc: None,
                     span,
                 }
             },
@@ -378,6 +397,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            doc: None,
             span: sig.span,
         }),
     ));
@@ -399,6 +419,7 @@ where
             generics,
             functions,
             is_extern: true,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -421,6 +442,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            doc: None,
             span: sig.span,
         }),
     ));
@@ -508,8 +530,9 @@ pub(super) fn fn_def_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    just(Token::Fn)
-        .ignore_then(ident_parser())
+    super::doc_comments_parser()
+        .then_ignore(just(Token::Fn))
+        .then(ident_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
@@ -519,13 +542,14 @@ where
             // Function body in braces - parsed as a block with statements
             fn_body_parser(),
         )
-        .map_with(|(((name, params), return_type), body), e| {
+        .map_with(|((((doc, name), params), return_type), body), e| {
             let span = span_from_simple(e.span());
             FnDef {
                 name,
                 params,
                 return_type,
                 body: Some(body),
+                doc,
                 span,
             }
         })
@@ -652,6 +676,7 @@ where
                     params,
                     return_type,
                     body: Some(body),
+                    doc: None,
                     span,
                 }
             },
@@ -674,6 +699,7 @@ where
             name,
             generics,
             variants,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -698,7 +724,8 @@ pub(super) fn enum_variant_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    ident_parser()
+    super::doc_comments_parser()
+        .ignore_then(ident_parser())
         .then(
             field_def_parser()
                 .separated_by(just(Token::Comma))
@@ -734,6 +761,7 @@ where
             visibility,
             name,
             definitions,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }

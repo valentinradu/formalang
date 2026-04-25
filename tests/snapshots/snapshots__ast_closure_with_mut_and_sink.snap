@@ -121,6 +121,7 @@ File {
                         },
                     },
                 },
+                doc: None,
                 span: Span {
                     start: Location {
                         offset: 9,
@@ -250,6 +251,7 @@ File {
                         },
                     },
                 },
+                doc: None,
                 span: Span {
                     start: Location {
                         offset: 61,
