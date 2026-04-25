@@ -351,3 +351,36 @@ fn test_closure_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_closure_body_mismatched_return_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B9: a closure literal with an untyped param used to have
+    // the param resolve to "Unknown", which unified with anything and
+    // hid genuine return-type mismatches in the body. Now the let
+    // annotation seeds the param's type and the body is type-checked
+    // against the declared return type.
+    let source = r"
+        let f: Number -> Boolean = x -> x + 1
+    ";
+    let err = compile(source)
+        .err()
+        .ok_or("expected TypeMismatch for body returning Number, declared Boolean")?;
+    let has = err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { expected, found, .. } if expected == "Boolean" && found == "Number"));
+    if !has {
+        return Err(format!("expected TypeMismatch(Boolean, Number), got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_body_correct_return_type_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B9 positive case: an untyped-param closure whose body
+    // returns the declared type still compiles.
+    let source = r"
+        let f: Number -> Number = x -> x + 1
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}

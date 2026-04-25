@@ -53,6 +53,55 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         }
+        // Audit2 B9: when a let binding declares a closure type and is
+        // assigned a closure literal, type-check the closure body
+        // bidirectionally — push the declared param types into the
+        // inference scope (covering literal params with no annotation)
+        // and verify the body's inferred type matches the declared
+        // return type. Without this, untyped closure params silently
+        // resolve to "Unknown", which unifies with anything and
+        // suppresses real return-type mismatches.
+        if let (
+            Some(Type::Closure {
+                params: declared_params,
+                ret: declared_ret,
+            }),
+            Expr::ClosureExpr {
+                params: lit_params,
+                body,
+                return_type: lit_ret,
+                ..
+            },
+        ) = (&let_binding.type_annotation, &let_binding.value)
+        {
+            if lit_params.len() == declared_params.len() {
+                let mut seed = HashMap::new();
+                for (lit, (_, dty)) in lit_params.iter().zip(declared_params.iter()) {
+                    let ty_str = lit
+                        .ty
+                        .as_ref()
+                        .map_or_else(|| Self::type_to_string(dty), Self::type_to_string);
+                    seed.insert(lit.name.name.clone(), ty_str);
+                }
+                self.inference_scope_stack.borrow_mut().push(seed);
+                let inferred_body = self.infer_type(body, file);
+                self.inference_scope_stack.borrow_mut().pop();
+                let expected_ret = lit_ret
+                    .as_ref()
+                    .map_or_else(|| Self::type_to_string(declared_ret), Self::type_to_string);
+                let body_indeterminate =
+                    inferred_body.contains("Unknown") || inferred_body.contains("InferredEnum");
+                if !body_indeterminate
+                    && !self.type_strings_compatible(&expected_ret, &inferred_body)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: expected_ret,
+                        found: inferred_body,
+                        span: let_binding.span,
+                    });
+                }
+            }
+        }
         // Register closure-typed module-level bindings for call-site enforcement
         if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
             let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
