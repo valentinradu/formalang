@@ -559,7 +559,40 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_fold_method_call_args() -> Result<(), Box<dyn std::error::Error>> {
+fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_fold_method_call_args` and made a real
+    // assertion (audit #52/#53): the previous body only said "Just
+    // verify it runs without panic" without checking the fold
+    // actually fired. Now we walk the impl body and assert the
+    // `2 + 3` literal folded down to `5`.
+    use formalang::ir::{IrBlockStatement, IrExpr};
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "this helper only needs to detect surviving BinaryOps inside method-call args; other IrExpr variants are irrelevant for the assertion"
+    )]
+    fn contains_addition(expr: &IrExpr) -> bool {
+        match expr {
+            IrExpr::BinaryOp { .. } => true,
+            IrExpr::MethodCall { receiver, args, .. } => {
+                contains_addition(receiver) || args.iter().any(|(_, a)| contains_addition(a))
+            }
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                contains_addition(result)
+                    || statements.iter().any(|s| match s {
+                        IrBlockStatement::Let { value, .. } => contains_addition(value),
+                        IrBlockStatement::Assign { target, value } => {
+                            contains_addition(target) || contains_addition(value)
+                        }
+                        IrBlockStatement::Expr(e) => contains_addition(e),
+                    })
+            }
+            _ => false,
+        }
+    }
+
     let source = r"
         struct Vec2 { x: Number, y: Number }
         impl Vec2 {
@@ -569,10 +602,19 @@ fn test_fold_method_call_args() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.impls.is_empty() {
-        return Err("assertion failed".into());
+    let imp = folded.impls.first().ok_or("no impls in folded module")?;
+    let compute = imp
+        .functions
+        .iter()
+        .find(|f| f.name == "compute")
+        .ok_or("compute method missing")?;
+    let body = compute.body.as_ref().ok_or("compute body missing")?;
+    if contains_addition(body) {
+        return Err(
+            "expected `2 + 3` inside method call arg to fold to a literal, but a BinaryOp survives"
+                .into(),
+        );
     }
-    // Just verify it runs without panic - method args get folded inside impl body
     Ok(())
 }
 

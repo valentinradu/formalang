@@ -1575,8 +1575,11 @@ fn test_method_call_on_struct_in_impl() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[test]
-fn test_method_call_undefined_method() -> Result<(), Box<dyn std::error::Error>> {
-    // Chained method call where result type is Unknown - exercises method validation path
+fn test_simple_impl_method_with_self_field_access() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_method_call_undefined_method` (audit #53):
+    // the body asserts a successful compile of an impl method that
+    // returns `self.x`. Nothing about it is "undefined" — the previous
+    // name was inherited from a copy/paste and never updated.
     let source = r"
         struct Point { x: Number = 0 }
         impl Point {

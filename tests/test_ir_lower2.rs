@@ -41,7 +41,12 @@ fn test_lower_inferred_enum_in_function() -> Result<(), Box<dyn std::error::Erro
 // =============================================================================
 
 #[test]
-fn test_lower_general_closure() -> Result<(), Box<dyn std::error::Error>> {
+fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_lower_general_closure` (audit #53): the
+    // original name said nothing about the actual scenario. The test
+    // verifies that a pipe-style closure (`|x: Number| 42`) used as a
+    // struct field default lowers to `IrExpr::Closure` with the
+    // expected single named parameter.
     let source = r"
         struct Config {
             transform: (Number) -> Number = |x: Number| 42
@@ -107,8 +112,11 @@ fn test_lower_let_array_destructuring() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[test]
-fn test_lower_let_tuple_destructuring() -> Result<(), Box<dyn std::error::Error>> {
-    // Tuple destructuring using positional syntax
+fn test_lower_two_independent_simple_lets() -> Result<(), Box<dyn std::error::Error>> {
+    // Two `let a: Number = 1` / `let b: Number = 2` should produce two
+    // separate top-level `IrLet` entries. Name was previously
+    // `test_lower_let_tuple_destructuring` which was misleading — this
+    // doesn't exercise tuple destructuring at all.
     let source = r"
         let a: Number = 1
         let b: Number = 2

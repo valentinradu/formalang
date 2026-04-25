@@ -1499,7 +1499,12 @@ fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn st
 /// Composed traits keep their parents alive: if `B: A` and `B` is used, `A`
 /// must be used too.
 #[test]
-fn test_dce_preserves_parent_trait_in_composition() -> Result<(), Box<dyn std::error::Error>> {
+fn test_dce_marks_composed_parent_trait_as_used() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_dce_preserves_parent_trait_in_composition`
+    // (audit #53): the original name was vague about *which* relation
+    // the test checks. The body only asserts that `Named` (the parent)
+    // is marked used by DCE because `Tracked` composes it; `Tracked`'s
+    // own usage is asserted separately by the conformance check.
     let source = r"
         pub trait Named { name: String }
         pub trait Tracked: Named {

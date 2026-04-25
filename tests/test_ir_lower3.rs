@@ -533,13 +533,16 @@ fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>>
 }
 
 // =============================================================================
-// Lower: vec3 constructor
+// Lower: function-call body lowers to FunctionCall
 // =============================================================================
 
 #[test]
-fn test_lower_function_call_lowering() -> Result<(), Box<dyn std::error::Error>> {
-    // Test that a function call to another named function lowers to IrExpr::FunctionCall.
-    // (Vec3/vec3 were GPU-type constructors removed with the old codegen backend.)
+fn test_lower_named_function_call_in_body() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_lower_function_call_lowering` (audit #53):
+    // the original name doubled "lowering" and gave no hint about what
+    // the test asserts. The body verifies that calling another named
+    // function from inside a fn body lowers to `IrExpr::FunctionCall`
+    // with the callee's name in the path.
     let source = r"
         fn sum(a: Number, b: Number, c: Number) -> Number { a + b + c }
         fn make_result() -> Number { sum(1, 2, 3) }

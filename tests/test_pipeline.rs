@@ -538,6 +538,42 @@ fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn test_monomorphise_rejects_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #35: generic traits aren't supported by the IR. The
+    // monomorphise pass's leftover scan should surface a clear
+    // InternalError instead of silently leaving the generic trait in
+    // the module.
+    use formalang::ir::MonomorphisePass;
+    use formalang::CompilerError;
+
+    let source = r"
+        pub trait Container<T> {
+            item: T
+        }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let errs = pipeline
+        .run(module)
+        .err()
+        .ok_or("expected monomorphise to reject a generic trait")?;
+    let saw_internal = errs.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::InternalError { detail, .. }
+                if detail.contains("generic trait") && detail.contains("Container")
+        )
+    });
+    if !saw_internal {
+        return Err(format!(
+            "expected InternalError naming generic trait `Container`, got: {errs:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
