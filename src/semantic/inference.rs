@@ -95,20 +95,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Expr::DictAccess { dict, .. } => {
-                // Gap 3: Infer value type from dict type "[K: V]"
+                // Audit2 B8: extract V from a dict type `[K: V]`. Uses
+                // depth-aware splitting so a nested-dict key like
+                // `[[X: Y]: V]` returns `V`, not `Y]: V`.
                 let dict_type = self.infer_type(dict, file);
-                if let Some(inner) = dict_type
-                    .strip_prefix('[')
-                    .and_then(|s| s.strip_suffix(']'))
-                    .filter(|s| s.contains(": "))
-                {
-                    if let Some(colon_pos) = inner.find(": ") {
-                        if let Some(after) = inner.get(colon_pos.saturating_add(2)..) {
-                            return after.to_string();
-                        }
-                    }
-                }
-                "Unknown".to_string()
+                super::strip_dict_value_type(&dict_type)
+                    .map_or_else(|| "Unknown".to_string(), str::to_string)
             }
             Expr::FieldAccess { object, field, .. } => {
                 let obj_type = self.infer_type(object, file);

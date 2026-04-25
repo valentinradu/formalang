@@ -72,14 +72,58 @@ pub(crate) fn is_primitive_name(name: &str) -> bool {
     )
 }
 
-/// If `ty` is `[T]`, return `T`. Otherwise, return None.
+/// If `ty` is `[T]`, return `T`. Returns `None` for non-array shapes
+/// and for dictionary types `[K: V]`.
+///
+/// Audit2 B17: previously used `!ty.contains(':')` to reject dict types,
+/// which mis-classified `[[K: V]]` (an array of dicts) as a dict because
+/// the colon lives inside a nested type. Now walks at depth 0 only, so
+/// only a top-level `:` disqualifies the input as an array.
 fn strip_array_type(ty: &str) -> Option<&str> {
     let trimmed = ty.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains(':') {
-        Some(trimmed[1..trimmed.len().saturating_sub(1)].trim())
-    } else {
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))?;
+    if has_depth_zero_colon(inner) {
         None
+    } else {
+        Some(inner.trim())
     }
+}
+
+/// If `ty` is `[K: V]`, return `V`. Returns `None` for non-dict shapes
+/// (including arrays `[T]`).
+///
+/// Audit2 B8: depth-tracks brackets so a dict whose key is itself a
+/// dict (`[[X: Y]: V]`) extracts `V`, not `Y]: V`.
+fn strip_dict_value_type(ty: &str) -> Option<&str> {
+    let trimmed = ty.trim();
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))?;
+    let colon_idx = depth_zero_colon_index(inner)?;
+    inner.get(colon_idx.saturating_add(1)..).map(str::trim)
+}
+
+/// Return true if `s` contains a `:` at bracket-depth 0 (i.e. not nested
+/// inside `( ) [ ] < >`).
+fn has_depth_zero_colon(s: &str) -> bool {
+    depth_zero_colon_index(s).is_some()
+}
+
+/// Find the byte index of the first `:` in `s` at bracket-depth 0.
+/// Tracks `( ) [ ] < >` symmetrically.
+fn depth_zero_colon_index(s: &str) -> Option<usize> {
+    let mut depth: u32 = 0;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '[' | '<' => depth = depth.saturating_add(1),
+            ')' | ']' | '>' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Parse a tuple type string like `(a: Number, b: String)` into a flat list
@@ -1680,3 +1724,78 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 }
 
 // Note: No Default implementation since a ModuleResolver is required
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        depth_zero_colon_index, has_depth_zero_colon, strip_array_type, strip_dict_value_type,
+    };
+
+    #[test]
+    fn test_strip_array_type_simple() {
+        assert_eq!(strip_array_type("[String]"), Some("String"));
+        assert_eq!(strip_array_type("[Number]"), Some("Number"));
+    }
+
+    #[test]
+    fn test_strip_array_type_nested_array() {
+        // Audit2 B17: nested array used to be misclassified because the
+        // outer `contains(':')` check fired on the inner dict's colon.
+        assert_eq!(strip_array_type("[[Number]]"), Some("[Number]"));
+        assert_eq!(
+            strip_array_type("[[String: Number]]"),
+            Some("[String: Number]")
+        );
+    }
+
+    #[test]
+    fn test_strip_array_type_rejects_dict() {
+        assert_eq!(strip_array_type("[String: Number]"), None);
+        assert_eq!(strip_array_type("[K: V]"), None);
+    }
+
+    #[test]
+    fn test_strip_array_type_rejects_non_array() {
+        assert_eq!(strip_array_type("String"), None);
+        assert_eq!(strip_array_type("(x: Number)"), None);
+    }
+
+    #[test]
+    fn test_strip_dict_value_type_simple() {
+        assert_eq!(strip_dict_value_type("[String: Number]"), Some("Number"));
+        assert_eq!(strip_dict_value_type("[K: V]"), Some("V"));
+    }
+
+    #[test]
+    fn test_strip_dict_value_type_nested_dict_key() {
+        // Audit2 B8: depth-tracking matters here — the first `:` in
+        // `[X: Y]: V` is inside the inner dict and must be ignored.
+        assert_eq!(strip_dict_value_type("[[X: Y]: V]"), Some("V"));
+    }
+
+    #[test]
+    fn test_strip_dict_value_type_nested_dict_value() {
+        assert_eq!(strip_dict_value_type("[String: [K: V]]"), Some("[K: V]"));
+    }
+
+    #[test]
+    fn test_strip_dict_value_type_rejects_array() {
+        assert_eq!(strip_dict_value_type("[Number]"), None);
+        assert_eq!(strip_dict_value_type("[[Number]]"), None);
+    }
+
+    #[test]
+    fn test_depth_zero_colon_index_basics() {
+        assert_eq!(depth_zero_colon_index("a: b"), Some(1));
+        assert_eq!(depth_zero_colon_index("[x: y]: v"), Some(6));
+        assert_eq!(depth_zero_colon_index("(x: y, z: w)"), None);
+        assert_eq!(depth_zero_colon_index("just text"), None);
+    }
+
+    #[test]
+    fn test_has_depth_zero_colon() {
+        assert!(has_depth_zero_colon("a: b"));
+        assert!(!has_depth_zero_colon("[a: b]"));
+        assert!(has_depth_zero_colon("[a]: [b: c]"));
+    }
+}

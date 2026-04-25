@@ -1100,17 +1100,15 @@ fn paint(Color, Number2) -> Boolean { true }
     if params.len() != 2 {
         return Err(format!("expected 2 params, got {}", params.len()).into());
     }
-    if params[0].name.name == params[1].name.name {
-        return Err(format!(
-            "type-only param names collide: both are {:?}",
-            params[0].name.name
-        )
-        .into());
+    let p0 = params.first().ok_or("p0")?;
+    let p1 = params.get(1).ok_or("p1")?;
+    if p0.name.name == p1.name.name {
+        return Err(format!("type-only param names collide: both are {:?}", p0.name.name).into());
     }
-    if !params[0].name.name.starts_with("_arg") || !params[1].name.name.starts_with("_arg") {
+    if !p0.name.name.starts_with("_arg") || !p1.name.name.starts_with("_arg") {
         return Err(format!(
             "expected `_arg…` synth names, got {:?} and {:?}",
-            params[0].name.name, params[1].name.name
+            p0.name.name, p1.name.name
         )
         .into());
     }
