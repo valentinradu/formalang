@@ -1118,7 +1118,11 @@ impl<'a> IrLowerer<'a> {
             }
         }
         self.generic_scopes.push(scope);
-        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+        let functions: Vec<IrFunction> = i
+            .functions
+            .iter()
+            .map(|f| self.lower_fn_def(f, i.is_extern))
+            .collect();
         self.generic_scopes.pop();
         let trait_id = i
             .trait_name
@@ -1202,7 +1206,7 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
+    fn lower_fn_def(&mut self, f: &FnDef, enclosing_is_extern: bool) -> IrFunction {
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
@@ -1247,7 +1251,13 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        let is_extern = body.is_none();
+        // Audit2 A1: source `is_extern` from the enclosing `ImplDef.is_extern`
+        // rather than re-deriving from `body.is_none()`. The semantic layer
+        // enforces body/extern consistency for valid programs, but under
+        // parser error recovery a method may have `body: None` inside a
+        // regular impl; we want the IR's `IrFunction.is_extern` to match
+        // the containing `IrImpl.is_extern` definitionally.
+        let is_extern = enclosing_is_extern;
 
         self.local_binding_scopes.pop();
 

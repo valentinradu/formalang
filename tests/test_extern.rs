@@ -168,6 +168,78 @@ fn test_regular_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::err
 }
 
 #[test]
+fn test_extern_impl_methods_inherit_is_extern_in_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 A1: a method's `is_extern` in the IR must reflect the enclosing
+    // `IrImpl.is_extern`, not whether the AST happens to have a body. For an
+    // `extern impl`, every contained method must be `is_extern: true` and
+    // `body: None`.
+    let module = formalang::compile_to_ir(
+        r"
+struct Canvas { width: Number, height: Number }
+extern impl Canvas {
+    fn draw(self, x: Number, y: Number)
+    fn flush(self) -> Boolean
+}
+",
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let canvas_impl = module
+        .impls
+        .iter()
+        .find(|i| matches!(i.target, formalang::ir::ImplTarget::Struct(_)))
+        .ok_or("Canvas impl missing")?;
+    if !canvas_impl.is_extern {
+        return Err("expected extern impl to have is_extern=true".into());
+    }
+    for f in &canvas_impl.functions {
+        if !f.is_extern {
+            return Err(format!("method {} should be is_extern=true", f.name).into());
+        }
+        if f.body.is_some() {
+            return Err(format!("method {} should have no body", f.name).into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_regular_impl_methods_inherit_is_extern_in_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 A1 mirror: in a regular `impl`, every method must be
+    // `is_extern: false` with a `body: Some(_)` in the IR.
+    let module = formalang::compile_to_ir(
+        r"
+struct Counter { value: Number }
+impl Counter {
+    fn get(self) -> Number {
+        self.value
+    }
+    fn double(self) -> Number {
+        self.value + self.value
+    }
+}
+",
+    )
+    .map_err(|e| format!("{e:?}"))?;
+    let counter_impl = module
+        .impls
+        .iter()
+        .find(|i| matches!(i.target, formalang::ir::ImplTarget::Struct(_)))
+        .ok_or("Counter impl missing")?;
+    if counter_impl.is_extern {
+        return Err("expected regular impl to have is_extern=false".into());
+    }
+    for f in &counter_impl.functions {
+        if f.is_extern {
+            return Err(format!("method {} should be is_extern=false", f.name).into());
+        }
+        if f.body.is_none() {
+            return Err(format!("method {} should have a body", f.name).into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn test_impl_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 struct Foo {}
