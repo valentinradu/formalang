@@ -465,6 +465,81 @@ fn test_let_general_type_match_accepted() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
+fn test_closure_arg_to_function_picks_up_expected_param_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B19: a closure literal passed as an argument to a
+    // function expecting a closure type used to lower with
+    // `param_tys: [(_, TypeParam("Unknown"))]`. With bidirectional
+    // inference at the call site, the closure now picks up the
+    // function's declared param type.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::ResolvedType;
+    let source = r"
+        fn apply(f: Number -> Number, x: Number) -> Number {
+            x
+        }
+        let result: Number = apply(x -> x, 1)
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    // Find the `result` let; its value is the FunctionCall to apply.
+    let result_let = module
+        .lets
+        .iter()
+        .find(|l| l.name == "result")
+        .ok_or("expected let result")?;
+    let formalang::ir::IrExpr::FunctionCall { args, .. } = &result_let.value else {
+        return Err(format!("expected FunctionCall, got {:?}", result_let.value).into());
+    };
+    let (_, first_arg) = args.first().ok_or("expected first arg")?;
+    let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
+        return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
+    };
+    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
+        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_arg_to_method_picks_up_expected_param_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B19 mirror: same bidirectional inference for method
+    // call arguments. `target.run(x -> x + 1)` should give the
+    // closure's `x` the method's declared param type.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::ResolvedType;
+    let source = r"
+        struct Engine { rpm: Number = 0 }
+        impl Engine {
+            fn run(self, f: Number -> Number) -> Number {
+                self.rpm
+            }
+        }
+        let e: Engine = Engine()
+        let result: Number = e.run(x -> x)
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let result_let = module
+        .lets
+        .iter()
+        .find(|l| l.name == "result")
+        .ok_or("expected let result")?;
+    let formalang::ir::IrExpr::MethodCall { args, .. } = &result_let.value else {
+        return Err(format!("expected MethodCall, got {:?}", result_let.value).into());
+    };
+    let (_, first_arg) = args.first().ok_or("expected first arg")?;
+    let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
+        return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
+    };
+    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
+        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error::Error>> {
     // Audit2 B14: a method call on a value whose type is qualified
     // (`m::Foo`) used to fail with `UndefinedReference` because

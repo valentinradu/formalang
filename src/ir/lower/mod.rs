@@ -98,6 +98,14 @@ struct IrLowerer<'a> {
     /// `InternalError` diagnostics can cite a meaningful source location
     /// instead of `Span::default()`. See audit finding #31.
     pub(super) current_span: crate::location::Span,
+    /// Audit2 B19: when a closure literal is being lowered as the
+    /// argument to a function call (or assigned to a closure-typed
+    /// struct field, or passed as a method argument), this carries the
+    /// expected closure type from the call/assignment context. The
+    /// closure lowerer reads it to fill in any param/return types that
+    /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
+    /// `x: Number` instead of `x: TypeParam("Unknown")`.
+    pub(super) expected_closure_type: Option<ResolvedType>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -159,6 +167,7 @@ impl<'a> IrLowerer<'a> {
             current_impl_method_returns: None,
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
+            expected_closure_type: None,
         }
     }
 
