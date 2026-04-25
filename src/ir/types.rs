@@ -331,6 +331,9 @@ pub struct IrField {
 
     /// Default value expression, if any
     pub default: Option<IrExpr>,
+
+    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    pub doc: Option<String>,
 }
 
 /// A generic type parameter.

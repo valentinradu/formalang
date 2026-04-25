@@ -551,12 +551,13 @@ impl<'a> IrLowerer<'a> {
             let fields: Vec<IrField> = trait_info
                 .fields
                 .iter()
-                .map(|(field_name, ty)| IrField {
-                    name: field_name.clone(),
-                    ty: self.lower_type(ty),
+                .map(|f| IrField {
+                    name: f.name.clone(),
+                    ty: self.lower_type(&f.ty),
                     default: None,
-                    optional: matches!(ty, ast::Type::Optional(_)),
+                    optional: matches!(f.ty, ast::Type::Optional(_)),
                     mutable: false,
+                    doc: f.doc.clone(),
                 })
                 .collect();
             let methods: Vec<IrFunctionSig> = trait_info
@@ -643,6 +644,7 @@ impl<'a> IrLowerer<'a> {
                                 default: None,
                                 optional: matches!(f.ty, ast::Type::Optional(_)),
                                 mutable: false,
+                                doc: f.doc.clone(),
                             })
                             .collect()
                     })
@@ -682,6 +684,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: false,
                     optional,
                     default: None,
+                    doc: f.doc.clone(),
                 }
             })
             .collect();
@@ -938,6 +941,7 @@ impl<'a> IrLowerer<'a> {
                         default: None,
                         optional: false,
                         mutable: false,
+                        doc: f.doc.clone(),
                     })
                     .collect(),
             })
@@ -1343,6 +1347,7 @@ impl<'a> IrLowerer<'a> {
             mutable: f.mutable,
             optional,
             default: None,
+            doc: f.doc.clone(),
         }
     }
 
@@ -1353,6 +1358,7 @@ impl<'a> IrLowerer<'a> {
             mutable: f.mutable,
             optional: f.optional,
             default: f.default.as_ref().map(|e| self.lower_expr(e)),
+            doc: f.doc.clone(),
         }
     }
 

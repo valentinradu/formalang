@@ -705,8 +705,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // required fields; an `item: SomeTrait` parameter must allow
         // `item.field` access.
         if let Some(trait_info) = self.symbols.get_trait(lookup_name) {
-            if let Some(ty) = trait_info.fields.get(field_name) {
-                let ty_str = Self::type_to_string(ty);
+            if let Some(field) = trait_info.fields.iter().find(|f| f.name == field_name) {
+                let ty_str = Self::type_to_string(&field.ty);
                 return if is_optional {
                     format!("{ty_str}?")
                 } else {

@@ -615,6 +615,9 @@ pub struct IrField {
 
     /// Default value expression, if any
     pub default: Option<IrExpr>,
+
+    /// Joined `///` doc comments preceding this field, if any.
+    pub doc: Option<String>,
 }
 ```
 

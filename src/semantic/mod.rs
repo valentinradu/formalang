@@ -28,8 +28,8 @@ pub use symbol_table::{
 };
 
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,
-    UseItems, UseStmt,
+    ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, UseItems,
+    UseStmt,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -684,6 +684,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         errors: &mut Vec<CompilerError>,
         trait_def: &crate::ast::TraitDef,
     ) {
+        use symbol_table::FieldInfo;
+
         if is_primitive_name(&trait_def.name.name) {
             errors.push(CompilerError::PrimitiveRedefinition {
                 name: trait_def.name.name.clone(),
@@ -692,10 +694,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        let fields: HashMap<String, Type> = trait_def
+        let fields: Vec<FieldInfo> = trait_def
             .fields
             .iter()
-            .map(|f| (f.name.name.clone(), f.ty.clone()))
+            .map(|f| FieldInfo {
+                name: f.name.name.clone(),
+                ty: f.ty.clone(),
+                doc: f.doc.clone(),
+            })
             .collect();
         let composed_traits: Vec<String> =
             trait_def.traits.iter().map(|t| t.name.clone()).collect();
@@ -742,6 +748,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .map(|f| FieldInfo {
                 name: f.name.name.clone(),
                 ty: f.ty.clone(),
+                doc: f.doc.clone(),
             })
             .collect();
 
@@ -834,6 +841,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .map(|f| FieldInfo {
                             name: f.name.name.clone(),
                             ty: f.ty.clone(),
+                            doc: f.doc.clone(),
                         })
                         .collect(),
                 )
@@ -1229,6 +1237,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn collect_definition_trait(&mut self, trait_def: &crate::ast::TraitDef) {
+        use symbol_table::FieldInfo;
+
         if is_primitive_name(&trait_def.name.name) {
             self.errors.push(CompilerError::PrimitiveRedefinition {
                 name: trait_def.name.name.clone(),
@@ -1237,10 +1247,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        let fields: HashMap<String, Type> = trait_def
+        let fields: Vec<FieldInfo> = trait_def
             .fields
             .iter()
-            .map(|f| (f.name.name.clone(), f.ty.clone()))
+            .map(|f| FieldInfo {
+                name: f.name.name.clone(),
+                ty: f.ty.clone(),
+                doc: f.doc.clone(),
+            })
             .collect();
         let composed_traits: Vec<String> =
             trait_def.traits.iter().map(|t| t.name.clone()).collect();
@@ -1283,6 +1297,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .map(|f| FieldInfo {
                 name: f.name.name.clone(),
                 ty: f.ty.clone(),
+                doc: f.doc.clone(),
             })
             .collect();
 
@@ -1423,6 +1438,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .map(|f| FieldInfo {
                             name: f.name.name.clone(),
                             ty: f.ty.clone(),
+                            doc: f.doc.clone(),
                         })
                         .collect(),
                 )

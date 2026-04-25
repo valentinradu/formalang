@@ -49,6 +49,7 @@ File {
                             ),
                             optional: false,
                             default: None,
+                            doc: None,
                             span: Span {
                                 start: Location {
                                     offset: 24,
@@ -84,6 +85,7 @@ File {
                             ),
                             optional: false,
                             default: None,
+                            doc: None,
                             span: Span {
                                 start: Location {
                                     offset: 35,
