@@ -85,7 +85,12 @@ fn test_function_call_with_type_args() -> Result<(), Box<dyn std::error::Error>>
 // =============================================================================
 
 #[test]
-fn test_mutable_field_chain_assignment_valid() -> Result<(), Box<dyn std::error::Error>> {
+fn test_mutable_field_chain_rejects_non_mutable_literal() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Renamed from `test_mutable_field_chain_assignment_valid` (audit
+    // #53): the test asserts the compile FAILS, not that it succeeds.
+    // Passing a non-mutable literal to a mutable field produces a
+    // MutabilityMismatch error.
     let source = r"
         struct Inner { mut value: Number = 0 }
         struct Outer { mut inner: Inner = Inner(value: 0) }
@@ -93,10 +98,9 @@ fn test_mutable_field_chain_assignment_valid() -> Result<(), Box<dyn std::error:
         let result: Number = obj.inner.value
     ";
     let result = compile(source);
-    // Passing a non-mutable literal to a mutable field produces MutabilityMismatch
     if result.is_ok() {
         return Err(format!(
-            "Mutable field chain with literal value produces MutabilityMismatch: {:?}",
+            "Mutable field chain with literal value should produce MutabilityMismatch: {:?}",
             result.ok()
         )
         .into());
@@ -692,8 +696,8 @@ fn test_let_expr_as_value() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
             value: Number = (let x: Number = 5
-            let y: Number = 10
-            x + y)
+            in let y: Number = 10
+            in x + y)
         }
     ";
     compile(source).map_err(|e| format!("LetExpr as value: {e:?}"))?;

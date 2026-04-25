@@ -12,8 +12,8 @@ use chumsky::input::{Stream, ValueInput};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BlockStatement, Expr, File, Ident, LetBinding, Literal, Statement, UseItems, UseStmt,
-    Visibility,
+    BlockStatement, Definition, Expr, File, Ident, LetBinding, Literal, Statement, UseItems,
+    UseStmt, Visibility,
 };
 use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
@@ -196,18 +196,91 @@ where
         })
 }
 
-/// Parse a top-level statement
+/// Parse a top-level statement, optionally preceded by `///` doc-comment
+/// lines. The collected doc text is attached to the resulting definition
+/// or let binding (audit finding #51).
 fn statement_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Statement, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    choice((
-        use_stmt_parser().map(Statement::Use),
-        let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
-        definition_parser().map(|d| Statement::Definition(Box::new(d))),
-    ))
-    .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
+    doc_comments_parser()
+        .then(choice((
+            use_stmt_parser().map(Statement::Use),
+            let_binding_parser().map(|lb| Statement::Let(Box::new(lb))),
+            definition_parser().map(|d| Statement::Definition(Box::new(d))),
+        )))
+        .map(|(doc, stmt)| attach_doc_to_statement(doc, stmt))
+        .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
+}
+
+/// Consume zero or more leading `///` doc-comment lines and join them
+/// with newlines. Returns `None` when no doc comments precede the next
+/// item. Inner `//!` comments are skipped at this level — they belong
+/// to the enclosing scope and are handled by the file-level parser.
+pub(super) fn doc_comments_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Option<String>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    select! { Token::DocComment(s) => s }
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|lines| {
+            if lines.is_empty() {
+                None
+            } else {
+                Some(lines.join("\n"))
+            }
+        })
+}
+
+/// Attach a captured doc-comment string to whichever AST node the
+/// statement carries. `Use` statements don't currently support docs and
+/// silently drop the captured text.
+fn attach_doc_to_statement(doc: Option<String>, stmt: Statement) -> Statement {
+    let Some(doc) = doc else {
+        return stmt;
+    };
+    match stmt {
+        Statement::Let(mut lb) => {
+            lb.doc = Some(doc);
+            Statement::Let(lb)
+        }
+        Statement::Definition(def) => {
+            Statement::Definition(Box::new(attach_doc_to_definition(doc, *def)))
+        }
+        Statement::Use(_) => stmt,
+    }
+}
+
+fn attach_doc_to_definition(doc: String, def: Definition) -> Definition {
+    match def {
+        Definition::Function(mut f) => {
+            f.doc = Some(doc);
+            Definition::Function(f)
+        }
+        Definition::Struct(mut s) => {
+            s.doc = Some(doc);
+            Definition::Struct(s)
+        }
+        Definition::Trait(mut t) => {
+            t.doc = Some(doc);
+            Definition::Trait(t)
+        }
+        Definition::Enum(mut e) => {
+            e.doc = Some(doc);
+            Definition::Enum(e)
+        }
+        Definition::Impl(mut i) => {
+            i.doc = Some(doc);
+            Definition::Impl(i)
+        }
+        Definition::Module(mut m) => {
+            m.doc = Some(doc);
+            Definition::Module(m)
+        }
+    }
 }
 
 /// Parse a use statement
@@ -298,6 +371,7 @@ where
                 pattern,
                 type_annotation,
                 value,
+                doc: None,
                 span: span_from_simple(e.span()),
             },
         )
@@ -369,19 +443,28 @@ where
 fn block_statements_to_expr(mut statements: Vec<BlockStatement>, span: crate::Span) -> Expr {
     // Empty body -> Nil
     if statements.is_empty() {
-        return Expr::Literal(Literal::Nil);
+        return Expr::Literal {
+            value: Literal::Nil,
+            span,
+        };
     }
 
     // Last item becomes the result expression
     let Some(last) = statements.pop() else {
-        return Expr::Literal(Literal::Nil);
+        return Expr::Literal {
+            value: Literal::Nil,
+            span,
+        };
     };
     let result = match last {
         BlockStatement::Expr(expr) => expr,
         // If last is a statement (not expr), push it back and use Nil as result
         stmt @ (BlockStatement::Let { .. } | BlockStatement::Assign { .. }) => {
             statements.push(stmt);
-            Expr::Literal(Literal::Nil)
+            Expr::Literal {
+                value: Literal::Nil,
+                span,
+            }
         }
     };
 
@@ -480,8 +563,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }
@@ -512,10 +594,7 @@ mod tests {
             | Type::Optional(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
-                return Err(format!("Expected Array type, got {ty:?}").into())
-            }
+            | Type::Closure { .. } => return Err(format!("Expected Array type, got {ty:?}").into()),
         }
         Ok(())
     }
@@ -552,8 +631,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -604,8 +682,7 @@ mod tests {
                         | Type::Array(_)
                         | Type::Optional(_)
                         | Type::Tuple(_)
-                        | Type::Closure { .. }
-                        | Type::TypeParameter(_) => {
+                        | Type::Closure { .. } => {
                             return Err(
                                 format!("Expected Dictionary type, got {:?}", field.ty).into()
                             )
@@ -668,8 +745,7 @@ mod tests {
                     | Type::Array(_)
                     | Type::Optional(_)
                     | Type::Tuple(_)
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => {
+                    | Type::Closure { .. } => {
                         return Err(format!("Expected inner Dictionary type, got {value:?}").into())
                     }
                 }
@@ -680,8 +756,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -721,8 +796,7 @@ mod tests {
                 | Type::Array(_)
                 | Type::Optional(_)
                 | Type::Tuple(_)
-                | Type::Closure { .. }
-                | Type::TypeParameter(_) => {
+                | Type::Closure { .. } => {
                     return Err(
                         format!("Expected Dictionary type inside Optional, got {inner:?}").into(),
                     )
@@ -734,8 +808,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }
@@ -769,8 +842,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -811,7 +883,16 @@ mod tests {
                 )]
                 let (first_key, first_val) = (&entries[0].0, &entries[0].1);
                 match (first_key, first_val) {
-                    (Expr::Literal(Literal::String(k)), Expr::Literal(Literal::Number(v))) => {
+                    (
+                        Expr::Literal {
+                            value: Literal::String(k),
+                            ..
+                        },
+                        Expr::Literal {
+                            value: Literal::Number(v),
+                            ..
+                        },
+                    ) => {
                         if k != "key" {
                             return Err(format!("expected {:?} == {:?}", k, "key").into());
                         }
@@ -822,7 +903,7 @@ mod tests {
                     _ => return Err("Expected string key and number value".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -860,7 +941,7 @@ mod tests {
                     return Err("Expected empty entries".into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -894,7 +975,13 @@ mod tests {
         let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
             Expr::DictAccess { dict, key, .. } => match (*dict, *key) {
-                (Expr::Reference { path, .. }, Expr::Literal(Literal::String(k))) => {
+                (
+                    Expr::Reference { path, .. },
+                    Expr::Literal {
+                        value: Literal::String(k),
+                        ..
+                    },
+                ) => {
                     let first = path.first().ok_or("expected at least one path segment")?;
                     if first.name != "data" {
                         return Err(format!("expected {:?} == {:?}", first.name, "data").into());
@@ -905,7 +992,7 @@ mod tests {
                 }
                 _ => return Err("Expected reference and string key".into()),
             },
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -943,7 +1030,10 @@ mod tests {
             Expr::DictAccess { dict, key, .. } => {
                 // Outer access: dict is another DictAccess, key is "inner"
                 match (*key,) {
-                    (Expr::Literal(Literal::String(k)),) => {
+                    (Expr::Literal {
+                        value: Literal::String(k),
+                        ..
+                    },) => {
                         if k != "inner" {
                             return Err(format!("expected {:?} == {:?}", k, "inner").into());
                         }
@@ -957,7 +1047,10 @@ mod tests {
                         ..
                     } => {
                         match (*inner_key,) {
-                            (Expr::Literal(Literal::String(k)),) => {
+                            (Expr::Literal {
+                                value: Literal::String(k),
+                                ..
+                            },) => {
                                 if k != "outer" {
                                     return Err(format!("expected {:?} == {:?}", k, "outer").into());
                                 }
@@ -976,7 +1069,7 @@ mod tests {
                                     .into());
                                 }
                             }
-                            Expr::Literal(_)
+                            Expr::Literal { .. }
                             | Expr::Invocation { .. }
                             | Expr::EnumInstantiation { .. }
                             | Expr::InferredEnumInstantiation { .. }
@@ -997,7 +1090,7 @@ mod tests {
                             | Expr::Block { .. } => return Err("Expected reference 'data'".into()),
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1018,7 +1111,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected inner DictAccess".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1066,7 +1159,7 @@ mod tests {
                 }
                 _ => return Err("Expected two references".into()),
             },
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1114,8 +1207,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1124,8 +1216,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1165,8 +1256,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1175,8 +1265,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1225,8 +1314,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1235,8 +1323,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1263,8 +1350,7 @@ mod tests {
                 | Type::Array(_)
                 | Type::Optional(_)
                 | Type::Tuple(_)
-                | Type::Dictionary { .. }
-                | Type::TypeParameter(_) => return Err("Expected Closure inside Optional".into()),
+                | Type::Dictionary { .. } => return Err("Expected Closure inside Optional".into()),
             },
             Type::Primitive(_)
             | Type::Ident(_)
@@ -1272,8 +1358,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }
@@ -1303,7 +1388,7 @@ mod tests {
                             );
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::Array { .. }
@@ -1328,7 +1413,7 @@ mod tests {
                     }
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1373,7 +1458,7 @@ mod tests {
                     return Err("params[0].ty should be None".into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1419,7 +1504,7 @@ mod tests {
                     return Err(format!("expected {:?} == {:?}", p1.name.name, "h").into());
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1465,7 +1550,7 @@ mod tests {
                     _ => return Err("Expected String type annotation".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1512,9 +1597,9 @@ mod tests {
         reason = "match expression over all Expr variants — exhaustive arms cannot be extracted without losing context"
     )]
     fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let x = 42 x");
+        let result = parse_expr_from_let("let x = 42 in x");
         if result.is_err() {
-            return Err(format!("Failed to parse let x = 42 x: {result:?}").into());
+            return Err(format!("Failed to parse `let x = 42 in x`: {result:?}").into());
         }
         let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
@@ -1543,12 +1628,15 @@ mod tests {
                     return Err(format!("ty should be None but got {ty:?}").into());
                 }
                 match *value {
-                    Expr::Literal(Literal::Number(n)) => {
+                    Expr::Literal {
+                        value: Literal::Number(n),
+                        ..
+                    } => {
                         if (n - 42.0_f64).abs() > f64::EPSILON {
                             return Err(format!("{:?} != {:?}", n, 42.0).into());
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1576,7 +1664,7 @@ mod tests {
                             return Err(format!("{:?} != {:?}", first.name, "x").into());
                         }
                     }
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1597,7 +1685,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected reference in body".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1622,7 +1710,7 @@ mod tests {
 
     #[test]
     fn test_let_expr_with_type() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let count: Number = 100 count");
+        let result = parse_expr_from_let("let count: Number = 100 in count");
         if result.is_err() {
             return Err(format!("Failed to parse let with type: : {result:?}").into());
         }
@@ -1644,7 +1732,7 @@ mod tests {
                     _ => return Err("Expected Number type annotation".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1669,7 +1757,7 @@ mod tests {
 
     #[test]
     fn test_let_expr_mutable() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let mut counter = 0 counter");
+        let result = parse_expr_from_let("let mut counter = 0 in counter");
         if result.is_err() {
             return Err(format!("Failed to parse let mut: {result:?}").into());
         }
@@ -1692,7 +1780,7 @@ mod tests {
                     | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1735,7 +1823,7 @@ mod tests {
 
     #[test]
     fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let x = 1 let y = 2 x");
+        let result = parse_expr_from_let("let x = 1 in let y = 2 in x");
         if result.is_err() {
             return Err(format!("Failed to parse nested let: {result:?}").into());
         }
@@ -1768,7 +1856,7 @@ mod tests {
                             return Err("Expected simple pattern".into())
                         }
                     },
-                    Expr::Literal(_)
+                    Expr::Literal { .. }
                     | Expr::Invocation { .. }
                     | Expr::EnumInstantiation { .. }
                     | Expr::InferredEnumInstantiation { .. }
@@ -1789,7 +1877,7 @@ mod tests {
                     | Expr::Block { .. } => return Err("Expected nested LetExpr".into()),
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Invocation { .. }
             | Expr::EnumInstantiation { .. }
             | Expr::InferredEnumInstantiation { .. }
@@ -1886,7 +1974,7 @@ mod tests {
     fn test_let_expr_method_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with method call value, then reference body
         // This uses the let EXPRESSION, not block statement
-        let result = parse_expr_from_let("let v = foo.bar(1) v");
+        let result = parse_expr_from_let("let v = foo.bar(1) in v");
         if result.is_err() {
             return Err(
                 format!("Failed to parse let expr method call then ref: : {result:?}").into(),
@@ -1898,7 +1986,7 @@ mod tests {
     #[test]
     fn test_let_expr_fn_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with function call value, then reference body
-        let result = parse_expr_from_let("let v = foo(1) v");
+        let result = parse_expr_from_let("let v = foo(1) in v");
         if result.is_err() {
             return Err(format!("Failed to parse let expr fn call then ref: : {result:?}").into());
         }
@@ -1908,7 +1996,7 @@ mod tests {
     #[test]
     fn test_let_expr_field_access_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with field access value, then reference body
-        let result = parse_expr_from_let("let v = foo.bar v");
+        let result = parse_expr_from_let("let v = foo.bar in v");
         if result.is_err() {
             return Err(
                 format!("Failed to parse let expr field access then ref: : {result:?}").into(),

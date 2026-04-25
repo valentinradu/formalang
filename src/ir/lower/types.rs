@@ -33,7 +33,7 @@ impl IrLowerer<'_> {
 
     /// Get field type from a resolved type.
     pub(super) fn get_field_type_from_resolved(
-        &self,
+        &mut self,
         ty: &ResolvedType,
         field_name: &str,
     ) -> ResolvedType {
@@ -44,36 +44,51 @@ impl IrLowerer<'_> {
                 }
             }
         }
-        ResolvedType::TypeParam("Unknown".to_string())
+        let bad = ty.clone();
+        self.internal_error_type_if_concrete(
+            &bad,
+            format!(
+                "get_field_type_from_resolved: no field `{field_name}` on type {bad:?}; semantic should have caught this"
+            ),
+        )
     }
 
     /// Get the field types of a specific variant from an enum type.
+    ///
+    /// Handles direct `Enum(id)`, a `Generic` whose base is an enum (so a
+    /// match over e.g. `Option<T>` still finds its variants), and the
+    /// `TypeParam("self")` impl-context fallback.
     pub(super) fn get_variant_fields(
         &self,
         enum_ty: &ResolvedType,
         variant_name: &str,
     ) -> Vec<ResolvedType> {
-        // Handle direct enum type
-        if let ResolvedType::Enum(id) = enum_ty {
-            if let Some(enum_def) = self.module.get_enum(*id) {
+        let enum_id = match enum_ty {
+            ResolvedType::Enum(id) => Some(*id),
+            ResolvedType::Generic { base, .. } => match base {
+                crate::ir::GenericBase::Enum(id) => Some(*id),
+                crate::ir::GenericBase::Struct(_) => None,
+            },
+            ResolvedType::TypeParam(name) if name == "self" => self
+                .current_impl_struct
+                .as_ref()
+                .and_then(|impl_name| self.module.enum_id(impl_name)),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::External { .. }
+            | ResolvedType::TypeParam(_) => None,
+        };
+        if let Some(id) = enum_id {
+            if let Some(enum_def) = self.module.get_enum(id) {
                 if let Some(variant) = enum_def.variants.iter().find(|v| v.name == variant_name) {
                     return variant.fields.iter().map(|f| f.ty.clone()).collect();
-                }
-            }
-        }
-        // Handle TypeParam("self") in impl context - resolve to actual enum type
-        if let ResolvedType::TypeParam(name) = enum_ty {
-            if name == "self" {
-                if let Some(ref impl_name) = self.current_impl_struct {
-                    if let Some(id) = self.module.enum_id(impl_name) {
-                        if let Some(enum_def) = self.module.get_enum(id) {
-                            if let Some(variant) =
-                                enum_def.variants.iter().find(|v| v.name == variant_name)
-                            {
-                                return variant.fields.iter().map(|f| f.ty.clone()).collect();
-                            }
-                        }
-                    }
                 }
             }
         }

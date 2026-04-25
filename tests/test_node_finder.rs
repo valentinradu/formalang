@@ -756,7 +756,11 @@ fn test_find_type_generic() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_type_dictionary() -> Result<(), Box<dyn std::error::Error>> {
-    // Primitive types have no spans so StructDef is returned; just verify it doesn't crash
+    // Primitive types inside dictionary brackets have no spans, so the
+    // node finder may return any of: Identifier (when the cursor lands
+    // on a known span), Type (when a higher-level Type node covers the
+    // range), StructField, or StructDef (the enclosing definition).
+    // Reaching any of those proves we didn't fall off the AST.
     let source = r"struct A { map: [String: Number] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "String")?;
@@ -1732,11 +1736,8 @@ fn test_query_provider_completion_view_trait() -> Result<(), Box<dyn std::error:
         .iter()
         .find(|c| c.label == "Displayable")
         .ok_or("Expected Displayable in completions")?;
-    if !matches!(
-        candidate.kind,
-        CompletionKind::ViewTrait | CompletionKind::ModelTrait
-    ) {
-        return Err("Expected ViewTrait or ModelTrait kind".into());
+    if !matches!(candidate.kind, CompletionKind::ModelTrait) {
+        return Err("Expected ModelTrait kind".into());
     }
     Ok(())
 }
@@ -1758,8 +1759,8 @@ fn test_query_provider_completion_view_struct() -> Result<(), Box<dyn std::error
         .iter()
         .find(|c| c.label == "Button")
         .ok_or("Expected Button in completions")?;
-    if !matches!(candidate.kind, CompletionKind::View | CompletionKind::Model) {
-        return Err("Expected View or Model kind".into());
+    if !matches!(candidate.kind, CompletionKind::Model) {
+        return Err("Expected Model kind".into());
     }
     Ok(())
 }

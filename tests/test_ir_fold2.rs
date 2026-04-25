@@ -477,7 +477,11 @@ fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_fold_for_loop_body() -> Result<(), Box<dyn std::error::Error>> {
+fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: previous body had three permissive arms ("Good",
+    // "Acceptable", "Other forms ok") and a final "Just verifying ...
+    // runs without error" check. Now assert the actual fold outcome:
+    // `if true { 1 + 2 } else { 0 }` must collapse to a literal `3`.
     let source = r"
         let items: [Number] = [1, 2, 3]
         let doubled: [Number] = for x in items { if true { 1 + 2 } else { 0 } }
@@ -489,20 +493,18 @@ fn test_fold_for_loop_body() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "doubled")
         .ok_or("doubled not found")?;
-    // For loop body should be folded
-    if let IrExpr::For { body, .. } = &binding.value {
-        // Body should be the folded result: either the then branch (3) or the loop itself
-        if let IrExpr::Literal { .. } = body.as_ref() {
-            // Good: folded
-        } else if let IrExpr::If { .. } = body.as_ref() {
-            // Acceptable: not folded through
-        } else {
-            // Other forms ok
-        }
-    }
-    // Just verifying fold_constants runs without error
-    if folded.lets.is_empty() {
-        return Err("assertion failed".into());
+    let IrExpr::For { body, .. } = &binding.value else {
+        return Err(format!("expected For expression, got {:?}", binding.value).into());
+    };
+    let IrExpr::Literal {
+        value: formalang::ast::Literal::Number(n),
+        ..
+    } = body.as_ref()
+    else {
+        return Err(format!("expected for-body to fold to a Number literal, got {body:?}").into());
+    };
+    if (n - 3.0_f64).abs() > f64::EPSILON {
+        return Err(format!("expected folded value 3, got {n}").into());
     }
     Ok(())
 }
@@ -559,7 +561,40 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_fold_method_call_args() -> Result<(), Box<dyn std::error::Error>> {
+fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_fold_method_call_args` and made a real
+    // assertion (audit #52/#53): the previous body only said "Just
+    // verify it runs without panic" without checking the fold
+    // actually fired. Now we walk the impl body and assert the
+    // `2 + 3` literal folded down to `5`.
+    use formalang::ir::{IrBlockStatement, IrExpr};
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "this helper only needs to detect surviving BinaryOps inside method-call args; other IrExpr variants are irrelevant for the assertion"
+    )]
+    fn contains_addition(expr: &IrExpr) -> bool {
+        match expr {
+            IrExpr::BinaryOp { .. } => true,
+            IrExpr::MethodCall { receiver, args, .. } => {
+                contains_addition(receiver) || args.iter().any(|(_, a)| contains_addition(a))
+            }
+            IrExpr::Block {
+                statements, result, ..
+            } => {
+                contains_addition(result)
+                    || statements.iter().any(|s| match s {
+                        IrBlockStatement::Let { value, .. } => contains_addition(value),
+                        IrBlockStatement::Assign { target, value } => {
+                            contains_addition(target) || contains_addition(value)
+                        }
+                        IrBlockStatement::Expr(e) => contains_addition(e),
+                    })
+            }
+            _ => false,
+        }
+    }
+
     let source = r"
         struct Vec2 { x: Number, y: Number }
         impl Vec2 {
@@ -569,10 +604,19 @@ fn test_fold_method_call_args() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.impls.is_empty() {
-        return Err("assertion failed".into());
+    let imp = folded.impls.first().ok_or("no impls in folded module")?;
+    let compute = imp
+        .functions
+        .iter()
+        .find(|f| f.name == "compute")
+        .ok_or("compute method missing")?;
+    let body = compute.body.as_ref().ok_or("compute body missing")?;
+    if contains_addition(body) {
+        return Err(
+            "expected `2 + 3` inside method call arg to fold to a literal, but a BinaryOp survives"
+                .into(),
+        );
     }
-    // Just verify it runs without panic - method args get folded inside impl body
     Ok(())
 }
 

@@ -347,8 +347,12 @@ fn test_dce_expr_function_call_with_dead_code_args() -> Result<(), Box<dyn std::
 }
 
 #[test]
-fn test_dce_expr_method_call() -> Result<(), Box<dyn std::error::Error>> {
-    // Use a struct with impl that has a method, so we can test method call DCE
+fn test_dce_preserves_struct_and_its_impl_methods() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: the previous "verify DCE runs without panic" version
+    // checked nothing meaningful. `Config::box` keeps `Container`
+    // alive; DCE preserves the struct and (per current design) keeps
+    // the whole impl block attached so its methods remain callable
+    // through the surviving struct.
     let source = r"
         struct Container { items: [Number] }
         impl Container {
@@ -360,9 +364,18 @@ fn test_dce_expr_method_call() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
-    // Just verify DCE runs without panic on module with impl methods
-    if optimized.structs.is_empty() {
-        return Err("expected at least one struct".into());
+    if optimized.structs.iter().all(|s| s.name != "Container") {
+        return Err("Container struct should survive DCE — Config still references it".into());
+    }
+    let count_survives = optimized
+        .impls
+        .iter()
+        .flat_map(|i| i.functions.iter())
+        .any(|f| f.name == "count");
+    if !count_survives {
+        return Err(
+            "Container::count should survive DCE because Container is still reachable".into(),
+        );
     }
     Ok(())
 }
@@ -1358,9 +1371,9 @@ fn test_dce_analyze_struct_in_closure() -> Result<(), Box<dyn std::error::Error>
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
     dce.analyze();
-    // Just verify analysis completes without panic
     let point_id = module.struct_id("Point").ok_or("Point")?;
-    // Point is not used in the closure body
+    // Point is not referenced from the closure body, so DCE should
+    // not mark it used.
     if dce.is_struct_used(point_id) {
         return Err("Point should not be used via closure".into());
     }
@@ -1499,7 +1512,12 @@ fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn st
 /// Composed traits keep their parents alive: if `B: A` and `B` is used, `A`
 /// must be used too.
 #[test]
-fn test_dce_preserves_parent_trait_in_composition() -> Result<(), Box<dyn std::error::Error>> {
+fn test_dce_marks_composed_parent_trait_as_used() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_dce_preserves_parent_trait_in_composition`
+    // (audit #53): the original name was vague about *which* relation
+    // the test checks. The body only asserts that `Named` (the parent)
+    // is marked used by DCE because `Tracked` composes it; `Tracked`'s
+    // own usage is asserted separately by the conformance check.
     let source = r"
         pub trait Named { name: String }
         pub trait Tracked: Named {

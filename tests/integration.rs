@@ -607,7 +607,7 @@ fn test_let_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
             value: Number = (let x = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -619,7 +619,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
             value: Number = (let x: Number = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -631,7 +631,7 @@ fn test_let_mut() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
             value: Number = (let mut count = 0
-            count)
+            in count)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -643,9 +643,9 @@ fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Computation {
             result: Number = (let a = 1
-            let b = 2
-            let c = 3
-            a)
+            in let b = 2
+            in let c = 3
+            in a)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -864,6 +864,39 @@ fn test_block_comments() -> Result<(), Box<dyn std::error::Error>> {
         /* Block comment */
         struct User {
             name: String
+        }
+    ";
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_nested_block_comments() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #47: a `/* /* inner */ outer */` previously terminated at the
+    // first `*/` and left ` */ struct ...` as a syntax error. The Logos
+    // callback now tracks nest depth so the whole nested comment is
+    // skipped cleanly.
+    let source = r"
+        /* outer
+           /* nested */
+           still in outer
+           /* /* deeply nested */ */
+        */
+        struct User {
+            name: String
+        }
+    ";
+    compile(source).map_err(|e| format!("Failed to handle nested block comments: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_block_comment_terminates_inside_token_stream() -> Result<(), Box<dyn std::error::Error>> {
+    // A block comment inside a definition body must not break tokenisation
+    // of surrounding code, even when nested.
+    let source = r"
+        struct A /* /* nested */ */ {
+            x: Number /* trailing */
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 150
 expression: module
 ---
 IrModule {
@@ -29,6 +30,7 @@ IrModule {
                 },
             ],
             generic_params: [],
+            doc: None,
         },
     ],
     traits: [],
@@ -40,12 +42,17 @@ IrModule {
                     0,
                 ),
             ),
+            trait_id: None,
+            is_extern: false,
+            generic_params: [],
             functions: [
                 IrFunction {
                     name: "magnitude",
+                    generic_params: [],
                     params: [
                         IrFunctionParam {
                             name: "self",
+                            external_label: None,
                             ty: None,
                             default: None,
                             convention: Let,
@@ -77,6 +84,7 @@ IrModule {
                         },
                     ),
                     is_extern: false,
+                    doc: None,
                 },
             ],
         },

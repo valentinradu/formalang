@@ -29,7 +29,7 @@ pub use symbol_table::{
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, Definition, File, ParamConvention, Statement, Type,
-    UseItems, UseStmt, Visibility,
+    UseItems, UseStmt,
 };
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -208,6 +208,16 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     local_let_bindings: HashMap<String, (String, bool)>,
     /// Bindings consumed by a `sink` parameter call — cannot be used after
     consumed_bindings: HashSet<String>,
+    /// Scoped overrides used during inference. When inferring the body of
+    /// a match arm or a similar pattern-introducing construct, the
+    /// pattern's bindings (variant fields → element types) are pushed as
+    /// a frame here. `infer_type_reference` consults this stack first
+    /// (innermost frame wins) before falling back to `local_let_bindings`.
+    /// Wrapped in `RefCell` so the read-only `infer_type` family doesn't
+    /// have to thread `&mut self` through every helper.
+    ///
+    /// Audit finding #27.
+    pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, String>>>,
     /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Free-variable captures for closure-typed let bindings, used for
@@ -283,6 +293,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
+            inference_scope_stack: std::cell::RefCell::new(Vec::new()),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
@@ -307,6 +318,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             closure_param_scopes: Vec::new(),
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
+            inference_scope_stack: std::cell::RefCell::new(Vec::new()),
             closure_binding_conventions: HashMap::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
@@ -551,6 +563,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         binding.name.clone(),
                         let_binding.visibility,
                         let_binding.span,
+                        let_binding.doc.clone(),
                     ) {
                         module_errors.push(CompilerError::DuplicateDefinition {
                             name: format!(
@@ -569,37 +582,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return Err(module_errors);
         }
 
-        // Pass 2: Process pub use statements for re-exports
-        // We need to cache the module first (with just definitions) to prevent infinite recursion
-        // in case of circular pub use statements
+        // Cache the module first (with just definitions) to prevent infinite
+        // recursion during use-statement processing if two modules pub-use
+        // each other.
         self.module_cache.insert(
             module_path.to_path_buf(),
             (file.clone(), module_symbols.clone()),
         );
 
-        // Temporarily set current_file to this module's path so that import-graph
-        // cycle detection is active while processing the module's pub use statements.
+        // Run the remaining analysis passes on the module with its own
+        // symbol table temporarily installed as `self.symbols`. This covers:
+        //   Pass 0  — use-statement resolution (both pub and private)
+        //   Pass 1.5 — validate_generic_parameters
+        //   Pass 1.6 — infer_let_types
+        //   Pass 2  — resolve_types
+        //   Pass 3  — validate_expressions
+        //   Pass 4  — validate_trait_implementations
+        //   Pass 5  — detect_circular_dependencies
         let saved_current_file = self.current_file.take();
         self.current_file = Some(module_path.to_path_buf());
+        let saved_symbols = std::mem::replace(&mut self.symbols, module_symbols);
+        let saved_errors = std::mem::take(&mut self.errors);
+        let saved_impl_struct = self.current_impl_struct.take();
+        let saved_generic_scopes = std::mem::take(&mut self.generic_scopes);
+        let saved_loop_var_scopes = std::mem::take(&mut self.loop_var_scopes);
+        let saved_closure_param_scopes = std::mem::take(&mut self.closure_param_scopes);
+        let saved_local_let_bindings = std::mem::take(&mut self.local_let_bindings);
+        let saved_consumed_bindings = std::mem::take(&mut self.consumed_bindings);
 
-        // Now process pub use statements
-        for statement in &file.statements {
-            if let Statement::Use(use_stmt) = statement {
-                // Only process public use statements for re-export
-                if use_stmt.visibility == Visibility::Public {
-                    self.process_pub_use_for_module(
-                        use_stmt,
-                        &mut module_symbols,
-                        &mut module_errors,
-                    );
-                }
-            }
-        }
+        self.resolve_modules(&file);
+        self.validate_generic_parameters(&file);
+        self.infer_let_types(&file);
+        self.resolve_types(&file);
+        self.validate_expressions(&file);
+        self.validate_trait_implementations(&file);
+        self.detect_circular_dependencies(&file);
 
-        // Restore original current_file
+        module_symbols = std::mem::replace(&mut self.symbols, saved_symbols);
+        let pass_errors = std::mem::replace(&mut self.errors, saved_errors);
+        module_errors.extend(pass_errors);
+        self.current_impl_struct = saved_impl_struct;
+        self.generic_scopes = saved_generic_scopes;
+        self.loop_var_scopes = saved_loop_var_scopes;
+        self.closure_param_scopes = saved_closure_param_scopes;
+        self.local_let_bindings = saved_local_let_bindings;
+        self.consumed_bindings = saved_consumed_bindings;
         self.current_file = saved_current_file;
 
-        // Update the cache with the final symbol table (including re-exports)
+        // Update the cache with the final symbol table (post-passes).
         self.module_cache.insert(
             module_path.to_path_buf(),
             (file.clone(), module_symbols.clone()),
@@ -619,161 +649,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // since semantic analysis passed. IR errors would be caught during main file lowering.
 
         Ok(module_symbols)
-    }
-
-    /// Process a pub use statement for a module being loaded
-    /// This adds the re-exported symbols to the module's symbol table
-    fn process_pub_use_for_module(
-        &mut self,
-        use_stmt: &UseStmt,
-        module_symbols: &mut SymbolTable,
-        module_errors: &mut Vec<CompilerError>,
-    ) {
-        let path_segments: Vec<String> = use_stmt
-            .path
-            .iter()
-            .map(|ident| ident.name.clone())
-            .collect();
-
-        let (source, imported_module_path) = match self
-            .resolver
-            .resolve(&path_segments, self.current_file.as_ref())
-        {
-            Ok(result) => result,
-            Err(err) => {
-                let compiler_err = Self::module_error_to_compiler_error(err, use_stmt.span, true);
-                module_errors.push(compiler_err);
-                return;
-            }
-        };
-
-        // Check for circular imports and register the edge; on cycle push to module_errors.
-        if let Some(current_path) = self.current_file.clone() {
-            if let Some(cycle) = self
-                .import_graph
-                .would_create_cycle(&current_path, &imported_module_path)
-            {
-                let mut full_cycle = cycle;
-                full_cycle.insert(0, current_path.clone());
-                module_errors.push(CompilerError::CircularImport {
-                    cycle: full_cycle
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join(" -> "),
-                    span: use_stmt.span,
-                });
-                return;
-            }
-            self.import_graph
-                .add_import(current_path, imported_module_path.clone());
-        }
-
-        let imported_symbols =
-            if let Some((_, symbols)) = self.module_cache.get(&imported_module_path) {
-                symbols.clone()
-            } else {
-                match self.parse_and_analyze_module(&source, &imported_module_path) {
-                    Ok(symbols) => symbols,
-                    Err(errors) => {
-                        module_errors.extend(errors);
-                        return;
-                    }
-                }
-            };
-
-        Self::reexport_use_items(
-            &use_stmt.items,
-            &imported_symbols,
-            module_symbols,
-            &imported_module_path,
-            &path_segments,
-            module_errors,
-            use_stmt.span,
-        );
-    }
-
-    /// Dispatch symbol re-exports for all `UseItems` variants in `process_pub_use_for_module`
-    fn reexport_use_items(
-        items: &UseItems,
-        source_symbols: &SymbolTable,
-        target_symbols: &mut SymbolTable,
-        module_path: &std::path::Path,
-        path_segments: &[String],
-        errors: &mut Vec<CompilerError>,
-        use_span: Span,
-    ) {
-        let module_name = path_segments.join("::");
-        match items {
-            UseItems::Single(ident) => {
-                if let Err(e) = target_symbols.import_symbol(
-                    &ident.name,
-                    source_symbols,
-                    module_path.to_path_buf(),
-                    path_segments.to_vec(),
-                ) {
-                    errors.push(Self::reexport_error_to_compiler_error(
-                        e,
-                        &module_name,
-                        ident.span,
-                    ));
-                }
-            }
-            UseItems::Multiple(idents) => {
-                for ident in idents {
-                    if let Err(e) = target_symbols.import_symbol(
-                        &ident.name,
-                        source_symbols,
-                        module_path.to_path_buf(),
-                        path_segments.to_vec(),
-                    ) {
-                        errors.push(Self::reexport_error_to_compiler_error(
-                            e,
-                            &module_name,
-                            ident.span,
-                        ));
-                    }
-                }
-            }
-            UseItems::Glob => {
-                // Glob imports iterate over all public symbols of the source module.
-                // Since `all_public_symbols()` only returns pub-visible names, these
-                // imports should never fail. If one does, surface the error rather
-                // than silently swallowing it so invariant violations are detectable.
-                for name in source_symbols.all_public_symbols() {
-                    if let Err(e) = target_symbols.import_symbol(
-                        &name,
-                        source_symbols,
-                        module_path.to_path_buf(),
-                        path_segments.to_vec(),
-                    ) {
-                        errors.push(Self::reexport_error_to_compiler_error(
-                            e,
-                            &module_name,
-                            use_span,
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    fn reexport_error_to_compiler_error(
-        err: crate::semantic::symbol_table::ImportError,
-        module_name: &str,
-        span: crate::location::Span,
-    ) -> CompilerError {
-        match err {
-            crate::semantic::symbol_table::ImportError::PrivateItem { name, .. }
-            | crate::semantic::symbol_table::ImportError::ItemNotFound { name, .. } => {
-                CompilerError::ImportItemNotFound {
-                    item: name,
-                    module: module_name.to_string(),
-                    available: String::new(),
-                    span,
-                }
-            }
-        }
     }
 
     /// Helper to collect a definition into a symbol table (static version for module parsing)
@@ -833,6 +708,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fields,
             composed_traits,
             trait_def.methods.clone(),
+            trait_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -875,6 +751,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
+            struct_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -971,6 +848,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             variants,
             variant_fields,
             Vec::new(),
+            enum_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1042,6 +920,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             params,
             func_def.return_type.clone(),
             vec![],
+            func_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1179,7 +1058,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     Definition::Struct(struct_def) => &struct_def.generics,
                     Definition::Impl(impl_def) => &impl_def.generics,
                     Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::Module(_) | Definition::Function(_) => continue, // No generics, skip
+                    Definition::Function(func_def) => &func_def.generics,
+                    // Module definitions don't carry generics themselves;
+                    // nested definitions are validated via their own arms.
+                    Definition::Module(_) => continue,
                 };
 
                 // Check for duplicate generic parameters
@@ -1314,6 +1196,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             binding.name.clone(),
                             let_binding.visibility,
                             let_binding.span,
+                            let_binding.doc.clone(),
                         ) {
                             self.errors.push(CompilerError::DuplicateDefinition {
                                 name: format!(
@@ -1370,6 +1253,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fields,
             composed_traits,
             trait_def.methods.clone(),
+            trait_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1408,6 +1292,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             struct_def.span,
             struct_def.generics.clone(),
             fields,
+            struct_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1552,6 +1437,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             variants,
             variant_fields,
             Vec::new(),
+            enum_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1597,6 +1483,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
+        // Audit finding #28: `FunctionDef` carries an explicit
+        // `is_extern` flag set by the parser (`extern_fn_parser` →
+        // `true`, `function_def_parser` → `false`). Cross-check it
+        // against `body` so a mismatch — which can happen under parser
+        // error recovery, even though the happy-path parsers preserve
+        // the invariant — surfaces a meaningful semantic error.
+        if func_def.is_extern && func_def.body.is_some() {
+            self.errors.push(CompilerError::ExternFnWithBody {
+                function: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+        } else if !func_def.is_extern && func_def.body.is_none() {
+            self.errors.push(CompilerError::RegularFnWithoutBody {
+                function: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+        }
+
         let params: Vec<ParamInfo> = func_def
             .params
             .iter()
@@ -1615,6 +1519,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             params,
             func_def.return_type.clone(),
             vec![],
+            func_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
                 name: format!(
@@ -1645,6 +1550,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             scope.params.insert(param.name.name.clone(), constraints);
         }
 
+        self.generic_scopes.push(scope);
+    }
+
+    /// Push a generic scope for an impl block that combines the impl's own
+    /// `<T>` parameters with the constraints declared on the target
+    /// struct/enum. `impl Sum<T>` carries the param name without
+    /// constraints; the constraints (`T: Foo`) live on `struct Sum<T: Foo>`.
+    /// Without merging, methods inside the impl can't see the trait
+    /// bounds on T. Audit findings #12 and #4/#27.
+    pub(super) fn push_impl_generic_scope(
+        &mut self,
+        impl_generics: &[crate::ast::GenericParam],
+        target_name: &str,
+    ) {
+        let mut scope = GenericScope {
+            params: HashMap::new(),
+        };
+        // Start with the impl's own generic param names (often constraint-less).
+        for param in impl_generics {
+            let constraints: Vec<String> = param
+                .constraints
+                .iter()
+                .map(|c| match c {
+                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                })
+                .collect();
+            scope.params.insert(param.name.name.clone(), constraints);
+        }
+        // Merge constraints from the target struct/enum's own generics.
+        let target_generics = if let Some(s) = self.symbols.structs.get(target_name) {
+            s.generics.clone()
+        } else if let Some(e) = self.symbols.enums.get(target_name) {
+            e.generics.clone()
+        } else {
+            Vec::new()
+        };
+        for param in &target_generics {
+            let constraints: Vec<String> = param
+                .constraints
+                .iter()
+                .map(|c| match c {
+                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                })
+                .collect();
+            let entry = scope.params.entry(param.name.name.clone()).or_default();
+            for c in constraints {
+                if !entry.contains(&c) {
+                    entry.push(c);
+                }
+            }
+        }
         self.generic_scopes.push(scope);
     }
 
@@ -1679,6 +1635,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// This is primarily used by LSP features for completion, hover, etc.
     pub const fn symbols(&self) -> &SymbolTable {
         &self.symbols
+    }
+
+    /// Return the cached AST+symbol-table pairs for every imported module.
+    /// LSP features use this to answer queries about symbols that live
+    /// outside the current file.
+    pub const fn module_cache(&self) -> &HashMap<PathBuf, (File, SymbolTable)> {
+        &self.module_cache
     }
 
     /// Get all cached IR modules from imports.

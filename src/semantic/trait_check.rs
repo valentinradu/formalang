@@ -74,6 +74,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             .zip(impl_non_self.iter())
                             .any(|(req, imp)| req.convention != imp.convention);
 
+                    // Audit finding #15: also compare parameter *types*.
+                    // Previously only arity and conventions were checked, so
+                    // an impl could return `fn foo(x: Int)` for a trait
+                    // method declared `fn foo(x: String)` without error.
+                    let param_type_mismatch = !param_count_mismatch
+                        && required_non_self
+                            .iter()
+                            .zip(impl_non_self.iter())
+                            .any(|(req, imp)| match (&req.ty, &imp.ty) {
+                                (Some(req_ty), Some(imp_ty)) => !Self::types_match(req_ty, imp_ty),
+                                (None, None) => false,
+                                _ => true,
+                            });
+
                     // Also check self convention if both have self
                     let self_convention_mismatch = {
                         let req_self = required_params.iter().find(|p| p.name.name == "self");
@@ -94,6 +108,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         || convention_mismatch
                         || self_convention_mismatch
                         || return_type_mismatch
+                        || param_type_mismatch
                     {
                         let expected = required_return
                             .as_ref()
@@ -118,9 +133,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Collect the methods declared directly in a trait (not inherited ones).
     ///
-    /// Each `impl Trait for Struct` block must provide only the methods declared
-    /// directly in that trait. Inherited methods from composed traits are expected
-    /// to be covered by separate impl blocks for those base traits.
+    /// Each `impl Trait for Struct` block must provide only the methods
+    /// declared directly in that trait. Inherited methods from composed
+    /// traits are expected to be covered by separate impl blocks for those
+    /// base traits — this is a deliberate design choice documented in the
+    /// language reference, not a gap. See audit finding #16 (closed as
+    /// "design is intentional").
     fn collect_all_trait_methods(
         &self,
         trait_name: &str,
@@ -209,7 +227,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .zip(a2.iter())
                         .all(|(t1, t2)| Self::types_match(t1, t2))
             }
-            (Type::TypeParameter(p1), Type::TypeParameter(p2)) => p1.name == p2.name,
             (Type::Dictionary { key: k1, value: v1 }, Type::Dictionary { key: k2, value: v2 }) => {
                 Self::types_match(k1, k2) && Self::types_match(v1, v2)
             }
@@ -268,7 +285,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     format!("{}<{}>", name.name, arg_types.join(", "))
                 }
             }
-            Type::TypeParameter(param) => param.name.clone(),
             Type::Dictionary { key, value } => {
                 format!(
                     "[{}: {}]",
@@ -302,21 +318,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Check if two type strings are compatible.
     ///
-    /// Handles exact matches, the `Unknown` placeholder (incomplete inference),
-    /// and `.variant(...)` inferred enum syntax.
+    /// Handles exact matches and `.variant(...)` inferred enum syntax.
+    /// Audit findings #4 and #27 closed: neither side gets a wildcard
+    /// "Unknown" pass any more. Inference now resolves match-arm
+    /// pattern bindings and impl-static / enum-constructor calls, so
+    /// `Unknown` in inference output is genuinely an error signal.
     pub(super) fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
         if expected == actual {
-            return true;
-        }
-
-        // Pure `Unknown` means type inference could not determine the type
-        // at all; accept conservatively so we don't emit noisy secondary
-        // errors on top of whatever caused the inference to fail.
-        //
-        // Composite types that merely *contain* `Unknown` (e.g. `[Unknown]`,
-        // `(x: Unknown, y: String)`) are matched structurally below — they
-        // must still agree on outer shape with the expected type.
-        if actual == "Unknown" || expected == "Unknown" {
             return true;
         }
 
@@ -392,13 +400,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 let enum_traits = self.symbols.get_all_traits_for_enum(&name.name);
                 enum_traits.contains(&trait_key)
-            }
-            Type::TypeParameter(param) => {
-                // Check if the type parameter has the constraint in scope
-                if let Some(constraints) = self.get_type_parameter_constraints(&param.name) {
-                    return constraints.contains(&trait_name.to_string());
-                }
-                false
             }
             // Primitives, arrays, optionals, tuples, etc. don't implement user-defined traits
             Type::Primitive(_)

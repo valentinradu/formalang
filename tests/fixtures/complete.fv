@@ -232,6 +232,6 @@ let consume_label: sink String -> String = sink s -> s
 
 let final_score: Number = (
     let base: Number = sample.priority_score()
-    let bonus: Number = if is_urgent { 5 } else { 0 }
-    base + bonus
+    in let bonus: Number = if is_urgent { 5 } else { 0 }
+    in base + bonus
 )

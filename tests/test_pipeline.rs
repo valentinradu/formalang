@@ -527,12 +527,48 @@ fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::
         pub struct Box<T> { value: T }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should accept an uninstantiated generic, got: {e:?}"))?;
     if result.structs.iter().any(|s| s.name == "Box") {
         return Err("generic `Box<T>` should have been removed after monomorphisation".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_rejects_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #35: generic traits aren't supported by the IR. The
+    // monomorphise pass's leftover scan should surface a clear
+    // InternalError instead of silently leaving the generic trait in
+    // the module.
+    use formalang::ir::MonomorphisePass;
+    use formalang::CompilerError;
+
+    let source = r"
+        pub trait Container<T> {
+            item: T
+        }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let errs = pipeline
+        .run(module)
+        .err()
+        .ok_or("expected monomorphise to reject a generic trait")?;
+    let saw_internal = errs.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::InternalError { detail, .. }
+                if detail.contains("generic trait") && detail.contains("Container")
+        )
+    });
+    if !saw_internal {
+        return Err(format!(
+            "expected InternalError naming generic trait `Container`, got: {errs:?}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -545,7 +581,7 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
         pub let b: Box<Number> = Box<Number>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
@@ -571,6 +607,162 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
 }
 
 #[test]
+fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // A generic impl block on Box<T> must be cloned for each specialisation,
+    // with TypeParam("T") substituted to the concrete type arg. Without the
+    // Phase 2b specialisation step, Box__Number would end up with zero
+    // methods after compaction.
+    let source = r"
+        pub struct Box<T> { value: T }
+        impl Box {
+            fn get(self) -> T { self.value }
+        }
+        pub let b: Box<Number> = Box<Number>(value: 1)
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    // Sanity: the source produces at least one impl block before
+    // monomorphisation. If this fires, the lowerer itself didn't produce
+    // the expected IR shape and the test is probing the wrong thing.
+    if module.impls.is_empty() {
+        return Err("pre-monomorphise module has no impls".into());
+    }
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline
+        .run(module)
+        .map_err(|e| format!("monomorphise should specialise Box<Number> impl, got: {e:?}"))?;
+
+    // Locate the specialised Box__Number struct.
+    let spec_struct = result
+        .structs
+        .iter()
+        .find(|s| s.name.starts_with("Box__"))
+        .ok_or("expected a Box__... specialised struct")?;
+    let spec_id = result
+        .struct_id(&spec_struct.name)
+        .ok_or("specialised struct has no id")?;
+
+    // There must be at least one impl targeting the specialised struct.
+    let has_impl = result.impls.iter().any(|imp| match imp.target {
+        formalang::ir::ImplTarget::Struct(id) => id == spec_id,
+        formalang::ir::ImplTarget::Enum(_) => false,
+    });
+    if !has_impl {
+        return Err(format!(
+            "expected an impl block targeting {}, but none found",
+            spec_struct.name
+        )
+        .into());
+    }
+
+    // No surviving impl may still target a dropped generic base. Every
+    // retained impl must point at a struct/enum that still exists in the
+    // module.
+    for imp in &result.impls {
+        match imp.target {
+            formalang::ir::ImplTarget::Struct(id) => {
+                if result.get_struct(id).is_none() {
+                    return Err(format!(
+                        "impl targets dropped struct id {}; specialise_impls left a dangling ref",
+                        id.0
+                    )
+                    .into());
+                }
+            }
+            formalang::ir::ImplTarget::Enum(id) => {
+                if result.get_enum(id).is_none() {
+                    return Err(format!(
+                        "impl targets dropped enum id {}; specialise_impls left a dangling ref",
+                        id.0
+                    )
+                    .into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn walk_for_method_call(expr: &formalang::ir::IrExpr, expected_idx: usize, found: &mut bool) {
+    use formalang::ir::{DispatchKind, IrExpr};
+    if *found {
+        return;
+    }
+    if let IrExpr::MethodCall {
+        method,
+        dispatch: DispatchKind::Static { impl_id },
+        ..
+    } = expr
+    {
+        if method == "get" && (impl_id.0 as usize) == expected_idx {
+            *found = true;
+        }
+    }
+    if let IrExpr::Block {
+        result, statements, ..
+    } = expr
+    {
+        for stmt in statements {
+            if let formalang::ir::IrBlockStatement::Expr(e) = stmt {
+                walk_for_method_call(e, expected_idx, found);
+            }
+        }
+        walk_for_method_call(result, expected_idx, found);
+    }
+}
+
+#[test]
+fn test_monomorphise_rewrites_dispatch_impl_ids() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // Audit #5b: a method call on a specialised receiver must dispatch
+    // to the cloned impl block (not the original generic-impl slot).
+    let source = r"
+        pub struct Box<T> { value: T }
+        impl Box {
+            fn get(self) -> T { self.value }
+        }
+        pub fn use_box() -> Number {
+            let b: Box<Number> = Box<Number>(value: 1)
+            b.get()
+        }
+    ";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
+
+    let spec_struct = result
+        .structs
+        .iter()
+        .find(|s| s.name.starts_with("Box__"))
+        .ok_or("expected Box__... specialised struct")?;
+    let spec_struct_id = result
+        .struct_id(&spec_struct.name)
+        .ok_or("specialised struct has no id")?;
+    let expected_impl_idx = result
+        .impls
+        .iter()
+        .position(|imp| {
+            matches!(imp.target,
+            formalang::ir::ImplTarget::Struct(id) if id == spec_struct_id)
+        })
+        .ok_or("no impl targets specialised struct")?;
+
+    // Find use_box's body, walk to b.get(), check its impl_id matches.
+    let use_box = result
+        .functions
+        .iter()
+        .find(|f| f.name == "use_box")
+        .ok_or("use_box missing")?;
+    let body = use_box.body.as_ref().ok_or("use_box has no body")?;
+    let mut found = false;
+    walk_for_method_call(body, expected_impl_idx, &mut found);
+    if !found {
+        return Err("dispatch in use_box did not point at the specialised impl".into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
@@ -578,7 +770,7 @@ fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error:
         pub fn greet(user: User) -> String { user.name }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     pipeline
         .run(module)
         .map_err(|e| format!("expected pass to accept concrete module, got: {e:?}"))?;
@@ -601,7 +793,7 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
         }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass);
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
         .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;

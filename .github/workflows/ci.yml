@@ -23,10 +23,14 @@ jobs:
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
+          # Only cache the registry/git dirs, not `target/`. Caching
+          # `target/` across runs causes the runner to fill up: the
+          # restored stale artifacts plus the freshly compiled ones
+          # don't fit on the ~14GB ephemeral disk, surfacing as
+          # `No space left on device` during link.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-

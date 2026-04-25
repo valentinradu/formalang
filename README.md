@@ -296,11 +296,11 @@ Only `pub` items can be imported. Circular imports are a compile error.
 
 ### Extern declarations
 
-Describe types and functions provided by the host runtime — they have no FormaLang body.
+Describe functions and method surfaces provided by the host runtime — they have no FormaLang body. There is no `extern type`; host-provided types are declared as regular structs and given an `extern impl` so their methods are resolved by the host.
 
 ```formalang
-extern type Canvas
-extern type Connection
+pub struct Canvas {}
+pub struct Connection {}
 
 extern fn create_canvas() -> Canvas
 extern fn connect(url: String) -> Connection
@@ -351,13 +351,13 @@ let module = compile_to_ir_with_resolver(source, resolver)?;
 ```rust
 let module = compile_to_ir(source)?;
 
-module.structs          // Vec<IrStruct>
-module.traits           // Vec<IrTrait>
-module.enums            // Vec<IrEnum>
-module.functions        // Vec<IrFunction>
-module.impls            // Vec<IrImpl>
-module.lets             // Vec<IrLet>
-module.extern_types     // Vec<IrExternType>
+module.structs    // Vec<IrStruct>
+module.traits     // Vec<IrTrait>
+module.enums      // Vec<IrEnum>
+module.functions  // Vec<IrFunction>   (extern fns have is_extern = true and body = None)
+module.impls      // Vec<IrImpl>
+module.lets       // Vec<IrLet>
+module.imports    // Vec<IrImport>
 
 // ID-based lookup
 let id = module.struct_id("User").unwrap();

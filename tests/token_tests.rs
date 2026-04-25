@@ -145,7 +145,6 @@ fn test_token_as_str_delimiters() -> Result<(), Box<dyn std::error::Error>> {
         (Token::RBrace, "}"),
         (Token::LBracket, "["),
         (Token::RBracket, "]"),
-        (Token::Eof, "<eof>"),
     ];
     for (tok, expected) in cases {
         let got = tok.as_str();

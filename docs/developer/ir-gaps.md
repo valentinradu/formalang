@@ -1,46 +1,57 @@
 # IR Gaps and Backend Guidance
 
-**Last Updated**: 2026-04-23
+**Last Updated**: 2026-04-24
 **Status**: Living document
 
 FormaLang ships as a compiler frontend: it produces a type-resolved
 `IrModule` and leaves code generation to embedder-supplied backends. Several
-lowering problems that a typed target (C, WGSL, TypeScript, Swift, Kotlin)
-normally expects from a frontend are *not* performed here. This document
-lists those gaps, what the IR gives you today, and what a backend has to
-fill in.
+lowering problems that a typed target normally expects from a frontend are
+*not* performed here. This document lists those gaps, what the IR gives you
+today, and what a backend has to fill in.
 
-## 1. Monomorphisation (not implemented)
+## 1. Monomorphisation (implemented; limitations remain)
 
-Generics survive lowering. A struct like
-
-```formalang
-pub struct Box<T> { value: T }
-```
-
-appears in the IR with `generic_params` still populated and
-`ResolvedType::Generic { base, args }` wherever it is instantiated.
-
-A real monomorphisation pass would clone each generic definition once per
-concrete instantiation (`Box<User>`, `Box<Post>`, ...), substitute type
-parameters, and rewrite references. It has not been written.
-
-As a placeholder, `formalang::ir::MonomorphisePass` rejects any module that
-still contains `ResolvedType::Generic` after lowering so backends that
-cannot handle generics fail loudly rather than emit wrong code.
+`formalang::ir::MonomorphisePass` is a real pass now — it collects every
+`ResolvedType::Generic { base, args }` instantiation, clones each generic
+struct or enum once per unique argument tuple, substitutes
+`ResolvedType::TypeParam` references in field / method / body types, then
+rewrites every `Generic` reference to point at the specialised clone and
+drops the original generic definitions.
 
 ```rust
 use formalang::{compile_to_ir, Pipeline};
 use formalang::ir::MonomorphisePass;
 
+let source = "pub struct Box<T> { value: T }\n\
+              pub let b: Box<Number> = Box<Number>(value: 1)";
 let module = compile_to_ir(source).unwrap();
-let mut pipeline = Pipeline::new().pass(MonomorphisePass);
-pipeline.run(module).unwrap(); // errors if generics remain
+let result = Pipeline::new().pass(MonomorphisePass).run(module).unwrap();
+// After the pass: no structs with `generic_params` remain; `Box<Number>`
+// has been replaced by a concrete clone `Box__Number`.
 ```
 
-**Recommended backend posture**: either require concrete types in source
-until the pass lands, or implement a project-local monomorphisation pass
-before the backend runs.
+### Remaining limitations
+
+- **Generic traits are not supported.** A trait declaration with non-empty
+  `generic_params` that survives the pass is reported as an
+  `InternalError`. There is no mechanism to specialise a generic trait.
+- **Impl-block dispatch ids are not rewritten.** Phase 2b clones each
+  generic impl block per specialisation so the methods are attached to
+  the specialised struct/enum, but `DispatchKind::Static { impl_id }` at
+  call sites still points at the original generic-impl slot. Backends
+  that locate methods by walking `module.impls` (matching on
+  `ImplTarget`) resolve correctly; backends that honour the per-call
+  `impl_id` need a follow-up pass to rewrite those ids from the receiver
+  type.
+- **External generic type args are not specialised.** The pass walks
+  generic arguments on imported types (`ResolvedType::External { type_args, .. }`)
+  but does not chase through them to specialise definitions in other
+  modules.
+- **`ResolvedType::TypeParam` residues are tolerated.** The leftover
+  scanner intentionally does not flag `TypeParam(name)` after the pass
+  because IR lowering still emits `TypeParam` as a placeholder in a few
+  spots (empty array/dict element types, `nil` literal); this is tracked
+  as part of the IR-lowering cleanup, not a monomorphise bug.
 
 ## 2. Trait method dispatch
 

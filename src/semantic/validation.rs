@@ -6,7 +6,7 @@ use crate::ast::{
 };
 use crate::error::CompilerError;
 use crate::location::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::collect_bindings_from_pattern;
 
@@ -17,23 +17,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for statement in &file.statements {
             match statement {
                 Statement::Let(let_binding) => self.validate_let_statement(let_binding, file),
-                Statement::Definition(def) => match &**def {
-                    Definition::Struct(struct_def) => {
-                        self.validate_struct_expressions(struct_def, file);
-                    }
-                    Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
-                    Definition::Function(func_def) => self.validate_function_body(func_def, file),
-                    Definition::Module(module_def) => {
-                        for nested_def in &module_def.definitions {
-                            if let Definition::Impl(impl_def) = nested_def {
-                                self.validate_impl_expressions(impl_def, file);
-                            }
-                        }
-                    }
-                    Definition::Trait(_) | Definition::Enum(_) => {}
-                },
+                Statement::Definition(def) => self.validate_definition_expressions(def, file),
                 Statement::Use(_) => {}
             }
+        }
+    }
+
+    /// Dispatch expression validation for a single `Definition`, recursing
+    /// through nested modules so that function bodies, struct field defaults,
+    /// and impl blocks inside `module { ... }` all receive Pass 3 checks.
+    fn validate_definition_expressions(&mut self, def: &Definition, file: &File) {
+        match def {
+            Definition::Struct(struct_def) => self.validate_struct_expressions(struct_def, file),
+            Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
+            Definition::Function(func_def) => self.validate_function_body(func_def, file),
+            Definition::Module(module_def) => {
+                for nested_def in &module_def.definitions {
+                    self.validate_definition_expressions(nested_def, file);
+                }
+            }
+            Definition::Trait(_) | Definition::Enum(_) => {}
         }
     }
 
@@ -87,6 +90,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     fn validate_impl_expressions(&mut self, impl_def: &crate::ast::ImplDef, file: &File) {
+        // Push the impl's generic scope (merging target struct/enum
+        // generics) so method bodies see trait bounds on type
+        // parameters during expression validation. Audit #4/#27.
+        self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
         self.current_impl_struct = Some(impl_def.name.name.clone());
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
@@ -96,9 +103,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.current_impl_struct = None;
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
+        self.pop_generic_scope();
     }
 
     fn validate_function_body(&mut self, func_def: &crate::ast::FunctionDef, file: &File) {
+        // Push the function's generic params so uses of `T` inside the
+        // body and in param/return annotations don't trip the
+        // OutOfScopeTypeParameter check.
+        self.push_generic_scope(&func_def.generics);
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
         // Snapshot closure-binding maps so entries introduced in
@@ -146,6 +158,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
+        self.pop_generic_scope();
     }
 
     /// Validate expressions in struct field defaults
@@ -198,8 +211,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         match expr {
-            Expr::Literal(_) => {}
-            Expr::Array { elements, .. } => {
+            Expr::Literal { .. } => {}
+            Expr::Array { elements, span } => {
                 for elem in elements {
                     self.validate_expr(elem, file);
                 }
@@ -208,6 +221,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for elem in elements {
                     self.escape_closure_value(elem);
                 }
+                // Audit #41: unify the element types so a heterogeneous
+                // array literal (`[1, "two"]`) surfaces as a real
+                // TypeMismatch instead of silently using the first
+                // element's type.
+                self.validate_array_homogeneity(elements, *span, file);
             }
             Expr::Tuple { fields, .. } => {
                 for (_, field_expr) in fields {
@@ -279,6 +297,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
+                // Audit #22: when the condition is an optional receiver
+                // like `if foo` or `if user.nickname`, introduce the
+                // unwrapped binding into the then-branch scope so the body
+                // can reference it by its trailing name.
+                let (auto_binding_name, auto_binding_prev) =
+                    self.bind_optional_auto_binding(condition, file);
                 // Each branch is a separate control-flow path. Snapshot
                 // consumed_bindings before entering either branch so we can
                 // compute the conservative post-join union. Conservative (never
@@ -286,6 +310,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // miss one.
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
+                // Restore any auto-binding we installed before entering the
+                // else branch (which does not see the unwrapped binding).
+                if let Some(name) = auto_binding_name.as_ref() {
+                    match auto_binding_prev {
+                        Some(prev) => {
+                            self.local_let_bindings.insert(name.clone(), prev);
+                        }
+                        None => {
+                            self.local_let_bindings.remove(name);
+                        }
+                    }
+                }
                 // after_then takes over `self.consumed_bindings`; swap pre_if in
                 // so the else branch starts from pre-branch state.
                 let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
@@ -430,8 +466,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::ClosureExpr { params, body, .. } => {
-                self.validate_expr_closure(params, body, file);
+            Expr::ClosureExpr {
+                params,
+                return_type,
+                body,
+                span,
+            } => {
+                self.validate_expr_closure(params, return_type.as_ref(), body, *span, file);
             }
             Expr::LetExpr { .. } => {
                 self.validate_expr_let(expr, file);
@@ -467,7 +508,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Reference { path, .. } => path.first().map(|id| id.name.clone()),
             Expr::FieldAccess { object, .. } => Self::root_binding(object),
             Expr::Group { expr, .. } => Self::root_binding(expr),
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -509,7 +550,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Some(Self::collect_free_variables(body, &param_set))
             }
             Expr::Group { expr, .. } => self.closure_captures_of_expr(expr),
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -566,6 +607,37 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// Validate that every element of an array literal has a compatible
+    /// type. Audit #41: previously the array's type came from the first
+    /// element only and a mix like `[1, "two"]` lowered silently.
+    fn validate_array_homogeneity(&mut self, elements: &[Expr], span: Span, file: &File) {
+        let mut iter = elements.iter();
+        let Some(first) = iter.next() else {
+            return; // empty array: nothing to unify
+        };
+        let first_ty = self.infer_type(first, file);
+        if first_ty == "Unknown" {
+            // Can't trust the inference; skip rather than emit noise.
+            return;
+        }
+        for elem in iter {
+            let elem_ty = self.infer_type(elem, file);
+            if elem_ty == "Unknown" {
+                continue;
+            }
+            if !self.type_strings_compatible(&first_ty, &elem_ty) {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: format!("[{first_ty}]"),
+                    found: format!("element of type {elem_ty}"),
+                    span,
+                });
+                // Stop after the first mismatch so a single typo doesn't
+                // cascade into N copies of the same diagnostic.
+                break;
+            }
+        }
+    }
+
     /// Walk the body's result expression and collect every closure value that
     /// would escape the function via `return` along with its captures.
     ///
@@ -587,7 +659,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         out: &mut Vec<(Vec<String>, Span)>,
     ) {
         match expr {
-            Expr::ClosureExpr { params, body, span } => {
+            Expr::ClosureExpr {
+                params, body, span, ..
+            } => {
                 let param_set: HashSet<String> =
                     params.iter().map(|p| p.name.name.clone()).collect();
                 let caps = Self::collect_free_variables(body, &param_set);
@@ -633,7 +707,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.collect_returned_closure_captures_rec(&arm.body, out);
                 }
             }
-            Expr::Literal(_)
+            Expr::Literal { .. }
             | Expr::Array { .. }
             | Expr::Tuple { .. }
             | Expr::Invocation { .. }
@@ -1097,8 +1171,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     self.validate_closure_call_conventions(&conventions, args, span, file);
                 } else if !self.resolve_qualified_function(name) {
-                    self.errors.push(CompilerError::UndefinedType {
-                        name: format!("function '{name}'"),
+                    // Audit #42: a missing function is an undefined
+                    // reference, not an undefined type — use the correct
+                    // error variant so downstream tooling can distinguish
+                    // the two cases.
+                    self.errors.push(CompilerError::UndefinedReference {
+                        name: name.to_string(),
                         span,
                     });
                 }
@@ -1254,8 +1332,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 || first_param_type == "Unknown"
                 || self.type_strings_compatible(&first_param_type, &first_arg_type)
         } else {
-            // Mixed or empty args — accept (fallback)
-            true
+            // Mixed labeled / unlabeled args — reject. FormaLang's overload
+            // resolution modes are "all-labeled" (A) or "all-unlabeled" (B);
+            // a mix has no defined match and previously fell through to
+            // `true`, silently accepting overloads whose label patterns were
+            // incompatible. See audit finding #14.
+            false
         }
     }
 
@@ -1300,13 +1382,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn validate_expr_closure(
         &mut self,
         params: &[crate::ast::ClosureParam],
+        return_type: Option<&crate::ast::Type>,
         body: &Expr,
+        span: Span,
         file: &File,
     ) {
         for param in params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
+        }
+        if let Some(ty) = return_type {
+            self.validate_type(ty);
         }
         let mut param_scope = HashSet::new();
         for param in params {
@@ -1325,6 +1412,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_param_scopes.push(param_scope);
         self.validate_expr(body, file);
         self.closure_param_scopes.pop();
+
+        // Audit #38: when a pipe closure declares a return type, verify the
+        // body's inferred type is compatible. Mirrors the function-return
+        // mismatch check; reuses `FunctionReturnTypeMismatch` with a
+        // synthetic `<closure>` function name since closures don't have one.
+        if let Some(declared) = return_type {
+            // Push the closure's typed params so the body sees them while
+            // inferring (otherwise references like `x + 1` resolve to
+            // `Unknown` and trip a spurious mismatch).
+            let mut frame = HashMap::new();
+            for p in params {
+                if let Some(ty) = &p.ty {
+                    frame.insert(p.name.name.clone(), Self::type_to_string(ty));
+                }
+            }
+            self.inference_scope_stack.borrow_mut().push(frame);
+            let body_type = self.infer_type(body, file);
+            self.inference_scope_stack.borrow_mut().pop();
+            let expected = Self::type_to_string(declared);
+            if !self.type_strings_compatible(&expected, &body_type) {
+                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                    function: "<closure>".to_string(),
+                    expected,
+                    actual: body_type,
+                    span,
+                });
+            }
+        }
     }
 
     /// Walk `expr` and emit `UseAfterSink` for any `Reference` whose root
@@ -1358,7 +1473,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Literal { .. } | Expr::InferredEnumInstantiation { .. } => {}
             Expr::Array { elements, .. } => {
                 for e in elements {
                     Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
@@ -1578,7 +1693,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Literal(_) | Expr::InferredEnumInstantiation { .. } => {}
+            Expr::Literal { .. } | Expr::InferredEnumInstantiation { .. } => {}
             Expr::Array { elements, .. } => {
                 for e in elements {
                     Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);
@@ -2119,6 +2234,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.consumed_bindings = restored_consumed;
     }
 
+    /// If `condition` is a reference or field access whose type is optional
+    /// (`T?`), install a local binding whose name matches the trailing
+    /// segment with the unwrapped type `T` and return the binding name
+    /// (plus the prior entry, if any, so the caller can restore it after
+    /// the then-branch). Otherwise returns (None, None). Audit #22.
+    fn bind_optional_auto_binding(
+        &mut self,
+        condition: &Expr,
+        file: &File,
+    ) -> (Option<String>, Option<(String, bool)>) {
+        let cond_ty = self.infer_type(condition, file);
+        let Some(unwrapped) = cond_ty.strip_suffix('?') else {
+            return (None, None);
+        };
+        let name_opt = match condition {
+            Expr::Reference { path, .. } => path.last().map(|id| id.name.clone()),
+            Expr::FieldAccess { field, .. } => Some(field.name.clone()),
+            Expr::Literal { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::Group { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::DictAccess { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::LetExpr { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Block { .. } => None,
+        };
+        let Some(name) = name_opt else {
+            return (None, None);
+        };
+        let prev = self.local_let_bindings.get(&name).cloned();
+        self.local_let_bindings
+            .insert(name.clone(), (unwrapped.to_string(), false));
+        (Some(name), prev)
+    }
+
     /// Validate struct field requirements: all required fields must be provided, no unknown fields
     pub(super) fn validate_struct_fields(
         &mut self,
@@ -2127,12 +2287,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Find the struct definition in current file or module cache
-        // Clone necessary data to avoid borrow checker issues
-        let (field_names, required_fields) = {
+        // Find the struct definition in current file or module cache.
+        // Clone the field name + declared type pairs so we can release the
+        // borrow on `self` before recursing into type inference calls below.
+        let (field_names, field_types, required_fields, generic_params) = {
             if let Some(def) = self.find_struct_def_in_files(struct_name, file) {
                 let field_names: Vec<String> =
                     def.fields.iter().map(|f| f.name.name.clone()).collect();
+
+                let field_types: Vec<(String, String)> = def
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.name.clone(), Self::type_to_string(&f.ty)))
+                    .collect();
 
                 let required_fields: Vec<String> = def
                     .fields
@@ -2144,19 +2311,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .map(|f| f.name.name.clone())
                     .collect();
 
-                (field_names, required_fields)
+                let generic_params: Vec<String> =
+                    def.generics.iter().map(|g| g.name.name.clone()).collect();
+
+                (field_names, field_types, required_fields, generic_params)
             } else {
                 return; // Struct not found, skip validation
             }
         };
 
-        // Check all provided regular fields exist
-        for (arg_name, _) in args {
+        // Check all provided regular fields exist and type-check each value.
+        for (arg_name, arg_value) in args {
             if !field_names.contains(&arg_name.name) {
                 self.errors.push(CompilerError::UnknownField {
                     field: arg_name.name.clone(),
                     type_name: struct_name.to_string(),
                     span: arg_name.span,
+                });
+                continue;
+            }
+            let Some((_, declared)) = field_types.iter().find(|(n, _)| n == &arg_name.name) else {
+                continue;
+            };
+            // Skip the check if the declared type references a generic
+            // parameter of the struct — generic substitution is handled by
+            // the IR monomorphisation pass, not the string-level comparison
+            // here.
+            if generic_params.iter().any(|g| declared.contains(g)) {
+                continue;
+            }
+            let inferred = self.infer_type(arg_value, file);
+            // nil is compatible with any optional type
+            let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+            // T is compatible with T? (implicit wrapping)
+            let inner_to_optional =
+                declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+            // treat any type containing "Unknown" / "InferredEnum" as indeterminate
+            let has_unknown = inferred.contains("Unknown")
+                || inferred.contains("InferredEnum")
+                || declared.contains("Unknown");
+            if !nil_to_optional
+                && !inner_to_optional
+                && !has_unknown
+                && !self.type_strings_compatible(declared, &inferred)
+            {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: declared.clone(),
+                    found: inferred,
+                    span: arg_value.span(),
                 });
             }
         }
@@ -2309,16 +2511,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        // Check type compatibility based on operator
+        // Check type compatibility based on operator. Audit #44: the
+        // hardcoded GPU numeric compat (`f32`, `vec3`, etc.) was a wart
+        // from the retired WGSL backend and is gone — backends needing
+        // arithmetic over backend-specific scalar/vector types should
+        // implement their own type-compat rules in their codegen pass.
         let valid = match op {
-            // Add: Number + Number or String + String (concatenation) or GPU numeric types
-            BinaryOperator::Add => {
-                matches!(
-                    (&left_type[..], &right_type[..]),
-                    ("Number", "Number") | ("String", "String")
-                ) || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
-            // Arithmetic, comparison, and range operators: Number + Number or GPU numeric types
+            // Add: Number + Number or String + String (concatenation)
+            BinaryOperator::Add => matches!(
+                (&left_type[..], &right_type[..]),
+                ("Number", "Number") | ("String", "String")
+            ),
+            // Arithmetic, comparison, and range operators: Number + Number
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
@@ -2329,16 +2533,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | BinaryOperator::Ge
             | BinaryOperator::Range => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
-                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Equality operators: same types or compatible GPU types
-            BinaryOperator::Eq | BinaryOperator::Ne => {
-                left_type == right_type || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
-            // Logical operators: Boolean + Boolean or bool + bool
+            // Equality operators: same types
+            BinaryOperator::Eq | BinaryOperator::Ne => left_type == right_type,
+            // Logical operators: Boolean + Boolean
             BinaryOperator::And | BinaryOperator::Or => {
-                (left_type == "Boolean" && right_type == "Boolean")
-                    || (left_type == "bool" && right_type == "bool")
+                left_type == "Boolean" && right_type == "Boolean"
             }
         };
 
@@ -2385,40 +2585,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return true;
             }
         }
-        false
-    }
-
-    /// Check if two types are compatible GPU numeric types
-    pub(super) fn are_gpu_numeric_compatible(left: &str, right: &str) -> bool {
-        // GPU scalar types
-        const GPU_SCALARS: &[&str] = &["f32", "i32", "u32"];
-        // GPU vector types (same component type can do arithmetic)
-        const GPU_FLOAT_VECTORS: &[&str] = &["vec2", "vec3", "vec4"];
-        const GPU_INT_VECTORS: &[&str] = &["ivec2", "ivec3", "ivec4"];
-        const GPU_UINT_VECTORS: &[&str] = &["uvec2", "uvec3", "uvec4"];
-
-        // Same scalar type
-        if left == right && GPU_SCALARS.contains(&left) {
-            return true;
-        }
-
-        // Same vector type
-        if left == right
-            && (GPU_FLOAT_VECTORS.contains(&left)
-                || GPU_INT_VECTORS.contains(&left)
-                || GPU_UINT_VECTORS.contains(&left))
-        {
-            return true;
-        }
-
-        // Scalar with matching vector (for scalar*vector operations)
-        if left == "f32" && GPU_FLOAT_VECTORS.contains(&right) {
-            return true;
-        }
-        if right == "f32" && GPU_FLOAT_VECTORS.contains(&left) {
-            return true;
-        }
-
         false
     }
 
@@ -2885,6 +3051,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func: &crate::ast::FunctionDef,
         file: &File,
     ) {
+        // Push the function's own generic parameters so its param/return
+        // types and body can reference them without triggering
+        // OutOfScopeTypeParameter.
+        self.push_generic_scope(&func.generics);
         // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
@@ -2958,6 +3128,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
+        self.pop_generic_scope();
     }
 
     /// Check if a method exists on a given type
@@ -3041,6 +3212,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         if self.type_param_has_method(lookup, method_name, file) {
             return true;
+        }
+
+        // Cross-module lookup: the receiver's type may have been imported
+        // via `use mod::Type`, in which case the impl lives in the module's
+        // cached AST. Scan every cached module for a matching impl.
+        for (cached_file, _) in self.module_cache.values() {
+            for statement in &cached_file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Impl(impl_def) = &**def {
+                        if impl_def.name.name == lookup {
+                            for func in &impl_def.functions {
+                                if func.name.name == method_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         false

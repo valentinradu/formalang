@@ -1498,6 +1498,7 @@ fn type_name(ty: &ResolvedType) -> String {
         ResolvedType::Enum(_) => "Enum".to_string(),
         ResolvedType::Array(_) => "Array".to_string(),
         ResolvedType::Trait(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -2023,7 +2024,7 @@ fn test_lower_let_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct S {
             value: Number = (let x = 5
-            x)
+            in x)
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -3012,6 +3013,7 @@ struct Main {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3026,6 +3028,12 @@ struct Main {
 
 #[test]
 fn test_external_trait_reference() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: previous body asserted only "User struct exists" and
+    // hand-waved the actual integration as not-checked. Reference the
+    // imported `Named` trait directly via a typed field (so the import
+    // is load-bearing) and assert both that User shows up and that the
+    // imported trait is present in the IR's traits map under its
+    // imported name.
     let mut resolver = MockResolver::new();
     resolver.add_module(
         vec!["traits".to_string()],
@@ -3035,23 +3043,48 @@ fn test_external_trait_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 use traits::Named
 struct User {
-    name: String
+    named: Named
 }
 ";
 
     let module = compile_to_ir_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
-
-    // User struct should be in the IR
-    let _user = module
+    let user = module
         .structs
         .iter()
         .find(|s| s.name == "User")
         .ok_or("User struct not found")?;
-
-    // The Named trait was imported — verify module compiled successfully.
-    // Note: Without struct-trait composition, the import may or may not
-    // appear in module.imports depending on whether it is referenced.
-    // We simply verify the module compiled and User is present.
+    let named_field = user
+        .fields
+        .iter()
+        .find(|f| f.name == "named")
+        .ok_or("named field missing")?;
+    // The field's type must reference the imported `Named` trait —
+    // either via an External reference or via a local Trait id with
+    // the right name.
+    let resolves_to_named = match &named_field.ty {
+        formalang::ir::ResolvedType::External { name, .. } => name == "Named",
+        formalang::ir::ResolvedType::Trait(id) => {
+            module.get_trait(*id).is_some_and(|t| t.name == "Named")
+        }
+        formalang::ir::ResolvedType::Primitive(_)
+        | formalang::ir::ResolvedType::Struct(_)
+        | formalang::ir::ResolvedType::Enum(_)
+        | formalang::ir::ResolvedType::TypeParam(_)
+        | formalang::ir::ResolvedType::Array(_)
+        | formalang::ir::ResolvedType::Range(_)
+        | formalang::ir::ResolvedType::Optional(_)
+        | formalang::ir::ResolvedType::Tuple(_)
+        | formalang::ir::ResolvedType::Dictionary { .. }
+        | formalang::ir::ResolvedType::Closure { .. }
+        | formalang::ir::ResolvedType::Generic { .. } => false,
+    };
+    if !resolves_to_named {
+        return Err(format!(
+            "expected `named` field to reference imported Named trait, got: {:?}",
+            named_field.ty
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -3115,6 +3148,7 @@ struct Item {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3192,6 +3226,7 @@ struct Wrapper {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3285,6 +3320,7 @@ struct Container {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3482,6 +3518,7 @@ struct Collection {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3495,6 +3532,7 @@ struct Collection {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -3548,6 +3586,7 @@ struct Container {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3562,6 +3601,7 @@ struct Container {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
@@ -3578,10 +3618,14 @@ struct Container {
 // External Reference Safety Tests
 // =============================================================================
 
-/// Tests that external types cannot be looked up via `struct_id` - this is the
-/// expected behavior that code generators must handle.
+/// Tests that imported (external) struct types ARE registered in
+/// `module.struct_id` after IR lowering, so codegen backends can look
+/// them up the same way they look up locally-defined structs.
+/// (Previously named `test_external_struct_not_in_struct_id_lookup`,
+/// which described the opposite of what the body asserts — fixed
+/// alongside audit #52.)
 #[test]
-fn test_external_struct_not_in_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
+fn test_external_struct_is_in_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],
@@ -3663,6 +3707,7 @@ struct Main {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3711,7 +3756,9 @@ struct Main {
                     collect_struct_ids(arg, ids);
                 }
             }
-            ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+            ResolvedType::Array(inner)
+            | ResolvedType::Range(inner)
+            | ResolvedType::Optional(inner) => {
                 collect_struct_ids(inner, ids);
             }
             ResolvedType::Tuple(fields) => {
@@ -3825,6 +3872,7 @@ struct Container { h: Helper = Helper(name: "test") }
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -3896,6 +3944,7 @@ struct Item { status: Status = Status.active }
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
             | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
@@ -4298,6 +4347,7 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
         | ResolvedType::Array(_)
+        | ResolvedType::Range(_)
         | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
@@ -4453,6 +4503,130 @@ impl Color {
         }
     } else {
         return Err(format!("Expected EnumInst, got {:?}", transparent_fn.body).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_impl_trait_id_and_is_extern_propagated() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #10: `impl Trait for Type` must set IrImpl.trait_id; inherent
+    // impl must leave it None; `extern impl` must set is_extern = true.
+    let source = r#"
+pub trait Greeter {
+    fn greet(self) -> String
+}
+
+pub struct Person {}
+
+impl Greeter for Person {
+    fn greet(self) -> String { "hi" }
+}
+
+impl Person {
+    fn shout(self) -> String { "HI" }
+}
+
+pub struct Printer {}
+
+extern impl Printer {
+    fn print(self, msg: String)
+}
+"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+
+    let person_id = module.struct_id("Person").ok_or("Person missing")?;
+    let printer_id = module.struct_id("Printer").ok_or("Printer missing")?;
+    let greeter_id = module.trait_id("Greeter").ok_or("Greeter missing")?;
+
+    let person_impls: Vec<&formalang::ir::IrImpl> = module
+        .impls
+        .iter()
+        .filter(|i| i.struct_id() == Some(person_id))
+        .collect();
+    if person_impls.len() != 2 {
+        return Err(format!(
+            "expected 2 Person impls (trait + inherent), got {}",
+            person_impls.len()
+        )
+        .into());
+    }
+    let trait_impl = person_impls
+        .iter()
+        .find(|i| i.trait_id == Some(greeter_id))
+        .ok_or("no impl records trait_id = Greeter for Person")?;
+    if trait_impl.is_extern {
+        return Err("Greeter-for-Person impl should not be is_extern".into());
+    }
+    let inherent = person_impls
+        .iter()
+        .find(|i| i.trait_id.is_none())
+        .ok_or("no inherent impl on Person")?;
+    if inherent.is_extern {
+        return Err("inherent Person impl should not be is_extern".into());
+    }
+
+    let printer_impl = module
+        .impls
+        .iter()
+        .find(|i| i.struct_id() == Some(printer_id))
+        .ok_or("no impl for Printer")?;
+    if !printer_impl.is_extern {
+        return Err("extern impl Printer should have is_extern = true".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_enum_impl_self_typed_as_enum() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #9a: `self` inside an enum impl must be typed as
+    // `ResolvedType::Enum(id)`, not silently fall through to a
+    // `TypeParam("self")` placeholder.
+    let source = r#"
+pub enum Signal {
+    stop,
+    go(velocity: Number)
+}
+
+impl Signal {
+    fn describe(self) -> String {
+        match self {
+            .stop: "halt",
+            .go(velocity): "move"
+        }
+    }
+}
+"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let signal_id = module
+        .enums
+        .iter()
+        .position(|e| e.name == "Signal")
+        .ok_or("Signal enum not present")?;
+    let signal_id_u32 = u32::try_from(signal_id).map_err(|e| format!("id overflow: {e}"))?;
+    let signal_impl = module
+        .impls
+        .iter()
+        .find(|i| i.enum_id() == Some(EnumId(signal_id_u32)))
+        .ok_or("Signal enum impl not present")?;
+    let describe = signal_impl
+        .functions
+        .iter()
+        .find(|f| f.name == "describe")
+        .ok_or("describe fn missing")?;
+    // Body is a match expression whose scrutinee is `self`. That reference
+    // must resolve to `ResolvedType::Enum(Signal)`, not
+    // `ResolvedType::TypeParam("self")`.
+    let body = describe.body.as_ref().ok_or("describe has no body")?;
+    let scrutinee_ty = if let IrExpr::Match { scrutinee, .. } = body {
+        scrutinee.ty().clone()
+    } else {
+        return Err(format!("expected match body, got {body:?}").into());
+    };
+    if !matches!(scrutinee_ty, ResolvedType::Enum(id) if id.0 == signal_id_u32) {
+        return Err(format!(
+            "match scrutinee `self` in enum impl should resolve to Enum(Signal), got {scrutinee_ty:?}"
+        )
+        .into());
     }
     Ok(())
 }

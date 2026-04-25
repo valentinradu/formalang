@@ -31,24 +31,28 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     recursive(|expr| {
-        // Literals
-        let literal = choice((
-            select! { Token::String(s) => Expr::Literal(Literal::String(s)) },
-            select! { Token::Number(n) => Expr::Literal(Literal::Number(n)) },
+        // Literals — each chumsky branch produces a raw `Literal`, and the
+        // outer `map_with` attaches the span from the token range so
+        // diagnostics and LSP hover can point at the correct location.
+        let literal_value = choice((
+            select! { Token::String(s) => Literal::String(s) },
+            select! { Token::Number(n) => Literal::Number(n) },
             select! { Token::Regex(s) => {
-                // Parse regex at parse time
                 if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
-                    Expr::Literal(Literal::Regex { pattern, flags })
+                    Literal::Regex { pattern, flags }
                 } else {
-                    // Fallback
-                    Expr::Literal(Literal::Regex { pattern: String::new(), flags: String::new() })
+                    Literal::Regex { pattern: String::new(), flags: String::new() }
                 }
             }},
-            select! { Token::Path(p) => Expr::Literal(Literal::Path(p)) },
-            just(Token::True).to(Expr::Literal(Literal::Boolean(true))),
-            just(Token::False).to(Expr::Literal(Literal::Boolean(false))),
-            just(Token::Nil).to(Expr::Literal(Literal::Nil)),
+            select! { Token::Path(p) => Literal::Path(p) },
+            just(Token::True).to(Literal::Boolean(true)),
+            just(Token::False).to(Literal::Boolean(false)),
+            just(Token::Nil).to(Literal::Nil),
         ));
+        let literal = literal_value.map_with(|value, e| Expr::Literal {
+            value,
+            span: span_from_simple(e.span()),
+        });
 
         // Helper to parse invocation arguments: either named (name: expr) or positional (expr)
         // Returns Vec<(Option<Ident>, Expr)> where Some(name) is named, None is positional
@@ -292,6 +296,7 @@ where
             .ignore_then(expr.clone())
             .map_with(|body, e| Expr::ClosureExpr {
                 params: vec![],
+                return_type: None,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -306,6 +311,7 @@ where
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::ClosureExpr {
                 params,
+                return_type: None,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -326,8 +332,9 @@ where
                 just(Token::Arrow).ignore_then(type_parser()).or_not(),
             )
             .then(expr.clone())
-            .map_with(|((params, _return_type), body), e| Expr::ClosureExpr {
+            .map_with(|((params, return_type), body), e| Expr::ClosureExpr {
                 params,
+                return_type,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -362,12 +369,36 @@ where
         // Expression item
         let block_expr_item = expr.clone().map(BlockStatement::Expr);
 
-        // Parse a block item (let, assign, or expr - in that order)
+        // Parse a block item (let, assign, or expr - in that order). Audit
+        // #40: recover_with(via_parser) so a malformed item inside a block
+        // expression doesn't abort parsing of subsequent items. Mirrors
+        // the recovery in `fn_body_parser` — first token consumed
+        // unconditionally except when it is `}` (the closing brace of the
+        // block must reach `delimited_by`).
+        let block_recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
+        let block_recovery_tail = any()
+            .and_is(just(Token::Let).not())
+            .and_is(just(Token::RBrace).not())
+            .ignored()
+            .repeated();
+        let block_recovery =
+            block_recovery_head
+                .then(block_recovery_tail)
+                .map_with(|((), ()), e| {
+                    BlockStatement::Expr(Expr::Group {
+                        expr: Box::new(Expr::Literal {
+                            value: Literal::Nil,
+                            span: span_from_simple(e.span()),
+                        }),
+                        span: span_from_simple(e.span()),
+                    })
+                });
         let block_item = choice((
             block_let_item.clone(),
             block_assign_item.clone(),
             block_expr_item.clone(),
-        ));
+        ))
+        .recover_with(via_parser(block_recovery));
 
         // Block body parser: { items... } -> Expr (Block or single expr)
         // Uses shared block_statements_to_expr helper
@@ -431,13 +462,17 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Let expression: let pattern = value body OR let pattern: Type = value body OR let mut pattern = value body
+        // Let expression: `let pattern = value in body` (also with `mut` and
+        // optional `: Type` annotation). Audit #21: the explicit `in`
+        // separator removes the value/body grammar ambiguity that
+        // previously relied on greedy parsing to find the boundary.
         let let_expr = just(Token::Let)
             .ignore_then(just(Token::Mut).or_not())
             .then(binding_pattern_parser())
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
             .then_ignore(just(Token::Equals))
             .then(expr.clone())
+            .then_ignore(just(Token::In))
             .then(expr.clone())
             .map_with(
                 |((((mutable, pattern), ty), value), body), e| Expr::LetExpr {
@@ -619,7 +654,7 @@ where
                                 span: span_from_simple(e.span()),
                             }
                         }
-                        Expr::Literal(_)
+                        Expr::Literal { .. }
                         | Expr::Invocation { .. }
                         | Expr::EnumInstantiation { .. }
                         | Expr::InferredEnumInstantiation { .. }

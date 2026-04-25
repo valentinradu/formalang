@@ -807,6 +807,177 @@ fn test_doubly_nested_module() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn test_module_nested_function_body_is_validated() -> Result<(), Box<dyn std::error::Error>> {
+    // A function inside a `pub mod { ... }` has a body that references an
+    // undefined identifier. Pass 3 must recurse into the module and catch it;
+    // previously only nested `impl` blocks were visited, so this compiled.
+    let source = r"
+        pub mod util {
+            pub fn greet() -> String {
+                missing_binding
+            }
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected undefined-reference error inside module-nested function body".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_type_only_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #23: Mode B overloading accepts `fn process(Number) -> String`
+    // — a type-only param with no name. Must parse (name is synthesised).
+    let source = r#"
+        fn process(Number) -> String { "number" }
+        fn process(String) -> String { "string" }
+    "#;
+    compile(source).map_err(|e| format!("type-only param should parse: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #22: `if user.nickname { name: nickname }` must make
+    // `nickname` visible inside the then-branch with the unwrapped type.
+    let source = r#"
+        struct User { nickname: String? }
+        fn greet(name: String) -> String { name }
+        pub let u = User(nickname: "alice")
+        pub let out = if u.nickname {
+            greet(name: nickname)
+        } else {
+            "anon"
+        }
+    "#;
+    compile(source).map_err(|e| format!("auto-bind inside if should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_division_without_spaces_tokenises_as_division() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #20: `10/2` used to lex as Number(10), Path("2"). Now it must
+    // produce integer division.
+    let source = r"
+        pub let quotient: Number = 10/2
+    ";
+    compile(source).map_err(|e| format!("`10/2` must parse as division: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_circular_type_through_enum_variant_detected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #17: `struct A { b: B }` / `enum B { V(A) }` now produces a
+    // CircularDependency error. Previously enum variants weren't added to
+    // the type-dependency graph so the cycle was silently accepted.
+    let source = r"
+        struct A { b: B }
+        enum B {
+            v(inner: A)
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected CircularDependency through enum variant".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("CircularDependency") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_generic_standalone_function_parses_and_validates() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Audit #11: `pub fn identity<T>(value: T) -> T { value }` must parse,
+    // validate, and lower. Previously FunctionDef had no generics field.
+    let source = r"
+        pub fn identity<T>(value: T) -> T { value }
+    ";
+    compile(source).map_err(|e| format!("generic fn should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_generic_extern_function_parses() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub extern fn make<T>() -> T
+    ";
+    compile(source).map_err(|e| format!("generic extern fn should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_generic_fn_duplicate_param_errors() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #36: validate_generic_parameters used to skip Function; duplicate
+    // `T` must now be flagged.
+    let source = r"
+        pub fn bad<T, T>(value: T) -> T { value }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected DuplicateGenericParam on fn".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("DuplicateGenericParam") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_literal_field_value_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    // Previously validate_struct_fields checked arity/names only. Provide a
+    // Number where the field declares String — must now type-error.
+    let source = r"
+        struct Thing { name: String }
+        let t = Thing(name: 42)
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected TypeMismatch for wrong-typed struct field value".into());
+    }
+    let err = format!("{:?}", result.err());
+    if !err.contains("TypeMismatch") {
+        return Err(format!("wrong error: {err}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_literal_generic_field_value_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+    // Field declared with a struct-level generic param — type substitution is
+    // deferred to IR monomorphisation, so no semantic-layer mismatch.
+    let source = r#"
+        struct Box<T> { value: T }
+        let b = Box<String>(value: "hello")
+    "#;
+    compile(source).map_err(|e| format!("generic param field must compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_module_nested_struct_field_default_is_validated() -> Result<(), Box<dyn std::error::Error>>
+{
+    // A field default inside a module must be validated, including the
+    // nil-vs-non-optional check that validate_struct_expressions performs.
+    let source = r"
+        pub mod m {
+            pub struct Thing {
+                name: String = nil
+            }
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("Expected error: nil assigned to non-optional field inside module".into());
+    }
+    Ok(())
+}
+
 // =============================================================================
 // Let binding type inference
 // =============================================================================
@@ -965,7 +1136,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
             value: Number = (let x: Number = 5
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Let expression: {e:?}"))?;
@@ -1404,8 +1575,11 @@ fn test_method_call_on_struct_in_impl() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[test]
-fn test_method_call_undefined_method() -> Result<(), Box<dyn std::error::Error>> {
-    // Chained method call where result type is Unknown - exercises method validation path
+fn test_simple_impl_method_with_self_field_access() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_method_call_undefined_method` (audit #53):
+    // the body asserts a successful compile of an impl method that
+    // returns `self.x`. Nothing about it is "undefined" — the previous
+    // name was inherited from a copy/paste and never updated.
     let source = r"
         struct Point { x: Number = 0 }
         impl Point {

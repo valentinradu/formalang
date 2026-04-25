@@ -403,25 +403,17 @@ pub enum ResolvedType {
         type_args: Vec<ResolvedType>,  // For generics
     },
 
-    /// Event mapping type: `() -> E` or `T -> E`
-    ///
-    /// Used for event handler fields like `onChange: String -> Event`.
-    EventMapping {
-        param_ty: Option<Box<ResolvedType>>,  // None for () -> E
-        return_ty: Box<ResolvedType>,         // The event enum type
-    },
-
     /// Dictionary type: [K: V]
     Dictionary {
         key_ty: Box<ResolvedType>,
         value_ty: Box<ResolvedType>,
     },
 
-    /// General closure type: (T1, T2) -> R
+    /// General closure / function type: (T1, T2) -> R
     ///
-    /// Unlike EventMapping (restricted to enum returns), this represents
-    /// arbitrary pure functions. Each element is `(convention, type)` —
-    /// convention constrains the **caller** of the closure.
+    /// Each element is `(convention, type)` — convention constrains the
+    /// **caller** of the closure. Event-handler shapes like
+    /// `String -> Event` use this variant with the enum return type.
     Closure {
         param_tys: Vec<(ParamConvention, ResolvedType)>,
         return_ty: Box<ResolvedType>,
@@ -447,8 +439,6 @@ pub enum ResolvedType {
 | `T` (in generic) | `TypeParam("T")` |
 | `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
 | `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
-| `String -> Event` | `EventMapping { param_ty: Some(Primitive(String)), return_ty: Enum(n) }` |
-| `() -> Event` | `EventMapping { param_ty: None, return_ty: Enum(n) }` |
 | `[String: Number]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(Number) }` |
 | `String, Number -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(Number))], return_ty: Primitive(Boolean) }` |
 | `mut Number -> Boolean` | `Closure { param_tys: [(Mut, Primitive(Number))], return_ty: Primitive(Boolean) }` |
@@ -1323,13 +1313,13 @@ impl<'a> TypeScriptGenerator<'a> {
                 PrimitiveType::Never => "never".to_string(),
             },
             ResolvedType::Struct(id) => {
-                self.module.get_struct(*id).name.clone()
+                self.module.get_struct(*id).unwrap().name.clone()
             }
             ResolvedType::Trait(id) => {
-                self.module.get_trait(*id).name.clone()
+                self.module.get_trait(*id).unwrap().name.clone()
             }
             ResolvedType::Enum(id) => {
-                self.module.get_enum(*id).name.clone()
+                self.module.get_enum(*id).unwrap().name.clone()
             }
             ResolvedType::Array(inner) => {
                 format!("{}[]", self.resolve_type(inner))
@@ -1345,12 +1335,35 @@ impl<'a> TypeScriptGenerator<'a> {
                 format!("{{ {} }}", fields_str.join("; "))
             }
             ResolvedType::Generic { base, args } => {
-                let base_name = &self.module.get_struct(*base).name;
-                let args_str: Vec<_> = args
-                    .iter()
-                    .map(|a| self.resolve_type(a))
-                    .collect();
+                let base_name = match base {
+                    GenericBase::Struct(id) => self.module.get_struct(*id).unwrap().name.clone(),
+                    GenericBase::Enum(id) => self.module.get_enum(*id).unwrap().name.clone(),
+                };
+                let args_str: Vec<_> = args.iter().map(|a| self.resolve_type(a)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))
+            }
+            ResolvedType::Dictionary { key_ty, value_ty } => {
+                format!(
+                    "Record<{}, {}>",
+                    self.resolve_type(key_ty),
+                    self.resolve_type(value_ty)
+                )
+            }
+            ResolvedType::Closure { param_tys, return_ty } => {
+                let params: Vec<_> = param_tys
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, t))| format!("a{}: {}", i, self.resolve_type(t)))
+                    .collect();
+                format!("({}) => {}", params.join(", "), self.resolve_type(return_ty))
+            }
+            ResolvedType::External { name, type_args, .. } => {
+                if type_args.is_empty() {
+                    name.clone()
+                } else {
+                    let args: Vec<_> = type_args.iter().map(|a| self.resolve_type(a)).collect();
+                    format!("{}<{}>", name, args.join(", "))
+                }
             }
             ResolvedType::TypeParam(name) => name.clone(),
         }

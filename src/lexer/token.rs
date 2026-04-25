@@ -1,4 +1,4 @@
-use logos::Logos;
+use logos::{Logos, Skip};
 
 /// Token types for `FormaLang` lexer
 #[expect(
@@ -6,10 +6,37 @@ use logos::Logos;
     reason = "token enum is matched exhaustively by the parser"
 )]
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\n\r]+")] // Skip whitespace
-#[logos(skip r"//[^\n]*")] // Skip line comments
-#[logos(skip r"/\*([^*]|\*[^/])*\*/")] // Skip block comments
+#[logos(skip r"[ \t\n\r]+")]
+// Skip whitespace
+// Skip plain line comments. Requires the third character to NOT be `/`
+// or `!` so `///` (item doc comment) and `//!` (module/parent doc
+// comment) reach their dedicated variants below. The `|//[/!]?$`
+// alternation handles the edge cases of a bare `//`, `///`, or `//!`
+// at end of input — those carry no content and are skipped.
+#[logos(skip r"//([^/!\n][^\n]*)?|//[/!][\n]")]
 pub enum Token {
+    /// Phantom variant: matches the opening `/*` of a (possibly nested)
+    /// block comment. The `skip_block_comment` callback consumes the
+    /// rest of the comment manually (tracking nest depth) and returns
+    /// `Skip`, so this variant is never emitted into the token stream.
+    /// It exists only because Logos requires the `#[token]` attribute
+    /// to live on a variant. Closes audit finding #47.
+    #[token("/*", skip_block_comment)]
+    BlockComment,
+
+    /// Item doc comment: `/// text` attaches to the following definition.
+    /// Captured trimmed (leading `/// ` stripped, trailing whitespace
+    /// removed). Multiple consecutive doc-comment lines are joined by
+    /// the parser into a single attached docstring. Audit finding #51.
+    #[regex(r"///[^\n]*", parse_doc_comment)]
+    DocComment(String),
+
+    /// Module/parent doc comment: `//! text` attaches to the enclosing
+    /// definition or file. Captured the same way as `DocComment`.
+    /// Audit finding #51.
+    #[regex(r"//![^\n]*", parse_inner_doc_comment)]
+    InnerDocComment(String),
+
     // Keywords
     #[token("trait")]
     Trait,
@@ -87,7 +114,14 @@ pub enum Token {
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
     Regex(String), // Full regex string, parse later
 
-    #[regex(r"/([^/\s\\,(){}\[\]]|\\.)+(/([^/\s\\,(){}\[\]]|\\.)+)*", |lex| lex.slice()[1..].to_string())]
+    // Path literals start with `/` and must be followed by a non-digit,
+    // non-operator character. This disambiguates them from integer
+    // division (`10/2` tokenises as Number, Slash, Number, not as
+    // Number followed by Path("2")). See audit finding #20.
+    #[regex(
+        r"/[a-zA-Z._~][^/\s\\,(){}\[\]]*(/([^/\s\\,(){}\[\]]|\\.)+)*",
+        |lex| lex.slice()[1..].to_string()
+    )]
     Path(String),
 
     // Identifier: starts with letter/underscore, contains alphanumerics/underscores
@@ -160,9 +194,63 @@ pub enum Token {
     LBracket,
     #[token("]")]
     RBracket,
+}
 
-    // Special
-    Eof,
+/// Strip the `///` prefix and a single leading space from a doc-comment
+/// slice. Returns the remaining text (trimmed of trailing whitespace).
+fn parse_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+    let raw = lex.slice();
+    let body = raw.strip_prefix("///").unwrap_or(raw);
+    let body = body.strip_prefix(' ').unwrap_or(body);
+    body.trim_end().to_string()
+}
+
+/// Strip the `//!` prefix and a single leading space from an inner
+/// doc-comment slice. Returns the remaining text (trimmed of trailing
+/// whitespace).
+fn parse_inner_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+    let raw = lex.slice();
+    let body = raw.strip_prefix("//!").unwrap_or(raw);
+    let body = body.strip_prefix(' ').unwrap_or(body);
+    body.trim_end().to_string()
+}
+
+/// Skip a nested block comment.
+///
+/// Called after Logos has matched the opening `/*`. Scans the remainder
+/// while tracking nesting depth: every `/*` increments the counter and
+/// every `*/` decrements it. Bumps the lexer cursor past the matching
+/// closing `*/` (or to end-of-input on an unterminated comment, which
+/// then surfaces as a parse error downstream). Audit finding #47.
+fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
+    let remainder = lex.remainder();
+    let bytes = remainder.as_bytes();
+    let mut depth: usize = 1;
+    let mut i: usize = 0;
+    let len = bytes.len();
+    while i < len {
+        let next_idx = i.saturating_add(1);
+        let byte = bytes.get(i).copied().unwrap_or(0);
+        let next = bytes.get(next_idx).copied().unwrap_or(0);
+        if next_idx < len && byte == b'/' && next == b'*' {
+            depth = depth.saturating_add(1);
+            i = i.saturating_add(2);
+        } else if next_idx < len && byte == b'*' && next == b'/' {
+            depth = depth.saturating_sub(1);
+            i = i.saturating_add(2);
+            if depth == 0 {
+                lex.bump(i);
+                return Skip;
+            }
+        } else {
+            i = i.saturating_add(1);
+        }
+    }
+    // Unterminated block comment: consume the rest of the input so the
+    // lexer doesn't loop. The parser will surface "unexpected end of
+    // input" as a normal parse error.
+    lex.bump(len);
+    Skip
 }
 
 /// Parse a numeric literal slice, stripping underscores before calling `f64::parse`.
@@ -324,10 +412,16 @@ impl Token {
             Self::RBrace => "}",
             Self::LBracket => "[",
             Self::RBracket => "]",
-            Self::Eof => "<eof>",
-            Self::String(_) | Self::Number(_) | Self::Regex(_) | Self::Path(_) | Self::Ident(_) => {
-                "<complex token>"
-            }
+            Self::String(_)
+            | Self::Number(_)
+            | Self::Regex(_)
+            | Self::Path(_)
+            | Self::Ident(_)
+            | Self::DocComment(_)
+            | Self::InnerDocComment(_) => "<complex token>",
+            // Phantom variant — `skip_block_comment` returns Skip so the
+            // lexer never emits it. See `BlockComment` doc comment.
+            Self::BlockComment => "<block comment>",
         }
     }
 }
@@ -341,6 +435,8 @@ impl std::fmt::Display for Token {
             Self::Regex(_) => write!(f, "regex"),
             Self::Path(_) => write!(f, "path"),
             Self::Ident(_) => write!(f, "identifier"),
+            Self::DocComment(_) => write!(f, "doc comment"),
+            Self::InnerDocComment(_) => write!(f, "inner doc comment"),
             // For all other tokens, use the as_str() representation
             Self::Trait
             | Self::Struct
@@ -395,7 +491,7 @@ impl std::fmt::Display for Token {
             | Self::RBrace
             | Self::LBracket
             | Self::RBracket
-            | Self::Eof => write!(f, "'{}'", self.as_str()),
+            | Self::BlockComment => write!(f, "'{}'", self.as_str()),
         }
     }
 }

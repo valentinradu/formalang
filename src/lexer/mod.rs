@@ -104,9 +104,11 @@ impl<'source> Lexer<'source> {
         let mut tokens = Vec::new();
 
         while let Some((token, span)) = lexer.next_token() {
-            if matches!(token, Token::Eof) {
-                break;
-            }
+            // Logos signals end-of-input by returning `None` from
+            // `next_token` — there is no separate EOF sentinel token.
+            // (Audit finding #48 removed `Token::Eof` and the dead
+            // guard that previously matched it here.)
+            //
             // Fill in line/column positions from byte offsets
             let span = crate::location::fill_span_positions(span, source);
             tokens.push((token, span));

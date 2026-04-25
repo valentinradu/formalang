@@ -127,6 +127,47 @@ fn compute() -> Number
 }
 
 #[test]
+fn test_extern_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #28: extern_fn_parser sets `is_extern: true` on the AST
+    // FunctionDef, and the IR lowerer trusts that flag rather than
+    // re-deriving from `body.is_none()`.
+    let module = formalang::compile_to_ir("pub extern fn fetch(url: String) -> String")
+        .map_err(|e| format!("{e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "fetch")
+        .ok_or("fetch missing")?;
+    if !f.is_extern {
+        return Err("expected fetch to be marked is_extern in IR".into());
+    }
+    if f.body.is_some() {
+        return Err("expected extern fn to have no body in IR".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_regular_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #28: function_def_parser sets `is_extern: false`; verify
+    // the IR mirrors that for ordinary fn definitions.
+    let module = formalang::compile_to_ir("pub fn add(a: Number, b: Number) -> Number { a + b }")
+        .map_err(|e| format!("{e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "add")
+        .ok_or("add missing")?;
+    if f.is_extern {
+        return Err("expected regular fn to have is_extern=false in IR".into());
+    }
+    if f.body.is_none() {
+        return Err("expected regular fn to have a body in IR".into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_impl_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 struct Foo {}

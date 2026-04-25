@@ -14,7 +14,8 @@ mod types;
 
 use crate::ast::{
     self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
-    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
+    ImplDef, LetBinding, Literal, ParamConvention, PrimitiveType, Statement, StructDef,
+    StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::{EnumInfo, StructInfo, SymbolKind, SymbolTable};
@@ -76,16 +77,27 @@ struct IrLowerer<'a> {
     /// Current function's return type for inferring enum types
     pub(super) current_function_return_type: Option<String>,
     /// Stack of local bindings in scope during lowering: each entry is a
-    /// frame pushed when entering a function/closure body, mapping the
-    /// binding name to its declared `ResolvedType`. Used so that a
-    /// `Reference` to a parameter resolves to the concrete type instead
-    /// of a `TypeParam(name)` placeholder.
-    pub(super) local_binding_scopes: Vec<HashMap<String, ResolvedType>>,
+    /// frame pushed when entering a function/closure/block body, mapping the
+    /// binding name to its declared parameter convention and resolved type.
+    /// Used so that a `Reference` to a parameter resolves to the concrete
+    /// type instead of a `TypeParam(name)` placeholder, and so that closure
+    /// captures inherit the outer binding's convention (audit finding #32).
+    pub(super) local_binding_scopes: Vec<HashMap<String, (ParamConvention, ResolvedType)>>,
     /// When lowering the body of an impl method, maps the current impl's
     /// methods to their declared return types so that forward references
     /// within the same impl block (`self.other_method()`) resolve without
     /// needing the impl to already be installed in `module.impls`.
     pub(super) current_impl_method_returns: Option<HashMap<String, Option<ResolvedType>>>,
+    /// Stack of generic-parameter scopes active during lowering. Each frame
+    /// records the param names in scope together with their trait
+    /// constraints; used by `find_trait_for_method` to resolve which trait
+    /// declares a method on a generic parameter (`T: Foo + Bar`).
+    pub(super) generic_scopes: Vec<Vec<IrGenericParam>>,
+    /// Span of the AST node currently being lowered. Updated at the top of
+    /// `lower_expr` and a few other lowering entry points so that
+    /// `InternalError` diagnostics can cite a meaningful source location
+    /// instead of `Span::default()`. See audit finding #31.
+    pub(super) current_span: crate::location::Span,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -101,6 +113,39 @@ impl<'a> IrLowerer<'a> {
         });
     }
 
+    /// Record an `InternalError` at an IR-lowering site that should be
+    /// unreachable under a passing semantic analysis, and return a
+    /// placeholder `ResolvedType` so the surrounding lowering code can
+    /// continue assembling the IR. The caller's error will surface via
+    /// `self.errors` at the end of lowering; the returned placeholder only
+    /// exists so we don't have to plumb `Result` through every lowering
+    /// helper. See audit finding #8.
+    pub(super) fn internal_error_type(&mut self, detail: String) -> ResolvedType {
+        self.errors.push(CompilerError::InternalError {
+            detail,
+            span: self.current_span,
+        });
+        ResolvedType::TypeParam("Unknown".to_string())
+    }
+
+    /// Like `internal_error_type`, but skips the error push when the
+    /// offending type is already a `TypeParam` — that indicates an upstream
+    /// lowering step already produced a placeholder (unresolved path, tuple
+    /// type rendered as a string, etc.) and will have errored on its own
+    /// behalf. This avoids a cascade of secondary errors until the upstream
+    /// `TypeParam` sources are removed (audit finding #8 follow-up).
+    pub(super) fn internal_error_type_if_concrete(
+        &mut self,
+        bad_ty: &ResolvedType,
+        detail: String,
+    ) -> ResolvedType {
+        if matches!(bad_ty, ResolvedType::TypeParam(_)) {
+            ResolvedType::TypeParam("Unknown".to_string())
+        } else {
+            self.internal_error_type(detail)
+        }
+    }
+
     fn new(symbols: &'a SymbolTable) -> Self {
         Self {
             module: IrModule::new(),
@@ -112,14 +157,25 @@ impl<'a> IrLowerer<'a> {
             current_function_return_type: None,
             local_binding_scopes: Vec::new(),
             current_impl_method_returns: None,
+            generic_scopes: Vec::new(),
+            current_span: crate::location::Span::default(),
         }
     }
 
-    /// Look up a local binding by name from the innermost scope outwards.
+    /// Look up a local binding's resolved type by name from the innermost
+    /// scope outwards.
     pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {
+        self.lookup_local_binding_entry(name).map(|(_, ty)| ty)
+    }
+
+    /// Look up a local binding's full entry (convention + type) by name.
+    pub(super) fn lookup_local_binding_entry(
+        &self,
+        name: &str,
+    ) -> Option<&(ParamConvention, ResolvedType)> {
         for frame in self.local_binding_scopes.iter().rev() {
-            if let Some(ty) = frame.get(name) {
-                return Some(ty);
+            if let Some(entry) = frame.get(name) {
+                return Some(entry);
             }
         }
         None
@@ -186,7 +242,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
-        let value = self.lower_expr(&let_binding.value);
+        let mut value = self.lower_expr(&let_binding.value);
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
@@ -194,12 +250,31 @@ impl<'a> IrLowerer<'a> {
         } else {
             value.ty().clone()
         };
+        // Audit #41: an empty array literal lowers to `Array(Never)`
+        // because it has no elements to seed the element type from.
+        // When the binding is annotated `[T]`, retype the value's
+        // `Array(Never)` to `Array(T)` so backends and downstream IR
+        // passes see a concrete element type instead of Never.
+        if let (IrExpr::Array { elements, ty: vty }, ResolvedType::Array(annotated_elem)) =
+            (&mut value, &ty)
+        {
+            if elements.is_empty()
+                && matches!(
+                    vty,
+                    ResolvedType::Array(boxed)
+                        if matches!(**boxed, ResolvedType::Primitive(PrimitiveType::Never))
+                )
+            {
+                *vty = ResolvedType::Array(annotated_elem.clone());
+            }
+        }
         self.module.add_let(IrLet {
             name: ident_name.to_string(),
             visibility: let_binding.visibility,
             mutable: let_binding.mutable,
             ty,
             value,
+            doc: let_binding.doc.clone(),
         });
     }
 
@@ -210,19 +285,14 @@ impl<'a> IrLowerer<'a> {
         elements: &[ast::ArrayPatternElement],
     ) {
         let value_expr = self.lower_expr(&let_binding.value);
-        let elem_ty = match value_expr.ty() {
-            ResolvedType::Array(inner) => (**inner).clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => ResolvedType::TypeParam("Unknown".to_string()),
+        let bad_recv = value_expr.ty().clone();
+        let elem_ty = if let ResolvedType::Array(inner) = &bad_recv {
+            (**inner).clone()
+        } else {
+            self.internal_error_type_if_concrete(
+                &bad_recv,
+                format!("array-destructuring let receiver lowered to non-array type {bad_recv:?}"),
+            )
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_binding_name(element) {
@@ -246,6 +316,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: let_binding.mutable,
                     ty: elem_ty.clone(),
                     value: access_expr,
+                    doc: let_binding.doc.clone(),
                 });
             }
         }
@@ -277,6 +348,7 @@ impl<'a> IrLowerer<'a> {
                 mutable: let_binding.mutable,
                 ty: field_ty,
                 value: access_expr,
+                doc: let_binding.doc.clone(),
             });
         }
     }
@@ -288,29 +360,29 @@ impl<'a> IrLowerer<'a> {
         elements: &[BindingPattern],
     ) {
         let value_expr = self.lower_expr(&let_binding.value);
-        let tuple_types = match value_expr.ty() {
-            ResolvedType::Tuple(fields) => fields.clone(),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => Vec::new(),
+        let bad_recv = value_expr.ty().clone();
+        let tuple_types = if let ResolvedType::Tuple(fields) = &bad_recv {
+            fields.clone()
+        } else {
+            let _ = self.internal_error_type_if_concrete(
+                &bad_recv,
+                format!("tuple-destructuring let receiver lowered to non-tuple type {bad_recv:?}"),
+            );
+            Vec::new()
+        };
+        let overflow_ty = if elements.len() > tuple_types.len() && !tuple_types.is_empty() {
+            self.internal_error_type(format!(
+                "tuple-destructuring pattern binds {} names but the receiver has {} fields",
+                elements.len(),
+                tuple_types.len(),
+            ))
+        } else {
+            ResolvedType::TypeParam("Unknown".to_string())
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_simple_binding_name(element) {
                 let (field_name, ty) = tuple_types.get(i).map_or_else(
-                    || {
-                        (
-                            i.to_string(),
-                            ResolvedType::TypeParam("Unknown".to_string()),
-                        )
-                    },
+                    || (i.to_string(), overflow_ty.clone()),
                     |(n, t)| (n.clone(), t.clone()),
                 );
                 // `value.field_name` — tuple fields are accessed by their declared name
@@ -325,6 +397,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: let_binding.mutable,
                     ty,
                     value: access_expr,
+                    doc: let_binding.doc.clone(),
                 });
             }
         }
@@ -351,24 +424,56 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Resolve the type of a self.field reference using current impl context
+    /// Resolve the type of a self.field reference using current impl context.
+    /// Searches the top-level symbol table first, then any current module
+    /// prefix (so impl blocks inside `pub mod foo { ... }` resolve correctly).
     pub(super) fn resolve_self_field_type(&mut self, field_name: &str) -> ResolvedType {
         if let Some(struct_name) = self.current_impl_struct.clone() {
-            // Look up the struct in the symbol table
-            if let Some(struct_info) = self.symbols.structs.get(&struct_name) {
-                // Check regular fields
+            if let Some(ty) = self.find_struct_field_ty(&struct_name, field_name) {
+                return ty;
+            }
+        }
+        self.internal_error_type(format!(
+            "`self.{field_name}` has no matching field on the current impl target; semantic should have caught this"
+        ))
+    }
+
+    /// Look up a struct's field type by searching the top-level symbol
+    /// table, then walking the current module prefix if any. Returns the
+    /// lowered `ResolvedType` if found.
+    fn find_struct_field_ty(
+        &mut self,
+        struct_name: &str,
+        field_name: &str,
+    ) -> Option<ResolvedType> {
+        if let Some(struct_info) = self.symbols.structs.get(struct_name) {
+            if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
+                let ty = field.ty.clone();
+                return Some(self.lower_type(&ty));
+            }
+        }
+        if !self.current_module_prefix.is_empty() {
+            let parts: Vec<&str> = self.current_module_prefix.split("::").collect();
+            let mut current = self.symbols;
+            for part in &parts {
+                match current.modules.get(*part) {
+                    Some(info) => current = &info.symbols,
+                    None => return None,
+                }
+            }
+            if let Some(struct_info) = current.structs.get(struct_name) {
                 if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {
                     let ty = field.ty.clone();
-                    return self.lower_type(&ty);
+                    return Some(self.lower_type(&ty));
                 }
             }
         }
-        ResolvedType::TypeParam(format!("self.{field_name}"))
+        None
     }
 
     /// Resolve the type of `self` in an impl block context.
     /// Returns the `ResolvedType` for the struct or enum being implemented.
-    pub(super) fn resolve_impl_self_type(&self, impl_name: &str) -> ResolvedType {
+    pub(super) fn resolve_impl_self_type(&mut self, impl_name: &str) -> ResolvedType {
         // First try as a struct
         if let Some(id) = self.module.struct_id(impl_name) {
             return ResolvedType::Struct(id);
@@ -377,8 +482,9 @@ impl<'a> IrLowerer<'a> {
         if let Some(id) = self.module.enum_id(impl_name) {
             return ResolvedType::Enum(id);
         }
-        // Fall back to TypeParam if not found
-        ResolvedType::TypeParam("self".to_string())
+        self.internal_error_type(format!(
+            "impl-self type `{impl_name}` was not registered in the module before lowering referenced it",
+        ))
     }
 
     /// Look up all traits for a struct that lives inside a module.
@@ -467,6 +573,7 @@ impl<'a> IrLowerer<'a> {
                     fields,
                     methods,
                     generic_params,
+                    doc: None,
                 },
             ) {
                 self.errors.push(e);
@@ -554,6 +661,7 @@ impl<'a> IrLowerer<'a> {
                 visibility: enum_info.visibility,
                 variants,
                 generic_params,
+                doc: None,
             },
         ) {
             self.errors.push(e);
@@ -597,6 +705,7 @@ impl<'a> IrLowerer<'a> {
                 traits,
                 fields,
                 generic_params,
+                doc: None,
             },
         ) {
             self.errors.push(e);
@@ -618,6 +727,7 @@ impl<'a> IrLowerer<'a> {
                         fields: Vec::new(),
                         methods: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: t.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -633,6 +743,7 @@ impl<'a> IrLowerer<'a> {
                         traits: Vec::new(),
                         fields: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: s.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -647,6 +758,7 @@ impl<'a> IrLowerer<'a> {
                         visibility: e.visibility,
                         variants: Vec::new(),
                         generic_params: Vec::new(),
+                        doc: e.doc.clone(),
                     },
                 ) {
                     self.errors.push(e);
@@ -974,23 +1086,69 @@ impl<'a> IrLowerer<'a> {
         }
         self.current_impl_method_returns = Some(impl_returns);
 
+        let generic_params = self.lower_generic_params(&i.generics);
+        // The impl's methods reference type parameters whose trait
+        // constraints are declared on the *target* struct/enum
+        // (e.g. `struct Box<T: Foo>` plus `impl Box<T> { ... }`). The impl
+        // header itself carries the param names without constraints, so we
+        // merge constraints from the target definition under each matching
+        // name so `find_trait_for_method` resolves correctly.
+        let mut scope = generic_params.clone();
+        let target_params: Vec<IrGenericParam> = match target {
+            super::ImplTarget::Struct(id) => self
+                .module
+                .get_struct(id)
+                .map(|s| s.generic_params.clone())
+                .unwrap_or_default(),
+            super::ImplTarget::Enum(id) => self
+                .module
+                .get_enum(id)
+                .map(|e| e.generic_params.clone())
+                .unwrap_or_default(),
+        };
+        for target_param in target_params {
+            if let Some(existing) = scope.iter_mut().find(|q| q.name == target_param.name) {
+                for c in target_param.constraints {
+                    if !existing.constraints.contains(&c) {
+                        existing.constraints.push(c);
+                    }
+                }
+            } else {
+                scope.push(target_param);
+            }
+        }
+        self.generic_scopes.push(scope);
         let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+        self.generic_scopes.pop();
+        let trait_id = i
+            .trait_name
+            .as_ref()
+            .and_then(|t| self.module.trait_id(&t.name));
 
         // Clear the context
         self.current_impl_struct = None;
         self.current_impl_method_returns = saved_impl_returns;
 
-        if let Err(err) = self.module.add_impl(IrImpl { target, functions }) {
+        if let Err(err) = self.module.add_impl(IrImpl {
+            target,
+            trait_id,
+            is_extern: i.is_extern,
+            generic_params,
+            functions,
+        }) {
             self.errors.push(err);
         }
     }
 
     fn lower_function(&mut self, f: &FunctionDef) {
+        let generic_params = self.lower_generic_params(&f.generics);
+        self.generic_scopes.push(generic_params.clone());
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
@@ -1004,31 +1162,40 @@ impl<'a> IrLowerer<'a> {
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         // Push a local scope so References inside the body resolve against
-        // the parameters' declared types.
-        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        // the parameters' declared types and so closure captures see the
+        // parameter's convention (audit finding #32).
+        let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
-                frame.insert(p.name.clone(), ty.clone());
+                frame.insert(p.name.clone(), (p.convention, ty.clone()));
             }
         }
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        let is_extern = body.is_none();
+        // Audit #28: trust the AST's explicit `is_extern` flag rather
+        // than re-deriving from `body.is_none()`. Under parser error
+        // recovery the two can diverge; the semantic layer surfaces
+        // that mismatch as `ExternFnWithBody` / `RegularFnWithoutBody`.
+        let is_extern = f.is_extern;
 
         self.local_binding_scopes.pop();
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
 
+        self.generic_scopes.pop();
+
         if let Err(e) = self.module.add_function(
             f.name.name.clone(),
             IrFunction {
                 name: f.name.name.clone(),
+                generic_params,
                 params,
                 return_type,
                 body,
                 is_extern,
+                doc: f.doc.clone(),
             },
         ) {
             self.errors.push(e);
@@ -1041,6 +1208,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
@@ -1054,16 +1222,26 @@ impl<'a> IrLowerer<'a> {
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         // Push a local scope so the body's References to parameters resolve
-        // to the declared param types rather than TypeParam(name) placeholders.
-        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        // to the declared param types rather than TypeParam(name) placeholders,
+        // and so closures inherit the parameter convention when capturing
+        // (audit finding #32).
+        let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
-                frame.insert(p.name.clone(), ty.clone());
+                frame.insert(p.name.clone(), (p.convention, ty.clone()));
             }
         }
-        if let Some(impl_struct) = self.current_impl_struct.clone() {
-            if let Some(struct_id) = self.module.struct_id(&impl_struct) {
-                frame.insert("self".to_string(), ResolvedType::Struct(struct_id));
+        if let Some(impl_name) = self.current_impl_struct.clone() {
+            if let Some(struct_id) = self.module.struct_id(&impl_name) {
+                frame.insert(
+                    "self".to_string(),
+                    (ParamConvention::Let, ResolvedType::Struct(struct_id)),
+                );
+            } else if let Some(enum_id) = self.module.enum_id(&impl_name) {
+                frame.insert(
+                    "self".to_string(),
+                    (ParamConvention::Let, ResolvedType::Enum(enum_id)),
+                );
             }
         }
         self.local_binding_scopes.push(frame);
@@ -1078,10 +1256,14 @@ impl<'a> IrLowerer<'a> {
 
         IrFunction {
             name: f.name.name.clone(),
+            // Method-level generics aren't yet supported; enclosing type
+            // generics live on the containing IrImpl.
+            generic_params: Vec::new(),
             params,
             return_type,
             body,
             is_extern,
+            doc: f.doc.clone(),
         }
     }
 
@@ -1091,6 +1273,7 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .map(|p| IrFunctionParam {
                 name: p.name.name.clone(),
+                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
                 default: p.default.as_ref().map(|e| self.lower_expr(e)),
                 convention: p.convention,
@@ -1122,9 +1305,7 @@ impl<'a> IrLowerer<'a> {
             ast::Type::Tuple(_) => "Tuple".to_string(),
             ast::Type::Dictionary { .. } => "Dictionary".to_string(),
             ast::Type::Closure { .. } => "Closure".to_string(),
-            ast::Type::Ident(name)
-            | ast::Type::Generic { name, .. }
-            | ast::Type::TypeParameter(name) => name.name.clone(),
+            ast::Type::Ident(name) | ast::Type::Generic { name, .. } => name.name.clone(),
         }
     }
 
@@ -1229,8 +1410,6 @@ impl<'a> IrLowerer<'a> {
                     .map(|f| (f.name.name.clone(), self.lower_type(&f.ty)))
                     .collect(),
             ),
-
-            Type::TypeParameter(ident) => ResolvedType::TypeParam(ident.name.clone()),
 
             Type::Dictionary { key, value } => ResolvedType::Dictionary {
                 key_ty: Box::new(self.lower_type(key)),

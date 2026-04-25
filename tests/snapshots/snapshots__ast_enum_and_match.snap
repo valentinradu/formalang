@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 58
 expression: file
 ---
 File {
@@ -151,6 +152,7 @@ File {
                             },
                         },
                     ],
+                    doc: None,
                     span: Span {
                         start: Location {
                             offset: 9,
@@ -185,6 +187,7 @@ File {
                             },
                         },
                     },
+                    generics: [],
                     params: [
                         FnParam {
                             convention: Let,
@@ -296,11 +299,23 @@ File {
                                         },
                                         bindings: [],
                                     },
-                                    body: Literal(
-                                        Number(
+                                    body: Literal {
+                                        value: Number(
                                             1.0,
                                         ),
-                                    ),
+                                        span: Span {
+                                            start: Location {
+                                                offset: 158,
+                                                line: 6,
+                                                column: 26,
+                                            },
+                                            end: Location {
+                                                offset: 159,
+                                                line: 6,
+                                                column: 27,
+                                            },
+                                        },
+                                    },
                                     span: Span {
                                         start: Location {
                                             offset: 149,
@@ -333,11 +348,23 @@ File {
                                         },
                                         bindings: [],
                                     },
-                                    body: Literal(
-                                        Number(
+                                    body: Literal {
+                                        value: Number(
                                             0.0,
                                         ),
-                                    ),
+                                        span: Span {
+                                            start: Location {
+                                                offset: 188,
+                                                line: 7,
+                                                column: 28,
+                                            },
+                                            end: Location {
+                                                offset: 189,
+                                                line: 7,
+                                                column: 29,
+                                            },
+                                        },
+                                    },
                                     span: Span {
                                         start: Location {
                                             offset: 177,
@@ -445,6 +472,8 @@ File {
                             },
                         },
                     ),
+                    is_extern: false,
+                    doc: None,
                     span: Span {
                         start: Location {
                             offset: 75,

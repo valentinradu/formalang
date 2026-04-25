@@ -102,10 +102,20 @@ pub enum Definition {
 pub struct FunctionDef {
     pub visibility: Visibility,
     pub name: Ident,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.
     pub body: Option<Expr>,
+    /// `true` when produced by `extern_fn_parser` (`extern fn name(...)`).
+    /// `false` for regular function definitions. Tracked alongside
+    /// `body` so the semantic layer can detect `extern fn { ... }` and
+    /// `fn name(...)` (without body) consistently — including under
+    /// parser error recovery, where the body may not match what the
+    /// `extern` keyword implies. Audit finding #28.
+    pub is_extern: bool,
+    /// Joined `///` doc comments preceding this definition. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -146,6 +156,8 @@ pub struct LetBinding {
     pub pattern: BindingPattern,
     pub type_annotation: Option<Type>,
     pub value: Expr,
+    /// Joined `///` doc comments preceding this binding. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -174,6 +186,8 @@ pub struct TraitDef {
     pub fields: Vec<FieldDef>,
     /// Required method signatures (no default implementations)
     pub methods: Vec<FnSig>,
+    /// Joined `///` doc comments preceding this trait. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -185,6 +199,8 @@ pub struct StructDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<StructField>,
+    /// Joined `///` doc comments preceding this struct. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -214,6 +230,8 @@ pub struct ImplDef {
     pub functions: Vec<FnDef>,
     /// When `true`, this is `extern impl`; all contained `FnDef` bodies must be `None`.
     pub is_extern: bool,
+    /// Joined `///` doc comments preceding this impl block. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -228,6 +246,8 @@ pub struct FnDef {
     pub return_type: Option<Type>,
     /// `None` in `extern impl`; `Some(_)` in regular impl.
     pub body: Option<Expr>,
+    /// Joined `///` doc comments preceding this method. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -287,6 +307,8 @@ pub struct EnumDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<EnumVariant>,
+    /// Joined `///` doc comments preceding this enum. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -306,6 +328,8 @@ pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub definitions: Vec<Definition>,
+    /// Joined `///` doc comments preceding this module. Audit #51.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -345,8 +369,6 @@ pub enum Type {
         params: Vec<(ParamConvention, Self)>,
         ret: Box<Self>,
     },
-
-    TypeParameter(Ident),
 }
 
 /// Named tuple field
@@ -375,7 +397,10 @@ pub enum PrimitiveType {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
-    Literal(Literal),
+    Literal {
+        value: Literal,
+        span: Span,
+    },
 
     /// Struct instantiation or function call (disambiguated by semantic analysis)
     Invocation {
@@ -470,6 +495,10 @@ pub enum Expr {
 
     ClosureExpr {
         params: Vec<ClosureParam>,
+        /// Optional declared return type (`|x: T| -> R { body }`). `None`
+        /// when the closure does not specify one and the type is inferred
+        /// from the body.
+        return_type: Option<Type>,
         body: Box<Self>,
         span: Span,
     },
@@ -642,10 +671,10 @@ impl Ident {
 impl Expr {
     /// Get the span of an expression
     #[must_use]
-    pub fn span(&self) -> Span {
+    pub const fn span(&self) -> Span {
         match self {
-            Self::Literal(_) => Span::default(),
-            Self::Invocation { span, .. }
+            Self::Literal { span, .. }
+            | Self::Invocation { span, .. }
             | Self::EnumInstantiation { span, .. }
             | Self::InferredEnumInstantiation { span, .. }
             | Self::Array { span, .. }
@@ -775,7 +804,10 @@ mod tests {
 
     #[test]
     fn test_expr_span_literal() -> Result<(), Box<dyn std::error::Error>> {
-        let expr = Expr::Literal(Literal::Nil);
+        let expr = Expr::Literal {
+            value: Literal::Nil,
+            span: Span::default(),
+        };
         if expr.span() != Span::default() {
             return Err("Literal should return default span".into());
         }

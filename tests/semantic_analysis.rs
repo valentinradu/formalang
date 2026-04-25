@@ -157,7 +157,7 @@ fn test_let_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Conditional {
             flag: Boolean = (let x = if true { true } else { false }
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Let with if: {e:?}"))?;
@@ -169,7 +169,7 @@ fn test_let_with_for() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Iterator {
             items: [String] = (let result = for x in ["a", "b"] { x }
-            result)
+            in result)
         }
     "#;
     compile(source).map_err(|e| format!("Let with for: {e:?}"))?;

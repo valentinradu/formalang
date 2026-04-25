@@ -21,8 +21,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.resolve_struct_types(struct_def);
                     }
                     Definition::Impl(impl_def) => {
-                        // Push generic scope for this definition
-                        self.push_generic_scope(&impl_def.generics);
+                        // Audit #12/#27: merge target struct/enum generics into the
+                        // impl scope so method bodies see trait bounds declared on T.
+                        self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
 
                         // Set current impl struct for field type resolution
                         self.current_impl_struct = Some(impl_def.name.name.clone());
@@ -84,7 +85,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.resolve_struct_types(struct_def);
                                 }
                                 Definition::Impl(impl_def) => {
-                                    self.push_generic_scope(&impl_def.generics);
+                                    self.push_impl_generic_scope(
+                                        &impl_def.generics,
+                                        &impl_def.name.name,
+                                    );
                                     self.current_impl_struct = Some(impl_def.name.name.clone());
                                     self.local_let_bindings.clear();
                                     for func in &impl_def.functions {
@@ -155,6 +159,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         fields,
                         composed_traits,
                         trait_def.methods.clone(),
+                        trait_def.doc.clone(),
                     );
                 }
                 Definition::Struct(struct_def) => {
@@ -172,6 +177,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         struct_def.span,
                         struct_def.generics.clone(),
                         fields,
+                        struct_def.doc.clone(),
                     );
                 }
                 Definition::Enum(enum_def) => {
@@ -204,6 +210,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         variants,
                         variant_fields,
                         Vec::new(), // Enums don't support inline trait syntax yet
+                        enum_def.doc.clone(),
                     );
                 }
                 Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}
@@ -237,9 +244,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.resolve_struct_types(struct_def);
                 }
                 Definition::Impl(impl_def) => {
-                    self.push_generic_scope(&impl_def.generics);
+                    // Audit #37: previously this arm pushed the generic
+                    // scope and immediately cleared it without running
+                    // return-type validation, so module-nested impl
+                    // methods (e.g. `pub mod m { impl Foo { fn bar() -> X
+                    // { ... } } }`) escaped Pass 2.
+                    self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
                     self.current_impl_struct = Some(impl_def.name.name.clone());
                     self.local_let_bindings.clear();
+                    for func in &impl_def.functions {
+                        self.validate_function_return_type(func, file);
+                    }
                     self.current_impl_struct = None;
                     self.local_let_bindings.clear();
                     self.pop_generic_scope();
@@ -344,14 +359,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Type::Generic { name, args, span } => self.validate_generic_type(name, args, *span),
-            Type::TypeParameter(param) => {
-                if !self.is_type_parameter(&param.name) {
-                    self.errors.push(CompilerError::OutOfScopeTypeParameter {
-                        param: param.name.clone(),
-                        span: param.span,
-                    });
-                }
-            }
             Type::Dictionary { key, value } => {
                 self.validate_type(key);
                 self.validate_type(value);
@@ -497,8 +504,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Recursively extracts type names from arrays and optionals
     pub(super) fn add_type_dependencies(graph: &mut TypeGraph, from: &str, ty: &Type) {
         match ty {
-            // Primitive types and type parameters don't create dependencies
-            Type::Primitive(_) | Type::TypeParameter(_) => {}
+            // Primitive types don't create dependencies
+            Type::Primitive(_) => {}
             Type::Ident(ident) => {
                 // Direct type reference creates a dependency
                 graph.add_dependency(from.to_string(), ident.name.clone());

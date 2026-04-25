@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 186
 expression: module
 ---
 IrModule {
@@ -24,6 +25,7 @@ IrModule {
                 },
             ],
             generic_params: [],
+            doc: None,
         },
     ],
     traits: [
@@ -38,6 +40,7 @@ IrModule {
                     params: [
                         IrFunctionParam {
                             name: "self",
+                            external_label: None,
                             ty: None,
                             default: None,
                             convention: Let,
@@ -51,6 +54,7 @@ IrModule {
                 },
             ],
             generic_params: [],
+            doc: None,
         },
     ],
     enums: [],
@@ -61,12 +65,21 @@ IrModule {
                     0,
                 ),
             ),
+            trait_id: Some(
+                TraitId(
+                    0,
+                ),
+            ),
+            is_extern: false,
+            generic_params: [],
             functions: [
                 IrFunction {
                     name: "area",
+                    generic_params: [],
                     params: [
                         IrFunctionParam {
                             name: "self",
+                            external_label: None,
                             ty: None,
                             default: None,
                             convention: Let,
@@ -98,6 +111,7 @@ IrModule {
                         },
                     ),
                     is_extern: false,
+                    doc: None,
                 },
             ],
         },

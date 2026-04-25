@@ -5,9 +5,9 @@
 
 use super::position::span_contains_offset;
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, Definition, EnumDef, EnumVariant, Expr, FieldDef, File,
-    FnDef, FnParam, FunctionDef, Ident, ImplDef, LetBinding, ModuleDef, Statement, StructDef,
-    StructField, TraitDef, Type, UseItems, UseStmt,
+    ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant, Expr,
+    FieldDef, File, FnDef, FnParam, FunctionDef, Ident, ImplDef, LetBinding, ModuleDef, Statement,
+    StructDef, StructField, TraitDef, Type, UseItems, UseStmt,
 };
 use crate::location::Span;
 
@@ -680,7 +680,7 @@ impl<'ast> NodeFinder<'ast> {
             Type::Primitive(_) => {
                 // Primitive types don't have spans to check
             }
-            Type::Ident(ident) | Type::TypeParameter(ident) => {
+            Type::Ident(ident) => {
                 if span_contains_offset(&ident.span, self.offset) {
                     self.found_node = Some(NodeAtPosition::Identifier(ident));
                 }
@@ -758,6 +758,10 @@ impl<'ast> NodeFinder<'ast> {
     }
 
     /// Dispatch to per-variant expression visitors.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive per-Expr-variant traversal; each arm is a short recursive walk"
+    )]
     fn visit_expr_inner(&mut self, expr: &'ast Expr) {
         match expr {
             Expr::Reference { path, .. } => {
@@ -841,45 +845,96 @@ impl<'ast> NodeFinder<'ast> {
                     }
                 }
             }
-            Expr::Literal(_)
-            | Expr::Invocation { .. }
-            | Expr::EnumInstantiation { .. }
-            | Expr::InferredEnumInstantiation { .. }
-            | Expr::UnaryOp { .. }
-            | Expr::DictLiteral { .. }
-            | Expr::DictAccess { .. }
-            | Expr::FieldAccess { .. }
-            | Expr::ClosureExpr { .. }
-            | Expr::LetExpr { .. }
-            | Expr::MethodCall { .. }
-            | Expr::Block { .. } => {}
+            Expr::Invocation { args, .. } => {
+                for (_, arg) in args {
+                    self.visit_expr(arg);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::EnumInstantiation { data, .. } | Expr::InferredEnumInstantiation { data, .. } => {
+                for (_, v) in data {
+                    self.visit_expr(v);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::UnaryOp { operand, .. } => self.visit_expr(operand),
+            Expr::DictLiteral { entries, .. } => {
+                for (key, value) in entries {
+                    self.visit_expr(key);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                    self.visit_expr(value);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::DictAccess { dict, key, .. } => {
+                self.visit_expr(dict);
+                if self.found_node.is_none() {
+                    self.visit_expr(key);
+                }
+            }
+            Expr::FieldAccess { object, .. } => self.visit_expr(object),
+            Expr::ClosureExpr { body, .. } => self.visit_expr(body),
+            Expr::LetExpr { value, body, .. } => {
+                self.visit_expr(value);
+                if self.found_node.is_none() {
+                    self.visit_expr(body);
+                }
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                self.visit_expr(receiver);
+                if self.found_node.is_some() {
+                    return;
+                }
+                for (_, arg) in args {
+                    self.visit_expr(arg);
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+            }
+            Expr::Block {
+                statements, result, ..
+            } => {
+                for stmt in statements {
+                    match stmt {
+                        BlockStatement::Let { value, .. } => self.visit_expr(value),
+                        BlockStatement::Assign { target, value, .. } => {
+                            self.visit_expr(target);
+                            if self.found_node.is_none() {
+                                self.visit_expr(value);
+                            }
+                        }
+                        BlockStatement::Expr(expr) => self.visit_expr(expr),
+                    }
+                    if self.found_node.is_some() {
+                        break;
+                    }
+                }
+                if self.found_node.is_none() {
+                    self.visit_expr(result);
+                }
+            }
+            Expr::Literal { .. } => {}
         }
     }
 
-    /// Get the span of an expression
+    /// Get the span of an expression. Every `Expr` variant now carries a
+    /// real span (audit finding #19), so this is always `Some` — kept for
+    /// backwards compatibility with the existing callers.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "callers pattern-match on Option to skip nodes with no span; preserved for API stability"
+    )]
     const fn expr_span(expr: &Expr) -> Option<Span> {
-        match expr {
-            Expr::Literal(_) => None, // Literals don't have their own spans
-            Expr::Invocation { span, .. }
-            | Expr::EnumInstantiation { span, .. }
-            | Expr::InferredEnumInstantiation { span, .. }
-            | Expr::Array { span, .. }
-            | Expr::Tuple { span, .. }
-            | Expr::Reference { span, .. }
-            | Expr::BinaryOp { span, .. }
-            | Expr::UnaryOp { span, .. }
-            | Expr::ForExpr { span, .. }
-            | Expr::IfExpr { span, .. }
-            | Expr::MatchExpr { span, .. }
-            | Expr::Group { span, .. }
-            | Expr::DictLiteral { span, .. }
-            | Expr::DictAccess { span, .. }
-            | Expr::FieldAccess { span, .. }
-            | Expr::ClosureExpr { span, .. }
-            | Expr::LetExpr { span, .. }
-            | Expr::MethodCall { span, .. }
-            | Expr::Block { span, .. } => Some(*span),
-        }
+        Some(expr.span())
     }
 }
 

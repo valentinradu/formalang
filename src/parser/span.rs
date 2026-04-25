@@ -177,7 +177,7 @@ fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, source: &str) {
 pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
     match ty {
         Type::Primitive(_) => {}
-        Type::Ident(ident) | Type::TypeParameter(ident) => fill_span(&mut ident.span, source),
+        Type::Ident(ident) => fill_span(&mut ident.span, source),
         Type::Array(inner) | Type::Optional(inner) => fill_type_span(inner, source),
         Type::Tuple(fields) => {
             for field in fields {
@@ -213,7 +213,7 @@ pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
 )]
 pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
     match expr {
-        Expr::Literal(_) => {}
+        Expr::Literal { span, .. } => fill_span(span, source),
         Expr::Invocation {
             path,
             type_args,
@@ -333,8 +333,13 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_span(&mut field.span, source);
             fill_span(span, source);
         }
-        Expr::ClosureExpr { params, body, span } => {
-            fill_closure_expr_spans(params, body, span, source);
+        Expr::ClosureExpr {
+            params,
+            return_type,
+            body,
+            span,
+        } => {
+            fill_closure_expr_spans(params, return_type.as_mut(), body, span, source);
         }
         Expr::LetExpr {
             pattern,
@@ -408,6 +413,7 @@ fn fill_invocation_expr_spans(
 
 fn fill_closure_expr_spans(
     params: &mut [crate::ast::ClosureParam],
+    return_type: Option<&mut crate::ast::Type>,
     body: &mut Expr,
     span: &mut crate::location::Span,
     source: &str,
@@ -418,6 +424,9 @@ fn fill_closure_expr_spans(
             fill_type_span(ty, source);
         }
         fill_span(&mut param.span, source);
+    }
+    if let Some(ty) = return_type {
+        fill_type_span(ty, source);
     }
     fill_expr_span(body, source);
     fill_span(span, source);

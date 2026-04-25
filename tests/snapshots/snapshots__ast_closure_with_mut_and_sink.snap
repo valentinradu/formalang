@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 87
 expression: file
 ---
 File {
@@ -75,6 +76,7 @@ File {
                             },
                         },
                     ],
+                    return_type: None,
                     body: Reference {
                         path: [
                             Ident {
@@ -119,6 +121,7 @@ File {
                         },
                     },
                 },
+                doc: None,
                 span: Span {
                     start: Location {
                         offset: 9,
@@ -203,6 +206,7 @@ File {
                             },
                         },
                     ],
+                    return_type: None,
                     body: Reference {
                         path: [
                             Ident {
@@ -247,6 +251,7 @@ File {
                         },
                     },
                 },
+                doc: None,
                 span: Span {
                     start: Location {
                         offset: 61,

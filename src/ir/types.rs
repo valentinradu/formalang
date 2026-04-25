@@ -35,6 +35,10 @@ pub struct IrLet {
 
     /// The bound expression
     pub value: IrExpr,
+
+    /// Joined `///` doc comments preceding this binding. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A struct definition in the IR.
@@ -61,6 +65,10 @@ pub struct IrStruct {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this struct. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A trait definition in the IR.
@@ -89,6 +97,10 @@ pub struct IrTrait {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this trait. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A function signature in the IR (without a body).
@@ -139,6 +151,10 @@ pub struct IrEnum {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+
+    /// Joined `///` doc comments preceding this enum. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// An enum variant.
@@ -170,7 +186,12 @@ pub enum ImplTarget {
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide methods for a struct or enum.
+/// Impl blocks provide methods for a struct or enum. Backends that need to
+/// emit trait-conformance declarations (e.g. `TypeScript` / Kotlin
+/// `implements`) can read `trait_id` to learn which trait the block
+/// implements — it is `None` for inherent impls. `is_extern` mirrors the
+/// `extern impl` syntax and indicates that the impl's methods have no
+/// `FormaLang` body. `generic_params` captures `impl<T>` constraints.
 #[expect(
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
@@ -179,6 +200,16 @@ pub enum ImplTarget {
 pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
+
+    /// `Some(id)` for `impl Trait for Type`, `None` for inherent impls.
+    pub trait_id: Option<TraitId>,
+
+    /// Whether this is an `extern impl` block (all methods `is_extern = true`).
+    pub is_extern: bool,
+
+    /// Generic parameters declared on the impl block itself
+    /// (`impl<T: Bound> Box<T>`).
+    pub generic_params: Vec<IrGenericParam>,
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
@@ -227,6 +258,12 @@ pub struct IrFunction {
     /// Function name
     pub name: String,
 
+    /// Generic type parameters declared on the function itself
+    /// (e.g. `fn identity<T>(value: T) -> T`).
+    /// Empty for methods — method-level generics aren't yet supported;
+    /// enclosing-type generics live on the containing `IrImpl` / `IrStruct`.
+    pub generic_params: Vec<IrGenericParam>,
+
     /// Parameters (first is typically `self`)
     pub params: Vec<IrFunctionParam>,
 
@@ -238,6 +275,10 @@ pub struct IrFunction {
 
     /// Whether this function is extern (no body, defined outside `FormaLang`)
     pub is_extern: bool,
+
+    /// Joined `///` doc comments preceding this function. Audit #51.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// A function parameter in the IR.
@@ -249,6 +290,13 @@ pub struct IrFunction {
 pub struct IrFunctionParam {
     /// Parameter name
     pub name: String,
+
+    /// External call-site label, for parameters declared as
+    /// `fn foo(label name: T)`. `None` when the parameter has no
+    /// distinct external label. Preserved so label-based calling
+    /// conventions (Swift, Kotlin) can emit the call-site name
+    /// distinct from the body-side name. Audit finding #39.
+    pub external_label: Option<String>,
 
     /// Parameter type (None for `self` parameter - type is inferred from impl block)
     pub ty: Option<ResolvedType>,

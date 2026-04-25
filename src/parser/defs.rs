@@ -148,12 +148,16 @@ where
 }
 
 /// Parse a field definition: mut? name: Type
+///
+/// Audit #51: optional leading `///` doc comments are consumed and
+/// ignored at this level (field-level docs aren't yet stored).
 pub(super) fn field_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FieldDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    mutability_parser()
+    super::doc_comments_parser()
+        .ignore_then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -166,12 +170,17 @@ where
 }
 
 /// Parse a function signature (no body): `fn name(params) -> Type`
+///
+/// Audit #51: optional leading `///` doc comments are consumed; the
+/// docstring is ignored at the `FnSig` level (signatures live inside
+/// traits where doc storage is on `FnDef` only).
 pub(super) fn fn_sig_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FnSig, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    just(Token::Fn)
+    super::doc_comments_parser()
+        .ignore_then(just(Token::Fn))
         .ignore_then(ident_parser())
         .then(fn_params_parser())
         .then(
@@ -239,6 +248,7 @@ where
                 traits,
                 fields,
                 methods,
+                doc: None,
                 span: span_from_simple(e.span()),
             }
         })
@@ -267,17 +277,24 @@ where
             name,
             generics,
             fields: fields.unwrap_or_default(),
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
 
 /// Parse a single struct field: mut? name: Type? = default
+///
+/// Audit #51: optional leading `///` doc comments are consumed and
+/// ignored — field-level doc storage isn't part of the IR yet, but the
+/// tokens must be accepted so users can document fields without
+/// breaking the parse.
 pub(super) fn struct_field_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructField, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    mutability_parser()
+    super::doc_comments_parser()
+        .ignore_then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -324,6 +341,7 @@ where
             generics,
             functions,
             is_extern: false,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -338,22 +356,28 @@ where
         .then_ignore(just(Token::Extern))
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
-        .map_with(|(((visibility, name), params), return_type), e| {
-            let span = span_from_simple(e.span());
-            FunctionDef {
-                visibility,
-                name,
-                params,
-                return_type,
-                body: None,
-                span,
-            }
-        })
+        .map_with(
+            |((((visibility, name), generics), params), return_type), e| {
+                let span = span_from_simple(e.span());
+                FunctionDef {
+                    visibility,
+                    name,
+                    generics,
+                    params,
+                    return_type,
+                    body: None,
+                    is_extern: true,
+                    doc: None,
+                    span,
+                }
+            },
+        )
 }
 
 /// Parse an extern impl block: `extern impl Trait for Name<T> { fn_sig* }`
@@ -374,6 +398,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            doc: None,
             span: sig.span,
         }),
     ));
@@ -395,6 +420,7 @@ where
             generics,
             functions,
             is_extern: true,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -417,6 +443,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            doc: None,
             span: sig.span,
         }),
     ));
@@ -462,8 +489,33 @@ where
     // Expression item
     let fn_expr = expr_parser().map(BlockStatement::Expr);
 
-    // Parse item (let, assign, or expr - in that order)
-    let fn_item = choice((fn_let, fn_assign, fn_expr));
+    // Parse item (let, assign, or expr - in that order). Audit #40:
+    // wrap in `recover_with(via_parser(...))` so a malformed item inside
+    // a function body (e.g. a syntactically broken expression) is
+    // recovered by consuming tokens up to the next item start (`let`)
+    // or the closing brace, producing an empty placeholder expression.
+    // Without this, a parse failure inside one function body aborts
+    // diagnostics for the rest of the file: the error is emitted by
+    // chumsky and parsing continues with the next item. The first
+    // token is consumed unconditionally on `Let` (so an item starting
+    // with `let` whose value is broken can be recovered), but never on
+    // `RBrace` (so the body's closing brace stays for `delimited_by`).
+    let recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
+    let recovery_tail = any()
+        .and_is(just(Token::Let).not())
+        .and_is(just(Token::RBrace).not())
+        .ignored()
+        .repeated();
+    let recovery = recovery_head.then(recovery_tail).map_with(|((), ()), e| {
+        BlockStatement::Expr(crate::ast::Expr::Group {
+            expr: Box::new(crate::ast::Expr::Literal {
+                value: crate::ast::Literal::Nil,
+                span: span_from_simple(e.span()),
+            }),
+            span: span_from_simple(e.span()),
+        })
+    });
+    let fn_item = choice((fn_let, fn_assign, fn_expr)).recover_with(via_parser(recovery));
 
     // Parse body: items inside braces
     fn_item
@@ -479,8 +531,9 @@ pub(super) fn fn_def_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    just(Token::Fn)
-        .ignore_then(ident_parser())
+    super::doc_comments_parser()
+        .then_ignore(just(Token::Fn))
+        .then(ident_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
@@ -490,13 +543,14 @@ where
             // Function body in braces - parsed as a block with statements
             fn_body_parser(),
         )
-        .map_with(|(((name, params), return_type), body), e| {
+        .map_with(|((((doc, name), params), return_type), body), e| {
             let span = span_from_simple(e.span());
             FnDef {
                 name,
                 params,
                 return_type,
                 body: Some(body),
+                doc,
                 span,
             }
         })
@@ -567,8 +621,27 @@ where
             span: span_from_simple(e.span()),
         });
 
-    // labeled_param must come before typed_param (longer match first)
-    choice((self_param, labeled_param, typed_param))
+    // `Type` only (Mode B overloading — no name, no label). Audit #23.
+    // The parameter is synthesised with a fresh name (`_argN`) so existing
+    // plumbing can continue to reference parameters by name; the name is
+    // not visible at the call site since these are always positional.
+    let type_only_param = convention
+        .clone()
+        .then(type_parser())
+        .map_with(|(convention, ty), e| FnParam {
+            convention,
+            external_label: None,
+            name: Ident::new("_arg", span_from_simple(e.span())),
+            ty: Some(ty),
+            default: None,
+            span: span_from_simple(e.span()),
+        });
+
+    // Order matters: longer matches first. `self_param` precedes the rest;
+    // `labeled_param` (ident ident :) before `typed_param` (ident :) before
+    // `type_only_param` (Type with no name) so a single `Foo: Bar` still
+    // parses as a typed param, not as type `Foo::Bar` followed by junk.
+    choice((self_param, labeled_param, typed_param, type_only_param))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect()
@@ -584,6 +657,7 @@ where
     visibility_parser()
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
@@ -593,17 +667,22 @@ where
             // Function body in braces - parsed as a block with statements
             fn_body_parser(),
         )
-        .map_with(|((((visibility, name), params), return_type), body), e| {
-            let span = span_from_simple(e.span());
-            FunctionDef {
-                visibility,
-                name,
-                params,
-                return_type,
-                body: Some(body),
-                span,
-            }
-        })
+        .map_with(
+            |(((((visibility, name), generics), params), return_type), body), e| {
+                let span = span_from_simple(e.span());
+                FunctionDef {
+                    visibility,
+                    name,
+                    generics,
+                    params,
+                    return_type,
+                    body: Some(body),
+                    is_extern: false,
+                    doc: None,
+                    span,
+                }
+            },
+        )
 }
 
 /// Parse an enum definition
@@ -622,6 +701,7 @@ where
             name,
             generics,
             variants,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }
@@ -646,7 +726,8 @@ pub(super) fn enum_variant_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    ident_parser()
+    super::doc_comments_parser()
+        .ignore_then(ident_parser())
         .then(
             field_def_parser()
                 .separated_by(just(Token::Comma))
@@ -682,6 +763,7 @@ where
             visibility,
             name,
             definitions,
+            doc: None,
             span: span_from_simple(e.span()),
         })
 }

@@ -206,7 +206,9 @@ impl<'a> DeadCodeEliminator<'a> {
                     self.mark_used_in_type(arg);
                 }
             }
-            ResolvedType::Array(inner) | ResolvedType::Optional(inner) => {
+            ResolvedType::Array(inner)
+            | ResolvedType::Range(inner)
+            | ResolvedType::Optional(inner) => {
                 self.mark_used_in_type(inner);
             }
             ResolvedType::Tuple(fields) => {
@@ -374,7 +376,7 @@ impl<'a> DeadCodeEliminator<'a> {
                 for (_, _, ty) in params {
                     self.mark_used_in_type(ty);
                 }
-                for (_, ty) in captures {
+                for (_, _, ty) in captures {
                     self.mark_used_in_type(ty);
                 }
                 self.mark_used_in_expr(body);
@@ -774,7 +776,9 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
                 remap_type(a, remap);
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Optional(inner) => remap_type(inner, remap),
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
+            remap_type(inner, remap);
+        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 remap_type(t, remap);
@@ -918,7 +922,7 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             for (_, _, t) in params {
                 remap_type(t, remap);
             }
-            for (_, t) in captures {
+            for (_, _, t) in captures {
                 remap_type(t, remap);
             }
             remap_expr(body, remap);

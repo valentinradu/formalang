@@ -5,6 +5,7 @@
 #![allow(clippy::expect_used)]
 
 use formalang::ast::BinaryOperator;
+use formalang::ast::ParamConvention;
 use formalang::ast::PrimitiveType;
 use formalang::compile_to_ir;
 use formalang::ir::{eliminate_dead_code, IrExpr, ResolvedType};
@@ -40,7 +41,12 @@ fn test_lower_inferred_enum_in_function() -> Result<(), Box<dyn std::error::Erro
 // =============================================================================
 
 #[test]
-fn test_lower_general_closure() -> Result<(), Box<dyn std::error::Error>> {
+fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_lower_general_closure` (audit #53): the
+    // original name said nothing about the actual scenario. The test
+    // verifies that a pipe-style closure (`|x: Number| 42`) used as a
+    // struct field default lowers to `IrExpr::Closure` with the
+    // expected single named parameter.
     let source = r"
         struct Config {
             transform: (Number) -> Number = |x: Number| 42
@@ -106,8 +112,11 @@ fn test_lower_let_array_destructuring() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[test]
-fn test_lower_let_tuple_destructuring() -> Result<(), Box<dyn std::error::Error>> {
-    // Tuple destructuring using positional syntax
+fn test_lower_two_independent_simple_lets() -> Result<(), Box<dyn std::error::Error>> {
+    // Two `let a: Number = 1` / `let b: Number = 2` should produce two
+    // separate top-level `IrLet` entries. Name was previously
+    // `test_lower_let_tuple_destructuring` which was misleading — this
+    // doesn't exercise tuple destructuring at all.
     let source = r"
         let a: Number = 1
         let b: Number = 2
@@ -644,11 +653,23 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "items")
         .ok_or("items")?;
-    let IrExpr::Array { elements, .. } = &binding.value else {
+    let IrExpr::Array { elements, ty } = &binding.value else {
         return Err(format!("Expected Array, got {:?}", binding.value).into());
     };
     if !elements.is_empty() {
         return Err(format!("expected empty array, got {} elements", elements.len()).into());
+    }
+    // Audit #41: an annotated empty-array let should lift the
+    // annotation's element type into the IR Array node so backends see
+    // `Array(Number)`, not `Array(Never)`.
+    let ResolvedType::Array(inner) = ty else {
+        return Err(format!("expected Array type, got {ty:?}").into());
+    };
+    if !matches!(
+        inner.as_ref(),
+        ResolvedType::Primitive(PrimitiveType::Number)
+    ) {
+        return Err(format!("expected Array(Number), got Array({inner:?})").into());
     }
     Ok(())
 }
@@ -998,7 +1019,7 @@ fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("expected Closure, got {body:?}").into());
     };
     // The closure body references `n`, which is a parameter of make_adder.
-    let captured: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    let captured: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
     if !captured.contains(&"n") {
         return Err(format!("expected `n` in captures, got {captured:?}").into());
     }
@@ -1046,12 +1067,77 @@ fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::
     let IrExpr::Closure { captures, .. } = body else {
         return Err(format!("expected Closure, got {body:?}").into());
     };
-    let names: Vec<&str> = captures.iter().map(|(n, _)| n.as_str()).collect();
+    let names: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
     if names.contains(&"x") {
         return Err(format!("closure param `x` leaked into captures: {names:?}").into());
     }
     if !names.contains(&"a") || !names.contains(&"b") {
         return Err(format!("expected captures for `a` and `b`, got {names:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_captures_inherit_sink_param_convention() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #32: a closure capturing a `sink` parameter records `Sink`
+    // (so backends know ownership transferred to the closure).
+    let source = r"
+        pub fn make_adder(sink n: Number) -> (Number) -> Number {
+            |x: Number| x + n
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("make_adder body missing")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    let n_conv = captures
+        .iter()
+        .find_map(|(name, c, _)| (name == "n").then_some(*c))
+        .ok_or("expected `n` capture")?;
+    if n_conv != ParamConvention::Sink {
+        return Err(format!("expected `n` captured as Sink, got {n_conv:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_captures_inherit_module_let_conventions() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Audit #32: a closure declared at module level inherits its captures'
+    // conventions from the enclosing `let` / `let mut` bindings.
+    let source = r"
+        let immutable: Number = 1.0
+        pub let mut mutable: Number = 2.0
+        let c: () -> Number = () -> immutable + mutable
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let c = module
+        .lets
+        .iter()
+        .find(|l| l.name == "c")
+        .ok_or("c missing")?;
+    let IrExpr::Closure { captures, .. } = &c.value else {
+        return Err(format!("expected Closure, got {:?}", c.value).into());
+    };
+    let by_name: std::collections::HashMap<&str, ParamConvention> = captures
+        .iter()
+        .map(|(n, conv, _)| (n.as_str(), *conv))
+        .collect();
+    let imm = by_name
+        .get("immutable")
+        .ok_or("expected `immutable` capture")?;
+    let mu = by_name.get("mutable").ok_or("expected `mutable` capture")?;
+    if *imm != ParamConvention::Let {
+        return Err(format!("expected `immutable` captured as Let, got {imm:?}").into());
+    }
+    if *mu != ParamConvention::Mut {
+        return Err(format!("expected `mutable` captured as Mut, got {mu:?}").into());
     }
     Ok(())
 }

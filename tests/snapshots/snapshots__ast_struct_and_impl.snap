@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 41
 expression: file
 ---
 File {
@@ -97,6 +98,7 @@ File {
                             },
                         },
                     ],
+                    doc: None,
                     span: Span {
                         start: Location {
                             offset: 9,
@@ -298,6 +300,7 @@ File {
                                     },
                                 },
                             ),
+                            doc: None,
                             span: Span {
                                 start: Location {
                                     offset: 81,
@@ -313,6 +316,7 @@ File {
                         },
                     ],
                     is_extern: false,
+                    doc: None,
                     span: Span {
                         start: Location {
                             offset: 56,

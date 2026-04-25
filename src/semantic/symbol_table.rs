@@ -42,6 +42,8 @@ pub struct TraitInfo {
     pub composed_traits: Vec<String>,
     /// Required method signatures declared in the trait body
     pub methods: Vec<FnSig>,
+    /// Joined `///` doc comments preceding this trait. Audit #51.
+    pub doc: Option<String>,
 }
 
 /// Information about a let binding with type
@@ -52,6 +54,8 @@ pub struct LetInfo {
     pub span: Span,
     /// Inferred type of the binding (optional, computed during semantic analysis)
     pub inferred_type: Option<String>,
+    /// Joined `///` doc comments preceding this binding. Audit #51.
+    pub doc: Option<String>,
 }
 
 /// Information about a struct
@@ -66,6 +70,8 @@ pub struct StructInfo {
     pub fields: Vec<FieldInfo>,
     /// Track if impl block exists
     pub has_impl: bool,
+    /// Joined `///` doc comments preceding this struct. Audit #51.
+    pub doc: Option<String>,
 }
 
 /// Information about a field
@@ -116,6 +122,8 @@ pub struct EnumInfo {
     pub variant_fields: HashMap<String, Vec<FieldInfo>>,
     /// Traits this enum implements (from : Trait syntax)
     pub traits: Vec<String>,
+    /// Joined `///` doc comments preceding this enum. Audit #51.
+    pub doc: Option<String>,
 }
 
 /// Information about a module with its nested symbol table
@@ -152,6 +160,8 @@ pub struct FunctionInfo {
     pub return_type: Option<Type>,
     /// Generic parameters declared on this function
     pub generics: Vec<GenericParam>,
+    /// Joined `///` doc comments preceding this function. Audit #51.
+    pub doc: Option<String>,
 }
 
 /// Kind of symbol (for error reporting)
@@ -198,6 +208,7 @@ impl SymbolTable {
         fields: HashMap<String, Type>,
         composed_traits: Vec<String>,
         methods: Vec<FnSig>,
+        doc: Option<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -213,6 +224,7 @@ impl SymbolTable {
                 fields,
                 composed_traits,
                 methods,
+                doc,
             },
         );
         None
@@ -226,6 +238,7 @@ impl SymbolTable {
         span: Span,
         generics: Vec<GenericParam>,
         fields: Vec<FieldInfo>,
+        doc: Option<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -240,6 +253,7 @@ impl SymbolTable {
                 generics,
                 fields,
                 has_impl: false,
+                doc,
             },
         );
         None
@@ -354,6 +368,7 @@ impl SymbolTable {
         variants: HashMap<String, (usize, Span)>,
         variant_fields: HashMap<String, Vec<FieldInfo>>,
         traits: Vec<String>,
+        doc: Option<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -369,6 +384,7 @@ impl SymbolTable {
                 variants,
                 variant_fields,
                 traits,
+                doc,
             },
         );
         None
@@ -408,6 +424,7 @@ impl SymbolTable {
         name: String,
         visibility: Visibility,
         span: Span,
+        doc: Option<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Check for duplicates across all symbol types
         if let Some(existing) = self.find_any(&name) {
@@ -420,6 +437,7 @@ impl SymbolTable {
                 visibility,
                 span,
                 inferred_type: None,
+                doc,
             },
         );
         None
@@ -428,6 +446,10 @@ impl SymbolTable {
     /// Define a standalone function. Multiple definitions with the same name are
     /// stored as overloads; only conflicts with non-function symbols or with an
     /// existing overload of identical signature are rejected.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "function definition has many independent fields and a builder would just push the boilerplate elsewhere"
+    )]
     pub fn define_function(
         &mut self,
         name: String,
@@ -436,6 +458,7 @@ impl SymbolTable {
         params: Vec<ParamInfo>,
         return_type: Option<Type>,
         generics: Vec<GenericParam>,
+        doc: Option<String>,
     ) -> Option<(SymbolKind, Span)> {
         // Only check for conflicts with non-function symbols
         if let Some(info) = self.traits.get(&name) {
@@ -471,6 +494,7 @@ impl SymbolTable {
             params,
             return_type,
             generics,
+            doc,
         });
         None
     }
@@ -982,6 +1006,5 @@ fn ty_shape(ty: &Type) -> String {
                 .collect();
             format!("({})->{}", parts.join(","), ty_shape(ret))
         }
-        Type::TypeParameter(p) => p.name.clone(),
     }
 }

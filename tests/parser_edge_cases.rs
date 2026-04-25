@@ -219,12 +219,30 @@ fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
             x: Number = (let a = 1
-            let b = 2
-            let c = 3
-            a)
+            in let b = 2
+            in let c = 3
+            in a)
         }
     ";
     compile(source).map_err(|e| format!("Let chain: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_let_expr_requires_in_separator() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #21: a `let` expression without the `in` keyword between
+    // value and body should fail to parse — the grammar is no longer
+    // ambiguous and shouldn't fall back to greedy parsing.
+    let source = r"
+        struct A {
+            x: Number = (let a = 1
+            a)
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected `let` without `in` to fail to parse, but it compiled".into());
+    }
     Ok(())
 }
 
@@ -985,6 +1003,70 @@ struct Good { y: Number }
         return Err(format!(
             "expected at least 2 parse errors after recovery, got {}: {errors:?}",
             errors.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_block_expr_recovery_within_fn_body() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #40: a malformed let inside an inner block expression must not
+    // hide the parse error in a sibling fn body. Both should surface.
+    let source = r"
+pub fn first() -> Number {
+    let _result: Number = {
+        let x: Number = + +
+        1
+    }
+    2
+}
+
+pub fn second() -> Number {
+    let y: Number = + +
+    2
+}
+";
+    let errors = parse_only(source).err().ok_or("expected parse errors")?;
+    let parse_errors: Vec<_> = errors
+        .iter()
+        .filter(|e| matches!(e, formalang::CompilerError::ParseError { .. }))
+        .collect();
+    if parse_errors.len() < 2 {
+        return Err(format!(
+            "expected at least 2 parse errors after block recovery, got {}: {errors:?}",
+            parse_errors.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_fn_body_recovery_surfaces_multiple_errors() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #40: a bad expression inside one function body must not abort
+    // diagnostics for subsequent function bodies. Each broken `let` value
+    // should surface its own ParseError.
+    let source = r"
+pub fn first() -> Number {
+    let x: Number = + +
+    1
+}
+
+pub fn second() -> Number {
+    let y: Number = + +
+    2
+}
+";
+    let errors = parse_only(source).err().ok_or("expected parse errors")?;
+    let parse_errors: Vec<_> = errors
+        .iter()
+        .filter(|e| matches!(e, formalang::CompilerError::ParseError { .. }))
+        .collect();
+    if parse_errors.len() < 2 {
+        return Err(format!(
+            "expected at least 2 parse errors after fn-body recovery, got {}: {errors:?}",
+            parse_errors.len()
         )
         .into());
     }

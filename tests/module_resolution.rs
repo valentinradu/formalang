@@ -1028,6 +1028,96 @@ struct Main { h: Helper }
     Ok(())
 }
 
+#[test]
+fn test_monomorphise_specialises_external_generic() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #45: when a main module uses `External<Number>` from an
+    // imported module, MonomorphisePass with `with_imports` clones the
+    // imported generic definition into the main module with substituted
+    // arguments and rewrites the External reference to a local Struct.
+    use formalang::ir::{lower_to_ir, MonomorphisePass, ResolvedType};
+    use formalang::IrPass;
+
+    let main_source = r"
+use utils::Helper
+struct Main { h: Helper<Number> }
+";
+    let mut resolver = MockModuleResolver::new();
+    resolver.add_module(
+        vec!["utils".to_string()],
+        "pub struct Helper<T> { value: T }",
+    );
+
+    let tokens = Lexer::tokenize_all(main_source);
+    let file = parser::parse_file_with_source(&tokens, main_source)
+        .map_err(|errors| format!("{errors:?}"))?;
+    let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
+    analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
+
+    let mut module = lower_to_ir(&file, analyzer.symbols()).map_err(|e| format!("{e:?}"))?;
+
+    // Sanity: pre-monomorphise, Main.h is an External with type_args=[Number].
+    let main_struct = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Main")
+        .ok_or("Main missing")?;
+    let h_field = main_struct
+        .fields
+        .iter()
+        .find(|f| f.name == "h")
+        .ok_or("h field missing")?;
+    if !matches!(&h_field.ty, ResolvedType::External { type_args, .. } if !type_args.is_empty()) {
+        return Err(format!("expected External with type_args, got {:?}", h_field.ty).into());
+    }
+
+    // Build a Vec<String>-keyed imports map from the analyzer's IR cache.
+    let mut imports: HashMap<Vec<String>, formalang::ir::IrModule> = HashMap::new();
+    for ir in analyzer.imported_ir_modules().values() {
+        // Single-module test: just associate the imported IR with the
+        // logical path used by the source (`use utils::Helper`).
+        imports.insert(vec!["utils".to_string()], ir.clone());
+    }
+
+    let mut pass = MonomorphisePass::default().with_imports(imports);
+    module = pass.run(module).map_err(|e| format!("{e:?}"))?;
+
+    // After monomorphise, a `Helper__Number` struct exists locally and
+    // Main.h is now a concrete local Struct reference.
+    if !module
+        .structs
+        .iter()
+        .any(|s| s.name.starts_with("Helper__"))
+    {
+        return Err(format!(
+            "expected a Helper__... clone, got structs: {:?}",
+            module
+                .structs
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>()
+        )
+        .into());
+    }
+    let main_struct = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Main")
+        .ok_or("Main missing post-mono")?;
+    let h_field = main_struct
+        .fields
+        .iter()
+        .find(|f| f.name == "h")
+        .ok_or("h field missing post-mono")?;
+    if !matches!(h_field.ty, ResolvedType::Struct(_)) {
+        return Err(format!(
+            "expected Main.h to be a local Struct after specialisation, got {:?}",
+            h_field.ty
+        )
+        .into());
+    }
+    Ok(())
+}
+
 // =============================================================================
 // FileSystemResolver error paths
 // =============================================================================
