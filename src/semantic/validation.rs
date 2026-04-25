@@ -40,9 +40,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "validates several let-binding rules in sequence; splitting them obscures the shared `declared`/`inferred` derivation"
+    )]
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
         self.validate_expr(&let_binding.value, file);
-        // nil literals must not be assigned to non-optional types
+        // nil literals must not be assigned to non-optional types, and
+        // (audit2 B12) the inferred value type must be compatible with
+        // the declared annotation. Previously only the nil case was
+        // checked, so `let f: m::Foo = "wrong"` compiled silently.
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(&let_binding.value, file);
@@ -51,6 +58,78 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     expected: declared,
                     span: let_binding.span,
                 });
+            } else {
+                // General type-mismatch check, mirroring the field-default
+                // rule in `validate_struct_expressions`.
+                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                let inner_to_optional =
+                    declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
+                let is_closure_pair = matches!(type_ann, Type::Closure { .. })
+                    && matches!(let_binding.value, Expr::ClosureExpr { .. });
+                if !nil_to_optional
+                    && !inner_to_optional
+                    && !has_unknown
+                    && inferred != "Unknown"
+                    && declared != "Unknown"
+                    && !is_closure_pair
+                    && !self.type_strings_compatible(&declared, &inferred)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: declared,
+                        found: inferred,
+                        span: let_binding.span,
+                    });
+                }
+            }
+        }
+        // Audit2 B9: when a let binding declares a closure type and is
+        // assigned a closure literal, type-check the closure body
+        // bidirectionally — push the declared param types into the
+        // inference scope (covering literal params with no annotation)
+        // and verify the body's inferred type matches the declared
+        // return type. Without this, untyped closure params silently
+        // resolve to "Unknown", which unifies with anything and
+        // suppresses real return-type mismatches.
+        if let (
+            Some(Type::Closure {
+                params: declared_params,
+                ret: declared_ret,
+            }),
+            Expr::ClosureExpr {
+                params: lit_params,
+                body,
+                return_type: lit_ret,
+                ..
+            },
+        ) = (&let_binding.type_annotation, &let_binding.value)
+        {
+            if lit_params.len() == declared_params.len() {
+                let mut seed = HashMap::new();
+                for (lit, (_, dty)) in lit_params.iter().zip(declared_params.iter()) {
+                    let ty_str = lit
+                        .ty
+                        .as_ref()
+                        .map_or_else(|| Self::type_to_string(dty), Self::type_to_string);
+                    seed.insert(lit.name.name.clone(), ty_str);
+                }
+                self.inference_scope_stack.borrow_mut().push(seed);
+                let inferred_body = self.infer_type(body, file);
+                self.inference_scope_stack.borrow_mut().pop();
+                let expected_ret = lit_ret
+                    .as_ref()
+                    .map_or_else(|| Self::type_to_string(declared_ret), Self::type_to_string);
+                let body_indeterminate =
+                    inferred_body.contains("Unknown") || inferred_body.contains("InferredEnum");
+                if !body_indeterminate
+                    && !self.type_strings_compatible(&expected_ret, &inferred_body)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: expected_ret,
+                        found: inferred_body,
+                        span: let_binding.span,
+                    });
+                }
             }
         }
         // Register closure-typed module-level bindings for call-site enforcement
@@ -399,7 +478,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_match(scrutinee, arms, *span, file);
             }
             Expr::Group { expr, .. } => self.validate_expr(expr, file),
-            Expr::DictLiteral { entries, .. } => {
+            Expr::DictLiteral { entries, span, .. } => {
                 for (key, value) in entries {
                     self.validate_expr(key, file);
                     self.validate_expr(value, file);
@@ -409,19 +488,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.escape_closure_value(key);
                     self.escape_closure_value(value);
                 }
+                // Audit2 B11: unify key types and value types across
+                // entries so a heterogeneous dict literal
+                // (`["a": 1, "b": "two"]`) surfaces as a real
+                // TypeMismatch instead of silently using the first
+                // entry's type.
+                self.validate_dict_homogeneity(entries, *span, file);
             }
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
-                // Validate key type against declared dict type
+                // Validate key type against declared dict type. Audit2 B8:
+                // depth-aware extraction so nested-dict keys / values
+                // are handled correctly.
                 let dict_type = self.infer_type(dict, file);
                 if let Some(inner) = dict_type
                     .strip_prefix('[')
                     .and_then(|s| s.strip_suffix(']'))
-                    .filter(|s| s.contains(": "))
                 {
-                    if let Some(colon_pos) = inner.find(": ") {
-                        let expected_key_type = &inner[..colon_pos];
+                    if let Some(colon_pos) = super::depth_zero_colon_index(inner) {
+                        let expected_key_type = inner[..colon_pos].trim();
                         let actual_key_type = self.infer_type(key, file);
                         if actual_key_type != "Unknown" && actual_key_type != expected_key_type {
                             self.errors.push(CompilerError::TypeMismatch {
@@ -470,9 +556,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 params,
                 return_type,
                 body,
-                span,
+                ..
             } => {
-                self.validate_expr_closure(params, return_type.as_ref(), body, *span, file);
+                self.validate_expr_closure(params, return_type.as_ref(), body, file);
             }
             Expr::LetExpr { .. } => {
                 self.validate_expr_let(expr, file);
@@ -604,6 +690,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn escape_closure_value(&mut self, expr: &Expr) {
         if let Some(caps) = self.closure_captures_of_expr(expr) {
             self.mark_captures_consumed(&caps);
+        }
+    }
+
+    /// Validate that every key (and every value) in a dict literal has
+    /// a compatible type with the first entry. Audit2 B11: previously
+    /// the dict's type came from the first entry only and a mix like
+    /// `["a": 1, "b": "two"]` lowered silently.
+    fn validate_dict_homogeneity(&mut self, entries: &[(Expr, Expr)], span: Span, file: &File) {
+        let mut iter = entries.iter();
+        let Some((first_k, first_v)) = iter.next() else {
+            return; // empty dict: nothing to unify
+        };
+        let first_key_ty = self.infer_type(first_k, file);
+        let first_val_ty = self.infer_type(first_v, file);
+        let key_indeterminate = first_key_ty == "Unknown";
+        let val_indeterminate = first_val_ty == "Unknown";
+        for (k, v) in iter {
+            if !key_indeterminate {
+                let kty = self.infer_type(k, file);
+                if kty != "Unknown" && !self.type_strings_compatible(&first_key_ty, &kty) {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                        found: format!("key of type {kty}"),
+                        span,
+                    });
+                    return;
+                }
+            }
+            if !val_indeterminate {
+                let vty = self.infer_type(v, file);
+                if vty != "Unknown" && !self.type_strings_compatible(&first_val_ty, &vty) {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                        found: format!("value of type {vty}"),
+                        span,
+                    });
+                    return;
+                }
+            }
         }
     }
 
@@ -1384,7 +1509,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         params: &[crate::ast::ClosureParam],
         return_type: Option<&crate::ast::Type>,
         body: &Expr,
-        span: Span,
         file: &File,
     ) {
         for param in params {
@@ -1432,11 +1556,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.inference_scope_stack.borrow_mut().pop();
             let expected = Self::type_to_string(declared);
             if !self.type_strings_compatible(&expected, &body_type) {
+                // Audit2 B13: cite the body span (the offending expression),
+                // not the whole closure-position span — IDE goto-definition
+                // and `cargo check` output now point at the wrong return.
                 self.errors.push(CompilerError::FunctionReturnTypeMismatch {
                     function: "<closure>".to_string(),
                     expected,
                     actual: body_type,
-                    span,
+                    span: body.span(),
                 });
             }
         }
@@ -3135,6 +3262,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Handles user-defined methods in impl blocks and trait methods available
     /// to types that implement the trait (directly or via a generic constraint).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive lookup across local impls, trait impls, generic param constraints, cached modules, and qualified-name nested modules — splitting reduces locality without simplifying"
+    )]
     pub(super) fn method_exists_on_type(
         &self,
         type_name: &str,
@@ -3233,6 +3364,50 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // Audit2 B14: qualified-type lookup — when the receiver type is
+        // `m::Foo`, walk into the nested module path (inline modules in
+        // the current file, then cached imported modules) and check for
+        // an impl of `Foo` with the requested method. The bare-name
+        // checks above don't handle qualified receivers, so prior to
+        // this fix `f.method()` on an imported-module type silently
+        // returned "not defined".
+        if let Some((module_segments, bare_name)) = split_qualified_type(lookup) {
+            // Inline modules in the current file.
+            if let Some(defs) = find_nested_module_definitions(&file.statements, &module_segments) {
+                if impl_method_in_definitions(defs, bare_name, method_name) {
+                    return true;
+                }
+            }
+            // Imported modules in the cache.
+            for (cached_file, _) in self.module_cache.values() {
+                if let Some(defs) =
+                    find_nested_module_definitions(&cached_file.statements, &module_segments)
+                {
+                    if impl_method_in_definitions(defs, bare_name, method_name) {
+                        return true;
+                    }
+                }
+                // Also check the cached file's top-level when only the
+                // last segment is the module name (e.g. `use mod::*`
+                // re-exports flatten differently; staying defensive).
+                if module_segments.len() == 1 {
+                    for statement in &cached_file.statements {
+                        if let Statement::Definition(def) = statement {
+                            if let Definition::Impl(impl_def) = &**def {
+                                if impl_def.name.name == bare_name {
+                                    for func in &impl_def.functions {
+                                        if func.name.name == method_name {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         false
     }
 
@@ -3277,4 +3452,75 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         false
     }
+}
+
+/// Audit2 B14: split a qualified type name `m1::m2::Foo` into module
+/// segments `["m1", "m2"]` and bare name `"Foo"`. Returns `None` if the
+/// name has no `::`.
+fn split_qualified_type(name: &str) -> Option<(Vec<&str>, &str)> {
+    if !name.contains("::") {
+        return None;
+    }
+    let mut parts: Vec<&str> = name.split("::").collect();
+    let last = parts.pop()?;
+    Some((parts, last))
+}
+
+/// Audit2 B14: walk a slice of `Statement`s looking for the nested
+/// module path `segments`, returning that module's `definitions`.
+/// Recurses into nested `Definition::Module` matches.
+fn find_nested_module_definitions<'a>(
+    statements: &'a [Statement],
+    segments: &[&str],
+) -> Option<&'a [Definition]> {
+    let (head, rest) = segments.split_first()?;
+    for stmt in statements {
+        if let Statement::Definition(def) = stmt {
+            if let Definition::Module(module_def) = &**def {
+                if module_def.name.name == *head {
+                    return if rest.is_empty() {
+                        Some(&module_def.definitions)
+                    } else {
+                        find_nested_module_definitions_in_defs(&module_def.definitions, rest)
+                    };
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_nested_module_definitions_in_defs<'a>(
+    definitions: &'a [Definition],
+    segments: &[&str],
+) -> Option<&'a [Definition]> {
+    let (head, rest) = segments.split_first()?;
+    for def in definitions {
+        if let Definition::Module(module_def) = def {
+            if module_def.name.name == *head {
+                return if rest.is_empty() {
+                    Some(&module_def.definitions)
+                } else {
+                    find_nested_module_definitions_in_defs(&module_def.definitions, rest)
+                };
+            }
+        }
+    }
+    None
+}
+
+/// Audit2 B14: scan a slice of definitions for `impl <bare> { fn <method> }`.
+fn impl_method_in_definitions(definitions: &[Definition], bare: &str, method: &str) -> bool {
+    for def in definitions {
+        if let Definition::Impl(impl_def) = def {
+            if impl_def.name.name == bare {
+                for func in &impl_def.functions {
+                    if func.name.name == method {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
 }

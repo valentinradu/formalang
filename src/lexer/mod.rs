@@ -114,6 +114,27 @@ impl<'source> Lexer<'source> {
             tokens.push((token, span));
         }
 
+        // Audit2 B3: drain unterminated block-comment ranges accumulated
+        // in `extras` and surface them as real `UnterminatedBlockComment`
+        // diagnostics rather than letting the parser report a misleading
+        // "unexpected end of input".
+        for (start, end) in std::mem::take(&mut lexer.inner.extras.unterminated_block_comments) {
+            lexer.errors.push(CompilerError::UnterminatedBlockComment {
+                span: Span::from_range(start, end),
+            });
+        }
+
+        // Audit2 B4: drain bad `\uXXXX` escape ranges and surface them as
+        // `InvalidUnicodeEscape` diagnostics. The decoded string still
+        // contains a U+FFFD replacement so downstream parsing can
+        // continue, but the user is told what went wrong.
+        for (start, end, hex) in std::mem::take(&mut lexer.inner.extras.invalid_unicode_escapes) {
+            lexer.errors.push(CompilerError::InvalidUnicodeEscape {
+                value: hex,
+                span: Span::from_range(start, end),
+            });
+        }
+
         let errors = lexer
             .take_errors()
             .into_iter()
@@ -126,13 +147,15 @@ impl<'source> Lexer<'source> {
 
 /// Return the given error with its span upgraded to have line/column info.
 ///
-/// Only the three lexer-produced variants ([`CompilerError::InvalidCharacter`],
-/// [`CompilerError::UnterminatedString`], [`CompilerError::InvalidNumber`])
-/// are produced by [`Lexer::classify_error`]; any other variant would indicate
-/// a bug in the lexer's error-classification logic and is returned unchanged.
+/// Only lexer-produced variants ([`CompilerError::InvalidCharacter`],
+/// [`CompilerError::UnterminatedString`], [`CompilerError::InvalidNumber`],
+/// [`CompilerError::UnterminatedBlockComment`]) are produced by
+/// [`Lexer::classify_error`] / [`tokenize_all_with_errors`]; any other variant
+/// would indicate a bug in the lexer's error-classification logic and is
+/// returned unchanged.
 #[expect(
     clippy::wildcard_enum_match_arm,
-    reason = "Lexer::classify_error only produces InvalidCharacter / UnterminatedString / InvalidNumber; enumerating every CompilerError variant would be noisy without adding safety"
+    reason = "Lexer::classify_error only produces a small set of lexer-error variants; enumerating every CompilerError variant would be noisy without adding safety"
 )]
 fn fill_error_span_positions(error: CompilerError, source: &str) -> CompilerError {
     let span = crate::location::fill_span_positions(error.span(), source);
@@ -141,6 +164,12 @@ fn fill_error_span_positions(error: CompilerError, source: &str) -> CompilerErro
             CompilerError::InvalidCharacter { character, span }
         }
         CompilerError::UnterminatedString { .. } => CompilerError::UnterminatedString { span },
+        CompilerError::UnterminatedBlockComment { .. } => {
+            CompilerError::UnterminatedBlockComment { span }
+        }
+        CompilerError::InvalidUnicodeEscape { value, .. } => {
+            CompilerError::InvalidUnicodeEscape { value, span }
+        }
         CompilerError::InvalidNumber { value, .. } => CompilerError::InvalidNumber { value, span },
         other => other,
     }

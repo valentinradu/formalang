@@ -124,6 +124,7 @@ File {
                                     ty: Primitive(
                                         Number,
                                     ),
+                                    doc: None,
                                     span: Span {
                                         start: Location {
                                             offset: 49,

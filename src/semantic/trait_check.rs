@@ -413,11 +413,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 }
 
 /// If `ty` is the shape `[T]`, return `T`. Rejects `[K: V]` (dictionary).
+///
+/// Audit2 B17: depth-tracks brackets so a nested array of dicts
+/// `[[K: V]]` is recognised as an array and returns `[K: V]`.
 fn strip_array_shape(ty: &str) -> Option<&str> {
-    let trimmed = ty.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.contains(':') {
-        Some(trimmed[1..trimmed.len().saturating_sub(1)].trim())
-    } else {
-        None
-    }
+    super::strip_array_type(ty)
 }

@@ -149,22 +149,22 @@ where
 
 /// Parse a field definition: mut? name: Type
 ///
-/// Audit #51: optional leading `///` doc comments are consumed and
-/// ignored at this level (field-level docs aren't yet stored).
+/// Audit2 B2: leading `///` doc comments are captured into `FieldDef.doc`.
 pub(super) fn field_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FieldDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
-        .ignore_then(mutability_parser())
+        .then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
-        .map_with(|((mutable, name), ty), e| FieldDef {
+        .map_with(|(((doc, mutable), name), ty), e| FieldDef {
             mutable,
             name,
             ty,
+            doc,
             span: span_from_simple(e.span()),
         })
 }
@@ -284,17 +284,15 @@ where
 
 /// Parse a single struct field: mut? name: Type? = default
 ///
-/// Audit #51: optional leading `///` doc comments are consumed and
-/// ignored — field-level doc storage isn't part of the IR yet, but the
-/// tokens must be accepted so users can document fields without
-/// breaking the parse.
+/// Audit2 B2: leading `///` doc comments are captured into
+/// `StructField.doc` instead of being silently dropped.
 pub(super) fn struct_field_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructField, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
-        .ignore_then(mutability_parser())
+        .then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -303,7 +301,7 @@ where
                 .ignore_then(expr_parser().labelled("default value"))
                 .or_not(),
         )
-        .map_with(|(((mutable, name), ty), default), e| {
+        .map_with(|((((doc, mutable), name), ty), default), e| {
             // Check if type is optional
             let optional = matches!(ty, Type::Optional(_));
 
@@ -313,6 +311,7 @@ where
                 ty,
                 optional,
                 default,
+                doc,
                 span: span_from_simple(e.span()),
             }
         })
@@ -622,19 +621,27 @@ where
         });
 
     // `Type` only (Mode B overloading — no name, no label). Audit #23.
-    // The parameter is synthesised with a fresh name (`_argN`) so existing
-    // plumbing can continue to reference parameters by name; the name is
-    // not visible at the call site since these are always positional.
+    // The parameter is synthesised with a fresh name so existing plumbing
+    // can continue to reference parameters by name; the name is not
+    // visible at the call site since these are always positional.
+    //
+    // Audit2 B7: synthesise a unique name from the parameter's start
+    // offset (`_arg<offset>`) so two type-only params in the same fn no
+    // longer share a name and collide in scope tables.
     let type_only_param = convention
         .clone()
         .then(type_parser())
-        .map_with(|(convention, ty), e| FnParam {
-            convention,
-            external_label: None,
-            name: Ident::new("_arg", span_from_simple(e.span())),
-            ty: Some(ty),
-            default: None,
-            span: span_from_simple(e.span()),
+        .map_with(|(convention, ty), e| {
+            let span = span_from_simple(e.span());
+            let synth = format!("_arg{}", span.start.offset);
+            FnParam {
+                convention,
+                external_label: None,
+                name: Ident::new(&synth, span),
+                ty: Some(ty),
+                default: None,
+                span,
+            }
         });
 
     // Order matters: longer matches first. `self_param` precedes the rest;

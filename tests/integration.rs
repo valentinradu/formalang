@@ -1,6 +1,13 @@
 //! Integration tests for the `FormaLang` compiler
 //!
-//! These tests exercise the full compile pipeline: Lexer -> Parser -> Semantic Analyzer
+//! Audit2 B37: the helper used to call `compile_with_analyzer`, which
+//! stopped after semantic analysis. That meant any of these tests
+//! could pass despite latent IR-lowering bugs. The helper now goes all
+//! the way through `compile_to_ir`, so every test in this file is at
+//! minimum a strict round-trip smoke test through the *whole* pipeline
+//! (Lexer → Parser → Semantic Analyzer → IR Lowering). Tests that
+//! exercise specific IR shapes additionally assert on `ir.structs`,
+//! `ir.enums`, `ir.traits`, etc., as appropriate.
 
 use formalang::{compile_to_ir, parse_only, CompilerError};
 
@@ -8,14 +15,29 @@ use formalang::{compile_to_ir, parse_only, CompilerError};
 // Basic Definition Tests
 // =============================================================================
 
-fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
-    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+/// Compile through the full pipeline (Lexer → Parser → Semantic →
+/// IR Lowering) and return the resulting `IrModule`. Used as the
+/// default helper by every test in this file; tests that only care
+/// about success drop the result with `let _ir = compile(source)?`.
+fn compile(source: &str) -> Result<formalang::ir::IrModule, Vec<formalang::CompilerError>> {
+    formalang::compile_to_ir(source)
+}
+
+/// Audit2 B36: format a vec of `CompilerError`s using each element's
+/// Display impl rather than the unstable derived Debug. Used in
+/// `.map_err(...)` adapters so test-failure output stays readable
+/// across error-variant renames.
+fn fmt_errs(errs: &[CompilerError]) -> String {
+    errs.iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
 fn test_empty_file() -> Result<(), Box<dyn std::error::Error>> {
     let source = "";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -27,7 +49,7 @@ fn test_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -38,7 +60,7 @@ fn test_public_struct() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -50,7 +72,7 @@ fn test_struct_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
             nickname: String?
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -62,7 +84,7 @@ fn test_struct_with_default_value() -> Result<(), Box<dyn std::error::Error>> {
             enabled: Boolean = true
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -73,7 +95,7 @@ fn test_simple_trait() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -89,7 +111,7 @@ fn test_struct_implementing_trait() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -109,7 +131,7 @@ fn test_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
             age: Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -122,7 +144,7 @@ fn test_simple_enum() -> Result<(), Box<dyn std::error::Error>> {
             pending
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -134,7 +156,7 @@ fn test_enum_with_associated_data() -> Result<(), Box<dyn std::error::Error>> {
             error(message: String, code: Number)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -147,7 +169,7 @@ fn test_module_definition() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -162,7 +184,7 @@ fn test_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
             value: T
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -177,7 +199,7 @@ fn test_generic_struct_with_constraint() -> Result<(), Box<dyn std::error::Error
             item: T
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -189,7 +211,7 @@ fn test_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
             none
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -208,7 +230,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
             r: Regex
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -219,7 +241,7 @@ fn test_never_type() -> Result<(), Box<dyn std::error::Error>> {
             body: Never
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -230,7 +252,7 @@ fn test_array_type() -> Result<(), Box<dyn std::error::Error>> {
             items: [String]
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -241,7 +263,7 @@ fn test_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
             rows: [[Number]]
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -252,7 +274,7 @@ fn test_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
             coords: (x: Number, y: Number)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -267,7 +289,7 @@ fn test_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
             data: [String: Number]
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -278,7 +300,7 @@ fn test_optional_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
             settings: [String: String]?
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -289,7 +311,7 @@ fn test_nested_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
             data: [String: [String: Number]]
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -304,7 +326,7 @@ fn test_closure_type_no_params() -> Result<(), Box<dyn std::error::Error>> {
             create: () -> String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -315,7 +337,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
             transform: String -> Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -326,7 +348,7 @@ fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
             compute: Number, Number -> Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -337,7 +359,7 @@ fn test_optional_closure_type() -> Result<(), Box<dyn std::error::Error>> {
             callback: (String -> Boolean)?
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -352,7 +374,7 @@ fn test_impl_block_with_literal() -> Result<(), Box<dyn std::error::Error>> {
             message: String = "Hello, World!"
         }
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -367,7 +389,7 @@ fn test_impl_block_with_struct_instantiation() -> Result<(), Box<dyn std::error:
             inner: Inner = Inner(value: 42)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -380,7 +402,7 @@ fn test_string_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let greeting = "Hello"
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -389,7 +411,7 @@ fn test_number_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let count = 42
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -399,7 +421,7 @@ fn test_boolean_literals() -> Result<(), Box<dyn std::error::Error>> {
         let yes = true
         let no = false
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -408,7 +430,7 @@ fn test_nil_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let nothing = nil
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -417,7 +439,7 @@ fn test_path_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let file = /home/user/file.txt
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -426,7 +448,7 @@ fn test_regex_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let pattern = r/[a-z]+/i
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -435,7 +457,7 @@ fn test_array_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let items = [1, 2, 3]
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -444,7 +466,7 @@ fn test_tuple_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let point = (x: 10, y: 20)
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -453,7 +475,7 @@ fn test_dictionary_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let config = ["key": "value", "other": "data"]
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -462,7 +484,7 @@ fn test_empty_dictionary_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let empty = [:]
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -475,7 +497,7 @@ fn test_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         let quotient = 10 / 2
         let remainder = 7 % 3
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -489,7 +511,7 @@ fn test_binary_comparison() -> Result<(), Box<dyn std::error::Error>> {
         let eq = 1 == 1
         let ne = 1 != 2
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -499,7 +521,7 @@ fn test_binary_logical() -> Result<(), Box<dyn std::error::Error>> {
         let and_result = true && false
         let or_result = true || false
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -514,7 +536,7 @@ fn test_if_expression() -> Result<(), Box<dyn std::error::Error>> {
             content: String = if true { "yes" } else { "no" }
         }
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -529,7 +551,7 @@ fn test_for_expression() -> Result<(), Box<dyn std::error::Error>> {
             items: [Item] = for item in ["a", "b", "c"] { Item(value: item) }
         }
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -554,7 +576,7 @@ fn test_match_expression() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -567,7 +589,7 @@ fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let factory = () -> "created"
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -576,7 +598,7 @@ fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let double = x -> 2
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -585,7 +607,7 @@ fn test_closure_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let add = x, y -> 0
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -594,7 +616,7 @@ fn test_closure_with_type_annotation() -> Result<(), Box<dyn std::error::Error>>
     let source = r#"
         let greet = name: String -> "Hello"
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -610,7 +632,7 @@ fn test_let_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
             in x)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -622,7 +644,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
             in x)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -634,7 +656,7 @@ fn test_let_mut() -> Result<(), Box<dyn std::error::Error>> {
             in count)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -648,7 +670,7 @@ fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
             in a)
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -663,7 +685,7 @@ fn test_parse_only_valid_syntax() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
     ";
-    parse_only(source).map_err(|e| format!("{e:?}"))?;
+    parse_only(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -797,7 +819,7 @@ fn test_complex_ui_component() -> Result<(), Box<dyn std::error::Error>> {
             actions: [Button]?
         }
     "#;
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -819,7 +841,7 @@ fn test_generic_data_structures() -> Result<(), Box<dyn std::error::Error>> {
             count: Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -838,7 +860,7 @@ fn test_nested_modules() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -854,7 +876,7 @@ fn test_line_comments() -> Result<(), Box<dyn std::error::Error>> {
             name: String // inline comment
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -866,7 +888,7 @@ fn test_block_comments() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -886,7 +908,8 @@ fn test_nested_block_comments() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed to handle nested block comments: {e:?}"))?;
+    compile(source)
+        .map_err(|e| format!("Failed to handle nested block comments: {}", fmt_errs(&e)))?;
     Ok(())
 }
 
@@ -899,7 +922,80 @@ fn test_block_comment_terminates_inside_token_stream() -> Result<(), Box<dyn std
             x: Number /* trailing */
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
+    Ok(())
+}
+
+#[test]
+fn test_unterminated_block_comment_at_eof_is_diagnosed() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B3: a `/* …` that runs to end-of-input must surface a real
+    // `UnterminatedBlockComment` diagnostic — previously the lexer
+    // silently ate the rest of the file, so a parser that needed more
+    // tokens would see "unexpected end of input" (or, worse, the file
+    // would be accepted as if the comment had been a valid trailing
+    // skip).
+    let source = "struct A {} /* runaway comment with no closing";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an UnterminatedBlockComment diagnostic, but compilation succeeded")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::UnterminatedBlockComment { .. }));
+    if !has_error {
+        return Err(format!("expected UnterminatedBlockComment in errors, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_unterminated_nested_block_comment_at_eof_is_diagnosed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B3: nested unterminated case — outer never closes, inner
+    // closes; the diagnostic should still fire because depth > 0 at EOF.
+    let source = "/* outer /* inner */ still inside outer";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an UnterminatedBlockComment diagnostic, but compilation succeeded")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::UnterminatedBlockComment { .. }));
+    if !has_error {
+        return Err(format!("expected UnterminatedBlockComment in errors, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_invalid_unicode_escape_surrogate_is_diagnosed() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B4: `\uD800` is a UTF-16 high-surrogate code point; it is
+    // not a valid Unicode scalar value, so `char::from_u32` returns None.
+    // Previously the lexer silently elided the bad escape and produced
+    // a string with one fewer character than the source suggested. Now
+    // it must surface a real `InvalidUnicodeEscape` diagnostic.
+    let source = r#"struct A { x: String = "hello \uD800 world" }"#;
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an InvalidUnicodeEscape diagnostic, but compilation succeeded")?;
+    let has_error = errors.iter().any(|e| {
+        matches!(
+            e,
+            formalang::CompilerError::InvalidUnicodeEscape { value, .. } if value.eq_ignore_ascii_case("D800")
+        )
+    });
+    if !has_error {
+        return Err(
+            format!("expected InvalidUnicodeEscape(D800) in errors, got: {errors:?}").into(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_valid_unicode_escape_does_not_diagnose() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B4 negative case: `é` is `é`, a valid scalar value;
+    // no diagnostic should fire and the literal must compile.
+    let source = r#"struct A { x: String = "café" }"#;
+    compile(source).map_err(|e| format!("expected success, got: {}", fmt_errs(&e)))?;
     Ok(())
 }
 
@@ -914,7 +1010,7 @@ fn test_struct_with_content_field() -> Result<(), Box<dyn std::error::Error>> {
             content: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -927,7 +1023,7 @@ fn test_struct_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> 
             footer: String
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -942,7 +1038,7 @@ fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
             mut value: Number
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -964,7 +1060,7 @@ fn test_field_reference() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -981,7 +1077,7 @@ fn test_enum_variant_reference() -> Result<(), Box<dyn std::error::Error>> {
             color: Color = .red
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -1002,7 +1098,7 @@ fn test_inferred_enum_in_struct_instantiation_args() -> Result<(), Box<dyn std::
             repeat: RepeatMode = .both
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
 }
 
@@ -1013,7 +1109,7 @@ fn test_inferred_enum_in_struct_instantiation_args() -> Result<(), Box<dyn std::
 #[test]
 fn test_complete_program_compiles() -> Result<(), Box<dyn std::error::Error>> {
     let source = include_str!("fixtures/complete.fv");
-    compile(source).map_err(|e| format!("complete.fv failed to compile: {e:?}"))?;
+    compile(source).map_err(|e| format!("complete.fv failed to compile: {}", fmt_errs(&e)))?;
     Ok(())
 }
 
@@ -1024,8 +1120,8 @@ fn test_complete_program_compiles() -> Result<(), Box<dyn std::error::Error>> {
 )]
 fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>> {
     let source = include_str!("fixtures/complete.fv");
-    let module =
-        compile_to_ir(source).map_err(|e| format!("complete.fv failed IR lowering: {e:?}"))?;
+    let module = compile_to_ir(source)
+        .map_err(|e| format!("complete.fv failed IR lowering: {}", fmt_errs(&e)))?;
 
     // Enums
     let priority = module

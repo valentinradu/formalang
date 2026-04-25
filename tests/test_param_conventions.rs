@@ -471,6 +471,39 @@ fn test_pipe_closure_return_type_match_compiles() {
         .expect("matching return type should compile cleanly");
 }
 
+#[test]
+fn test_pipe_closure_return_type_mismatch_span_points_at_body() {
+    // Audit2 B13: the diagnostic must point at the offending body
+    // expression, not the whole closure-position span. The body
+    // `x + 1` starts after the `{` of the closure body, so its span
+    // start should be strictly greater than the start of `|x` (the
+    // closure-position).
+    let source = r"let f: (Number) -> String = |x: Number| -> String { x + 1 }";
+    let errors = compile(source).expect_err("expected a TypeMismatch error");
+    let mut found_span = None;
+    for e in &errors {
+        if let CompilerError::FunctionReturnTypeMismatch { span, .. } = e {
+            found_span = Some(*span);
+            break;
+        }
+    }
+    let span = found_span.expect("expected FunctionReturnTypeMismatch");
+    let closure_start = source.find("|x").expect("closure literal in source");
+    assert!(
+        span.start.offset > closure_start,
+        "expected span to point inside the closure body, got start {} (closure starts at {})",
+        span.start.offset,
+        closure_start
+    );
+    let body_start = source.find("x + 1").expect("body in source");
+    assert!(
+        span.start.offset == body_start,
+        "expected span to start at body offset {}, got {}",
+        body_start,
+        span.start.offset
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Closure parameter conventions: semantic enforcement
 // ---------------------------------------------------------------------------

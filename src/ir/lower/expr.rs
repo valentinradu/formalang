@@ -154,6 +154,30 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// Audit2 B18 follow-up: resolve a `ResolvedType` to its enum
+    /// type-name (used as the inferred-enum target for a struct-arg
+    /// expression). Returns the empty string for non-enum, non-optional-
+    /// of-enum types, which the caller filters out.
+    fn enum_name_of(module: &crate::ir::IrModule, ty: &ResolvedType) -> String {
+        match ty {
+            ResolvedType::Enum(eid) => module
+                .get_enum(*eid)
+                .map_or_else(String::new, |e| e.name.clone()),
+            ResolvedType::Optional(inner) => Self::enum_name_of(module, inner),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => String::new(),
+        }
+    }
+
     fn lower_invocation(
         &mut self,
         path: &[crate::ast::Ident],
@@ -177,12 +201,45 @@ impl IrLowerer<'_> {
                     args: type_args_resolved.clone(),
                 }
             };
+            // Audit2 B18 follow-up: build a name->type-name map of the
+            // struct's fields so each named-arg lowers with the field's
+            // declared type as the inferred-enum target. Without this,
+            // `Size(width: .auto)` inherits whatever outer
+            // `current_function_return_type` was set to and `.auto` can't
+            // resolve.
+            let field_target: HashMap<String, ResolvedType> = self
+                .module
+                .get_struct(id)
+                .map(|s| {
+                    s.fields
+                        .iter()
+                        .map(|f| (f.name.clone(), f.ty.clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
             let named_fields: Vec<(String, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
-                    name_opt
-                        .as_ref()
-                        .map(|n| (n.name.clone(), self.lower_expr(expr)))
+                    name_opt.as_ref().map(|n| {
+                        let saved = self.current_function_return_type.take();
+                        let saved_closure = self.expected_closure_type.take();
+                        self.current_function_return_type = field_target
+                            .get(&n.name)
+                            .map(|t| Self::enum_name_of(&self.module, t))
+                            .filter(|s| !s.is_empty());
+                        // Audit2 B19: thread closure-typed field annotations
+                        // into the closure-literal lowering so untyped params
+                        // pick up the field's expected param types.
+                        if let Some(t) = field_target.get(&n.name) {
+                            if matches!(t, ResolvedType::Closure { .. }) {
+                                self.expected_closure_type = Some(t.clone());
+                            }
+                        }
+                        let lowered = self.lower_expr(expr);
+                        self.expected_closure_type = saved_closure;
+                        self.current_function_return_type = saved;
+                        (n.name.clone(), lowered)
+                    })
                 })
                 .collect();
             IrExpr::StructInst {
@@ -209,16 +266,27 @@ impl IrLowerer<'_> {
             }
         } else {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
+            // Audit2 B19: look up the function's expected parameter
+            // types so a closure literal passed as an argument
+            // (`fn apply(f: Number -> Number) ... apply(x -> x + 1)`)
+            // lowers with `x: Number` instead of `TypeParam("Unknown")`.
+            // Falls back to None when the function isn't in the IR yet
+            // (forward reference) or the argument can't be matched by
+            // name to a parameter.
+            let fn_name = path_strs.last().map_or("", std::string::String::as_str);
+            let expected_param_tys = self.lookup_function_param_types(fn_name);
             let lowered_args: Vec<(Option<String>, IrExpr)> = args
                 .iter()
-                .map(|(name_opt, expr)| {
-                    (
-                        name_opt.as_ref().map(|n| n.name.clone()),
-                        self.lower_expr(expr),
-                    )
+                .enumerate()
+                .map(|(i, (name_opt, expr))| {
+                    let saved_closure = self.expected_closure_type.take();
+                    self.expected_closure_type =
+                        Self::expected_arg_closure_ty(&expected_param_tys, i, name_opt.as_ref());
+                    let lowered = self.lower_expr(expr);
+                    self.expected_closure_type = saved_closure;
+                    (name_opt.as_ref().map(|n| n.name.clone()), lowered)
                 })
                 .collect();
-            let fn_name = path_strs.last().map_or("", std::string::String::as_str);
             let ty = self.resolve_function_return_type(fn_name, &lowered_args);
             IrExpr::FunctionCall {
                 path: path_strs,
@@ -226,6 +294,46 @@ impl IrLowerer<'_> {
                 ty,
             }
         }
+    }
+
+    /// Audit2 B19 helper: find the IR function with the given name and
+    /// return its parameter list as `(param_name, param_ty)` pairs. The
+    /// caller uses the list to seed `expected_closure_type` for each
+    /// argument before lowering. Returns an empty vec when the function
+    /// isn't yet in the IR (forward reference) — in that case we fall
+    /// back to `Unknown` for closure-literal params, same as before.
+    fn lookup_function_param_types(&self, fn_name: &str) -> Vec<(String, ResolvedType)> {
+        if let Some(f) = self.module.functions.iter().find(|f| f.name == fn_name) {
+            return f
+                .params
+                .iter()
+                .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
+                .collect();
+        }
+        Vec::new()
+    }
+
+    /// Audit2 B19 helper: pick the expected parameter type for arg
+    /// position `i`, preferring name match (for named args like
+    /// `apply(callback: x -> x + 1)`) and falling back to positional
+    /// index. Returns `Some(ty)` only when the matched parameter is a
+    /// `Closure { .. }` — non-closure expected types don't influence
+    /// closure-literal lowering.
+    fn expected_arg_closure_ty(
+        expected: &[(String, ResolvedType)],
+        i: usize,
+        name: Option<&crate::ast::Ident>,
+    ) -> Option<ResolvedType> {
+        let candidate = name.map_or_else(
+            || expected.get(i).map(|(_, t)| t.clone()),
+            |n| {
+                expected
+                    .iter()
+                    .find(|(pname, _)| pname == &n.name)
+                    .map(|(_, t)| t.clone())
+            },
+        );
+        candidate.filter(|t| matches!(t, ResolvedType::Closure { .. }))
     }
 
     fn lower_enum_instantiation(
@@ -576,13 +684,20 @@ impl IrLowerer<'_> {
         args: &[(Option<crate::ast::Ident>, Expr)],
     ) -> IrExpr {
         let receiver_ir = self.lower_expr(receiver);
+        // Audit2 B19: same idea as the function-call path — pull the
+        // method's expected param types so closure-literal arguments
+        // get their `x` typed against what the method expects.
+        let expected_param_tys = self.lookup_method_param_types(receiver_ir.ty(), method_name);
         let lowered_args: Vec<(Option<String>, IrExpr)> = args
             .iter()
-            .map(|(label, expr)| {
-                (
-                    label.as_ref().map(|l| l.name.clone()),
-                    self.lower_expr(expr),
-                )
+            .enumerate()
+            .map(|(i, (label, expr))| {
+                let saved_closure = self.expected_closure_type.take();
+                self.expected_closure_type =
+                    Self::expected_arg_closure_ty(&expected_param_tys, i, label.as_ref());
+                let lowered = self.lower_expr(expr);
+                self.expected_closure_type = saved_closure;
+                (label.as_ref().map(|l| l.name.clone()), lowered)
             })
             .collect();
         let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name);
@@ -594,6 +709,55 @@ impl IrLowerer<'_> {
             dispatch,
             ty,
         }
+    }
+
+    /// Audit2 B19 helper: locate the impl method matching
+    /// `(receiver_ty, method_name)` and return its non-self parameter
+    /// list as `(name, type)` pairs. The caller uses these to seed
+    /// `expected_closure_type` for closure-literal arguments. Returns
+    /// an empty vec when the method can't be resolved (forward
+    /// reference, generic dispatch via trait, etc.) — in that case the
+    /// arg-lowering falls back to `Unknown` for closure-literal params.
+    fn lookup_method_param_types(
+        &self,
+        receiver_ty: &ResolvedType,
+        method_name: &str,
+    ) -> Vec<(String, ResolvedType)> {
+        let target = match receiver_ty {
+            ResolvedType::Generic { base, .. } => match base {
+                crate::ir::GenericBase::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
+                crate::ir::GenericBase::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
+            },
+            ResolvedType::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
+            ResolvedType::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
+            | ResolvedType::Optional(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => None,
+        };
+        let Some(target) = target else {
+            return Vec::new();
+        };
+        for impl_block in &self.module.impls {
+            if impl_block.target != target {
+                continue;
+            }
+            if let Some(func) = impl_block.functions.iter().find(|f| f.name == method_name) {
+                return func
+                    .params
+                    .iter()
+                    .filter(|p| p.name != "self")
+                    .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
+                    .collect();
+            }
+        }
+        Vec::new()
     }
 
     /// Resolve the dispatch kind for a method call.
@@ -675,7 +839,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: cannot resolve dispatch for method `{method_name}` on receiver {receiver_ty:?}"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         DispatchKind::Virtual {
             trait_id: TraitId(u32::MAX),
@@ -690,7 +854,7 @@ impl IrLowerer<'_> {
         self.module.next_impl_id().unwrap_or_else(|| {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "impl",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             ImplId(u32::MAX)
         })
@@ -706,7 +870,7 @@ impl IrLowerer<'_> {
         } else {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "impl",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             ImplId(u32::MAX)
         }
@@ -718,7 +882,7 @@ impl IrLowerer<'_> {
         } else {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "trait",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             TraitId(u32::MAX)
         }
@@ -1094,7 +1258,7 @@ impl IrLowerer<'_> {
                             "IR lowering: struct `{}` has no field `{field_name}`",
                             struct_def.name
                         ),
-                        span: crate::location::Span::default(),
+                        span: self.current_span,
                     });
                 } else {
                     self.errors.push(CompilerError::InternalError {
@@ -1102,7 +1266,7 @@ impl IrLowerer<'_> {
                             "IR lowering: struct id {} out of bounds during field access `{field_name}`",
                             struct_id.0
                         ),
-                        span: crate::location::Span::default(),
+                        span: self.current_span,
                     });
                 }
                 ResolvedType::Primitive(PrimitiveType::Never)
@@ -1123,7 +1287,7 @@ impl IrLowerer<'_> {
                     detail: format!(
                         "IR lowering: cannot access field `{field_name}` on non-struct receiver {object_ty:?}"
                     ),
-                    span: crate::location::Span::default(),
+                    span: self.current_span,
                 });
                 ResolvedType::Primitive(PrimitiveType::Never)
             }
@@ -1176,7 +1340,7 @@ impl IrLowerer<'_> {
                     "IR lowering: no impl method `{method_name}` for struct id {}",
                     struct_id.0
                 ),
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             return ResolvedType::Primitive(PrimitiveType::Never);
         }
@@ -1248,7 +1412,7 @@ impl IrLowerer<'_> {
                     "IR lowering: no impl method `{method_name}` for enum id {}",
                     enum_id.0
                 ),
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             return ResolvedType::Primitive(PrimitiveType::Never);
         }
@@ -1283,7 +1447,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: cannot resolve return type of `{method_name}` on receiver {receiver_ty:?}"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
     }
@@ -1324,7 +1488,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: unknown function `{fn_name}` reached codegen — should have been caught by semantic analysis"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
     }
@@ -1341,12 +1505,36 @@ impl IrLowerer<'_> {
         return_type: Option<&ast::Type>,
         body: &Expr,
     ) -> IrExpr {
+        // Audit2 B19: when the surrounding context (a call argument,
+        // a closure-typed struct field, etc.) supplies an expected
+        // closure type, fall back to its param/return types for any
+        // closure-literal slots the AST didn't annotate. This turns
+        // `array.map(x -> x + 1)` into a closure with concrete
+        // `x: <element type>` instead of `TypeParam("Unknown")`.
+        let expected = self.expected_closure_type.take();
+        let expected_param_tys: Vec<Option<ResolvedType>> = match expected.as_ref() {
+            Some(ResolvedType::Closure { param_tys, .. }) if param_tys.len() == params.len() => {
+                param_tys.iter().map(|(_, t)| Some(t.clone())).collect()
+            }
+            _ => vec![None; params.len()],
+        };
+        let expected_return_ty: Option<ResolvedType> = match expected.as_ref() {
+            Some(ResolvedType::Closure { return_ty, .. }) => Some((**return_ty).clone()),
+            _ => None,
+        };
+
         // General closure: lower params and body
         let lowered_params: Vec<(ParamConvention, String, ResolvedType)> = params
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 let ty = p.ty.as_ref().map_or_else(
-                    || ResolvedType::TypeParam("Unknown".to_string()),
+                    || {
+                        expected_param_tys
+                            .get(i)
+                            .and_then(std::clone::Clone::clone)
+                            .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()))
+                    },
                     |t| self.lower_type(t),
                 );
                 (p.convention, p.name.name.clone(), ty)
@@ -1362,11 +1550,33 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(closure_frame);
 
+        // Audit2 B18: set `current_function_return_type` from the
+        // closure's declared return type so an inferred-enum
+        // `.variant` inside the body resolves against the closure's
+        // own return type, not the surrounding context (which after B18
+        // can be the *outer* type, e.g. the field's `Closure` type).
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = return_type.map(super::IrLowerer::type_name);
+
         let body_ir = self.lower_expr(body);
-        // Audit #38: prefer the declared return type when present so the
-        // closure's `ResolvedType` reflects the explicit annotation rather
-        // than the inferred body type (which may be `Unknown` or narrower).
-        let return_ty = return_type.map_or_else(|| body_ir.ty().clone(), |t| self.lower_type(t));
+
+        self.current_function_return_type = saved_return_type;
+        // Audit #38 + audit2 B19: prefer the declared return type when
+        // present, then the expected return type from the surrounding
+        // context, then the inferred body type (which may be `Unknown`
+        // or narrower).
+        let return_ty = return_type.map_or_else(
+            || {
+                if matches!(body_ir.ty(), ResolvedType::TypeParam(_)) {
+                    expected_return_ty
+                        .clone()
+                        .unwrap_or_else(|| body_ir.ty().clone())
+                } else {
+                    body_ir.ty().clone()
+                }
+            },
+            |t| self.lower_type(t),
+        );
 
         // Pop the closure's own frame before resolving captures so that
         // capture lookups consult only the enclosing scopes.

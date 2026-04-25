@@ -1,17 +1,47 @@
 // Error reporting with ariadne for beautiful, user-friendly error messages
 
 use crate::error::CompilerError;
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
+use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source};
+
+/// Audit2 B35: honour the `NO_COLOR` environment variable.
+///
+/// When `NO_COLOR` is set to any non-empty value, error rendering omits
+/// ANSI escape codes — both ariadne's frame chrome (governed by
+/// `Config::with_color`) AND the inline `Fmt::fg(...)` highlights inside
+/// label messages (governed at the `yansi` global level, since ariadne
+/// re-exports `yansi::Color`).
+///
+/// `yansi::disable()` is process-global; we call it once per render
+/// after detecting the env var, then restore the prior state on the way
+/// out. We don't auto-detect TTY status — users wanting
+/// colour-on-tty-only can set `NO_COLOR` from a shell wrapper. See
+/// <https://no-color.org>.
+fn colour_enabled() -> bool {
+    std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
+}
 
 /// Report a single compiler error with beautiful formatting
 #[must_use]
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
+    let with_colour = colour_enabled();
+    if !with_colour {
+        // Disable yansi globally so inline `Fmt::fg(...)` highlights
+        // produce no ANSI codes. Restoring is best-effort: ariadne does
+        // not run multi-threaded internally, so toggling around the
+        // render call is safe; users who render concurrently should
+        // export `NO_COLOR` once at startup.
+        yansi::disable();
+    }
     let mut output = Vec::new();
-    let report = build_error_report(error, filename);
-    if let Err(write_error) = report
+    let report =
+        build_error_report(error, filename).with_config(Config::default().with_color(with_colour));
+    let render = report
         .finish()
-        .write((filename, Source::from(source)), &mut output)
-    {
+        .write((filename, Source::from(source)), &mut output);
+    if !with_colour {
+        yansi::enable();
+    }
+    if let Err(write_error) = render {
         // Writing to a Vec<u8> buffer cannot fail for I/O reasons, so reaching this
         // branch indicates a formatter bug. Fall back to the error's Display impl so
         // the caller still sees a useful message instead of an empty string.
@@ -382,6 +412,33 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                         .with_color(Color::Red),
                 )
                 .with_help("Add a closing '\"' to end the string")
+        }
+
+        CompilerError::UnterminatedBlockComment { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E033")
+                .with_message("Unterminated block comment")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("block comment is never closed")
+                        .with_color(Color::Red),
+                )
+                .with_help("Add `*/` to close the block comment")
+        }
+
+        CompilerError::InvalidUnicodeEscape { value, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E034")
+                .with_message(format!("Invalid unicode escape '\\u{value}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'\\u{}' is not a valid unicode scalar value",
+                            value.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Surrogate code points (U+D800..=U+DFFF) are not allowed")
         }
 
         CompilerError::InvalidNumber { value, .. } => {
@@ -939,8 +996,16 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
 
         CompilerError::InternalError { detail, .. } => {
+            // Audit2 B32: subdivide the catch-all internal-error code by
+            // looking at the leading subsystem prefix on `detail`.
+            // Push sites already include a prefix (e.g. "IR lowering:",
+            // "monomorphise:", "registration lookup ...") so we reuse
+            // those without changing 21 call sites. E999 stays as the
+            // generic fall-through for anything that doesn't carry a
+            // recognised prefix.
+            let code = internal_error_code(detail);
             Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E999")
+                .with_code(code)
                 .with_message(format!("Internal compiler error: {detail}"))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
@@ -948,6 +1013,23 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                         .with_color(Color::Red),
                 )
         }
+    }
+}
+
+/// Audit2 B32: pick a specific internal-error code based on the leading
+/// subsystem prefix on the `detail` string. Returns `"E999"` (generic)
+/// for any prefix the table doesn't know.
+fn internal_error_code(detail: &str) -> &'static str {
+    if detail.starts_with("IR lowering:") {
+        "E931"
+    } else if detail.starts_with("monomorphise:") {
+        "E932"
+    } else if detail.contains("id ") && detail.contains("registration lookup") {
+        "E933"
+    } else if detail.contains("inferred-enum") {
+        "E934"
+    } else {
+        "E999"
     }
 }
 

@@ -262,10 +262,22 @@ impl<'a> DeadCodeEliminator<'a> {
     fn mark_used_in_expr(&mut self, expr: &IrExpr) {
         match expr {
             IrExpr::StructInst {
-                struct_id, fields, ..
+                struct_id,
+                fields,
+                ty,
+                type_args,
+                ..
             } => {
                 if let Some(id) = struct_id {
                     self.used_structs.insert(*id);
+                }
+                // Audit2 B24: walk the resolved type and any explicit
+                // type-arguments so a local struct/enum used as a generic
+                // arg of an external receiver (e.g. `Box<LocalThing>` from
+                // an imported module) is marked used.
+                self.mark_used_in_type(ty);
+                for arg in type_args {
+                    self.mark_used_in_type(arg);
                 }
                 for (_, e) in fields {
                     self.mark_used_in_expr(e);
@@ -294,11 +306,18 @@ impl<'a> DeadCodeEliminator<'a> {
                 }
             }
             IrExpr::EnumInst {
-                enum_id, fields, ..
+                enum_id,
+                fields,
+                ty,
+                ..
             } => {
                 if let Some(id) = enum_id {
                     self.used_enums.insert(*id);
                 }
+                // Audit2 B24: walk the resolved type so a local
+                // struct/enum used as a generic arg of an external
+                // enum (e.g. `Result<LocalErr, OK>`) is marked used.
+                self.mark_used_in_type(ty);
                 for (_, e) in fields {
                     self.mark_used_in_expr(e);
                 }

@@ -36,8 +36,8 @@
 //! ```
 
 use super::{
-    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrLet, IrModule, IrStruct,
-    IrTrait, StructId, TraitId,
+    EnumId, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrImport, IrLet, IrModule,
+    IrStruct, IrTrait, StructId, TraitId,
 };
 
 /// Visitor trait for traversing IR nodes.
@@ -73,6 +73,12 @@ pub trait IrVisitor {
 
     /// Visit a let binding.
     fn visit_let(&mut self, _l: &IrLet) {}
+
+    /// Visit an import declaration.
+    ///
+    /// Backends that emit per-module import statements override this to see
+    /// every `IrImport` recorded on the module.
+    fn visit_import(&mut self, _i: &IrImport) {}
 
     /// Visit a field definition.
     fn visit_field(&mut self, _f: &IrField) {}
@@ -163,6 +169,11 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
     for l in &module.lets {
         visitor.visit_let(l);
         walk_expr(visitor, &l.value);
+    }
+
+    // Visit imports (audit2 A3)
+    for i in &module.imports {
+        visitor.visit_import(i);
     }
 }
 

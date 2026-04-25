@@ -30,6 +30,7 @@ IrModule {
                             mutable: false,
                             optional: false,
                             default: None,
+                            doc: None,
                         },
                     ],
                 },

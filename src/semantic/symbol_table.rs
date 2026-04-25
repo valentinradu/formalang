@@ -36,8 +36,10 @@ pub struct TraitInfo {
     pub span: Span,
     /// Generic parameters
     pub generics: Vec<GenericParam>,
-    /// Required fields (name -> type)
-    pub fields: HashMap<String, Type>,
+    /// Required fields, in source order. Audit2 B2 upgraded this from
+    /// `HashMap<String, Type>` to a `Vec<FieldInfo>` so trait fields
+    /// preserve their order and carry doc-comments through to the IR.
+    pub fields: Vec<FieldInfo>,
     /// Trait composition list (trait names this trait extends)
     pub composed_traits: Vec<String>,
     /// Required method signatures declared in the trait body
@@ -80,6 +82,8 @@ pub struct StructInfo {
 pub struct FieldInfo {
     pub name: String,
     pub ty: Type,
+    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    pub doc: Option<String>,
 }
 
 /// Information about an inherent impl block (impl Struct)
@@ -205,7 +209,7 @@ impl SymbolTable {
         visibility: Visibility,
         span: Span,
         generics: Vec<GenericParam>,
-        fields: HashMap<String, Type>,
+        fields: Vec<FieldInfo>,
         composed_traits: Vec<String>,
         methods: Vec<FnSig>,
         doc: Option<String>,
@@ -646,6 +650,10 @@ impl SymbolTable {
     }
 
     /// Get all required fields from a trait (including composed traits)
+    ///
+    /// Returns `name -> Type`. Doc comments are not propagated through the
+    /// composition flattening — callers needing per-field docs should walk
+    /// `TraitInfo.fields` directly on the leaf trait.
     #[must_use]
     pub fn get_all_trait_fields(&self, name: &str) -> HashMap<String, Type> {
         let mut all_fields = HashMap::new();
@@ -658,7 +666,9 @@ impl SymbolTable {
             }
 
             // Add fields from this trait (can override composed trait fields)
-            all_fields.extend(trait_info.fields.clone());
+            for f in &trait_info.fields {
+                all_fields.insert(f.name.clone(), f.ty.clone());
+            }
         }
 
         all_fields

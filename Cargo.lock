@@ -194,6 +194,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "yansi",
 ]
 
 [[package]]

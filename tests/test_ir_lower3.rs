@@ -228,6 +228,62 @@ fn test_lower_closure_inferred_enum_no_context() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+#[test]
+fn test_lower_inferred_enum_in_module_let() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B18: an inferred-enum literal at the value of a typed
+    // module-level let must lower against the let's annotation, not
+    // produce `TypeParam("InferredEnum")`.
+    let source = r"
+        enum Status { active, inactive }
+        let s: Status = .active
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
+    let s = module
+        .lets
+        .iter()
+        .find(|l| l.name == "s")
+        .ok_or("expected let s")?;
+    if let formalang::ir::IrExpr::EnumInst { enum_id, ty, .. } = &s.value {
+        if enum_id.is_none() {
+            return Err(format!("expected EnumInst with concrete enum_id, got ty={ty:?}").into());
+        }
+    } else {
+        return Err(format!("expected EnumInst for s.value, got {:?}", s.value).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_lower_inferred_enum_in_struct_field_default() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B18: same as above for struct field defaults — the
+    // default expression sees the field's declared enum type.
+    let source = r"
+        enum Status { active, inactive }
+        struct Config {
+            initial: Status = .active
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
+    let config = module.structs.first().ok_or("expected Config")?;
+    let initial = config
+        .fields
+        .iter()
+        .find(|f| f.name == "initial")
+        .ok_or("expected initial field")?;
+    let default = initial
+        .default
+        .as_ref()
+        .ok_or("expected default expression")?;
+    if let formalang::ir::IrExpr::EnumInst { enum_id, .. } = default {
+        if enum_id.is_none() {
+            return Err("expected EnumInst with concrete enum_id".into());
+        }
+    } else {
+        return Err(format!("expected EnumInst for default, got {default:?}").into());
+    }
+    Ok(())
+}
+
 // =============================================================================
 // Lower: resolve_method_return_type for enum methods
 // =============================================================================
@@ -346,9 +402,9 @@ fn test_lower_module_with_function() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_path_type_in_let() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        let p: Path = "/"
-    "#;
+    let source = r"
+        let p: Path = /home/user/file
+    ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let binding = module
         .lets

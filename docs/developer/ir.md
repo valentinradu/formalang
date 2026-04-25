@@ -380,15 +380,20 @@ pub enum ResolvedType {
     /// Array type: [T]
     Array(Box<ResolvedType>),
 
+    /// Range type: T..T — produced by `start..end` expressions and consumed
+    /// by `for x in start..end { ... }` loops.
+    Range(Box<ResolvedType>),
+
     /// Optional type: T?
     Optional(Box<ResolvedType>),
 
     /// Named tuple type: (name1: T1, name2: T2)
     Tuple(Vec<(String, ResolvedType)>),
 
-    /// Generic type instantiation: Box<String>
+    /// Generic type instantiation: Box<String> or Option<Number>
     Generic {
-        base: StructId,
+        /// The generic struct or enum being instantiated.
+        base: GenericBase,
         args: Vec<ResolvedType>,
     },
 
@@ -419,6 +424,13 @@ pub enum ResolvedType {
         return_ty: Box<ResolvedType>,
     },
 }
+
+/// Target of a `Generic` instantiation — either a generic struct or a
+/// generic enum. Match exhaustively when extracting the underlying ID.
+pub enum GenericBase {
+    Struct(StructId),
+    Enum(EnumId),
+}
 ```
 
 ### Type Resolution Examples
@@ -432,9 +444,11 @@ pub enum ResolvedType {
 | `Named` (local trait) | `Trait(TraitId(n))` |
 | `Status` (local enum) | `Enum(EnumId(n))` |
 | `[String]` | `Array(Box::new(Primitive(String)))` |
+| `0..10` | `Range(Box::new(Primitive(Number)))` |
 | `String?` | `Optional(Box::new(Primitive(String)))` |
 | `[[Number]]` | `Array(Box::new(Array(Box::new(Primitive(Number)))))` |
-| `Box<String>` | `Generic { base: StructId(n), args: [Primitive(String)] }` |
+| `Box<String>` | `Generic { base: GenericBase::Struct(StructId(n)), args: [Primitive(String)] }` |
+| `Option<Number>` | `Generic { base: GenericBase::Enum(EnumId(n)), args: [Primitive(Number)] }` |
 | `(x: Number, y: Number)` | `Tuple(vec![("x", Primitive(Number)), ("y", Primitive(Number))])` |
 | `T` (in generic) | `TypeParam("T")` |
 | `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
@@ -601,6 +615,9 @@ pub struct IrField {
 
     /// Default value expression, if any
     pub default: Option<IrExpr>,
+
+    /// Joined `///` doc comments preceding this field, if any.
+    pub doc: Option<String>,
 }
 ```
 

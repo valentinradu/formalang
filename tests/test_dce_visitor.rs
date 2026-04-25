@@ -11,9 +11,13 @@
 use formalang::compile_to_ir;
 use formalang::ir::{
     eliminate_dead_code, walk_block_statement, walk_expr_children, walk_module, DeadCodeEliminator,
-    EnumId, IrBlockStatement, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrLet,
-    IrStruct, IrVisitor, StructId, TraitId,
+    EnumId, IrBlockStatement, IrEnum, IrEnumVariant, IrExpr, IrField, IrFunction, IrImpl, IrImport,
+    IrLet, IrStruct, IrVisitor, StructId, TraitId,
 };
+
+#[path = "common/mod.rs"]
+mod common;
+use common::MemResolver;
 
 // =============================================================================
 // DCE: analyze() - marking used structs
@@ -806,6 +810,74 @@ fn test_visitor_walk_full_module() -> Result<(), Box<dyn std::error::Error>> {
     }
     if visitor.exprs == 0 {
         return Err("expected at least one expression visited".into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Visitor: walk_module_children visits imports (audit2 A3)
+// =============================================================================
+
+struct ImportCollector {
+    paths: Vec<Vec<String>>,
+    items: Vec<String>,
+}
+
+impl ImportCollector {
+    const fn new() -> Self {
+        Self {
+            paths: Vec::new(),
+            items: Vec::new(),
+        }
+    }
+}
+
+impl IrVisitor for ImportCollector {
+    fn visit_import(&mut self, i: &IrImport) {
+        self.paths.push(i.module_path.clone());
+        for item in &i.items {
+            self.items.push(item.name.clone());
+        }
+    }
+}
+
+#[test]
+fn test_visitor_walks_imports() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 A3: imports recorded on the IrModule must be visited by
+    // walk_module_children so backends can emit per-module import statements.
+    let mut resolver = MemResolver::new();
+    resolver.add(vec!["a".to_string()], "pub struct Foo { value: Number }");
+    resolver.add(vec!["b".to_string()], "pub struct Bar { tag: String }");
+
+    let source = r"
+use a::Foo
+use b::Bar
+struct Holder { foo: Foo, bar: Bar }
+";
+    let module = formalang::compile_to_ir_with_resolver(source, resolver)
+        .map_err(|e| format!("compile: {e:?}"))?;
+
+    if module.imports.is_empty() {
+        return Err("expected at least one import recorded on IrModule".into());
+    }
+
+    let mut collector = ImportCollector::new();
+    walk_module(&mut collector, &module);
+
+    if collector.paths.len() != module.imports.len() {
+        return Err(format!(
+            "expected visitor to see {} imports, got {}",
+            module.imports.len(),
+            collector.paths.len()
+        )
+        .into());
+    }
+    if !collector.items.iter().any(|n| n == "Foo") || !collector.items.iter().any(|n| n == "Bar") {
+        return Err(format!(
+            "expected Foo and Bar in visited items, got {:?}",
+            collector.items
+        )
+        .into());
     }
     Ok(())
 }

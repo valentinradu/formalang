@@ -1072,3 +1072,131 @@ pub fn second() -> Number {
     }
     Ok(())
 }
+
+#[test]
+fn test_type_only_params_get_distinct_synth_names() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B7: two type-only (Mode B) parameters in the same function
+    // must end up with distinct synthesised names. Previously both got
+    // the literal `_arg`, which collided in scope tables and any HashMap
+    // keyed by parameter name.
+    use formalang::ast::{Definition, Statement};
+    let source = r"
+struct Color {}
+struct Number2 {}
+fn paint(Color, Number2) -> Boolean { true }
+";
+    let file = formalang::parse_only(source).map_err(|e| format!("{e:?}"))?;
+    let mut found = None;
+    for stmt in &file.statements {
+        if let Statement::Definition(def) = stmt {
+            if let Definition::Function(func) = def.as_ref() {
+                if func.name.name == "paint" {
+                    found = Some(func.params.clone());
+                }
+            }
+        }
+    }
+    let params = found.ok_or("paint not found")?;
+    if params.len() != 2 {
+        return Err(format!("expected 2 params, got {}", params.len()).into());
+    }
+    let p0 = params.first().ok_or("p0")?;
+    let p1 = params.get(1).ok_or("p1")?;
+    if p0.name.name == p1.name.name {
+        return Err(format!("type-only param names collide: both are {:?}", p0.name.name).into());
+    }
+    if !p0.name.name.starts_with("_arg") || !p1.name.name.starts_with("_arg") {
+        return Err(format!(
+            "expected `_arg…` synth names, got {:?} and {:?}",
+            p0.name.name, p1.name.name
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B2: leading `///` doc comments on struct fields must reach
+    // the IR through `IrField.doc`. Previously they were silently dropped
+    // by the parser.
+    let source = r"
+struct User {
+    /// The user's display name.
+    name: String,
+    /// Account age in days. Multi-line
+    /// docs join with newlines.
+    age: Number
+}
+";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let user = module.structs.first().ok_or("expected User struct")?;
+    let name_field = user
+        .fields
+        .iter()
+        .find(|f| f.name == "name")
+        .ok_or("name missing")?;
+    if name_field.doc.as_deref() != Some("The user's display name.") {
+        return Err(format!("name doc mismatch: {:?}", name_field.doc).into());
+    }
+    let age_field = user
+        .fields
+        .iter()
+        .find(|f| f.name == "age")
+        .ok_or("age missing")?;
+    if age_field.doc.as_deref() != Some("Account age in days. Multi-line\ndocs join with newlines.")
+    {
+        return Err(format!("age doc mismatch: {:?}", age_field.doc).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B2: trait field doc comments must also survive to the IR.
+    let source = r"
+trait Shape {
+    /// Total surface area, in square units.
+    area: Number
+}
+";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let shape = module.traits.first().ok_or("expected Shape trait")?;
+    let area = shape
+        .fields
+        .iter()
+        .find(|f| f.name == "area")
+        .ok_or("area missing")?;
+    if area.doc.as_deref() != Some("Total surface area, in square units.") {
+        return Err(format!("trait-field doc mismatch: {:?}", area.doc).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_enum_variant_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B2: enum-variant field doc comments must also reach the IR.
+    let source = r"
+enum Event {
+    Click(/// X coordinate of the click.
+        x: Number, /// Y coordinate of the click.
+        y: Number)
+}
+";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let event = module.enums.first().ok_or("expected Event enum")?;
+    let click = event
+        .variants
+        .iter()
+        .find(|v| v.name == "Click")
+        .ok_or("Click variant missing")?;
+    let x_field = click
+        .fields
+        .iter()
+        .find(|f| f.name == "x")
+        .ok_or("x missing")?;
+    if x_field.doc.as_deref() != Some("X coordinate of the click.") {
+        return Err(format!("enum-variant field doc mismatch: {:?}", x_field.doc).into());
+    }
+    Ok(())
+}

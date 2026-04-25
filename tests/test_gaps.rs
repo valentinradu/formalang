@@ -351,3 +351,209 @@ fn test_closure_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_closure_body_mismatched_return_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B9: a closure literal with an untyped param used to have
+    // the param resolve to "Unknown", which unified with anything and
+    // hid genuine return-type mismatches in the body. Now the let
+    // annotation seeds the param's type and the body is type-checked
+    // against the declared return type.
+    let source = r"
+        let f: Number -> Boolean = x -> x + 1
+    ";
+    let err = compile(source)
+        .err()
+        .ok_or("expected TypeMismatch for body returning Number, declared Boolean")?;
+    let has = err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { expected, found, .. } if expected == "Boolean" && found == "Number"));
+    if !has {
+        return Err(format!("expected TypeMismatch(Boolean, Number), got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_body_correct_return_type_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B9 positive case: an untyped-param closure whose body
+    // returns the declared type still compiles.
+    let source = r"
+        let f: Number -> Number = x -> x + 1
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_dict_literal_value_heterogeneity_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11: dict literals were allowed to mix value types
+    // silently. Now `["a": 1, "b": "two"]` must surface a TypeMismatch.
+    let source = r#"
+        let d = ["a": 1, "b": "two"]
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_dict_literal_key_heterogeneity_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11: same for keys — `[1: "x", "two": "y"]` mixes Number
+    // and String keys.
+    let source = r#"
+        let d = [1: "x", "two": "y"]
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_dict_literal_homogeneous_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11 positive case: a dict whose every entry has the same
+    // shape compiles.
+    let source = r#"
+        let d = ["a": 1, "b": 2, "c": 3]
+    "#;
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_let_general_type_mismatch_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B12: a let binding's value must be type-compatible with
+    // its declared annotation. Previously only the nil-vs-non-optional
+    // case was checked, so `let f: m::Foo = "wrong"` compiled silently.
+    let source = r#"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+        }
+        let f: m::Foo = "wrong"
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_let_general_type_match_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B12 positive case.
+    let source = r"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+        }
+        let f: m::Foo = m::Foo()
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_closure_arg_to_function_picks_up_expected_param_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B19: a closure literal passed as an argument to a
+    // function expecting a closure type used to lower with
+    // `param_tys: [(_, TypeParam("Unknown"))]`. With bidirectional
+    // inference at the call site, the closure now picks up the
+    // function's declared param type.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::ResolvedType;
+    let source = r"
+        fn apply(f: Number -> Number, x: Number) -> Number {
+            x
+        }
+        let result: Number = apply(x -> x, 1)
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    // Find the `result` let; its value is the FunctionCall to apply.
+    let result_let = module
+        .lets
+        .iter()
+        .find(|l| l.name == "result")
+        .ok_or("expected let result")?;
+    let formalang::ir::IrExpr::FunctionCall { args, .. } = &result_let.value else {
+        return Err(format!("expected FunctionCall, got {:?}", result_let.value).into());
+    };
+    let (_, first_arg) = args.first().ok_or("expected first arg")?;
+    let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
+        return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
+    };
+    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
+        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_arg_to_method_picks_up_expected_param_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B19 mirror: same bidirectional inference for method
+    // call arguments. `target.run(x -> x + 1)` should give the
+    // closure's `x` the method's declared param type.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::ResolvedType;
+    let source = r"
+        struct Engine { rpm: Number = 0 }
+        impl Engine {
+            fn run(self, f: Number -> Number) -> Number {
+                self.rpm
+            }
+        }
+        let e: Engine = Engine()
+        let result: Number = e.run(x -> x)
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let result_let = module
+        .lets
+        .iter()
+        .find(|l| l.name == "result")
+        .ok_or("expected let result")?;
+    let formalang::ir::IrExpr::MethodCall { args, .. } = &result_let.value else {
+        return Err(format!("expected MethodCall, got {:?}", result_let.value).into());
+    };
+    let (_, first_arg) = args.first().ok_or("expected first arg")?;
+    let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
+        return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
+    };
+    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
+        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B14: a method call on a value whose type is qualified
+    // (`m::Foo`) used to fail with `UndefinedReference` because
+    // `method_exists_on_type` only matched bare receiver names.
+    let source = r"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+            impl Foo {
+                fn double(self) -> Number { self.x + self.x }
+            }
+        }
+        let f: m::Foo = m::Foo()
+        let v: Number = f.double()
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}

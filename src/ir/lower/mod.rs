@@ -98,6 +98,14 @@ struct IrLowerer<'a> {
     /// `InternalError` diagnostics can cite a meaningful source location
     /// instead of `Span::default()`. See audit finding #31.
     pub(super) current_span: crate::location::Span,
+    /// Audit2 B19: when a closure literal is being lowered as the
+    /// argument to a function call (or assigned to a closure-typed
+    /// struct field, or passed as a method argument), this carries the
+    /// expected closure type from the call/assignment context. The
+    /// closure lowerer reads it to fill in any param/return types that
+    /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
+    /// `x: Number` instead of `x: TypeParam("Unknown")`.
+    pub(super) expected_closure_type: Option<ResolvedType>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -159,6 +167,7 @@ impl<'a> IrLowerer<'a> {
             current_impl_method_returns: None,
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
+            expected_closure_type: None,
         }
     }
 
@@ -242,7 +251,15 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
+        // Audit2 B18: thread the let's annotation as the inferred-enum
+        // target so `.variant` literals in the value resolve to the
+        // declared enum (e.g. `let s: Status = .pending`) instead of
+        // lowering to `TypeParam("InferredEnum")`.
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type =
+            let_binding.type_annotation.as_ref().map(Self::type_name);
         let mut value = self.lower_expr(&let_binding.value);
+        self.current_function_return_type = saved_return_type;
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
@@ -551,12 +568,13 @@ impl<'a> IrLowerer<'a> {
             let fields: Vec<IrField> = trait_info
                 .fields
                 .iter()
-                .map(|(field_name, ty)| IrField {
-                    name: field_name.clone(),
-                    ty: self.lower_type(ty),
+                .map(|f| IrField {
+                    name: f.name.clone(),
+                    ty: self.lower_type(&f.ty),
                     default: None,
-                    optional: matches!(ty, ast::Type::Optional(_)),
+                    optional: matches!(f.ty, ast::Type::Optional(_)),
                     mutable: false,
+                    doc: f.doc.clone(),
                 })
                 .collect();
             let methods: Vec<IrFunctionSig> = trait_info
@@ -643,6 +661,7 @@ impl<'a> IrLowerer<'a> {
                                 default: None,
                                 optional: matches!(f.ty, ast::Type::Optional(_)),
                                 mutable: false,
+                                doc: f.doc.clone(),
                             })
                             .collect()
                     })
@@ -682,6 +701,7 @@ impl<'a> IrLowerer<'a> {
                     mutable: false,
                     optional,
                     default: None,
+                    doc: f.doc.clone(),
                 }
             })
             .collect();
@@ -938,6 +958,7 @@ impl<'a> IrLowerer<'a> {
                         default: None,
                         optional: false,
                         mutable: false,
+                        doc: f.doc.clone(),
                     })
                     .collect(),
             })
@@ -1118,7 +1139,11 @@ impl<'a> IrLowerer<'a> {
             }
         }
         self.generic_scopes.push(scope);
-        let functions: Vec<IrFunction> = i.functions.iter().map(|f| self.lower_fn_def(f)).collect();
+        let functions: Vec<IrFunction> = i
+            .functions
+            .iter()
+            .map(|f| self.lower_fn_def(f, i.is_extern))
+            .collect();
         self.generic_scopes.pop();
         let trait_id = i
             .trait_name
@@ -1202,7 +1227,7 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_fn_def(&mut self, f: &FnDef) -> IrFunction {
+    fn lower_fn_def(&mut self, f: &FnDef, enclosing_is_extern: bool) -> IrFunction {
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
@@ -1247,7 +1272,13 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        let is_extern = body.is_none();
+        // Audit2 A1: source `is_extern` from the enclosing `ImplDef.is_extern`
+        // rather than re-deriving from `body.is_none()`. The semantic layer
+        // enforces body/extern consistency for valid programs, but under
+        // parser error recovery a method may have `body: None` inside a
+        // regular impl; we want the IR's `IrFunction.is_extern` to match
+        // the containing `IrImpl.is_extern` definitionally.
+        let is_extern = enclosing_is_extern;
 
         self.local_binding_scopes.pop();
 
@@ -1333,16 +1364,25 @@ impl<'a> IrLowerer<'a> {
             mutable: f.mutable,
             optional,
             default: None,
+            doc: f.doc.clone(),
         }
     }
 
     fn lower_struct_field(&mut self, f: &StructField) -> IrField {
+        // Audit2 B18: thread the field's declared type as the
+        // inferred-enum target so `.variant` literals inside the
+        // default expression resolve to the field's enum type.
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = Some(Self::type_name(&f.ty));
+        let default = f.default.as_ref().map(|e| self.lower_expr(e));
+        self.current_function_return_type = saved_return_type;
         IrField {
             name: f.name.name.clone(),
             ty: self.lower_type(&f.ty),
             mutable: f.mutable,
             optional: f.optional,
-            default: f.default.as_ref().map(|e| self.lower_expr(e)),
+            default,
+            doc: f.doc.clone(),
         }
     }
 

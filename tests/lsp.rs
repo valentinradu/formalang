@@ -623,6 +623,38 @@ fn test_query_provider_hover_documentation_enum_and_let() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn test_query_provider_hover_documentation_function() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B16: standalone functions were missing from
+    // `get_hover_for_symbol` and `find_definition_by_name`. Hovering
+    // on a function name now returns its signature and doc-comment.
+    let source = r"
+        /// Compute the sum of two numbers.
+        fn add(a: Number, b: Number) -> Number { a + b }
+    ";
+    let (_, analyzer) = compile_with_analyzer(source).map_err(|e| format!("{e:?}"))?;
+    let provider = QueryProvider::new(analyzer.symbols());
+    let hover = provider
+        .get_hover_for_symbol("add")
+        .ok_or("expected hover for add")?;
+    if !hover
+        .signature
+        .contains("fn add(a: Number, b: Number) -> Number")
+    {
+        return Err(format!("unexpected signature: {}", hover.signature).into());
+    }
+    if hover.documentation.as_deref() != Some("Compute the sum of two numbers.") {
+        return Err(format!("unexpected doc: {:?}", hover.documentation).into());
+    }
+    let def = provider
+        .find_definition_by_name("add")
+        .ok_or("expected definition for add")?;
+    if !matches!(def.kind, formalang::semantic::SymbolKind::Function) {
+        return Err(format!("expected SymbolKind::Function, got {:?}", def.kind).into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_query_provider_find_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named {

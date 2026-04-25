@@ -94,6 +94,7 @@ File {
                             ),
                             optional: false,
                             default: None,
+                            doc: None,
                             span: Span {
                                 start: Location {
                                     offset: 25,

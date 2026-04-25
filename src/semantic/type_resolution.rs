@@ -144,10 +144,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for def in &module_def.definitions {
             match def {
                 Definition::Trait(trait_def) => {
-                    let fields: HashMap<String, Type> = trait_def
+                    let fields: Vec<symbol_table::FieldInfo> = trait_def
                         .fields
                         .iter()
-                        .map(|f| (f.name.name.clone(), f.ty.clone()))
+                        .map(|f| symbol_table::FieldInfo {
+                            name: f.name.name.clone(),
+                            ty: f.ty.clone(),
+                            doc: f.doc.clone(),
+                        })
                         .collect();
                     let composed_traits: Vec<String> =
                         trait_def.traits.iter().map(|t| t.name.clone()).collect();
@@ -169,6 +173,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .map(|f| symbol_table::FieldInfo {
                             name: f.name.name.clone(),
                             ty: f.ty.clone(),
+                            doc: f.doc.clone(),
                         })
                         .collect();
                     symbols.define_struct(
@@ -197,6 +202,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     .map(|f| FieldInfo {
                                         name: f.name.name.clone(),
                                         ty: f.ty.clone(),
+                                        doc: f.doc.clone(),
                                     })
                                     .collect(),
                             )

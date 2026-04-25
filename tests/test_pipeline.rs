@@ -336,11 +336,36 @@ fn pipeline_error_backend_error_source_is_some() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
-fn pipeline_error_pass_errors_source_is_none() -> Result<(), Box<dyn std::error::Error>> {
+fn pipeline_error_pass_errors_source_is_none_when_empty() -> Result<(), Box<dyn std::error::Error>>
+{
     use std::error::Error;
+    // Audit2 B25: an empty PassErrors vec has no source.
     let err: PipelineError<BackendErr> = PipelineError::PassErrors(vec![]);
     if err.source().is_some() {
-        return Err("PassErrors should have no error source".into());
+        return Err("empty PassErrors should have no error source".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn pipeline_error_pass_errors_source_exposes_first_error() -> Result<(), Box<dyn std::error::Error>>
+{
+    use std::error::Error;
+    // Audit2 B25: a non-empty PassErrors must expose the first
+    // CompilerError as its chain source so generic error walkers
+    // (`anyhow`, `eyre`, `?` chains) can reach the underlying compile
+    // diagnostic.
+    let err: PipelineError<BackendErr> =
+        PipelineError::PassErrors(vec![CompilerError::ParseError {
+            message: "first error".to_string(),
+            span: formalang::location::Span::default(),
+        }]);
+    let source = err
+        .source()
+        .ok_or("expected PassErrors to expose a source")?;
+    let display = format!("{source}");
+    if !display.contains("first error") {
+        return Err(format!("source should be the first ParseError, got: {display}").into());
     }
     Ok(())
 }

@@ -1076,3 +1076,32 @@ fn test_report_errors_multiple() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+#[test]
+fn test_internal_error_code_subdivides_by_subsystem() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B32: subsystem prefixes route to specific codes.
+    let cases: &[(&str, &str)] = &[
+        (
+            "IR lowering: cannot resolve dispatch for method `x`",
+            "E931",
+        ),
+        ("monomorphise: impl block targets struct id 1 …", "E932"),
+        ("struct id 7 produced by registration lookup …", "E933"),
+        ("inferred-enum `.foo` has no resolvable enum", "E934"),
+        ("something else entirely", "E999"),
+    ];
+    for (detail, expected_code) in cases {
+        let err = CompilerError::InternalError {
+            detail: (*detail).to_string(),
+            span: Span::default(),
+        };
+        let rendered = report_error(&err, "", "test.fv");
+        if !rendered.contains(expected_code) {
+            return Err(format!(
+                "expected `{detail}` to render with code {expected_code}, got: {rendered}"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}

@@ -20,16 +20,31 @@ use crate::ast::{BinaryOperator, Literal, PrimitiveType, UnaryOperator};
 use crate::ir::{IrExpr, IrModule, ResolvedType};
 
 /// Constant folder that evaluates compile-time constant expressions.
-#[derive(Debug)]
-pub struct ConstantFolder<'a> {
-    _module: &'a IrModule,
-}
+///
+/// # Folding contract (audit2 B29)
+///
+/// - Folds only when both operands of a binary op are concrete
+///   `IrExpr::Literal` values; let-binding values are NOT propagated
+///   (a `let x = 1` followed by `x + 1` stays a `BinaryOp`).
+/// - Division and modulo by zero are **left unfoldable** by design.
+///   Backends decide whether to emit `IEEE 754` infinity / `NaN`, trap, or
+///   reject, so the IR keeps the `BinaryOp` and exposes the literal
+///   operands for the backend to inspect.
+/// - Folding never crosses an effectful boundary (function call,
+///   method call, field access on a non-literal receiver).
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct ConstantFolder;
 
-impl<'a> ConstantFolder<'a> {
+impl ConstantFolder {
     /// Create a new constant folder.
+    ///
+    /// Audit2 B26: previously held a `_module: &IrModule` field that was
+    /// never read. The folder is fully stateless; the constructor takes
+    /// no arguments now.
     #[must_use]
-    pub const fn new(module: &'a IrModule) -> Self {
-        Self { _module: module }
+    pub const fn new() -> Self {
+        Self
     }
 
     /// Fold constants in an expression, returning a potentially simplified expression.
@@ -402,7 +417,7 @@ impl<'a> ConstantFolder<'a> {
 /// This creates a new module with constant expressions folded.
 #[must_use]
 pub fn fold_constants(module: &IrModule) -> IrModule {
-    let folder = ConstantFolder::new(module);
+    let folder = ConstantFolder::new();
     let mut result = module.clone();
 
     // Fold constants in impl block expressions
@@ -784,7 +799,8 @@ mod tests {
     fn test_fold_float_eq_signed_zero() -> Result<(), Box<dyn std::error::Error>> {
         // IEEE 754: +0.0 == -0.0 must fold to `true`.
         let ir_module = IrModule::new();
-        let folder = ConstantFolder::new(&ir_module);
+        let _ = &ir_module;
+        let folder = ConstantFolder::new();
         let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {
@@ -814,7 +830,8 @@ mod tests {
     fn test_fold_float_eq_nan() -> Result<(), Box<dyn std::error::Error>> {
         // IEEE 754: NaN == NaN must fold to `false`.
         let ir_module = IrModule::new();
-        let folder = ConstantFolder::new(&ir_module);
+        let _ = &ir_module;
+        let folder = ConstantFolder::new();
         let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {

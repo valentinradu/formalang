@@ -90,6 +90,16 @@ pub trait IrPass {
 
     /// Transform the module, returning a new module or errors.
     ///
+    /// # State
+    ///
+    /// `&mut self` allows passes to maintain accumulator state across an
+    /// invocation (e.g. caches built up while walking the module). However,
+    /// [`Pipeline`] calls each pass exactly once per `run`/`emit`, so any
+    /// state accumulated during that call persists if the same pass is
+    /// reused for a subsequent invocation. Stateful passes that should not
+    /// carry state between runs must reset themselves at the top of `run`,
+    /// or recreate the pass between invocations. (Audit2 B28.)
+    ///
     /// # Errors
     ///
     /// Returns a non-empty vector of [`CompilerError`] if the pass fails.
@@ -166,10 +176,15 @@ impl<E: std::error::Error> std::fmt::Display for PipelineError<E> {
 }
 
 impl<E: std::error::Error + 'static> std::error::Error for PipelineError<E> {
+    /// Audit2 B25: expose the *first* `CompilerError` from `PassErrors`
+    /// as the chain source, mirroring the `BackendError` arm. Walking
+    /// `e.source()` previously stopped at `PassErrors`, hiding the
+    /// underlying compile diagnostic from generic error-chain printers
+    /// like `anyhow`'s `Display`.
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::BackendError(e) => Some(e),
-            Self::PassErrors(_) => None,
+            Self::PassErrors(errors) => errors.first().map(|e| e as &dyn std::error::Error),
         }
     }
 }

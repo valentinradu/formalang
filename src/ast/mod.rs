@@ -213,6 +213,8 @@ pub struct StructField {
     pub ty: Type,
     pub optional: bool,
     pub default: Option<Expr>,
+    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -340,6 +342,8 @@ pub struct FieldDef {
     pub mutable: bool,
     pub name: Ident,
     pub ty: Type,
+    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    pub doc: Option<String>,
     pub span: Span,
 }
 
