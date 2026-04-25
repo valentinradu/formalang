@@ -645,11 +645,23 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "items")
         .ok_or("items")?;
-    let IrExpr::Array { elements, .. } = &binding.value else {
+    let IrExpr::Array { elements, ty } = &binding.value else {
         return Err(format!("Expected Array, got {:?}", binding.value).into());
     };
     if !elements.is_empty() {
         return Err(format!("expected empty array, got {} elements", elements.len()).into());
+    }
+    // Audit #41: an annotated empty-array let should lift the
+    // annotation's element type into the IR Array node so backends see
+    // `Array(Number)`, not `Array(Never)`.
+    let ResolvedType::Array(inner) = ty else {
+        return Err(format!("expected Array type, got {ty:?}").into());
+    };
+    if !matches!(
+        inner.as_ref(),
+        ResolvedType::Primitive(PrimitiveType::Number)
+    ) {
+        return Err(format!("expected Array(Number), got Array({inner:?})").into());
     }
     Ok(())
 }

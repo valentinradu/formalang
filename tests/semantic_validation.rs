@@ -1020,3 +1020,30 @@ fn test_if_expr_widens_to_optional() -> Result<(), Box<dyn std::error::Error>> {
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_array_heterogeneous_elements_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #41: a `[1, "two"]` literal must surface as a TypeMismatch
+    // rather than silently inheriting the first element's type.
+    let source = r#"
+        let mixed = [1, "two"]
+    "#;
+    let errors = compile(source).err().ok_or("expected type error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_array_homogeneous_elements_compile() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"
+        let nums: [Number] = [1, 2, 3]
+        let strs: [String] = ["a", "b"]
+    "#;
+    compile(source).map_err(|e| format!("Homogeneous array literals should compile: {e:?}"))?;
+    Ok(())
+}

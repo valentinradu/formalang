@@ -242,7 +242,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
-        let value = self.lower_expr(&let_binding.value);
+        let mut value = self.lower_expr(&let_binding.value);
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
@@ -250,6 +250,24 @@ impl<'a> IrLowerer<'a> {
         } else {
             value.ty().clone()
         };
+        // Audit #41: an empty array literal lowers to `Array(Never)`
+        // because it has no elements to seed the element type from.
+        // When the binding is annotated `[T]`, retype the value's
+        // `Array(Never)` to `Array(T)` so backends and downstream IR
+        // passes see a concrete element type instead of Never.
+        if let (IrExpr::Array { elements, ty: vty }, ResolvedType::Array(annotated_elem)) =
+            (&mut value, &ty)
+        {
+            if elements.is_empty()
+                && matches!(
+                    vty,
+                    ResolvedType::Array(boxed)
+                        if matches!(**boxed, ResolvedType::Primitive(PrimitiveType::Never))
+                )
+            {
+                *vty = ResolvedType::Array(annotated_elem.clone());
+            }
+        }
         self.module.add_let(IrLet {
             name: ident_name.to_string(),
             visibility: let_binding.visibility,

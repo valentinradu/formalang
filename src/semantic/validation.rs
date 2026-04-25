@@ -212,7 +212,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         match expr {
             Expr::Literal { .. } => {}
-            Expr::Array { elements, .. } => {
+            Expr::Array { elements, span } => {
                 for elem in elements {
                     self.validate_expr(elem, file);
                 }
@@ -221,6 +221,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for elem in elements {
                     self.escape_closure_value(elem);
                 }
+                // Audit #41: unify the element types so a heterogeneous
+                // array literal (`[1, "two"]`) surfaces as a real
+                // TypeMismatch instead of silently using the first
+                // element's type.
+                self.validate_array_homogeneity(elements, *span, file);
             }
             Expr::Tuple { fields, .. } => {
                 for (_, field_expr) in fields {
@@ -599,6 +604,37 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn escape_closure_value(&mut self, expr: &Expr) {
         if let Some(caps) = self.closure_captures_of_expr(expr) {
             self.mark_captures_consumed(&caps);
+        }
+    }
+
+    /// Validate that every element of an array literal has a compatible
+    /// type. Audit #41: previously the array's type came from the first
+    /// element only and a mix like `[1, "two"]` lowered silently.
+    fn validate_array_homogeneity(&mut self, elements: &[Expr], span: Span, file: &File) {
+        let mut iter = elements.iter();
+        let Some(first) = iter.next() else {
+            return; // empty array: nothing to unify
+        };
+        let first_ty = self.infer_type(first, file);
+        if first_ty == "Unknown" {
+            // Can't trust the inference; skip rather than emit noise.
+            return;
+        }
+        for elem in iter {
+            let elem_ty = self.infer_type(elem, file);
+            if elem_ty == "Unknown" {
+                continue;
+            }
+            if !self.type_strings_compatible(&first_ty, &elem_ty) {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: format!("[{first_ty}]"),
+                    found: format!("element of type {elem_ty}"),
+                    span,
+                });
+                // Stop after the first mismatch so a single typo doesn't
+                // cascade into N copies of the same diagnostic.
+                break;
+            }
         }
     }
 
