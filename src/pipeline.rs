@@ -90,6 +90,16 @@ pub trait IrPass {
 
     /// Transform the module, returning a new module or errors.
     ///
+    /// # State
+    ///
+    /// `&mut self` allows passes to maintain accumulator state across an
+    /// invocation (e.g. caches built up while walking the module). However,
+    /// [`Pipeline`] calls each pass exactly once per `run`/`emit`, so any
+    /// state accumulated during that call persists if the same pass is
+    /// reused for a subsequent invocation. Stateful passes that should not
+    /// carry state between runs must reset themselves at the top of `run`,
+    /// or recreate the pass between invocations. (Audit2 B28.)
+    ///
     /// # Errors
     ///
     /// Returns a non-empty vector of [`CompilerError`] if the pass fails.
