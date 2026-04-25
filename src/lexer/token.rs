@@ -352,6 +352,7 @@ impl Token {
                 | Self::False
                 | Self::Nil
                 | Self::As
+                | Self::SelfKeyword
                 | Self::Fn
         )
     }

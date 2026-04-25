@@ -10,6 +10,8 @@ use formalang::lexer::{parse_regex, Lexer, Token};
 
 #[test]
 fn test_token_is_keyword_true() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 A2: every declared keyword token must report `is_keyword()` true.
+    // Keep this list aligned with the `matches!` arm in `Token::is_keyword`.
     let keywords = [
         Token::Trait,
         Token::Struct,
@@ -20,6 +22,7 @@ fn test_token_is_keyword_true() -> Result<(), Box<dyn std::error::Error>> {
         Token::Pub,
         Token::Let,
         Token::Mut,
+        Token::Sink,
         Token::Extern,
         Token::Match,
         Token::For,
@@ -30,6 +33,8 @@ fn test_token_is_keyword_true() -> Result<(), Box<dyn std::error::Error>> {
         Token::False,
         Token::Nil,
         Token::As,
+        Token::SelfKeyword,
+        Token::Fn,
     ];
 
     for kw in keywords {
