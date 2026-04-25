@@ -5,6 +5,7 @@
 #![allow(clippy::expect_used)]
 
 use formalang::ast::BinaryOperator;
+use formalang::ast::ParamConvention;
 use formalang::ast::PrimitiveType;
 use formalang::compile_to_ir;
 use formalang::ir::{eliminate_dead_code, IrExpr, ResolvedType};
@@ -1052,6 +1053,71 @@ fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::
     }
     if !names.contains(&"a") || !names.contains(&"b") {
         return Err(format!("expected captures for `a` and `b`, got {names:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_captures_inherit_sink_param_convention() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #32: a closure capturing a `sink` parameter records `Sink`
+    // (so backends know ownership transferred to the closure).
+    let source = r"
+        pub fn make_adder(sink n: Number) -> (Number) -> Number {
+            |x: Number| x + n
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("make_adder body missing")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    let n_conv = captures
+        .iter()
+        .find_map(|(name, c, _)| (name == "n").then_some(*c))
+        .ok_or("expected `n` capture")?;
+    if n_conv != ParamConvention::Sink {
+        return Err(format!("expected `n` captured as Sink, got {n_conv:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_closure_captures_inherit_module_let_conventions() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Audit #32: a closure declared at module level inherits its captures'
+    // conventions from the enclosing `let` / `let mut` bindings.
+    let source = r"
+        let immutable: Number = 1.0
+        pub let mut mutable: Number = 2.0
+        let c: () -> Number = () -> immutable + mutable
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let c = module
+        .lets
+        .iter()
+        .find(|l| l.name == "c")
+        .ok_or("c missing")?;
+    let IrExpr::Closure { captures, .. } = &c.value else {
+        return Err(format!("expected Closure, got {:?}", c.value).into());
+    };
+    let by_name: std::collections::HashMap<&str, ParamConvention> = captures
+        .iter()
+        .map(|(n, conv, _)| (n.as_str(), *conv))
+        .collect();
+    let imm = by_name
+        .get("immutable")
+        .ok_or("expected `immutable` capture")?;
+    let mu = by_name.get("mutable").ok_or("expected `mutable` capture")?;
+    if *imm != ParamConvention::Let {
+        return Err(format!("expected `immutable` captured as Let, got {imm:?}").into());
+    }
+    if *mu != ParamConvention::Mut {
+        return Err(format!("expected `mutable` captured as Mut, got {mu:?}").into());
     }
     Ok(())
 }

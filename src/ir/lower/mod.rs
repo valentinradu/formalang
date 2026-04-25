@@ -14,7 +14,8 @@ mod types;
 
 use crate::ast::{
     self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
-    ImplDef, LetBinding, Literal, PrimitiveType, Statement, StructDef, StructField, TraitDef, Type,
+    ImplDef, LetBinding, Literal, ParamConvention, PrimitiveType, Statement, StructDef,
+    StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::{EnumInfo, StructInfo, SymbolKind, SymbolTable};
@@ -76,11 +77,12 @@ struct IrLowerer<'a> {
     /// Current function's return type for inferring enum types
     pub(super) current_function_return_type: Option<String>,
     /// Stack of local bindings in scope during lowering: each entry is a
-    /// frame pushed when entering a function/closure body, mapping the
-    /// binding name to its declared `ResolvedType`. Used so that a
-    /// `Reference` to a parameter resolves to the concrete type instead
-    /// of a `TypeParam(name)` placeholder.
-    pub(super) local_binding_scopes: Vec<HashMap<String, ResolvedType>>,
+    /// frame pushed when entering a function/closure/block body, mapping the
+    /// binding name to its declared parameter convention and resolved type.
+    /// Used so that a `Reference` to a parameter resolves to the concrete
+    /// type instead of a `TypeParam(name)` placeholder, and so that closure
+    /// captures inherit the outer binding's convention (audit finding #32).
+    pub(super) local_binding_scopes: Vec<HashMap<String, (ParamConvention, ResolvedType)>>,
     /// When lowering the body of an impl method, maps the current impl's
     /// methods to their declared return types so that forward references
     /// within the same impl block (`self.other_method()`) resolve without
@@ -160,11 +162,20 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    /// Look up a local binding by name from the innermost scope outwards.
+    /// Look up a local binding's resolved type by name from the innermost
+    /// scope outwards.
     pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {
+        self.lookup_local_binding_entry(name).map(|(_, ty)| ty)
+    }
+
+    /// Look up a local binding's full entry (convention + type) by name.
+    pub(super) fn lookup_local_binding_entry(
+        &self,
+        name: &str,
+    ) -> Option<&(ParamConvention, ResolvedType)> {
         for frame in self.local_binding_scopes.iter().rev() {
-            if let Some(ty) = frame.get(name) {
-                return Some(ty);
+            if let Some(entry) = frame.get(name) {
+                return Some(entry);
             }
         }
         None
@@ -1123,11 +1134,12 @@ impl<'a> IrLowerer<'a> {
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         // Push a local scope so References inside the body resolve against
-        // the parameters' declared types.
-        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        // the parameters' declared types and so closure captures see the
+        // parameter's convention (audit finding #32).
+        let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
-                frame.insert(p.name.clone(), ty.clone());
+                frame.insert(p.name.clone(), (p.convention, ty.clone()));
             }
         }
         self.local_binding_scopes.push(frame);
@@ -1177,18 +1189,26 @@ impl<'a> IrLowerer<'a> {
         self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
 
         // Push a local scope so the body's References to parameters resolve
-        // to the declared param types rather than TypeParam(name) placeholders.
-        let mut frame: HashMap<String, ResolvedType> = HashMap::new();
+        // to the declared param types rather than TypeParam(name) placeholders,
+        // and so closures inherit the parameter convention when capturing
+        // (audit finding #32).
+        let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
-                frame.insert(p.name.clone(), ty.clone());
+                frame.insert(p.name.clone(), (p.convention, ty.clone()));
             }
         }
         if let Some(impl_name) = self.current_impl_struct.clone() {
             if let Some(struct_id) = self.module.struct_id(&impl_name) {
-                frame.insert("self".to_string(), ResolvedType::Struct(struct_id));
+                frame.insert(
+                    "self".to_string(),
+                    (ParamConvention::Let, ResolvedType::Struct(struct_id)),
+                );
             } else if let Some(enum_id) = self.module.enum_id(&impl_name) {
-                frame.insert("self".to_string(), ResolvedType::Enum(enum_id));
+                frame.insert(
+                    "self".to_string(),
+                    (ParamConvention::Let, ResolvedType::Enum(enum_id)),
+                );
             }
         }
         self.local_binding_scopes.push(frame);
