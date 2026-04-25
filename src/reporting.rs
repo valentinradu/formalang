@@ -998,8 +998,16 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
 
         CompilerError::InternalError { detail, .. } => {
+            // Audit2 B32: subdivide the catch-all internal-error code by
+            // looking at the leading subsystem prefix on `detail`.
+            // Push sites already include a prefix (e.g. "IR lowering:",
+            // "monomorphise:", "registration lookup ...") so we reuse
+            // those without changing 21 call sites. E999 stays as the
+            // generic fall-through for anything that doesn't carry a
+            // recognised prefix.
+            let code = internal_error_code(detail);
             Report::build(ReportKind::Error, filename, span.start.offset)
-                .with_code("E999")
+                .with_code(code)
                 .with_message(format!("Internal compiler error: {detail}"))
                 .with_label(
                     Label::new((filename, span.start.offset..span.end.offset))
@@ -1007,6 +1015,23 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                         .with_color(Color::Red),
                 )
         }
+    }
+}
+
+/// Audit2 B32: pick a specific internal-error code based on the leading
+/// subsystem prefix on the `detail` string. Returns `"E999"` (generic)
+/// for any prefix the table doesn't know.
+fn internal_error_code(detail: &str) -> &'static str {
+    if detail.starts_with("IR lowering:") {
+        "E931"
+    } else if detail.starts_with("monomorphise:") {
+        "E932"
+    } else if detail.contains("id ") && detail.contains("registration lookup") {
+        "E933"
+    } else if detail.contains("inferred-enum") {
+        "E934"
+    } else {
+        "E999"
     }
 }
 
