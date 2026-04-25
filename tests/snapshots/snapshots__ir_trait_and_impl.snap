@@ -122,6 +122,7 @@ IrModule {
     lets: [],
     functions: [],
     imports: [],
+    modules: [],
     struct_names: {
         "Square": StructId(
             0,

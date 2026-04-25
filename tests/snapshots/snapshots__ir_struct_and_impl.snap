@@ -95,6 +95,7 @@ IrModule {
     lets: [],
     functions: [],
     imports: [],
+    modules: [],
     struct_names: {
         "Point": StructId(
             0,

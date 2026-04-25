@@ -106,6 +106,15 @@ struct IrLowerer<'a> {
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
     /// `x: Number` instead of `x: TypeParam("Unknown")`.
     pub(super) expected_closure_type: Option<ResolvedType>,
+    /// Stack of currently-open module nodes during lowering. The
+    /// outermost source module is at index 0; the deepest in-progress
+    /// module is at the back. On entering `mod foo { ... }` we push a
+    /// new [`crate::ir::IrModuleNode`]; on leaving, we pop it and
+    /// attach it either to the parent node (if the stack is still non-
+    /// empty) or to `module.modules`. Member IDs (struct/enum/trait/
+    /// function) get appended to the topmost node as each definition
+    /// is registered. Tier-1 item G.
+    pub(super) module_node_stack: Vec<crate::ir::IrModuleNode>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -168,6 +177,7 @@ impl<'a> IrLowerer<'a> {
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
             expected_closure_type: None,
+            module_node_stack: Vec::new(),
         }
     }
 
@@ -846,6 +856,16 @@ impl<'a> IrLowerer<'a> {
             self.current_module_prefix = format!("{}::{}", self.current_module_prefix, module_name);
         }
 
+        // Tier-1 item G: open a fresh module node for this scope.
+        // Member IDs are appended by the lower_*_with_prefix helpers
+        // and `lower_function` while the node sits on top of the
+        // stack. On exit the node is attached to the parent node, or
+        // to `module.modules` for top-level modules.
+        self.module_node_stack.push(crate::ir::IrModuleNode {
+            name: module_name.to_string(),
+            ..Default::default()
+        });
+
         // Lower all definitions in the module
         for def in definitions {
             match def {
@@ -873,6 +893,16 @@ impl<'a> IrLowerer<'a> {
                     // Recursively process nested modules
                     self.lower_module(&m.name.name, &m.definitions);
                 }
+            }
+        }
+
+        // Pop the node we pushed at entry; attach to parent or to
+        // module.modules if this was a top-level mod block.
+        if let Some(node) = self.module_node_stack.pop() {
+            if let Some(parent) = self.module_node_stack.last_mut() {
+                parent.modules.push(node);
+            } else {
+                self.module.modules.push(node);
             }
         }
 
@@ -913,6 +943,10 @@ impl<'a> IrLowerer<'a> {
         trait_def.generic_params = generic_params;
         trait_def.fields = fields;
         trait_def.methods = methods;
+
+        if let Some(node) = self.module_node_stack.last_mut() {
+            node.traits.push(id);
+        }
     }
 
     /// Lower struct with module prefix
@@ -959,6 +993,10 @@ impl<'a> IrLowerer<'a> {
         struct_def.traits = traits;
         struct_def.generic_params = generic_params;
         struct_def.fields = fields;
+
+        if let Some(node) = self.module_node_stack.last_mut() {
+            node.structs.push(id);
+        }
     }
 
     /// Lower enum with module prefix
@@ -1003,6 +1041,10 @@ impl<'a> IrLowerer<'a> {
         enum_def.visibility = e.visibility;
         enum_def.generic_params = generic_params;
         enum_def.variants = variants;
+
+        if let Some(node) = self.module_node_stack.last_mut() {
+            node.enums.push(id);
+        }
     }
 
     fn lower_trait(&mut self, t: &TraitDef) {
@@ -1273,6 +1315,14 @@ impl<'a> IrLowerer<'a> {
             },
         ) {
             self.errors.push(e);
+        } else if let Some(node) = self.module_node_stack.last_mut() {
+            // Tier-1 item G: associate the just-registered function
+            // with the enclosing nested module. add_function only
+            // returns Ok when a new id was allocated, so looking up by
+            // name picks up that new id.
+            if let Some(id) = self.module.function_id(&f.name.name) {
+                node.functions.push(id);
+            }
         }
     }
 

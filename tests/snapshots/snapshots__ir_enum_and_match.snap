@@ -136,6 +136,7 @@ IrModule {
         },
     ],
     imports: [],
+    modules: [],
     struct_names: {},
     trait_names: {},
     enum_names: {

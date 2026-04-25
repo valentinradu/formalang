@@ -750,6 +750,80 @@ fn test_regular_fn_has_no_extern_abi() -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+// =============================================================================
+// Tier-1 audit (item G): nested-module hierarchy is preserved on
+// `IrModule.modules` so backends can reconstruct namespaced output
+// without re-parsing qualified names.
+// =============================================================================
+
+#[test]
+fn test_module_tree_records_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        mod shapes {
+            pub struct Circle { radius: Number }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let shapes = module
+        .modules
+        .iter()
+        .find(|n| n.name == "shapes")
+        .ok_or("expected `shapes` module node")?;
+    if shapes.structs.len() != 1 {
+        return Err(format!("expected 1 struct in shapes, got {}", shapes.structs.len()).into());
+    }
+    let circle_id = shapes.structs[0];
+    let circle = module
+        .get_struct(circle_id)
+        .ok_or("Circle id does not resolve")?;
+    if circle.name != "shapes::Circle" {
+        return Err(format!("expected qualified name, got {}", circle.name).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        mod outer {
+            mod inner {
+                pub struct Deep { x: Number }
+            }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let outer = module
+        .modules
+        .iter()
+        .find(|n| n.name == "outer")
+        .ok_or("expected `outer` module")?;
+    let inner = outer
+        .modules
+        .iter()
+        .find(|n| n.name == "inner")
+        .ok_or("expected `inner` nested under `outer`")?;
+    if inner.structs.is_empty() {
+        return Err("expected Deep struct id in inner".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Top { x: Number }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    if !module.modules.is_empty() {
+        return Err(format!(
+            "expected no nested modules, got {} entries",
+            module.modules.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
 #[test]
 fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::FunctionAttribute;
