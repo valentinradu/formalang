@@ -1,6 +1,13 @@
 //! Integration tests for the `FormaLang` compiler
 //!
-//! These tests exercise the full compile pipeline: Lexer -> Parser -> Semantic Analyzer
+//! Audit2 B37: the helper used to call `compile_with_analyzer`, which
+//! stopped after semantic analysis. That meant any of these tests
+//! could pass despite latent IR-lowering bugs. The helper now goes all
+//! the way through `compile_to_ir`, so every test in this file is at
+//! minimum a strict round-trip smoke test through the *whole* pipeline
+//! (Lexer → Parser → Semantic Analyzer → IR Lowering). Tests that
+//! exercise specific IR shapes additionally assert on `ir.structs`,
+//! `ir.enums`, `ir.traits`, etc., as appropriate.
 
 use formalang::{compile_to_ir, parse_only, CompilerError};
 
@@ -8,8 +15,12 @@ use formalang::{compile_to_ir, parse_only, CompilerError};
 // Basic Definition Tests
 // =============================================================================
 
-fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
-    formalang::compile_with_analyzer(source).map(|(file, _analyzer)| file)
+/// Compile through the full pipeline (Lexer → Parser → Semantic →
+/// IR Lowering) and return the resulting `IrModule`. Used as the
+/// default helper by every test in this file; tests that only care
+/// about success drop the result with `let _ir = compile(source)?`.
+fn compile(source: &str) -> Result<formalang::ir::IrModule, Vec<formalang::CompilerError>> {
+    formalang::compile_to_ir(source)
 }
 
 #[test]

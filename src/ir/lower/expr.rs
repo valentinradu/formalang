@@ -154,6 +154,30 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// Audit2 B18 follow-up: resolve a `ResolvedType` to its enum
+    /// type-name (used as the inferred-enum target for a struct-arg
+    /// expression). Returns the empty string for non-enum, non-optional-
+    /// of-enum types, which the caller filters out.
+    fn enum_name_of(module: &crate::ir::IrModule, ty: &ResolvedType) -> String {
+        match ty {
+            ResolvedType::Enum(eid) => module
+                .get_enum(*eid)
+                .map_or_else(String::new, |e| e.name.clone()),
+            ResolvedType::Optional(inner) => Self::enum_name_of(module, inner),
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Array(_)
+            | ResolvedType::Range(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Dictionary { .. }
+            | ResolvedType::Closure { .. } => String::new(),
+        }
+    }
+
     fn lower_invocation(
         &mut self,
         path: &[crate::ast::Ident],
@@ -177,12 +201,35 @@ impl IrLowerer<'_> {
                     args: type_args_resolved.clone(),
                 }
             };
+            // Audit2 B18 follow-up: build a name->type-name map of the
+            // struct's fields so each named-arg lowers with the field's
+            // declared type as the inferred-enum target. Without this,
+            // `Size(width: .auto)` inherits whatever outer
+            // `current_function_return_type` was set to and `.auto` can't
+            // resolve.
+            let field_target: HashMap<String, ResolvedType> = self
+                .module
+                .get_struct(id)
+                .map(|s| {
+                    s.fields
+                        .iter()
+                        .map(|f| (f.name.clone(), f.ty.clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
             let named_fields: Vec<(String, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
-                    name_opt
-                        .as_ref()
-                        .map(|n| (n.name.clone(), self.lower_expr(expr)))
+                    name_opt.as_ref().map(|n| {
+                        let saved = self.current_function_return_type.take();
+                        self.current_function_return_type = field_target
+                            .get(&n.name)
+                            .map(|t| Self::enum_name_of(&self.module, t))
+                            .filter(|s| !s.is_empty());
+                        let lowered = self.lower_expr(expr);
+                        self.current_function_return_type = saved;
+                        (n.name.clone(), lowered)
+                    })
                 })
                 .collect();
             IrExpr::StructInst {
