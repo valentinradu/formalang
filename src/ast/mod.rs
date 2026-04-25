@@ -107,13 +107,13 @@ pub struct FunctionDef {
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.
     pub body: Option<Expr>,
-    /// `true` when produced by `extern_fn_parser` (`extern fn name(...)`).
-    /// `false` for regular function definitions. Tracked alongside
-    /// `body` so the semantic layer can detect `extern fn { ... }` and
-    /// `fn name(...)` (without body) consistently — including under
-    /// parser error recovery, where the body may not match what the
-    /// `extern` keyword implies. Audit finding #28.
-    pub is_extern: bool,
+    /// Calling convention for `extern fn` declarations. `Some(_)` is
+    /// produced by `extern_fn_parser` (`extern fn`, `extern "C" fn`,
+    /// `extern "system" fn`); `None` for regular functions. Tracked
+    /// alongside `body` so the semantic layer can detect mismatches
+    /// (extern with body, regular without) consistently — including
+    /// under parser error recovery. Audit findings #28, Tier-1 item E.
+    pub extern_abi: Option<ExternAbi>,
     /// Codegen attributes parsed as keyword prefixes (`inline`,
     /// `no_inline`, `cold`). Order is the source order; duplicates are
     /// preserved so semantic / backends can diagnose them.
@@ -121,6 +121,15 @@ pub struct FunctionDef {
     /// Joined `///` doc comments preceding this definition. Audit #51.
     pub doc: Option<String>,
     pub span: Span,
+}
+
+impl FunctionDef {
+    /// Whether this function was declared `extern`. Convenience wrapper
+    /// over [`Self::extern_abi`] for the common boolean check.
+    #[must_use]
+    pub const fn is_extern(&self) -> bool {
+        self.extern_abi.is_some()
+    }
 }
 
 /// Visibility modifier
@@ -148,6 +157,22 @@ pub enum FunctionAttribute {
     /// branch, error path). Backends typically place its body in a
     /// cold section and bias surrounding branches.
     Cold,
+}
+
+/// Calling convention for an extern function.
+///
+/// Carries enough information for backends targeting languages with
+/// distinguished calling conventions (C, Win32 stdcall, etc.) to emit
+/// the right call sequence and symbol mangling. The default — produced
+/// by a bare `extern fn foo()` — is `C`.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ExternAbi {
+    /// Plain C ABI. Default for `extern fn foo()` and `extern "C" fn foo()`.
+    C,
+    /// Platform "system" ABI (`stdcall` on Win32 x86, `C` elsewhere).
+    /// Spelled `extern "system"` in source.
+    System,
 }
 
 /// Use statement (import items from modules)

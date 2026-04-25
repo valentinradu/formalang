@@ -13,9 +13,9 @@ mod expr;
 mod types;
 
 use crate::ast::{
-    self, BindingPattern, Definition, EnumDef, File, FnDef, FunctionDef, GenericConstraint,
-    ImplDef, LetBinding, Literal, ParamConvention, PrimitiveType, Statement, StructDef,
-    StructField, TraitDef, Type,
+    self, BindingPattern, Definition, EnumDef, ExternAbi, File, FnDef, FunctionDef,
+    GenericConstraint, ImplDef, LetBinding, Literal, ParamConvention, PrimitiveType, Statement,
+    StructDef, StructField, TraitDef, Type,
 };
 use crate::error::CompilerError;
 use crate::semantic::{EnumInfo, StructInfo, SymbolKind, SymbolTable};
@@ -1182,10 +1182,14 @@ impl<'a> IrLowerer<'a> {
             impl_returns.insert(f.name.name.clone(), ret);
         }
         self.current_impl_method_returns = Some(impl_returns);
+        // Tier-1 item E: extern impl methods inherit the C ABI by
+        // default. Until the parser accepts `extern "system" impl ...`,
+        // there's only one possible value to propagate.
+        let enclosing_extern: Option<ExternAbi> = i.is_extern.then_some(ExternAbi::C);
         let functions: Vec<IrFunction> = i
             .functions
             .iter()
-            .map(|f| self.lower_fn_def(f, i.is_extern))
+            .map(|f| self.lower_fn_def(f, enclosing_extern))
             .collect();
         self.generic_scopes.pop();
         let trait_id = i
@@ -1241,11 +1245,12 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        // Audit #28: trust the AST's explicit `is_extern` flag rather
-        // than re-deriving from `body.is_none()`. Under parser error
-        // recovery the two can diverge; the semantic layer surfaces
-        // that mismatch as `ExternFnWithBody` / `RegularFnWithoutBody`.
-        let is_extern = f.is_extern;
+        // Audit #28 / Tier-1 item E: trust the AST's explicit
+        // `extern_abi` rather than re-deriving from `body.is_none()`.
+        // Under parser error recovery the two can diverge; the
+        // semantic layer surfaces the mismatch as `ExternFnWithBody` /
+        // `RegularFnWithoutBody`.
+        let extern_abi = f.extern_abi;
 
         self.local_binding_scopes.pop();
 
@@ -1262,7 +1267,7 @@ impl<'a> IrLowerer<'a> {
                 params,
                 return_type,
                 body,
-                is_extern,
+                extern_abi,
                 attributes: f.attributes.clone(),
                 doc: f.doc.clone(),
             },
@@ -1271,7 +1276,7 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_fn_def(&mut self, f: &FnDef, enclosing_is_extern: bool) -> IrFunction {
+    fn lower_fn_def(&mut self, f: &FnDef, enclosing_extern: Option<ExternAbi>) -> IrFunction {
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
@@ -1316,13 +1321,14 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        // Audit2 A1: source `is_extern` from the enclosing `ImplDef.is_extern`
-        // rather than re-deriving from `body.is_none()`. The semantic layer
-        // enforces body/extern consistency for valid programs, but under
-        // parser error recovery a method may have `body: None` inside a
-        // regular impl; we want the IR's `IrFunction.is_extern` to match
-        // the containing `IrImpl.is_extern` definitionally.
-        let is_extern = enclosing_is_extern;
+        // Audit2 A1 / Tier-1 item E: source the extern ABI from the
+        // enclosing `ImplDef` rather than re-deriving from
+        // `body.is_none()`. The semantic layer enforces body/extern
+        // consistency for valid programs, but under parser error
+        // recovery a method may have `body: None` inside a regular
+        // impl; we want the IR method's ABI to match the containing
+        // impl definitionally.
+        let extern_abi = enclosing_extern;
 
         self.local_binding_scopes.pop();
 
@@ -1337,7 +1343,7 @@ impl<'a> IrLowerer<'a> {
             params,
             return_type,
             body,
-            is_extern,
+            extern_abi,
             attributes: f.attributes.clone(),
             doc: f.doc.clone(),
         }

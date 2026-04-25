@@ -5,7 +5,7 @@ use chumsky::prelude::*;
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant,
-    FieldDef, FnDef, FnParam, FnSig, FunctionAttribute, FunctionDef, GenericConstraint,
+    ExternAbi, FieldDef, FnDef, FnParam, FnSig, FunctionAttribute, FunctionDef, GenericConstraint,
     GenericParam, Ident, ImplDef, ModuleDef, ParamConvention, StructDef, StructField,
     StructPatternField, TraitDef, Type,
 };
@@ -365,7 +365,29 @@ where
         })
 }
 
+/// Parse the optional ABI string that may follow `extern`. Recognised
+/// values are `"C"` (default if the string is omitted) and
+/// `"system"`. Tier-1 item E.
+fn extern_abi_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, ExternAbi, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    select! { Token::String(s) => s }
+        .try_map(|s, span: SimpleSpan| match s.as_str() {
+            "C" => Ok(ExternAbi::C),
+            "system" => Ok(ExternAbi::System),
+            other => Err(Rich::custom(
+                span,
+                format!("unknown extern ABI \"{other}\"; expected \"C\" or \"system\""),
+            )),
+        })
+        .or_not()
+        .map(|abi| abi.unwrap_or(ExternAbi::C))
+}
+
 /// Parse an extern function declaration: `extern fn name(params) -> Type`
+/// or `extern "C" fn name(...)` / `extern "system" fn name(...)`.
 pub(super) fn extern_fn_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FunctionDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -374,6 +396,7 @@ where
     visibility_parser()
         .then(fn_attributes_parser())
         .then_ignore(just(Token::Extern))
+        .then(extern_abi_parser())
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
         .then(generic_params_parser())
@@ -383,7 +406,7 @@ where
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
         .map_with(
-            |(((((visibility, attributes), name), generics), params), return_type), e| {
+            |((((((visibility, attributes), abi), name), generics), params), return_type), e| {
                 let span = span_from_simple(e.span());
                 FunctionDef {
                     visibility,
@@ -392,7 +415,7 @@ where
                     params,
                     return_type,
                     body: None,
-                    is_extern: true,
+                    extern_abi: Some(abi),
                     attributes,
                     doc: None,
                     span,
@@ -713,7 +736,7 @@ where
                     params,
                     return_type,
                     body: Some(body),
-                    is_extern: false,
+                    extern_abi: None,
                     attributes,
                     doc: None,
                     span,

@@ -663,11 +663,89 @@ fn test_extern_fn_carries_attributes() -> Result<(), Box<dyn std::error::Error>>
         .iter()
         .find(|f| f.name == "abort")
         .ok_or("abort missing")?;
-    if !f.is_extern {
+    if !f.is_extern() {
         return Err("expected is_extern: true".into());
     }
     if f.attributes != vec![FunctionAttribute::Cold] {
         return Err(format!("expected [Cold], got {:?}", f.attributes).into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item E): extern fn carries an explicit calling
+// convention. Bare `extern fn` defaults to C; `extern "C"` and
+// `extern "system"` are accepted; unknown ABI strings are rejected.
+// =============================================================================
+
+#[test]
+fn test_extern_fn_default_abi_is_c() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir("extern fn fetch(url: String) -> String")
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "fetch")
+        .ok_or("fetch missing")?;
+    if f.extern_abi != Some(ExternAbi::C) {
+        return Err(format!("expected Some(C), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_explicit_c_abi() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir(r#"extern "C" fn read(fd: Number) -> Number"#)
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "read")
+        .ok_or("read missing")?;
+    if f.extern_abi != Some(ExternAbi::C) {
+        return Err(format!("expected Some(C), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_system_abi() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir(r#"extern "system" fn GetTickCount() -> Number"#)
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "GetTickCount")
+        .ok_or("GetTickCount missing")?;
+    if f.extern_abi != Some(ExternAbi::System) {
+        return Err(format!("expected Some(System), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_unknown_abi_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let result = compile_to_ir(r#"extern "rustcall" fn weird() -> Number"#);
+    if result.is_ok() {
+        return Err("expected unknown ABI to be rejected at parse time".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_regular_fn_has_no_extern_abi() -> Result<(), Box<dyn std::error::Error>> {
+    let module = compile_to_ir("pub fn double(n: Number) -> Number { n + n }")
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "double")
+        .ok_or("double missing")?;
+    if f.extern_abi.is_some() {
+        return Err(format!("expected None, got {:?}", f.extern_abi).into());
     }
     Ok(())
 }

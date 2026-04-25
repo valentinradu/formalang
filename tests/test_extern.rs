@@ -138,7 +138,7 @@ fn test_extern_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::erro
         .iter()
         .find(|f| f.name == "fetch")
         .ok_or("fetch missing")?;
-    if !f.is_extern {
+    if !f.is_extern() {
         return Err("expected fetch to be marked is_extern in IR".into());
     }
     if f.body.is_some() {
@@ -158,7 +158,7 @@ fn test_regular_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::err
         .iter()
         .find(|f| f.name == "add")
         .ok_or("add missing")?;
-    if f.is_extern {
+    if f.is_extern() {
         return Err("expected regular fn to have is_extern=false in IR".into());
     }
     if f.body.is_none() {
@@ -192,7 +192,7 @@ extern impl Canvas {
         return Err("expected extern impl to have is_extern=true".into());
     }
     for f in &canvas_impl.functions {
-        if !f.is_extern {
+        if !f.is_extern() {
             return Err(format!("method {} should be is_extern=true", f.name).into());
         }
         if f.body.is_some() {
@@ -229,7 +229,7 @@ impl Counter {
         return Err("expected regular impl to have is_extern=false".into());
     }
     for f in &counter_impl.functions {
-        if f.is_extern {
+        if f.is_extern() {
             return Err(format!("method {} should be is_extern=false", f.name).into());
         }
         if f.body.is_none() {
