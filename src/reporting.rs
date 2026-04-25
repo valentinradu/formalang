@@ -384,6 +384,18 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                 .with_help("Add a closing '\"' to end the string")
         }
 
+        CompilerError::UnterminatedBlockComment { .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E033")
+                .with_message("Unterminated block comment")
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message("block comment is never closed")
+                        .with_color(Color::Red),
+                )
+                .with_help("Add `*/` to close the block comment")
+        }
+
         CompilerError::InvalidNumber { value, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E032")

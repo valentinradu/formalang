@@ -1,11 +1,24 @@
 use logos::{Logos, Skip};
 
+/// Per-lexer state passed to Logos callbacks via `extras`.
+///
+/// Used by [`skip_block_comment`] to record the byte offsets of any
+/// unterminated `/* … */` block comment that runs to end-of-input. The
+/// wrapping [`Lexer`](super::Lexer) drains these into a real
+/// [`CompilerError::UnterminatedBlockComment`](crate::CompilerError) after
+/// tokenisation finishes. Audit2 B3.
+#[derive(Default, Debug)]
+pub struct LexerExtras {
+    pub unterminated_block_comments: Vec<(usize, usize)>,
+}
+
 /// Token types for `FormaLang` lexer
 #[expect(
     clippy::exhaustive_enums,
     reason = "token enum is matched exhaustively by the parser"
 )]
 #[derive(Logos, Debug, Clone, PartialEq)]
+#[logos(extras = LexerExtras)]
 #[logos(skip r"[ \t\n\r]+")]
 // Skip whitespace
 // Skip plain line comments. Requires the third character to NOT be `/`
@@ -220,8 +233,14 @@ fn parse_inner_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
 /// Called after Logos has matched the opening `/*`. Scans the remainder
 /// while tracking nesting depth: every `/*` increments the counter and
 /// every `*/` decrements it. Bumps the lexer cursor past the matching
-/// closing `*/` (or to end-of-input on an unterminated comment, which
-/// then surfaces as a parse error downstream). Audit finding #47.
+/// closing `*/` on success (audit finding #47).
+///
+/// On an unterminated comment, records the byte range of the opening
+/// `/*` through end-of-input on the lexer's [`LexerExtras`] so the
+/// wrapping [`Lexer`](super::Lexer) can surface a real
+/// [`CompilerError::UnterminatedBlockComment`](crate::CompilerError)
+/// instead of a misleading "unexpected end of input" parse error
+/// (audit2 B3).
 fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
     let remainder = lex.remainder();
     let bytes = remainder.as_bytes();
@@ -246,9 +265,15 @@ fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
             i = i.saturating_add(1);
         }
     }
-    // Unterminated block comment: consume the rest of the input so the
-    // lexer doesn't loop. The parser will surface "unexpected end of
-    // input" as a normal parse error.
+    // Unterminated block comment: record the offending range (from the
+    // opening `/*` through end-of-input) so the lexer can emit a real
+    // diagnostic, then consume the rest of the input so Logos doesn't
+    // loop on it.
+    let opening_span = lex.span();
+    let end = opening_span.end.saturating_add(len);
+    lex.extras
+        .unterminated_block_comments
+        .push((opening_span.start, end));
     lex.bump(len);
     Skip
 }

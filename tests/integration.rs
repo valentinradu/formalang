@@ -903,6 +903,45 @@ fn test_block_comment_terminates_inside_token_stream() -> Result<(), Box<dyn std
     Ok(())
 }
 
+#[test]
+fn test_unterminated_block_comment_at_eof_is_diagnosed() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B3: a `/* …` that runs to end-of-input must surface a real
+    // `UnterminatedBlockComment` diagnostic — previously the lexer
+    // silently ate the rest of the file, so a parser that needed more
+    // tokens would see "unexpected end of input" (or, worse, the file
+    // would be accepted as if the comment had been a valid trailing
+    // skip).
+    let source = "struct A {} /* runaway comment with no closing";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an UnterminatedBlockComment diagnostic, but compilation succeeded")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::UnterminatedBlockComment { .. }));
+    if !has_error {
+        return Err(format!("expected UnterminatedBlockComment in errors, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_unterminated_nested_block_comment_at_eof_is_diagnosed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B3: nested unterminated case — outer never closes, inner
+    // closes; the diagnostic should still fire because depth > 0 at EOF.
+    let source = "/* outer /* inner */ still inside outer";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an UnterminatedBlockComment diagnostic, but compilation succeeded")?;
+    let has_error = errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::UnterminatedBlockComment { .. }));
+    if !has_error {
+        return Err(format!("expected UnterminatedBlockComment in errors, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
 // =============================================================================
 // Extern Type Field Tests
 // =============================================================================
