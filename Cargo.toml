@@ -35,6 +35,10 @@ ariadne = "0.4"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 
+# SIGINT handling for `fvc watch` — lets the watch loop break cleanly on
+# Ctrl+C and propagate the last check's exit code (audit finding #33).
+ctrlc = "3"
+
 [dev-dependencies]
 # serde_json is only used by serde-stability integration tests; keep it
 # out of the library's runtime dependency surface. Audit finding #46.

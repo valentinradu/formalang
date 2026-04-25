@@ -128,16 +128,15 @@ fn check_command(input_path: &str, module_root: Option<PathBuf>) -> ExitCode {
 /// Watch mode: re-run `check` every time the input file's mtime changes.
 ///
 /// This subcommand is intended for interactive development. It loops
-/// forever (until SIGINT / Ctrl+C) polling the filesystem every 500 ms
-/// and never returns an exit code for a single check — each recheck
-/// prints its OK/error output and then the loop continues. If you need a
-/// per-run exit code for CI, use `fvc check` instead.
-///
-/// Audit finding #33: the exit-code semantics here are intentional; the
-/// single-check path already exists via `check_command`. The watch loop
-/// surfaces compile failures through the error-reporter output, not
-/// through the process exit code.
+/// (polling the filesystem every 500 ms) until the user sends SIGINT
+/// (Ctrl+C). Each recheck prints its OK/error output and the loop
+/// continues. On exit the process returns the last check's exit code,
+/// so a CI runner that wraps `fvc watch` and signals it on shutdown
+/// will still see a nonzero exit when the most recent check failed.
+/// Audit finding #33.
 fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> ExitCode {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
 
@@ -145,19 +144,54 @@ fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> Exi
 
     let path = PathBuf::from(input_path);
     let mut last_modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
+
+    // Track whether the user signalled shutdown, plus whether the most
+    // recent `check` succeeded (default: true, since no checks have run
+    // yet). The signal handler runs in a separate thread, so the flags
+    // must be atomic.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let last_succeeded = Arc::new(AtomicBool::new(true));
+    let shutdown_handler = Arc::clone(&shutdown);
+    if let Err(err) = ctrlc::set_handler(move || {
+        shutdown_handler.store(true, Ordering::SeqCst);
+    }) {
+        eprintln!("warning: failed to install Ctrl+C handler: {err}");
+    }
+
+    // `check_command` returns either `ExitCode::SUCCESS` or
+    // `ExitCode::from(1)`; collapse to a bool so we can stash it in an
+    // AtomicBool without round-tripping through ExitCode's opaque
+    // representation.
+    let record = |code: ExitCode, last: &AtomicBool| {
+        let ok = code == ExitCode::SUCCESS;
+        last.store(ok, Ordering::SeqCst);
+    };
+
     // Run an initial check so the user sees the current state immediately
     // instead of having to touch the file first.
-    let _ = check_command(input_path, module_root.map(PathBuf::from));
+    let initial = check_command(input_path, module_root.map(PathBuf::from));
+    record(initial, &last_succeeded);
 
-    loop {
+    while !shutdown.load(Ordering::SeqCst) {
         thread::sleep(Duration::from_millis(500));
+        if shutdown.load(Ordering::SeqCst) {
+            break;
+        }
 
         let current_modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
 
         if current_modified != last_modified {
             last_modified = current_modified;
             println!("\n--- File changed, rechecking... ---\n");
-            let _ = check_command(input_path, module_root.map(PathBuf::from));
+            let result = check_command(input_path, module_root.map(PathBuf::from));
+            record(result, &last_succeeded);
         }
+    }
+
+    println!("\nfvc watch interrupted; returning last check's exit code");
+    if last_succeeded.load(Ordering::SeqCst) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }
