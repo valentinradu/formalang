@@ -1,4 +1,4 @@
-use logos::Logos;
+use logos::{Logos, Skip};
 
 /// Token types for `FormaLang` lexer
 #[expect(
@@ -9,14 +9,16 @@ use logos::Logos;
 #[logos(skip r"[ \t\n\r]+")] // Skip whitespace
 #[logos(skip r"//[^\n]*")]
 // Skip line comments
-// Block comments — non-nested. Logos skip directives are regex-only and
-// cannot match recursively; `/* /* inner */ */` will terminate at the
-// first `*/` and leave ` */` as a syntax error. Nested block comments
-// require a stateful Logos extras callback — tracked in audit finding
-// #47 as a deliberate non-fix (low impact; easy to work around by
-// using `//` line comments).
-#[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token {
+    /// Phantom variant: matches the opening `/*` of a (possibly nested)
+    /// block comment. The `skip_block_comment` callback consumes the
+    /// rest of the comment manually (tracking nest depth) and returns
+    /// `Skip`, so this variant is never emitted into the token stream.
+    /// It exists only because Logos requires the `#[token]` attribute
+    /// to live on a variant. Closes audit finding #47.
+    #[token("/*", skip_block_comment)]
+    BlockComment,
+
     // Keywords
     #[token("trait")]
     Trait,
@@ -177,6 +179,44 @@ pub enum Token {
 
     // Special
     Eof,
+}
+
+/// Skip a nested block comment.
+///
+/// Called after Logos has matched the opening `/*`. Scans the remainder
+/// while tracking nesting depth: every `/*` increments the counter and
+/// every `*/` decrements it. Bumps the lexer cursor past the matching
+/// closing `*/` (or to end-of-input on an unterminated comment, which
+/// then surfaces as a parse error downstream). Audit finding #47.
+fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
+    let remainder = lex.remainder();
+    let bytes = remainder.as_bytes();
+    let mut depth: usize = 1;
+    let mut i: usize = 0;
+    let len = bytes.len();
+    while i < len {
+        let next_idx = i.saturating_add(1);
+        let byte = bytes.get(i).copied().unwrap_or(0);
+        let next = bytes.get(next_idx).copied().unwrap_or(0);
+        if next_idx < len && byte == b'/' && next == b'*' {
+            depth = depth.saturating_add(1);
+            i = i.saturating_add(2);
+        } else if next_idx < len && byte == b'*' && next == b'/' {
+            depth = depth.saturating_sub(1);
+            i = i.saturating_add(2);
+            if depth == 0 {
+                lex.bump(i);
+                return Skip;
+            }
+        } else {
+            i = i.saturating_add(1);
+        }
+    }
+    // Unterminated block comment: consume the rest of the input so the
+    // lexer doesn't loop. The parser will surface "unexpected end of
+    // input" as a normal parse error.
+    lex.bump(len);
+    Skip
 }
 
 /// Parse a numeric literal slice, stripping underscores before calling `f64::parse`.
@@ -342,6 +382,9 @@ impl Token {
             Self::String(_) | Self::Number(_) | Self::Regex(_) | Self::Path(_) | Self::Ident(_) => {
                 "<complex token>"
             }
+            // Phantom variant — `skip_block_comment` returns Skip so the
+            // lexer never emits it. See `BlockComment` doc comment.
+            Self::BlockComment => "<block comment>",
         }
     }
 }
@@ -409,7 +452,8 @@ impl std::fmt::Display for Token {
             | Self::RBrace
             | Self::LBracket
             | Self::RBracket
-            | Self::Eof => write!(f, "'{}'", self.as_str()),
+            | Self::Eof
+            | Self::BlockComment => write!(f, "'{}'", self.as_str()),
         }
     }
 }

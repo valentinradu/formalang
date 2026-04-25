@@ -870,6 +870,39 @@ fn test_block_comments() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn test_nested_block_comments() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #47: a `/* /* inner */ outer */` previously terminated at the
+    // first `*/` and left ` */ struct ...` as a syntax error. The Logos
+    // callback now tracks nest depth so the whole nested comment is
+    // skipped cleanly.
+    let source = r"
+        /* outer
+           /* nested */
+           still in outer
+           /* /* deeply nested */ */
+        */
+        struct User {
+            name: String
+        }
+    ";
+    compile(source).map_err(|e| format!("Failed to handle nested block comments: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_block_comment_terminates_inside_token_stream() -> Result<(), Box<dyn std::error::Error>> {
+    // A block comment inside a definition body must not break tokenisation
+    // of surrounding code, even when nested.
+    let source = r"
+        struct A /* /* nested */ */ {
+            x: Number /* trailing */
+        }
+    ";
+    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    Ok(())
+}
+
 // =============================================================================
 // Extern Type Field Tests
 // =============================================================================
