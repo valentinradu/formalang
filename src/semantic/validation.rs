@@ -2511,16 +2511,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        // Check type compatibility based on operator
+        // Check type compatibility based on operator. Audit #44: the
+        // hardcoded GPU numeric compat (`f32`, `vec3`, etc.) was a wart
+        // from the retired WGSL backend and is gone — backends needing
+        // arithmetic over backend-specific scalar/vector types should
+        // implement their own type-compat rules in their codegen pass.
         let valid = match op {
-            // Add: Number + Number or String + String (concatenation) or GPU numeric types
-            BinaryOperator::Add => {
-                matches!(
-                    (&left_type[..], &right_type[..]),
-                    ("Number", "Number") | ("String", "String")
-                ) || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
-            // Arithmetic, comparison, and range operators: Number + Number or GPU numeric types
+            // Add: Number + Number or String + String (concatenation)
+            BinaryOperator::Add => matches!(
+                (&left_type[..], &right_type[..]),
+                ("Number", "Number") | ("String", "String")
+            ),
+            // Arithmetic, comparison, and range operators: Number + Number
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
@@ -2531,16 +2533,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | BinaryOperator::Ge
             | BinaryOperator::Range => {
                 matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
-                    || Self::are_gpu_numeric_compatible(&left_type, &right_type)
             }
-            // Equality operators: same types or compatible GPU types
-            BinaryOperator::Eq | BinaryOperator::Ne => {
-                left_type == right_type || Self::are_gpu_numeric_compatible(&left_type, &right_type)
-            }
-            // Logical operators: Boolean + Boolean or bool + bool
+            // Equality operators: same types
+            BinaryOperator::Eq | BinaryOperator::Ne => left_type == right_type,
+            // Logical operators: Boolean + Boolean
             BinaryOperator::And | BinaryOperator::Or => {
-                (left_type == "Boolean" && right_type == "Boolean")
-                    || (left_type == "bool" && right_type == "bool")
+                left_type == "Boolean" && right_type == "Boolean"
             }
         };
 
@@ -2587,51 +2585,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return true;
             }
         }
-        false
-    }
-
-    /// Check if two types are compatible GPU numeric types.
-    ///
-    /// Audit finding #44: this is a backend-specific wart left over from
-    /// the retired WGSL codegen — the names `f32`, `vec2`, etc. aren't
-    /// `FormaLang` primitives, they're external identifiers that happened
-    /// to name WGSL types. The semantic validator special-cases them so
-    /// user code targeting GPU backends can still write arithmetic over
-    /// them without the type checker complaining. Proper fix: either
-    /// remove the special-case (and let backends implement their own
-    /// type-compat rules) or expose a backend registration hook for
-    /// numeric families. Deferred — removing here would break external
-    /// code using these identifiers today.
-    pub(super) fn are_gpu_numeric_compatible(left: &str, right: &str) -> bool {
-        // GPU scalar types
-        const GPU_SCALARS: &[&str] = &["f32", "i32", "u32"];
-        // GPU vector types (same component type can do arithmetic)
-        const GPU_FLOAT_VECTORS: &[&str] = &["vec2", "vec3", "vec4"];
-        const GPU_INT_VECTORS: &[&str] = &["ivec2", "ivec3", "ivec4"];
-        const GPU_UINT_VECTORS: &[&str] = &["uvec2", "uvec3", "uvec4"];
-
-        // Same scalar type
-        if left == right && GPU_SCALARS.contains(&left) {
-            return true;
-        }
-
-        // Same vector type
-        if left == right
-            && (GPU_FLOAT_VECTORS.contains(&left)
-                || GPU_INT_VECTORS.contains(&left)
-                || GPU_UINT_VECTORS.contains(&left))
-        {
-            return true;
-        }
-
-        // Scalar with matching vector (for scalar*vector operations)
-        if left == "f32" && GPU_FLOAT_VECTORS.contains(&right) {
-            return true;
-        }
-        if right == "f32" && GPU_FLOAT_VECTORS.contains(&left) {
-            return true;
-        }
-
         false
     }
 
