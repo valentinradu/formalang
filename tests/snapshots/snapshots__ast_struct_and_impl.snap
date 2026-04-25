@@ -302,6 +302,7 @@ File {
                                     },
                                 },
                             ),
+                            attributes: [],
                             doc: None,
                             span: Span {
                                 start: Location {

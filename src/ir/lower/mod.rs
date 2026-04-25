@@ -1263,6 +1263,7 @@ impl<'a> IrLowerer<'a> {
                 return_type,
                 body,
                 is_extern,
+                attributes: f.attributes.clone(),
                 doc: f.doc.clone(),
             },
         ) {
@@ -1337,6 +1338,7 @@ impl<'a> IrLowerer<'a> {
             return_type,
             body,
             is_extern,
+            attributes: f.attributes.clone(),
             doc: f.doc.clone(),
         }
     }
@@ -1360,6 +1362,7 @@ impl<'a> IrLowerer<'a> {
             name: sig.name.name.clone(),
             params,
             return_type,
+            attributes: sig.attributes.clone(),
         }
     }
 

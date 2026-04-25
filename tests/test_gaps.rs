@@ -605,3 +605,91 @@ fn test_in_scope_generic_param_still_lowers_as_typeparam() -> Result<(), Box<dyn
     }
     Ok(())
 }
+
+// =============================================================================
+// Tier-1 audit (item D): Inline / no_inline / cold codegen attributes
+// surface as keyword prefixes on `fn` and round-trip through the IR.
+// =============================================================================
+
+#[test]
+fn test_inline_attribute_round_trips() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub inline fn fast(x: Number) -> Number { x + 1 }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "fast")
+        .ok_or("fast missing")?;
+    if f.attributes != vec![FunctionAttribute::Inline] {
+        return Err(format!("expected [Inline], got {:?}", f.attributes).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_multiple_attributes_preserve_order() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        cold no_inline fn rare() -> Number { 0 }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "rare")
+        .ok_or("rare missing")?;
+    if f.attributes != vec![FunctionAttribute::Cold, FunctionAttribute::NoInline] {
+        return Err(format!(
+            "expected [Cold, NoInline] in source order, got {:?}",
+            f.attributes
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_carries_attributes() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub cold extern fn abort() -> Never
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "abort")
+        .ok_or("abort missing")?;
+    if !f.is_extern {
+        return Err("expected is_extern: true".into());
+    }
+    if f.attributes != vec![FunctionAttribute::Cold] {
+        return Err(format!("expected [Cold], got {:?}", f.attributes).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub struct Counter { n: Number = 0 }
+        impl Counter {
+            inline fn next(self) -> Number { self.n + 1 }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let imp = module.impls.first().ok_or("no impl")?;
+    let next = imp
+        .functions
+        .iter()
+        .find(|f| f.name == "next")
+        .ok_or("next missing")?;
+    if next.attributes != vec![FunctionAttribute::Inline] {
+        return Err(format!("expected [Inline], got {:?}", next.attributes).into());
+    }
+    Ok(())
+}

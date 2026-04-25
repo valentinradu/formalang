@@ -5,8 +5,9 @@ use chumsky::prelude::*;
 
 use crate::ast::{
     ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant,
-    FieldDef, FnDef, FnParam, FnSig, FunctionDef, GenericConstraint, GenericParam, Ident, ImplDef,
-    ModuleDef, ParamConvention, StructDef, StructField, StructPatternField, TraitDef, Type,
+    FieldDef, FnDef, FnParam, FnSig, FunctionAttribute, FunctionDef, GenericConstraint,
+    GenericParam, Ident, ImplDef, ModuleDef, ParamConvention, StructDef, StructField,
+    StructPatternField, TraitDef, Type,
 };
 use crate::lexer::Token;
 
@@ -169,6 +170,23 @@ where
         })
 }
 
+/// Parse zero or more codegen-hint attributes that may appear before
+/// the `fn` keyword (`inline`, `no_inline`, `cold`). Order is preserved
+/// so the AST faithfully mirrors source.
+pub(super) fn fn_attributes_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Vec<FunctionAttribute>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    choice((
+        just(Token::Inline).to(FunctionAttribute::Inline),
+        just(Token::NoInline).to(FunctionAttribute::NoInline),
+        just(Token::Cold).to(FunctionAttribute::Cold),
+    ))
+    .repeated()
+    .collect::<Vec<_>>()
+}
+
 /// Parse a function signature (no body): `fn name(params) -> Type`
 ///
 /// Audit #51: optional leading `///` doc comments are consumed; the
@@ -180,17 +198,19 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
-        .ignore_then(just(Token::Fn))
-        .ignore_then(ident_parser())
+        .ignore_then(fn_attributes_parser())
+        .then_ignore(just(Token::Fn))
+        .then(ident_parser())
         .then(fn_params_parser())
         .then(
             // Optional return type: -> Type
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
-        .map_with(|((name, params), return_type), e| FnSig {
+        .map_with(|(((attributes, name), params), return_type), e| FnSig {
             name,
             params,
             return_type,
+            attributes,
             span: span_from_simple(e.span()),
         })
 }
@@ -352,6 +372,7 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     visibility_parser()
+        .then(fn_attributes_parser())
         .then_ignore(just(Token::Extern))
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
@@ -362,7 +383,7 @@ where
             just(Token::Arrow).ignore_then(type_parser()).or_not(),
         )
         .map_with(
-            |((((visibility, name), generics), params), return_type), e| {
+            |(((((visibility, attributes), name), generics), params), return_type), e| {
                 let span = span_from_simple(e.span());
                 FunctionDef {
                     visibility,
@@ -372,6 +393,7 @@ where
                     return_type,
                     body: None,
                     is_extern: true,
+                    attributes,
                     doc: None,
                     span,
                 }
@@ -397,6 +419,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            attributes: sig.attributes,
             doc: None,
             span: sig.span,
         }),
@@ -442,6 +465,7 @@ where
             params: sig.params,
             return_type: sig.return_type,
             body: None,
+            attributes: sig.attributes,
             doc: None,
             span: sig.span,
         }),
@@ -531,6 +555,7 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
+        .then(fn_attributes_parser())
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
         .then(fn_params_parser())
@@ -542,17 +567,20 @@ where
             // Function body in braces - parsed as a block with statements
             fn_body_parser(),
         )
-        .map_with(|((((doc, name), params), return_type), body), e| {
-            let span = span_from_simple(e.span());
-            FnDef {
-                name,
-                params,
-                return_type,
-                body: Some(body),
-                doc,
-                span,
-            }
-        })
+        .map_with(
+            |(((((doc, attributes), name), params), return_type), body), e| {
+                let span = span_from_simple(e.span());
+                FnDef {
+                    name,
+                    params,
+                    return_type,
+                    body: Some(body),
+                    attributes,
+                    doc,
+                    span,
+                }
+            },
+        )
 }
 
 /// Parse function parameters: `(self, mut self, x: Type, mut x: Type, sink x: Type, label name: Type)`
@@ -662,6 +690,7 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     visibility_parser()
+        .then(fn_attributes_parser())
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
         .then(generic_params_parser())
@@ -675,7 +704,7 @@ where
             fn_body_parser(),
         )
         .map_with(
-            |(((((visibility, name), generics), params), return_type), body), e| {
+            |((((((visibility, attributes), name), generics), params), return_type), body), e| {
                 let span = span_from_simple(e.span());
                 FunctionDef {
                     visibility,
@@ -685,6 +714,7 @@ where
                     return_type,
                     body: Some(body),
                     is_extern: false,
+                    attributes,
                     doc: None,
                     span,
                 }

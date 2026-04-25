@@ -131,6 +131,7 @@ IrModule {
                 },
             ),
             is_extern: false,
+            attributes: [],
             doc: None,
         },
     ],

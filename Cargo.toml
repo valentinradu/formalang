@@ -1,6 +1,6 @@
 [package]
 name = "formalang"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 # Audit2 B33: pin a minimum supported Rust version so downstream
 # users can detect toolchain incompatibility before a noisy build

@@ -129,6 +129,13 @@ pub struct IrFunctionSig {
 
     /// Return type (None = unit/void)
     pub return_type: Option<ResolvedType>,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`)
+    /// declared on the trait method signature. Empty when none are
+    /// present. Round-trips serialised IR while remaining backwards-
+    /// compatible with documents that predate this field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<crate::ast::FunctionAttribute>,
 }
 
 /// An enum definition in the IR.
@@ -275,6 +282,13 @@ pub struct IrFunction {
 
     /// Whether this function is extern (no body, defined outside `FormaLang`)
     pub is_extern: bool,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`) declared
+    /// before the `fn` keyword. Empty when none are present. Round-
+    /// trips serialised IR while remaining backwards-compatible with
+    /// documents that predate this field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<crate::ast::FunctionAttribute>,
 
     /// Joined `///` doc comments preceding this function. Audit #51.
     #[serde(default, skip_serializing_if = "Option::is_none")]
