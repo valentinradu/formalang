@@ -466,8 +466,33 @@ where
     // Expression item
     let fn_expr = expr_parser().map(BlockStatement::Expr);
 
-    // Parse item (let, assign, or expr - in that order)
-    let fn_item = choice((fn_let, fn_assign, fn_expr));
+    // Parse item (let, assign, or expr - in that order). Audit #40:
+    // wrap in `recover_with(via_parser(...))` so a malformed item inside
+    // a function body (e.g. a syntactically broken expression) is
+    // recovered by consuming tokens up to the next item start (`let`)
+    // or the closing brace, producing an empty placeholder expression.
+    // Without this, a parse failure inside one function body aborts
+    // diagnostics for the rest of the file: the error is emitted by
+    // chumsky and parsing continues with the next item. The first
+    // token is consumed unconditionally on `Let` (so an item starting
+    // with `let` whose value is broken can be recovered), but never on
+    // `RBrace` (so the body's closing brace stays for `delimited_by`).
+    let recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
+    let recovery_tail = any()
+        .and_is(just(Token::Let).not())
+        .and_is(just(Token::RBrace).not())
+        .ignored()
+        .repeated();
+    let recovery = recovery_head.then(recovery_tail).map_with(|((), ()), e| {
+        BlockStatement::Expr(crate::ast::Expr::Group {
+            expr: Box::new(crate::ast::Expr::Literal {
+                value: crate::ast::Literal::Nil,
+                span: span_from_simple(e.span()),
+            }),
+            span: span_from_simple(e.span()),
+        })
+    });
+    let fn_item = choice((fn_let, fn_assign, fn_expr)).recover_with(via_parser(recovery));
 
     // Parse body: items inside braces
     fn_item

@@ -369,12 +369,36 @@ where
         // Expression item
         let block_expr_item = expr.clone().map(BlockStatement::Expr);
 
-        // Parse a block item (let, assign, or expr - in that order)
+        // Parse a block item (let, assign, or expr - in that order). Audit
+        // #40: recover_with(via_parser) so a malformed item inside a block
+        // expression doesn't abort parsing of subsequent items. Mirrors
+        // the recovery in `fn_body_parser` — first token consumed
+        // unconditionally except when it is `}` (the closing brace of the
+        // block must reach `delimited_by`).
+        let block_recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
+        let block_recovery_tail = any()
+            .and_is(just(Token::Let).not())
+            .and_is(just(Token::RBrace).not())
+            .ignored()
+            .repeated();
+        let block_recovery =
+            block_recovery_head
+                .then(block_recovery_tail)
+                .map_with(|((), ()), e| {
+                    BlockStatement::Expr(Expr::Group {
+                        expr: Box::new(Expr::Literal {
+                            value: Literal::Nil,
+                            span: span_from_simple(e.span()),
+                        }),
+                        span: span_from_simple(e.span()),
+                    })
+                });
         let block_item = choice((
             block_let_item.clone(),
             block_assign_item.clone(),
             block_expr_item.clone(),
-        ));
+        ))
+        .recover_with(via_parser(block_recovery));
 
         // Block body parser: { items... } -> Expr (Block or single expr)
         // Uses shared block_statements_to_expr helper
