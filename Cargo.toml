@@ -48,6 +48,19 @@ pretty_assertions = "1.4"
 tempfile = "3.23"
 insta = "1.47.2"
 
+# Trim debug symbols on `cargo test` builds. The default
+# `debug = "full"` produces huge .rlib files (~hundreds of MB across
+# all the test binaries) which fills the small disk on
+# `ubuntu-latest` CI runners and surfaces as either "No space left on
+# device" during link or as an lld bus error.
+# `line-tables-only` keeps backtraces useful but drops type info we
+# don't need for tests.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
+
 [lints.rust]
 unreachable_pub               = "deny"
 unsafe_code                   = "forbid"

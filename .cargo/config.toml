@@ -9,12 +9,3 @@
 # Users compiling FormaLang code in production will use release-built compiler
 # binaries, so this configuration does not affect end users.
 RUST_MIN_STACK = "16777216"
-
-# Use the system linker (bfd) instead of Rust 1.95's bundled lld on
-# Linux. The bundled lld crashes with `ld terminated with signal 7
-# [Bus error]` while linking the larger test binaries on
-# `ubuntu-latest` runners (libLLVM.so.22.1-rust-1.95.0-stable in the
-# stack trace). bfd is slower but stable; falling back to it keeps CI
-# green without forcing a Rust toolchain pin.
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=bfd"]
