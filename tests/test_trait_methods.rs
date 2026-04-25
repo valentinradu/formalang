@@ -81,6 +81,53 @@ impl Resizable for Box {
 }
 
 #[test]
+fn test_composed_trait_only_requires_directly_declared_methods(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #16: positive test locking in the composed-trait stance.
+    //
+    // `trait Extended: Base` declares Extended composes Base, but
+    // `impl Extended for T` only requires T to implement the methods
+    // *directly* declared on Extended. Inherited methods from Base are
+    // a separate concern: if the user wants Base's methods on T too,
+    // they must add an explicit `impl Base for T` block.
+    //
+    // This is the design choice fixed by audit #16. The alternative
+    // (auto-implying `impl Base for T` from `impl Extended for T`)
+    // would require collecting required methods transitively in
+    // `collect_all_trait_methods` and emitting an extra
+    // MissingTraitMethod for inherited methods.
+    let only_extended = r#"
+        trait Base { fn id(self) -> Number }
+        trait Extended: Base { fn name(self) -> String }
+        struct Item { value: Number }
+        impl Extended for Item {
+            fn name(self) -> String { "item" }
+        }
+    "#;
+    compile(only_extended).map_err(|e| {
+        format!(
+            "design intent: `impl Extended` without `impl Base` should compile cleanly, got: {e:?}"
+        )
+    })?;
+
+    let both_impls = r#"
+        trait Base { fn id(self) -> Number }
+        trait Extended: Base { fn name(self) -> String }
+        struct Item { value: Number }
+        impl Base for Item {
+            fn id(self) -> Number { self.value }
+        }
+        impl Extended for Item {
+            fn name(self) -> String { "item" }
+        }
+    "#;
+    compile(both_impls).map_err(|e| {
+        format!("expected both `impl Base` + `impl Extended` to compile, got: {e:?}")
+    })?;
+    Ok(())
+}
+
+#[test]
 fn test_trait_inheritance_includes_methods() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
 trait Base {
