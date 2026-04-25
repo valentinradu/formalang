@@ -1074,6 +1074,50 @@ pub fn second() -> Number {
 }
 
 #[test]
+fn test_type_only_params_get_distinct_synth_names() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B7: two type-only (Mode B) parameters in the same function
+    // must end up with distinct synthesised names. Previously both got
+    // the literal `_arg`, which collided in scope tables and any HashMap
+    // keyed by parameter name.
+    use formalang::ast::{Definition, Statement};
+    let source = r"
+struct Color {}
+struct Number2 {}
+fn paint(Color, Number2) -> Boolean { true }
+";
+    let file = formalang::parse_only(source).map_err(|e| format!("{e:?}"))?;
+    let mut found = None;
+    for stmt in &file.statements {
+        if let Statement::Definition(def) = stmt {
+            if let Definition::Function(func) = def.as_ref() {
+                if func.name.name == "paint" {
+                    found = Some(func.params.clone());
+                }
+            }
+        }
+    }
+    let params = found.ok_or("paint not found")?;
+    if params.len() != 2 {
+        return Err(format!("expected 2 params, got {}", params.len()).into());
+    }
+    if params[0].name.name == params[1].name.name {
+        return Err(format!(
+            "type-only param names collide: both are {:?}",
+            params[0].name.name
+        )
+        .into());
+    }
+    if !params[0].name.name.starts_with("_arg") || !params[1].name.name.starts_with("_arg") {
+        return Err(format!(
+            "expected `_arg…` synth names, got {:?} and {:?}",
+            params[0].name.name, params[1].name.name
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_struct_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn std::error::Error>> {
     // Audit2 B2: leading `///` doc comments on struct fields must reach
     // the IR through `IrField.doc`. Previously they were silently dropped

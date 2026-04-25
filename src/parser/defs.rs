@@ -621,19 +621,27 @@ where
         });
 
     // `Type` only (Mode B overloading — no name, no label). Audit #23.
-    // The parameter is synthesised with a fresh name (`_argN`) so existing
-    // plumbing can continue to reference parameters by name; the name is
-    // not visible at the call site since these are always positional.
+    // The parameter is synthesised with a fresh name so existing plumbing
+    // can continue to reference parameters by name; the name is not
+    // visible at the call site since these are always positional.
+    //
+    // Audit2 B7: synthesise a unique name from the parameter's start
+    // offset (`_arg<offset>`) so two type-only params in the same fn no
+    // longer share a name and collide in scope tables.
     let type_only_param = convention
         .clone()
         .then(type_parser())
-        .map_with(|(convention, ty), e| FnParam {
-            convention,
-            external_label: None,
-            name: Ident::new("_arg", span_from_simple(e.span())),
-            ty: Some(ty),
-            default: None,
-            span: span_from_simple(e.span()),
+        .map_with(|(convention, ty), e| {
+            let span = span_from_simple(e.span());
+            let synth = format!("_arg{}", span.start.offset);
+            FnParam {
+                convention,
+                external_label: None,
+                name: Ident::new(&synth, span),
+                ty: Some(ty),
+                default: None,
+                span,
+            }
         });
 
     // Order matters: longer matches first. `self_param` precedes the rest;
