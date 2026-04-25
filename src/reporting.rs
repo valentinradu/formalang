@@ -396,6 +396,21 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                 .with_help("Add `*/` to close the block comment")
         }
 
+        CompilerError::InvalidUnicodeEscape { value, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E034")
+                .with_message(format!("Invalid unicode escape '\\u{value}'"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "'\\u{}' is not a valid unicode scalar value",
+                            value.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help("Surrogate code points (U+D800..=U+DFFF) are not allowed")
+        }
+
         CompilerError::InvalidNumber { value, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E032")

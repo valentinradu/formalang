@@ -18,6 +18,9 @@ pub enum CompilerError {
     #[error("Unterminated block comment")]
     UnterminatedBlockComment { span: Span },
 
+    #[error("Invalid unicode escape '\\u{value}'")]
+    InvalidUnicodeEscape { value: String, span: Span },
+
     #[error("Invalid number format: {value}")]
     InvalidNumber { value: String, span: Span },
 
@@ -331,6 +334,7 @@ impl CompilerError {
             Self::InvalidCharacter { span, .. }
             | Self::UnterminatedString { span }
             | Self::UnterminatedBlockComment { span }
+            | Self::InvalidUnicodeEscape { span, .. }
             | Self::InvalidNumber { span, .. }
             | Self::UnexpectedToken { span, .. }
             | Self::UnexpectedEof { span }

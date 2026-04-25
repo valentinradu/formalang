@@ -124,6 +124,17 @@ impl<'source> Lexer<'source> {
             });
         }
 
+        // Audit2 B4: drain bad `\uXXXX` escape ranges and surface them as
+        // `InvalidUnicodeEscape` diagnostics. The decoded string still
+        // contains a U+FFFD replacement so downstream parsing can
+        // continue, but the user is told what went wrong.
+        for (start, end, hex) in std::mem::take(&mut lexer.inner.extras.invalid_unicode_escapes) {
+            lexer.errors.push(CompilerError::InvalidUnicodeEscape {
+                value: hex,
+                span: Span::from_range(start, end),
+            });
+        }
+
         let errors = lexer
             .take_errors()
             .into_iter()
@@ -155,6 +166,9 @@ fn fill_error_span_positions(error: CompilerError, source: &str) -> CompilerErro
         CompilerError::UnterminatedString { .. } => CompilerError::UnterminatedString { span },
         CompilerError::UnterminatedBlockComment { .. } => {
             CompilerError::UnterminatedBlockComment { span }
+        }
+        CompilerError::InvalidUnicodeEscape { value, .. } => {
+            CompilerError::InvalidUnicodeEscape { value, span }
         }
         CompilerError::InvalidNumber { value, .. } => CompilerError::InvalidNumber { value, span },
         other => other,

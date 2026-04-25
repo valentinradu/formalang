@@ -2,14 +2,23 @@ use logos::{Logos, Skip};
 
 /// Per-lexer state passed to Logos callbacks via `extras`.
 ///
-/// Used by [`skip_block_comment`] to record the byte offsets of any
-/// unterminated `/* … */` block comment that runs to end-of-input. The
-/// wrapping [`Lexer`](super::Lexer) drains these into a real
-/// [`CompilerError::UnterminatedBlockComment`](crate::CompilerError) after
-/// tokenisation finishes. Audit2 B3.
+/// Used by Logos callbacks to record diagnostics that can't be expressed
+/// directly through the `Result<Token, ()>` return convention:
+///
+/// - `unterminated_block_comments` — byte ranges of `/* … */` comments
+///   that run to end-of-input (audit2 B3).
+/// - `invalid_unicode_escapes` — `(literal_start, literal_end, bad_hex)`
+///   for each `\uXXXX` escape inside a string literal whose hex digits do
+///   not denote a valid Unicode scalar value (audit2 B4). The literal
+///   span is used as the diagnostic span; the bad hex is reported as the
+///   error's `value`.
+///
+/// The wrapping [`Lexer`](super::Lexer) drains both vectors into real
+/// [`CompilerError`](crate::CompilerError) values after tokenisation.
 #[derive(Default, Debug)]
 pub struct LexerExtras {
     pub unterminated_block_comments: Vec<(usize, usize)>,
+    pub invalid_unicode_escapes: Vec<(usize, usize, String)>,
 }
 
 /// Token types for `FormaLang` lexer
@@ -101,14 +110,14 @@ pub enum Token {
     // Single-line string: `"..."` with escape sequences from the spec:
     //   \"  \\  \n  \t  \r  \uXXXX
     // No raw newlines allowed.
-    #[regex(r#""([^"\\\n]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, |lex| parse_string(lex.slice()))]
+    #[regex(r#""([^"\\\n]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, parse_string)]
     // Multi-line string: `"""..."""` — raw newlines, tabs and carriage returns
     // are permitted. Logos' regex engine does not match `\n`/`\r`/`\t` inside
     // negated character classes by default, so they are enumerated explicitly.
     // The regex greedily matches to the final `"""` delimiter.
     #[regex(
         r#""""([^"\\\n\r\t]|\n|\r|\t|"[^"]|""[^"]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#,
-        |lex| parse_multiline_string(lex.slice())
+        parse_multiline_string
     )]
     String(String),
 
@@ -287,28 +296,59 @@ fn parse_number(s: &str) -> Option<f64> {
     cleaned.parse::<f64>().ok()
 }
 
-fn parse_string(s: &str) -> String {
+fn parse_string(lex: &mut logos::Lexer<'_, Token>) -> String {
     // Remove surrounding double-quotes and process escape sequences.
     // The lexer regex guarantees s starts and ends with `"`.
+    let s = lex.slice();
     let content = s
         .strip_prefix('"')
         .and_then(|s| s.strip_suffix('"'))
         .unwrap_or_default();
-    process_escapes(content)
+    let (text, bad) = process_escapes(content);
+    record_bad_escapes(lex, bad);
+    text
 }
 
-fn parse_multiline_string(s: &str) -> String {
+fn parse_multiline_string(lex: &mut logos::Lexer<'_, Token>) -> String {
     // Remove surrounding triple-quotes and process escape sequences.
     // The lexer regex guarantees s starts and ends with `"""`.
+    let s = lex.slice();
     let content = s
         .strip_prefix("\"\"\"")
         .and_then(|s| s.strip_suffix("\"\"\""))
         .unwrap_or_default();
-    process_escapes(content)
+    let (text, bad) = process_escapes(content);
+    record_bad_escapes(lex, bad);
+    text
 }
 
-fn process_escapes(s: &str) -> String {
+/// Push each bad `\uXXXX` hex string accumulated by [`process_escapes`]
+/// into the lexer's extras alongside the enclosing string literal's
+/// byte range, so the wrapping [`Lexer`](super::Lexer) can surface a
+/// real [`CompilerError::InvalidUnicodeEscape`](crate::CompilerError).
+/// Audit2 B4.
+fn record_bad_escapes(lex: &mut logos::Lexer<'_, Token>, bad: Vec<String>) {
+    if bad.is_empty() {
+        return;
+    }
+    let span = lex.span();
+    for hex in bad {
+        lex.extras
+            .invalid_unicode_escapes
+            .push((span.start, span.end, hex));
+    }
+}
+
+/// Decode escape sequences in a string-literal body.
+///
+/// Returns the decoded text and a list of bad `\uXXXX` hex strings —
+/// any escape whose code point is invalid (e.g. a UTF-16 surrogate
+/// `\uD800..\uDFFF`). The replacement character `U+FFFD` is substituted
+/// in the decoded output for each bad escape so positions in the rest
+/// of the literal stay sensible.
+fn process_escapes(s: &str) -> (String, Vec<String>) {
     let mut result = String::new();
+    let mut bad_escapes: Vec<String> = Vec::new();
     let mut chars = s.chars();
 
     while let Some(ch) = chars.next() {
@@ -319,12 +359,21 @@ fn process_escapes(s: &str) -> String {
                 Some('t') => result.push('\t'),
                 Some('r') => result.push('\r'),
                 Some('u') => {
-                    // Parse \uXXXX
+                    // Parse \uXXXX. The lexer regex guarantees four hex
+                    // digits follow, so `from_str_radix` won't fail; the
+                    // only failure mode is `from_u32` rejecting a
+                    // surrogate code point in 0xD800..=0xDFFF.
                     let hex: String = chars.by_ref().take(4).collect();
                     if let Ok(code) = u32::from_str_radix(&hex, 16) {
                         if let Some(unicode_char) = char::from_u32(code) {
                             result.push(unicode_char);
+                        } else {
+                            bad_escapes.push(hex);
+                            result.push('\u{FFFD}');
                         }
+                    } else {
+                        bad_escapes.push(hex);
+                        result.push('\u{FFFD}');
                     }
                 }
                 Some(c) => {
@@ -338,7 +387,7 @@ fn process_escapes(s: &str) -> String {
         }
     }
 
-    result
+    (result, bad_escapes)
 }
 
 /// Helper to parse regex string into pattern and flags

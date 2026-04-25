@@ -942,6 +942,40 @@ fn test_unterminated_nested_block_comment_at_eof_is_diagnosed(
     Ok(())
 }
 
+#[test]
+fn test_invalid_unicode_escape_surrogate_is_diagnosed() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B4: `\uD800` is a UTF-16 high-surrogate code point; it is
+    // not a valid Unicode scalar value, so `char::from_u32` returns None.
+    // Previously the lexer silently elided the bad escape and produced
+    // a string with one fewer character than the source suggested. Now
+    // it must surface a real `InvalidUnicodeEscape` diagnostic.
+    let source = r#"struct A { x: String = "hello \uD800 world" }"#;
+    let errors = compile(source)
+        .err()
+        .ok_or("expected an InvalidUnicodeEscape diagnostic, but compilation succeeded")?;
+    let has_error = errors.iter().any(|e| {
+        matches!(
+            e,
+            formalang::CompilerError::InvalidUnicodeEscape { value, .. } if value.eq_ignore_ascii_case("D800")
+        )
+    });
+    if !has_error {
+        return Err(
+            format!("expected InvalidUnicodeEscape(D800) in errors, got: {errors:?}").into(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_valid_unicode_escape_does_not_diagnose() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B4 negative case: `é` is `é`, a valid scalar value;
+    // no diagnostic should fire and the literal must compile.
+    let source = r#"struct A { x: String = "café" }"#;
+    compile(source).map_err(|e| format!("expected success, got: {e:?}"))?;
+    Ok(())
+}
+
 // =============================================================================
 // Extern Type Field Tests
 // =============================================================================
