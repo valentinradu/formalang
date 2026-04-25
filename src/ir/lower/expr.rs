@@ -848,6 +848,19 @@ impl IrLowerer<'_> {
         }
 
         if let ResolvedType::Trait(trait_id) = receiver_ty {
+            // Tier-1 item E2: trait values are banned at semantic time
+            // (TraitUsedAsValueType). A receiver of `ResolvedType::Trait`
+            // means semantic let one through — surface as an
+            // InternalError instead of silently emitting Virtual
+            // dispatch that the language doesn't otherwise permit.
+            self.errors.push(CompilerError::InternalError {
+                detail: format!(
+                    "IR lowering: receiver type `Trait({})` reached method dispatch — \
+                     semantic should have rejected the trait value at the call site",
+                    trait_id.0
+                ),
+                span: self.current_span,
+            });
             return DispatchKind::Virtual {
                 trait_id: *trait_id,
                 method_name: method_name.to_string(),

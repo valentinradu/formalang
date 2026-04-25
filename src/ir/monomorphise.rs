@@ -163,6 +163,17 @@ impl IrPass for MonomorphisePass {
         // slot. Audit finding #5b.
         rewrite_dispatch_impl_ids(&mut module, &impl_remap);
 
+        // Phase 2d: devirtualise. FormaLang has no dynamic dispatch
+        // (Tier-1 item E2 bans trait values at semantic time), so any
+        // `DispatchKind::Virtual` whose receiver became concrete after
+        // Phase 2 must be resolved to `Static` here. Calls inside a
+        // generic function body that was never instantiated still
+        // carry a `TypeParam` receiver; those stay `Virtual` and are
+        // tolerated by the leftover scanner since the function itself
+        // is dropped or never reached by a backend's specialisation
+        // root set.
+        devirtualise_concrete_receivers(&mut module);
+
         // Phase 3: compact — drop the original generic structs, enums, and
         // the generic impls that were expanded in Phase 2b; then remap
         // surviving IDs for each kind. Order matters: drop generic-targeted
@@ -1202,6 +1213,108 @@ fn rewrite_dispatch_impl_ids(module: &mut IrModule, impl_remap: &ImplRemap) {
     }
 }
 
+/// Phase 2d: walk every method call and rewrite
+/// `DispatchKind::Virtual` to `Static` when the receiver type is now
+/// concrete (Struct/Enum). Reads `module.impls` to find the impl
+/// providing the requested trait method on the receiver type.
+///
+/// Calls whose receiver is still a `TypeParam` (uninstantiated generic
+/// function bodies) stay `Virtual` and are tolerated downstream — those
+/// bodies are typically dropped during compaction or never reached by
+/// a backend's specialisation root set.
+fn devirtualise_concrete_receivers(module: &mut IrModule) {
+    // Clone the impls table so we can read it while mutating function
+    // bodies. impls don't change shape during devirt; we only consult
+    // them for `(target, trait_id, method_name)` lookup.
+    let impls_snapshot = module.impls.clone();
+    for func in &mut module.functions {
+        if let Some(body) = &mut func.body {
+            devirtualise_expr(body, &impls_snapshot);
+        }
+        for param in &mut func.params {
+            if let Some(default) = &mut param.default {
+                devirtualise_expr(default, &impls_snapshot);
+            }
+        }
+    }
+    for imp in &mut module.impls {
+        for func in &mut imp.functions {
+            if let Some(body) = &mut func.body {
+                devirtualise_expr(body, &impls_snapshot);
+            }
+            for param in &mut func.params {
+                if let Some(default) = &mut param.default {
+                    devirtualise_expr(default, &impls_snapshot);
+                }
+            }
+        }
+    }
+    for s in &mut module.structs {
+        for field in &mut s.fields {
+            if let Some(default) = &mut field.default {
+                devirtualise_expr(default, &impls_snapshot);
+            }
+        }
+    }
+    for e in &mut module.enums {
+        for variant in &mut e.variants {
+            for field in &mut variant.fields {
+                if let Some(default) = &mut field.default {
+                    devirtualise_expr(default, &impls_snapshot);
+                }
+            }
+        }
+    }
+    for l in &mut module.lets {
+        devirtualise_expr(&mut l.value, &impls_snapshot);
+    }
+}
+
+fn devirtualise_expr(expr: &mut IrExpr, impls: &[IrImpl]) {
+    use crate::ir::{DispatchKind, ImplId};
+    for child in iter_expr_children_mut(expr) {
+        devirtualise_expr(child, impls);
+    }
+    let IrExpr::MethodCall {
+        receiver,
+        method,
+        dispatch,
+        ..
+    } = expr
+    else {
+        return;
+    };
+    let DispatchKind::Virtual {
+        trait_id: virt_trait_id,
+        ..
+    } = dispatch
+    else {
+        return;
+    };
+    let Some(target_base) = receiver_to_base(receiver.ty()) else {
+        return;
+    };
+    let virt_trait_id = *virt_trait_id;
+    let method_name_owned = method.clone();
+    if let Some(impl_idx) = impls.iter().position(|imp| match imp.target {
+        crate::ir::ImplTarget::Struct(id) => {
+            target_base == GenericBase::Struct(id)
+                && imp.trait_id == Some(virt_trait_id)
+                && imp.functions.iter().any(|f| f.name == method_name_owned)
+        }
+        crate::ir::ImplTarget::Enum(id) => {
+            target_base == GenericBase::Enum(id)
+                && imp.trait_id == Some(virt_trait_id)
+                && imp.functions.iter().any(|f| f.name == method_name_owned)
+        }
+    }) {
+        let new_impl_id = ImplId(u32::try_from(impl_idx).unwrap_or(u32::MAX));
+        *dispatch = DispatchKind::Static {
+            impl_id: new_impl_id,
+        };
+    }
+}
+
 /// Mutable iterator over a single expression's direct child expressions.
 /// Used by Phase 2c so dispatch rewriting can recurse without spinning
 /// up a full visitor.
@@ -1595,6 +1708,146 @@ impl LeftoverScanner {
             }
         };
         walk_module_types(module, &mut check);
+
+        // Tier-1 item E2: any `DispatchKind::Virtual` whose receiver
+        // type is concrete (Struct/Enum) means Phase 2d failed to find
+        // an impl that should exist. Surface the gap rather than
+        // silently leaving the call unresolved. Calls on TypeParam
+        // receivers (uninstantiated generic bodies) are tolerated.
+        scan_dispatch_leftovers(module, self);
+    }
+}
+
+/// Walk every method-call site in the module; report any `Virtual`
+/// dispatch on a concrete (`Struct`/`Enum`) receiver. Used by the
+/// monomorphise leftover scanner.
+fn scan_dispatch_leftovers(module: &IrModule, scanner: &mut LeftoverScanner) {
+    let mut check = |expr: &IrExpr| {
+        if let IrExpr::MethodCall {
+            receiver,
+            method,
+            dispatch: crate::ir::DispatchKind::Virtual { trait_id, .. },
+            ..
+        } = expr
+        {
+            if let Some(base) = receiver_to_base(receiver.ty()) {
+                let kind = match base {
+                    GenericBase::Struct(id) => format!("struct id {}", id.0),
+                    GenericBase::Enum(id) => format!("enum id {}", id.0),
+                };
+                scanner.note(format!(
+                    "unresolved Virtual dispatch — method `{method}` on concrete receiver \
+                     ({kind}) for trait id {} (devirtualisation should have rewritten this)",
+                    trait_id.0
+                ));
+            }
+        }
+    };
+    for f in &module.functions {
+        if let Some(body) = &f.body {
+            walk_expr(body, &mut check);
+        }
+    }
+    for imp in &module.impls {
+        for f in &imp.functions {
+            if let Some(body) = &f.body {
+                walk_expr(body, &mut check);
+            }
+        }
+    }
+    for l in &module.lets {
+        walk_expr(&l.value, &mut check);
+    }
+}
+
+fn walk_expr(expr: &IrExpr, visit: &mut impl FnMut(&IrExpr)) {
+    visit(expr);
+    match expr {
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => {}
+        IrExpr::BinaryOp { left, right, .. } => {
+            walk_expr(left, visit);
+            walk_expr(right, visit);
+        }
+        IrExpr::UnaryOp { operand, .. } => walk_expr(operand, visit),
+        IrExpr::Array { elements, .. } => {
+            for e in elements {
+                walk_expr(e, visit);
+            }
+        }
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                walk_expr(k, visit);
+                walk_expr(v, visit);
+            }
+        }
+        IrExpr::DictAccess { dict, key, .. } => {
+            walk_expr(dict, visit);
+            walk_expr(key, visit);
+        }
+        IrExpr::FieldAccess { object, .. } => walk_expr(object, visit),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            walk_expr(condition, visit);
+            walk_expr(then_branch, visit);
+            if let Some(eb) = else_branch {
+                walk_expr(eb, visit);
+            }
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            walk_expr(scrutinee, visit);
+            for arm in arms {
+                walk_expr(&arm.body, visit);
+            }
+        }
+        IrExpr::For {
+            collection, body, ..
+        } => {
+            walk_expr(collection, visit);
+            walk_expr(body, visit);
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            for stmt in statements {
+                match stmt {
+                    IrBlockStatement::Let { value, .. } => walk_expr(value, visit),
+                    IrBlockStatement::Assign { target, value, .. } => {
+                        walk_expr(target, visit);
+                        walk_expr(value, visit);
+                    }
+                    IrBlockStatement::Expr(e) => walk_expr(e, visit),
+                }
+            }
+            walk_expr(result, visit);
+        }
+        IrExpr::FunctionCall { args, .. } => {
+            for (_, e) in args {
+                walk_expr(e, visit);
+            }
+        }
+        IrExpr::MethodCall { receiver, args, .. } => {
+            walk_expr(receiver, visit);
+            for (_, e) in args {
+                walk_expr(e, visit);
+            }
+        }
+        IrExpr::StructInst { fields, .. }
+        | IrExpr::EnumInst { fields, .. }
+        | IrExpr::Tuple { fields, .. } => {
+            for (_, e) in fields {
+                walk_expr(e, visit);
+            }
+        }
+        IrExpr::Closure { body, .. } => walk_expr(body, visit),
     }
 }
 
