@@ -1,6 +1,6 @@
 # IR Gaps and Backend Guidance
 
-**Last Updated**: 2026-04-25
+**Last Updated**: 2026-04-26
 **Status**: Living document
 
 FormaLang ships as a compiler frontend: it produces a type-resolved
@@ -9,14 +9,15 @@ Several lowering problems that a typed target normally expects from a
 frontend are *not* performed here. This document lists those gaps,
 what the IR gives you today, and what a backend has to fill in.
 
-## 1. Monomorphisation (implemented; one architectural limitation)
+## 1. Monomorphisation (implemented end-to-end except generic traits)
 
 `formalang::ir::MonomorphisePass` is a real pass — it collects every
 `ResolvedType::Generic { base, args }` instantiation, clones each
-generic struct or enum once per unique argument tuple, substitutes
-`ResolvedType::TypeParam` references in field / method / body types,
-then rewrites every `Generic` reference to point at the specialised
-clone and drops the original generic definitions.
+generic struct, enum, **or function** once per unique argument tuple,
+substitutes `ResolvedType::TypeParam` references in field / method /
+param / body types, then rewrites every `Generic` reference and every
+`FunctionCall` path to point at the specialised clone and drops the
+original generic definitions.
 
 ```rust
 use formalang::{compile_to_ir, Pipeline};
@@ -30,6 +31,18 @@ let result = Pipeline::new().pass(MonomorphisePass::default()).run(module).unwra
 // has been replaced by a concrete clone `Box__Number`.
 ```
 
+`MonomorphisePass` runs in five sub-phases: 1a specialises external
+generic types via `with_imports`, 2 specialises generic structs/enums
+and rewrites references, 2b clones impls per specialisation, 2c
+rewrites `DispatchKind::Static { impl_id }` at call sites, 2d
+specialises generic functions and rewrites their call sites, and 2e
+devirtualises every `DispatchKind::Virtual` whose receiver became
+concrete after specialisation. FormaLang has no dynamic dispatch —
+trait values are rejected at semantic time
+(`CompilerError::TraitUsedAsValueType`), so any virtual dispatch on a
+concrete receiver surviving Phase 2e is reported as an
+`InternalError`.
+
 Phase 2c rewrites `DispatchKind::Static { impl_id }` at every call
 site so it points at the per-specialisation impl clone (audit #5b).
 Phase 1a specialises external generic types via
@@ -41,30 +54,12 @@ definitions into the current module with substituted arguments
 
 - **Generic traits are not supported.** A trait declaration with
   non-empty `generic_params` that survives the pass is reported as an
-  `InternalError`. Generic-trait specialisation interacts with
-  virtual dispatch (§2) and a runtime representation choice the
-  frontend deliberately doesn't make; tracked as a separate
-  pre-1.0 design item.
+  `InternalError`. Source has no way to use a generic trait yet
+  (`<T: Trait<X>>` constraint args and `impl Trait<X> for Foo`
+  aren't parsed), so declared-but-unused generic traits are the only
+  source-reachable case today. Tracked as its own follow-up PR.
 
-## 2. Trait method dispatch
-
-`IrExpr::MethodCall` carries a `DispatchKind`:
-
-- `Static { impl_id }` — direct call on a concrete struct/enum with a
-  known `impl` block. Backends emit a direct function call. After
-  monomorphisation, `impl_id` points at the specialised clone.
-- `Virtual { trait_id, method_name }` — method call through a type
-  parameter bound or a trait object. The IR provides only the
-  declaring trait and the method name; it does **not** provide a
-  vtable layout, concrete impl resolution, or monomorphised dispatch.
-
-**Recommended backend posture**: for `Virtual` dispatch, the backend
-must decide between a vtable (runtime dispatch), duck-typing, or
-running a project-local resolver pass that rewrites `Virtual` into
-`Static` given a specific receiver type. The frontend deliberately
-stays neutral on the runtime ABI for trait objects.
-
-## 3. Constant folding (partial)
+## 2. Constant folding (partial)
 
 `formalang::ir::ConstantFoldingPass` evaluates:
 
@@ -83,16 +78,17 @@ representation for "constant aggregate" — every `IrExpr::StructInst`
 and friends carry their constructed-at-runtime semantics until a
 backend chooses otherwise.
 
-## 4. Escape analysis and lifetime elision
+## 3. Escape analysis and lifetime elision
 
 Not implemented as a general pass. The semantic analyser enforces
 targeted escape constraints — closures returned from a function may
 only capture `sink` parameters or outer-scope module-level bindings
 (`ClosureCaptureEscapesLocalBinding`); closures stored in arrays /
-tuples / dicts / struct fields are checked against parameter
-conventions via `escape_closure_value`. No region inference happens
-in the IR; backends targeting reference-counted or arena-allocated
-languages must compute lifetimes themselves.
+tuples / dicts / struct fields, returned aggregates (struct / enum /
+tuple / array / dict), or assigned to outer-scope `mut` bindings are
+all run through the same outlives-the-frame rule. No region inference
+happens in the IR; backends targeting reference-counted or arena-
+allocated languages must compute lifetimes themselves.
 
 ---
 

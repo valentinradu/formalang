@@ -193,8 +193,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         path: &[crate::ast::Ident],
         type_args: &[crate::ast::Type],
-        _args: &[(Option<crate::ast::Ident>, Expr)],
-        _file: &File,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
     ) -> String {
         let name = path
             .iter()
@@ -234,10 +234,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         } else if let Some(func_info) = self.symbols.get_function(&name) {
             // User-defined standalone function — return its declared return type
-            func_info
+            let raw = func_info
                 .return_type
                 .as_ref()
-                .map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty))
+                .map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty));
+            // Tier-1 follow-up to item E2: if the function is generic
+            // and the declared return type is itself a generic
+            // parameter (`fn id<T>(x: T) -> T`), substitute the
+            // inferred concrete type from a matching argument so the
+            // call site sees `Number` instead of the placeholder `T`.
+            // Other shapes (`[T]`, `T -> U`, etc.) fall through and
+            // keep the original generic-param string — extending
+            // this to compound shapes lives with the broader generic-
+            // function inference work.
+            self.specialise_generic_return(func_info, &raw, args, file)
         } else if path.len() >= 2 {
             // Audit #27: resolve impl-block static method calls
             // (`Type::method(...)`), enum variant constructors
@@ -265,6 +275,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         } else {
             "Unknown".to_string()
         }
+    }
+
+    /// If the function is generic and its declared return type is a
+    /// bare generic-parameter name, substitute the inferred type from
+    /// the matching argument. Used by the call-site inference path so
+    /// `let n: Number = identity(1)` doesn't surface `T` to the
+    /// type-mismatch checker.
+    fn specialise_generic_return(
+        &self,
+        func_info: &super::symbol_table::FunctionInfo,
+        raw_ret: &str,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
+    ) -> String {
+        if func_info.generics.is_empty() {
+            return raw_ret.to_string();
+        }
+        let is_generic_param = func_info.generics.iter().any(|g| g.name.name == raw_ret);
+        if !is_generic_param {
+            return raw_ret.to_string();
+        }
+        // Find the first parameter whose declared type is exactly
+        // this generic param name; the corresponding argument's
+        // inferred type is the substitution.
+        for (i, param) in func_info.params.iter().enumerate() {
+            let Some(declared) = &param.ty else { continue };
+            let crate::ast::Type::Ident(ident) = declared else {
+                continue;
+            };
+            if ident.name != raw_ret {
+                continue;
+            }
+            let arg_expr = args
+                .iter()
+                .find_map(|(n, e)| {
+                    n.as_ref()
+                        .filter(|name| name.name == param.name.name)
+                        .map(|_| e)
+                })
+                .or_else(|| args.get(i).map(|(_, e)| e));
+            if let Some(arg) = arg_expr {
+                return self.infer_type(arg, file);
+            }
+        }
+        raw_ret.to_string()
     }
 
     /// Resolve a qualified function path (`a::b::compute`) by walking

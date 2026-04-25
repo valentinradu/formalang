@@ -1007,6 +1007,115 @@ fn test_trait_as_impl_target_ok() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// =============================================================================
+// Tier-1 audit (item E2 / Phase 2d + 2e): mono now specialises generic
+// functions and devirtualises trait-bounded calls inside them. End-to-
+// end check: `paint<T: Drawable>(shape: T)` invoked with Circle yields
+// `paint__Circle` whose body has Static dispatch on the Drawable impl.
+// =============================================================================
+
+fn walk_for_dispatch(
+    expr: &formalang::ir::IrExpr,
+    found_static: &mut bool,
+    found_virtual_concrete: &mut bool,
+) {
+    use formalang::ir::{DispatchKind, IrExpr};
+    if let IrExpr::MethodCall {
+        method, dispatch, ..
+    } = expr
+    {
+        if method == "area" {
+            match dispatch {
+                DispatchKind::Static { .. } => *found_static = true,
+                DispatchKind::Virtual { .. } => *found_virtual_concrete = true,
+            }
+        }
+    }
+    if let IrExpr::Block {
+        statements, result, ..
+    } = expr
+    {
+        for stmt in statements {
+            if let formalang::ir::IrBlockStatement::Expr(e) = stmt {
+                walk_for_dispatch(e, found_static, found_virtual_concrete);
+            }
+        }
+        walk_for_dispatch(result, found_static, found_virtual_concrete);
+    }
+}
+
+#[test]
+fn test_monomorphise_devirtualises_trait_bounded_call() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        trait Drawable { fn area(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle {
+            fn area(self) -> Number { self.r }
+        }
+        pub fn paint<T: Drawable>(shape: T) -> Number {
+            shape.area()
+        }
+        pub let p: Number = paint(Circle(r: 1))
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
+    let paint_specialised = result
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("paint__"))
+        .ok_or("expected paint__... specialised function")?;
+    let body = paint_specialised
+        .body
+        .as_ref()
+        .ok_or("paint specialised body missing")?;
+    let mut found_static = false;
+    let mut found_virtual_concrete = false;
+    walk_for_dispatch(body, &mut found_static, &mut found_virtual_concrete);
+    if found_virtual_concrete {
+        return Err("paint__Circle still contains Virtual dispatch on concrete receiver".into());
+    }
+    if !found_static {
+        return Err("expected paint__Circle body to dispatch via Static".into());
+    }
+    // Generic original should be gone.
+    if result.functions.iter().any(|f| f.name == "paint") {
+        return Err("generic `paint` should have been dropped after specialisation".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_specialises_generic_function() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // Simpler check focused on Phase 2e alone (no trait dispatch).
+    let source = r#"
+        pub fn identity<T>(x: T) -> T { x }
+        pub let n: Number = identity(1)
+        pub let s: String = identity("hi")
+    "#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
+    if result.functions.iter().any(|f| f.name == "identity") {
+        return Err("generic `identity` should have been dropped".into());
+    }
+    let specialised: Vec<&str> = result
+        .functions
+        .iter()
+        .filter(|f| f.name.starts_with("identity__"))
+        .map(|f| f.name.as_str())
+        .collect();
+    if specialised.len() != 2 {
+        return Err(format!(
+            "expected 2 identity specialisations (Number + String), got: {specialised:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
 #[test]
 fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"

@@ -986,7 +986,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
-            vec![],
+            func_def.generics.clone(),
             func_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
@@ -1593,7 +1593,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
-            vec![],
+            func_def.generics.clone(),
             func_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {
