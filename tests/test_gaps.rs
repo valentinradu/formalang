@@ -384,3 +384,48 @@ fn test_closure_body_correct_return_type_accepted() -> Result<(), Box<dyn std::e
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_dict_literal_value_heterogeneity_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11: dict literals were allowed to mix value types
+    // silently. Now `["a": 1, "b": "two"]` must surface a TypeMismatch.
+    let source = r#"
+        let d = ["a": 1, "b": "two"]
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_dict_literal_key_heterogeneity_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11: same for keys — `[1: "x", "two": "y"]` mixes Number
+    // and String keys.
+    let source = r#"
+        let d = [1: "x", "two": "y"]
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_dict_literal_homogeneous_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B11 positive case: a dict whose every entry has the same
+    // shape compiles.
+    let source = r#"
+        let d = ["a": 1, "b": 2, "c": 3]
+    "#;
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}

@@ -448,7 +448,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_match(scrutinee, arms, *span, file);
             }
             Expr::Group { expr, .. } => self.validate_expr(expr, file),
-            Expr::DictLiteral { entries, .. } => {
+            Expr::DictLiteral { entries, span, .. } => {
                 for (key, value) in entries {
                     self.validate_expr(key, file);
                     self.validate_expr(value, file);
@@ -458,19 +458,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.escape_closure_value(key);
                     self.escape_closure_value(value);
                 }
+                // Audit2 B11: unify key types and value types across
+                // entries so a heterogeneous dict literal
+                // (`["a": 1, "b": "two"]`) surfaces as a real
+                // TypeMismatch instead of silently using the first
+                // entry's type.
+                self.validate_dict_homogeneity(entries, *span, file);
             }
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
-                // Validate key type against declared dict type
+                // Validate key type against declared dict type. Audit2 B8:
+                // depth-aware extraction so nested-dict keys / values
+                // are handled correctly.
                 let dict_type = self.infer_type(dict, file);
                 if let Some(inner) = dict_type
                     .strip_prefix('[')
                     .and_then(|s| s.strip_suffix(']'))
-                    .filter(|s| s.contains(": "))
                 {
-                    if let Some(colon_pos) = inner.find(": ") {
-                        let expected_key_type = &inner[..colon_pos];
+                    if let Some(colon_pos) = super::depth_zero_colon_index(inner) {
+                        let expected_key_type = inner[..colon_pos].trim();
                         let actual_key_type = self.infer_type(key, file);
                         if actual_key_type != "Unknown" && actual_key_type != expected_key_type {
                             self.errors.push(CompilerError::TypeMismatch {
@@ -653,6 +660,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn escape_closure_value(&mut self, expr: &Expr) {
         if let Some(caps) = self.closure_captures_of_expr(expr) {
             self.mark_captures_consumed(&caps);
+        }
+    }
+
+    /// Validate that every key (and every value) in a dict literal has
+    /// a compatible type with the first entry. Audit2 B11: previously
+    /// the dict's type came from the first entry only and a mix like
+    /// `["a": 1, "b": "two"]` lowered silently.
+    fn validate_dict_homogeneity(&mut self, entries: &[(Expr, Expr)], span: Span, file: &File) {
+        let mut iter = entries.iter();
+        let Some((first_k, first_v)) = iter.next() else {
+            return; // empty dict: nothing to unify
+        };
+        let first_key_ty = self.infer_type(first_k, file);
+        let first_val_ty = self.infer_type(first_v, file);
+        let key_indeterminate = first_key_ty == "Unknown";
+        let val_indeterminate = first_val_ty == "Unknown";
+        for (k, v) in iter {
+            if !key_indeterminate {
+                let kty = self.infer_type(k, file);
+                if kty != "Unknown" && !self.type_strings_compatible(&first_key_ty, &kty) {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                        found: format!("key of type {kty}"),
+                        span,
+                    });
+                    return;
+                }
+            }
+            if !val_indeterminate {
+                let vty = self.infer_type(v, file);
+                if vty != "Unknown" && !self.type_strings_compatible(&first_val_ty, &vty) {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                        found: format!("value of type {vty}"),
+                        span,
+                    });
+                    return;
+                }
+            }
         }
     }
 
