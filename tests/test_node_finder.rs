@@ -756,7 +756,11 @@ fn test_find_type_generic() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_type_dictionary() -> Result<(), Box<dyn std::error::Error>> {
-    // Primitive types have no spans so StructDef is returned; just verify it doesn't crash
+    // Primitive types inside dictionary brackets have no spans, so the
+    // node finder may return any of: Identifier (when the cursor lands
+    // on a known span), Type (when a higher-level Type node covers the
+    // range), StructField, or StructDef (the enclosing definition).
+    // Reaching any of those proves we didn't fall off the AST.
     let source = r"struct A { map: [String: Number] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "String")?;

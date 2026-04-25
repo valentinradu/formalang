@@ -477,7 +477,11 @@ fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_fold_for_loop_body() -> Result<(), Box<dyn std::error::Error>> {
+fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: previous body had three permissive arms ("Good",
+    // "Acceptable", "Other forms ok") and a final "Just verifying ...
+    // runs without error" check. Now assert the actual fold outcome:
+    // `if true { 1 + 2 } else { 0 }` must collapse to a literal `3`.
     let source = r"
         let items: [Number] = [1, 2, 3]
         let doubled: [Number] = for x in items { if true { 1 + 2 } else { 0 } }
@@ -489,20 +493,18 @@ fn test_fold_for_loop_body() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "doubled")
         .ok_or("doubled not found")?;
-    // For loop body should be folded
-    if let IrExpr::For { body, .. } = &binding.value {
-        // Body should be the folded result: either the then branch (3) or the loop itself
-        if let IrExpr::Literal { .. } = body.as_ref() {
-            // Good: folded
-        } else if let IrExpr::If { .. } = body.as_ref() {
-            // Acceptable: not folded through
-        } else {
-            // Other forms ok
-        }
-    }
-    // Just verifying fold_constants runs without error
-    if folded.lets.is_empty() {
-        return Err("assertion failed".into());
+    let IrExpr::For { body, .. } = &binding.value else {
+        return Err(format!("expected For expression, got {:?}", binding.value).into());
+    };
+    let IrExpr::Literal {
+        value: formalang::ast::Literal::Number(n),
+        ..
+    } = body.as_ref()
+    else {
+        return Err(format!("expected for-body to fold to a Number literal, got {body:?}").into());
+    };
+    if (n - 3.0_f64).abs() > f64::EPSILON {
+        return Err(format!("expected folded value 3, got {n}").into());
     }
     Ok(())
 }

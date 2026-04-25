@@ -3028,6 +3028,12 @@ struct Main {
 
 #[test]
 fn test_external_trait_reference() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: previous body asserted only "User struct exists" and
+    // hand-waved the actual integration as not-checked. Reference the
+    // imported `Named` trait directly via a typed field (so the import
+    // is load-bearing) and assert both that User shows up and that the
+    // imported trait is present in the IR's traits map under its
+    // imported name.
     let mut resolver = MockResolver::new();
     resolver.add_module(
         vec!["traits".to_string()],
@@ -3037,23 +3043,48 @@ fn test_external_trait_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 use traits::Named
 struct User {
-    name: String
+    named: Named
 }
 ";
 
     let module = compile_to_ir_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
-
-    // User struct should be in the IR
-    let _user = module
+    let user = module
         .structs
         .iter()
         .find(|s| s.name == "User")
         .ok_or("User struct not found")?;
-
-    // The Named trait was imported — verify module compiled successfully.
-    // Note: Without struct-trait composition, the import may or may not
-    // appear in module.imports depending on whether it is referenced.
-    // We simply verify the module compiled and User is present.
+    let named_field = user
+        .fields
+        .iter()
+        .find(|f| f.name == "named")
+        .ok_or("named field missing")?;
+    // The field's type must reference the imported `Named` trait —
+    // either via an External reference or via a local Trait id with
+    // the right name.
+    let resolves_to_named = match &named_field.ty {
+        formalang::ir::ResolvedType::External { name, .. } => name == "Named",
+        formalang::ir::ResolvedType::Trait(id) => {
+            module.get_trait(*id).is_some_and(|t| t.name == "Named")
+        }
+        formalang::ir::ResolvedType::Primitive(_)
+        | formalang::ir::ResolvedType::Struct(_)
+        | formalang::ir::ResolvedType::Enum(_)
+        | formalang::ir::ResolvedType::TypeParam(_)
+        | formalang::ir::ResolvedType::Array(_)
+        | formalang::ir::ResolvedType::Range(_)
+        | formalang::ir::ResolvedType::Optional(_)
+        | formalang::ir::ResolvedType::Tuple(_)
+        | formalang::ir::ResolvedType::Dictionary { .. }
+        | formalang::ir::ResolvedType::Closure { .. }
+        | formalang::ir::ResolvedType::Generic { .. } => false,
+    };
+    if !resolves_to_named {
+        return Err(format!(
+            "expected `named` field to reference imported Named trait, got: {:?}",
+            named_field.ty
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -3587,10 +3618,14 @@ struct Container {
 // External Reference Safety Tests
 // =============================================================================
 
-/// Tests that external types cannot be looked up via `struct_id` - this is the
-/// expected behavior that code generators must handle.
+/// Tests that imported (external) struct types ARE registered in
+/// `module.struct_id` after IR lowering, so codegen backends can look
+/// them up the same way they look up locally-defined structs.
+/// (Previously named `test_external_struct_not_in_struct_id_lookup`,
+/// which described the opposite of what the body asserts — fixed
+/// alongside audit #52.)
 #[test]
-fn test_external_struct_not_in_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
+fn test_external_struct_is_in_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockResolver::new();
     resolver.add_module(
         vec!["utils".to_string()],

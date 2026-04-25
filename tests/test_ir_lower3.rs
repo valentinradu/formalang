@@ -157,12 +157,17 @@ fn test_lower_block_let_with_struct_field_access() -> Result<(), Box<dyn std::er
 }
 
 // =============================================================================
-// Lower: match arm in self context (get_variant_fields self branch)
+// Lower: enum impl block targets the enum's IR id
 // =============================================================================
 
 #[test]
-fn test_lower_enum_impl_match_self() -> Result<(), Box<dyn std::error::Error>> {
-    // In an enum impl, a match expression
+fn test_lower_enum_impl_targets_enum_id() -> Result<(), Box<dyn std::error::Error>> {
+    // Renamed from `test_lower_enum_impl_match_self` (audit #52): the
+    // body has no match expression and the previous assertion only
+    // checked the function name. Now also verify that the impl
+    // targets the IR's `Shape` enum id (not a stale Struct id) so we
+    // catch any future regression in `lower_impl`'s target lookup.
+    use formalang::ir::ImplTarget;
     let source = r"
         enum Shape { circle, square }
         impl Shape {
@@ -172,9 +177,22 @@ fn test_lower_enum_impl_match_self() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let impl_block = module.impls.first().ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
-    // Just verify the impl function was lowered
     if func.name != "is_circle" {
         return Err(format!("Expected is_circle, got {}", func.name).into());
+    }
+    let shape_id = module.enum_id("Shape").ok_or("Shape enum id missing")?;
+    match impl_block.target {
+        ImplTarget::Enum(id) => {
+            if id != shape_id {
+                return Err(format!(
+                    "impl block targets Enum id {id:?}, expected Shape id {shape_id:?}"
+                )
+                .into());
+            }
+        }
+        ImplTarget::Struct(_) => {
+            return Err("impl Shape lowered to a Struct target instead of Enum".into())
+        }
     }
     Ok(())
 }
@@ -704,7 +722,11 @@ fn test_dce_mark_used_tuple_struct_field() -> Result<(), Box<dyn std::error::Err
 // =============================================================================
 
 #[test]
-fn test_dce_eliminate_method_call_args() -> Result<(), Box<dyn std::error::Error>> {
+fn test_dce_keeps_method_chain_with_self_call() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: previously asserted only "impls non-empty after DCE"
+    // — true for any non-empty input, so meaningless. The real claim
+    // worth checking is that `square` (called by `double` via self)
+    // survives DCE alongside `double`.
     use formalang::ir::eliminate_dead_code;
 
     let source = r"
@@ -716,9 +738,18 @@ fn test_dce_eliminate_method_call_args() -> Result<(), Box<dyn std::error::Error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
-    // Just verify DCE ran on impl with method calls
-    if optimized.impls.is_empty() {
-        return Err("Expected non-empty impls after DCE".into());
+    let methods: Vec<_> = optimized
+        .impls
+        .iter()
+        .flat_map(|i| i.functions.iter().map(|f| f.name.as_str()))
+        .collect();
+    if !methods.contains(&"square") {
+        return Err(
+            format!("`square` should survive DCE (called by `double`), got: {methods:?}").into(),
+        );
+    }
+    if !methods.contains(&"double") {
+        return Err(format!("`double` should survive DCE, got: {methods:?}").into());
     }
     Ok(())
 }

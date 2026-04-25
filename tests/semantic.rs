@@ -404,14 +404,33 @@ fn test_error_undefined_field_reference() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
-fn test_error_type_mismatch_in_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_field_default_type_must_match_annotation() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #52: the previous body matched its name's negative intent
+    // ("test_error_type_mismatch_in_field") with a passing case that
+    // asserted nothing. Split into two real assertions:
+    //   1. matching default → compiles cleanly
+    //   2. mismatched default (`Number = "hi"`) → TypeMismatch
+    let happy = r"
         struct Wrapper {
             count: Number = 42
         }
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    // This test verifies the struct with default compiles without panic
+    compile(happy).map_err(|e| format!("matching default should compile: {e:?}"))?;
+
+    let mismatched = r#"
+        struct Wrapper {
+            count: Number = "hi"
+        }
+    "#;
+    let errors = compile(mismatched)
+        .err()
+        .ok_or("expected mismatched default to error")?;
+    let saw_mismatch = errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }));
+    if !saw_mismatch {
+        return Err(format!("expected TypeMismatch for `Number = \"hi\"`, got: {errors:?}").into());
+    }
     Ok(())
 }
 
