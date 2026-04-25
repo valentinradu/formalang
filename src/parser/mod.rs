@@ -563,8 +563,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }
@@ -595,10 +594,7 @@ mod tests {
             | Type::Optional(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
-                return Err(format!("Expected Array type, got {ty:?}").into())
-            }
+            | Type::Closure { .. } => return Err(format!("Expected Array type, got {ty:?}").into()),
         }
         Ok(())
     }
@@ -635,8 +631,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -687,8 +682,7 @@ mod tests {
                         | Type::Array(_)
                         | Type::Optional(_)
                         | Type::Tuple(_)
-                        | Type::Closure { .. }
-                        | Type::TypeParameter(_) => {
+                        | Type::Closure { .. } => {
                             return Err(
                                 format!("Expected Dictionary type, got {:?}", field.ty).into()
                             )
@@ -751,8 +745,7 @@ mod tests {
                     | Type::Array(_)
                     | Type::Optional(_)
                     | Type::Tuple(_)
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => {
+                    | Type::Closure { .. } => {
                         return Err(format!("Expected inner Dictionary type, got {value:?}").into())
                     }
                 }
@@ -763,8 +756,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -804,8 +796,7 @@ mod tests {
                 | Type::Array(_)
                 | Type::Optional(_)
                 | Type::Tuple(_)
-                | Type::Closure { .. }
-                | Type::TypeParameter(_) => {
+                | Type::Closure { .. } => {
                     return Err(
                         format!("Expected Dictionary type inside Optional, got {inner:?}").into(),
                     )
@@ -817,8 +808,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }
@@ -852,8 +842,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Dictionary type, got {ty:?}").into())
             }
         }
@@ -1218,8 +1207,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1228,8 +1216,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1269,8 +1256,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1279,8 +1265,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1329,8 +1314,7 @@ mod tests {
                     | Type::Optional(_)
                     | Type::Tuple(_)
                     | Type::Dictionary { .. }
-                    | Type::Closure { .. }
-                    | Type::TypeParameter(_) => return Err("Expected Ident return type".into()),
+                    | Type::Closure { .. } => return Err("Expected Ident return type".into()),
                 }
             }
             Type::Primitive(_)
@@ -1339,8 +1323,7 @@ mod tests {
             | Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Dictionary { .. } => {
                 return Err(format!("Expected Closure type, got {ty:?}").into())
             }
         }
@@ -1367,8 +1350,7 @@ mod tests {
                 | Type::Array(_)
                 | Type::Optional(_)
                 | Type::Tuple(_)
-                | Type::Dictionary { .. }
-                | Type::TypeParameter(_) => return Err("Expected Closure inside Optional".into()),
+                | Type::Dictionary { .. } => return Err("Expected Closure inside Optional".into()),
             },
             Type::Primitive(_)
             | Type::Ident(_)
@@ -1376,8 +1358,7 @@ mod tests {
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. }
-            | Type::TypeParameter(_) => {
+            | Type::Closure { .. } => {
                 return Err(format!("Expected Optional type, got {ty:?}").into())
             }
         }

@@ -359,14 +359,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Type::Generic { name, args, span } => self.validate_generic_type(name, args, *span),
-            Type::TypeParameter(param) => {
-                if !self.is_type_parameter(&param.name) {
-                    self.errors.push(CompilerError::OutOfScopeTypeParameter {
-                        param: param.name.clone(),
-                        span: param.span,
-                    });
-                }
-            }
             Type::Dictionary { key, value } => {
                 self.validate_type(key);
                 self.validate_type(value);
@@ -512,8 +504,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Recursively extracts type names from arrays and optionals
     pub(super) fn add_type_dependencies(graph: &mut TypeGraph, from: &str, ty: &Type) {
         match ty {
-            // Primitive types and type parameters don't create dependencies
-            Type::Primitive(_) | Type::TypeParameter(_) => {}
+            // Primitive types don't create dependencies
+            Type::Primitive(_) => {}
             Type::Ident(ident) => {
                 // Direct type reference creates a dependency
                 graph.add_dependency(from.to_string(), ident.name.clone());

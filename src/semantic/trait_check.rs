@@ -227,7 +227,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .zip(a2.iter())
                         .all(|(t1, t2)| Self::types_match(t1, t2))
             }
-            (Type::TypeParameter(p1), Type::TypeParameter(p2)) => p1.name == p2.name,
             (Type::Dictionary { key: k1, value: v1 }, Type::Dictionary { key: k2, value: v2 }) => {
                 Self::types_match(k1, k2) && Self::types_match(v1, v2)
             }
@@ -286,7 +285,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     format!("{}<{}>", name.name, arg_types.join(", "))
                 }
             }
-            Type::TypeParameter(param) => param.name.clone(),
             Type::Dictionary { key, value } => {
                 format!(
                     "[{}: {}]",
@@ -402,13 +400,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 let enum_traits = self.symbols.get_all_traits_for_enum(&name.name);
                 enum_traits.contains(&trait_key)
-            }
-            Type::TypeParameter(param) => {
-                // Check if the type parameter has the constraint in scope
-                if let Some(constraints) = self.get_type_parameter_constraints(&param.name) {
-                    return constraints.contains(&trait_name.to_string());
-                }
-                false
             }
             // Primitives, arrays, optionals, tuples, etc. don't implement user-defined traits
             Type::Primitive(_)

@@ -1006,6 +1006,5 @@ fn ty_shape(ty: &Type) -> String {
                 .collect();
             format!("({})->{}", parts.join(","), ty_shape(ret))
         }
-        Type::TypeParameter(p) => p.name.clone(),
     }
 }

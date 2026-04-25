@@ -680,7 +680,7 @@ impl<'ast> NodeFinder<'ast> {
             Type::Primitive(_) => {
                 // Primitive types don't have spans to check
             }
-            Type::Ident(ident) | Type::TypeParameter(ident) => {
+            Type::Ident(ident) => {
                 if span_contains_offset(&ident.span, self.offset) {
                     self.found_node = Some(NodeAtPosition::Identifier(ident));
                 }

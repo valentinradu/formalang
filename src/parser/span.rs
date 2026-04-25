@@ -177,7 +177,7 @@ fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, source: &str) {
 pub(super) fn fill_type_span(ty: &mut Type, source: &str) {
     match ty {
         Type::Primitive(_) => {}
-        Type::Ident(ident) | Type::TypeParameter(ident) => fill_span(&mut ident.span, source),
+        Type::Ident(ident) => fill_span(&mut ident.span, source),
         Type::Array(inner) | Type::Optional(inner) => fill_type_span(inner, source),
         Type::Tuple(fields) => {
             for field in fields {

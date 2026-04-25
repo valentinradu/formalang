@@ -1305,9 +1305,7 @@ impl<'a> IrLowerer<'a> {
             ast::Type::Tuple(_) => "Tuple".to_string(),
             ast::Type::Dictionary { .. } => "Dictionary".to_string(),
             ast::Type::Closure { .. } => "Closure".to_string(),
-            ast::Type::Ident(name)
-            | ast::Type::Generic { name, .. }
-            | ast::Type::TypeParameter(name) => name.name.clone(),
+            ast::Type::Ident(name) | ast::Type::Generic { name, .. } => name.name.clone(),
         }
     }
 
@@ -1412,8 +1410,6 @@ impl<'a> IrLowerer<'a> {
                     .map(|f| (f.name.name.clone(), self.lower_type(&f.ty)))
                     .collect(),
             ),
-
-            Type::TypeParameter(ident) => ResolvedType::TypeParam(ident.name.clone()),
 
             Type::Dictionary { key, value } => ResolvedType::Dictionary {
                 key_ty: Box::new(self.lower_type(key)),
