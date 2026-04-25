@@ -2,6 +2,11 @@
 name = "formalang"
 version = "0.1.0"
 edition = "2021"
+# Audit2 B33: pin a minimum supported Rust version so downstream
+# users can detect toolchain incompatibility before a noisy build
+# failure. Updated alongside any change that requires a newer rustc
+# feature; verified with `cargo +<rust-version> check`.
+rust-version = "1.85"
 authors = ["formavera team"]
 description = "FormaLang compiler frontend: lexer, parser, semantic analyzer, and IR lowering."
 license = "MIT OR Apache-2.0"
@@ -31,6 +36,11 @@ thiserror = "2.0"
 # call site (API moved from (kind, filename, offset) to (kind, (filename, range))).
 # Tracked as a separate migration.
 ariadne = "0.4"
+# yansi is a transitive dependency of ariadne; pinning here lets the
+# reporter call `yansi::disable()` to honour `NO_COLOR` for inline
+# `Fmt::fg(...)` highlights inside label messages (audit2 B35). Match
+# ariadne's pinned version to avoid double-rcs.
+yansi = "1.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

@@ -19,26 +19,21 @@ use std::time::Instant;
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-
-    let module_root = parse_module_root(&args);
+    let subcommand_args: &[String] = args.get(2..).unwrap_or(&[]);
 
     match args.get(1).map(String::as_str) {
-        Some("check") => {
-            let Some(input_path) = args.get(2) else {
-                eprintln!("Error: Missing input file");
-                print_usage();
-                return ExitCode::from(1);
-            };
-            check_command(input_path, module_root)
-        }
-        Some("watch") => {
-            let Some(input_path) = args.get(2) else {
-                eprintln!("Error: Missing input file");
-                print_usage();
-                return ExitCode::from(1);
-            };
-            watch_command(input_path, module_root.as_deref())
-        }
+        Some("check") => run_subcommand(
+            subcommand_args,
+            "check",
+            check_subcommand_help,
+            |path, root| check_command(path, root.map(PathBuf::from)),
+        ),
+        Some("watch") => run_subcommand(
+            subcommand_args,
+            "watch",
+            watch_subcommand_help,
+            |path, root| watch_command(path, root.map(std::path::Path::new)),
+        ),
         Some("help" | "--help" | "-h") => {
             print_usage();
             ExitCode::SUCCESS
@@ -59,6 +54,59 @@ fn main() -> ExitCode {
     }
 }
 
+/// Audit2 B30/B31: parse a subcommand's args without assuming a fixed
+/// positional index. Recognises `-h` / `--help` *anywhere* among the
+/// args (not just at index 0) and accepts `--module-root <path>` either
+/// before or after the input file.
+fn run_subcommand(
+    args: &[String],
+    subcommand: &str,
+    print_help: fn(),
+    run: impl FnOnce(&str, Option<&str>) -> ExitCode,
+) -> ExitCode {
+    let mut input: Option<&str> = None;
+    let mut module_root: Option<&str> = None;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "-h" | "--help" => {
+                print_help();
+                return ExitCode::SUCCESS;
+            }
+            "--module-root" => {
+                if let Some(value) = iter.next() {
+                    module_root = Some(value.as_str());
+                } else {
+                    eprintln!("Error: --module-root requires a path argument");
+                    print_help();
+                    return ExitCode::from(1);
+                }
+            }
+            other if other.starts_with("--") => {
+                eprintln!("Error: unknown flag '{other}' for `fvc {subcommand}`");
+                print_help();
+                return ExitCode::from(1);
+            }
+            other => {
+                if input.is_some() {
+                    eprintln!("Error: unexpected extra argument '{other}'");
+                    print_help();
+                    return ExitCode::from(1);
+                }
+                input = Some(other);
+            }
+        }
+    }
+    input.map_or_else(
+        || {
+            eprintln!("Error: Missing input file");
+            print_help();
+            ExitCode::from(1)
+        },
+        |path| run(path, module_root),
+    )
+}
+
 fn print_usage() {
     println!("FormaLang Compiler v{}", env!("CARGO_PKG_VERSION"));
     println!();
@@ -70,18 +118,34 @@ fn print_usage() {
     println!();
     println!("Options:");
     println!("  --module-root <path>  Root directory for `use` resolution");
+    println!();
+    println!("Run `fvc <subcommand> --help` for subcommand-specific help.");
 }
 
-fn parse_module_root(args: &[String]) -> Option<PathBuf> {
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--module-root" {
-            if let Some(path) = iter.next() {
-                return Some(PathBuf::from(path));
-            }
-        }
-    }
-    None
+fn check_subcommand_help() {
+    println!("fvc check — type-check a FormaLang source file");
+    println!();
+    println!("Usage:");
+    println!("  fvc check <file.fv> [--module-root <path>]");
+    println!();
+    println!("Options:");
+    println!("  --module-root <path>  Root directory for `use` resolution");
+    println!("                        (default: parent of <file.fv>)");
+    println!("  -h, --help            Show this help");
+}
+
+fn watch_subcommand_help() {
+    println!("fvc watch — re-check a FormaLang source file on every change");
+    println!();
+    println!("Usage:");
+    println!("  fvc watch <file.fv> [--module-root <path>]");
+    println!();
+    println!("Press Ctrl+C to stop. Exit code reflects the last check's result.");
+    println!();
+    println!("Options:");
+    println!("  --module-root <path>  Root directory for `use` resolution");
+    println!("                        (default: parent of <file.fv>)");
+    println!("  -h, --help            Show this help");
 }
 
 fn resolve_base_dir(input_path: &str, module_root: Option<PathBuf>) -> PathBuf {
@@ -146,11 +210,13 @@ fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> Exi
     let mut last_modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
 
     // Track whether the user signalled shutdown, plus whether the most
-    // recent `check` succeeded (default: true, since no checks have run
-    // yet). The signal handler runs in a separate thread, so the flags
-    // must be atomic.
+    // recent `check` succeeded. The signal handler runs in a separate
+    // thread, so the flags must be atomic. Audit2 B34: default to
+    // `false` so a Ctrl+C before the initial check completes (or any
+    // path that bypasses the first `record` call) reports a non-zero
+    // exit instead of a misleading success.
     let shutdown = Arc::new(AtomicBool::new(false));
-    let last_succeeded = Arc::new(AtomicBool::new(true));
+    let last_succeeded = Arc::new(AtomicBool::new(false));
     let shutdown_handler = Arc::clone(&shutdown);
     if let Err(err) = ctrlc::set_handler(move || {
         shutdown_handler.store(true, Ordering::SeqCst);
