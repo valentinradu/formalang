@@ -675,7 +675,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: cannot resolve dispatch for method `{method_name}` on receiver {receiver_ty:?}"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         DispatchKind::Virtual {
             trait_id: TraitId(u32::MAX),
@@ -690,7 +690,7 @@ impl IrLowerer<'_> {
         self.module.next_impl_id().unwrap_or_else(|| {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "impl",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             ImplId(u32::MAX)
         })
@@ -706,7 +706,7 @@ impl IrLowerer<'_> {
         } else {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "impl",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             ImplId(u32::MAX)
         }
@@ -718,7 +718,7 @@ impl IrLowerer<'_> {
         } else {
             self.errors.push(CompilerError::TooManyDefinitions {
                 kind: "trait",
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             TraitId(u32::MAX)
         }
@@ -1094,7 +1094,7 @@ impl IrLowerer<'_> {
                             "IR lowering: struct `{}` has no field `{field_name}`",
                             struct_def.name
                         ),
-                        span: crate::location::Span::default(),
+                        span: self.current_span,
                     });
                 } else {
                     self.errors.push(CompilerError::InternalError {
@@ -1102,7 +1102,7 @@ impl IrLowerer<'_> {
                             "IR lowering: struct id {} out of bounds during field access `{field_name}`",
                             struct_id.0
                         ),
-                        span: crate::location::Span::default(),
+                        span: self.current_span,
                     });
                 }
                 ResolvedType::Primitive(PrimitiveType::Never)
@@ -1123,7 +1123,7 @@ impl IrLowerer<'_> {
                     detail: format!(
                         "IR lowering: cannot access field `{field_name}` on non-struct receiver {object_ty:?}"
                     ),
-                    span: crate::location::Span::default(),
+                    span: self.current_span,
                 });
                 ResolvedType::Primitive(PrimitiveType::Never)
             }
@@ -1176,7 +1176,7 @@ impl IrLowerer<'_> {
                     "IR lowering: no impl method `{method_name}` for struct id {}",
                     struct_id.0
                 ),
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             return ResolvedType::Primitive(PrimitiveType::Never);
         }
@@ -1248,7 +1248,7 @@ impl IrLowerer<'_> {
                     "IR lowering: no impl method `{method_name}` for enum id {}",
                     enum_id.0
                 ),
-                span: crate::location::Span::default(),
+                span: self.current_span,
             });
             return ResolvedType::Primitive(PrimitiveType::Never);
         }
@@ -1283,7 +1283,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: cannot resolve return type of `{method_name}` on receiver {receiver_ty:?}"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
     }
@@ -1324,7 +1324,7 @@ impl IrLowerer<'_> {
             detail: format!(
                 "IR lowering: unknown function `{fn_name}` reached codegen — should have been caught by semantic analysis"
             ),
-            span: crate::location::Span::default(),
+            span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
     }
