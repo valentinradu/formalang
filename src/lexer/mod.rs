@@ -104,15 +104,11 @@ impl<'source> Lexer<'source> {
         let mut tokens = Vec::new();
 
         while let Some((token, span)) = lexer.next_token() {
-            // Audit #48: `Token::Eof` has no `#[logos]` attribute, so
-            // `next_token` won't produce it from Logos output — Logos
-            // signals end-of-input by returning `None`. The guard stays
-            // because the token exists as an API sentinel for external
-            // callers that synthesise token streams manually (tests and
-            // incremental-parse scenarios).
-            if matches!(token, Token::Eof) {
-                break;
-            }
+            // Logos signals end-of-input by returning `None` from
+            // `next_token` — there is no separate EOF sentinel token.
+            // (Audit finding #48 removed `Token::Eof` and the dead
+            // guard that previously matched it here.)
+            //
             // Fill in line/column positions from byte offsets
             let span = crate::location::fill_span_positions(span, source);
             tokens.push((token, span));

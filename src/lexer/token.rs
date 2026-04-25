@@ -194,9 +194,6 @@ pub enum Token {
     LBracket,
     #[token("]")]
     RBracket,
-
-    // Special
-    Eof,
 }
 
 /// Strip the `///` prefix and a single leading space from a doc-comment
@@ -415,7 +412,6 @@ impl Token {
             Self::RBrace => "}",
             Self::LBracket => "[",
             Self::RBracket => "]",
-            Self::Eof => "<eof>",
             Self::String(_)
             | Self::Number(_)
             | Self::Regex(_)
@@ -495,7 +491,6 @@ impl std::fmt::Display for Token {
             | Self::RBrace
             | Self::LBracket
             | Self::RBracket
-            | Self::Eof
             | Self::BlockComment => write!(f, "'{}'", self.as_str()),
         }
     }

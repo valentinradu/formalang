@@ -22,8 +22,8 @@ fn test_simple_tokens() -> Result<(), Box<dyn std::error::Error>> {
 fn test_empty_source() -> Result<(), Box<dyn std::error::Error>> {
     let source = "";
     let tokens = Lexer::tokenize_all(source);
-    if !(tokens.is_empty() || tokens.iter().all(|(t, _)| matches!(t, Token::Eof))) {
-        return Err("assertion failed".into());
+    if !tokens.is_empty() {
+        return Err(format!("expected no tokens for empty source, got {tokens:?}").into());
     }
     Ok(())
 }
@@ -33,8 +33,11 @@ fn test_only_whitespace() -> Result<(), Box<dyn std::error::Error>> {
     let source = "    ";
     let tokens = Lexer::tokenize_all(source);
     // Whitespace should be skipped
-    if !(tokens.is_empty() || tokens.iter().all(|(t, _)| matches!(t, Token::Eof))) {
-        return Err("assertion failed".into());
+    if !tokens.is_empty() {
+        return Err(format!(
+            "expected whitespace-only source to produce no tokens, got {tokens:?}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -714,10 +717,7 @@ fn test_lexer_next_token() -> Result<(), Box<dyn std::error::Error>> {
     let mut lexer = Lexer::new(source);
 
     let mut count = 0_u32;
-    while let Some((token, _span)) = lexer.next_token() {
-        if matches!(token, Token::Eof) {
-            break;
-        }
+    while let Some((_token, _span)) = lexer.next_token() {
         count = count.saturating_add(1);
         if count > 100 {
             return Err("Possible infinite loop".into());
