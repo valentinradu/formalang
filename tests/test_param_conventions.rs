@@ -418,6 +418,60 @@ fn test_closure_type_annotation_sink_convention() {
 }
 
 // ---------------------------------------------------------------------------
+// Pipe closure return type annotation (audit #38)
+// ---------------------------------------------------------------------------
+
+fn parse_first_pipe_closure(src: &str) -> formalang::ast::Expr {
+    use formalang::ast::{Expr, Statement};
+    let file = parse_ok(src);
+    for stmt in &file.statements {
+        if let Statement::Let(binding) = stmt {
+            if let Expr::ClosureExpr { .. } = &binding.value {
+                return binding.value.clone();
+            }
+        }
+    }
+    panic!("no top-level let closure found");
+}
+
+#[test]
+fn test_pipe_closure_return_type_parsed() {
+    use formalang::ast::{Expr, PrimitiveType, Type};
+    let expr =
+        parse_first_pipe_closure("let f: (Number) -> Number = |x: Number| -> Number { x + 1 }");
+    let Expr::ClosureExpr { return_type, .. } = expr else {
+        panic!("expected ClosureExpr");
+    };
+    let ty = return_type.expect("expected explicit return type to be captured");
+    assert!(matches!(ty, Type::Primitive(PrimitiveType::Number)));
+}
+
+#[test]
+fn test_pipe_closure_without_return_type_is_none() {
+    use formalang::ast::Expr;
+    let expr = parse_first_pipe_closure("let f: (Number) -> Number = |x: Number| x + 1");
+    let Expr::ClosureExpr { return_type, .. } = expr else {
+        panic!("expected ClosureExpr");
+    };
+    assert!(return_type.is_none());
+}
+
+#[test]
+fn test_pipe_closure_return_type_mismatch_rejected() {
+    // Body returns Number but the closure declares String — should fail.
+    assert!(has_error(
+        "let f: (Number) -> String = |x: Number| -> String { x + 1 }",
+        |e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }),
+    ));
+}
+
+#[test]
+fn test_pipe_closure_return_type_match_compiles() {
+    compile("let f: (Number) -> Number = |x: Number| -> Number { x + 1 }")
+        .expect("matching return type should compile cleanly");
+}
+
+// ---------------------------------------------------------------------------
 // Closure parameter conventions: semantic enforcement
 // ---------------------------------------------------------------------------
 

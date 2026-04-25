@@ -6,7 +6,7 @@ use crate::ast::{
 };
 use crate::error::CompilerError;
 use crate::location::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::collect_bindings_from_pattern;
 
@@ -461,8 +461,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::ClosureExpr { params, body, .. } => {
-                self.validate_expr_closure(params, body, file);
+            Expr::ClosureExpr {
+                params,
+                return_type,
+                body,
+                span,
+            } => {
+                self.validate_expr_closure(params, return_type.as_ref(), body, *span, file);
             }
             Expr::LetExpr { .. } => {
                 self.validate_expr_let(expr, file);
@@ -618,7 +623,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         out: &mut Vec<(Vec<String>, Span)>,
     ) {
         match expr {
-            Expr::ClosureExpr { params, body, span } => {
+            Expr::ClosureExpr {
+                params, body, span, ..
+            } => {
                 let param_set: HashSet<String> =
                     params.iter().map(|p| p.name.name.clone()).collect();
                 let caps = Self::collect_free_variables(body, &param_set);
@@ -1339,13 +1346,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn validate_expr_closure(
         &mut self,
         params: &[crate::ast::ClosureParam],
+        return_type: Option<&crate::ast::Type>,
         body: &Expr,
+        span: Span,
         file: &File,
     ) {
         for param in params {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
+        }
+        if let Some(ty) = return_type {
+            self.validate_type(ty);
         }
         let mut param_scope = HashSet::new();
         for param in params {
@@ -1364,6 +1376,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_param_scopes.push(param_scope);
         self.validate_expr(body, file);
         self.closure_param_scopes.pop();
+
+        // Audit #38: when a pipe closure declares a return type, verify the
+        // body's inferred type is compatible. Mirrors the function-return
+        // mismatch check; reuses `FunctionReturnTypeMismatch` with a
+        // synthetic `<closure>` function name since closures don't have one.
+        if let Some(declared) = return_type {
+            // Push the closure's typed params so the body sees them while
+            // inferring (otherwise references like `x + 1` resolve to
+            // `Unknown` and trip a spurious mismatch).
+            let mut frame = HashMap::new();
+            for p in params {
+                if let Some(ty) = &p.ty {
+                    frame.insert(p.name.name.clone(), Self::type_to_string(ty));
+                }
+            }
+            self.inference_scope_stack.borrow_mut().push(frame);
+            let body_type = self.infer_type(body, file);
+            self.inference_scope_stack.borrow_mut().pop();
+            let expected = Self::type_to_string(declared);
+            if !self.type_strings_compatible(&expected, &body_type) {
+                self.errors.push(CompilerError::FunctionReturnTypeMismatch {
+                    function: "<closure>".to_string(),
+                    expected,
+                    actual: body_type,
+                    span,
+                });
+            }
+        }
     }
 
     /// Walk `expr` and emit `UseAfterSink` for any `Reference` whose root

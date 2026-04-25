@@ -127,7 +127,12 @@ impl IrLowerer<'_> {
             } => self.lower_let_expr(*mutable, pattern, ty.as_ref(), value, body),
             Expr::DictLiteral { entries, .. } => self.lower_dict_literal(entries),
             Expr::DictAccess { dict, key, .. } => self.lower_dict_access(dict, key),
-            Expr::ClosureExpr { params, body, .. } => self.lower_closure(params, body),
+            Expr::ClosureExpr {
+                params,
+                return_type,
+                body,
+                ..
+            } => self.lower_closure(params, return_type.as_ref(), body),
             Expr::FieldAccess { object, field, .. } => {
                 let object_ir = self.lower_expr(object);
                 let ty = self.resolve_field_type(object_ir.ty(), &field.name);
@@ -1330,7 +1335,12 @@ impl IrLowerer<'_> {
     /// free variables (captures) referenced by the body. The regular lowering
     /// path handles all closure cases uniformly, including closures whose body
     /// is an enum variant construction.
-    fn lower_closure(&mut self, params: &[ClosureParam], body: &Expr) -> IrExpr {
+    fn lower_closure(
+        &mut self,
+        params: &[ClosureParam],
+        return_type: Option<&ast::Type>,
+        body: &Expr,
+    ) -> IrExpr {
         // General closure: lower params and body
         let lowered_params: Vec<(ParamConvention, String, ResolvedType)> = params
             .iter()
@@ -1353,7 +1363,10 @@ impl IrLowerer<'_> {
         self.local_binding_scopes.push(closure_frame);
 
         let body_ir = self.lower_expr(body);
-        let return_ty = body_ir.ty().clone();
+        // Audit #38: prefer the declared return type when present so the
+        // closure's `ResolvedType` reflects the explicit annotation rather
+        // than the inferred body type (which may be `Unknown` or narrower).
+        let return_ty = return_type.map_or_else(|| body_ir.ty().clone(), |t| self.lower_type(t));
 
         // Pop the closure's own frame before resolving captures so that
         // capture lookups consult only the enclosing scopes.

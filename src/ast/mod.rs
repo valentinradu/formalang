@@ -481,6 +481,10 @@ pub enum Expr {
 
     ClosureExpr {
         params: Vec<ClosureParam>,
+        /// Optional declared return type (`|x: T| -> R { body }`). `None`
+        /// when the closure does not specify one and the type is inferred
+        /// from the body.
+        return_type: Option<Type>,
         body: Box<Self>,
         span: Span,
     },

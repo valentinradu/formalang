@@ -120,7 +120,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let receiver_type = self.infer_type(receiver, file);
                 self.infer_method_return_type(&receiver_type, &method.name, file)
             }
-            Expr::ClosureExpr { params, body, .. } => {
+            Expr::ClosureExpr {
+                params,
+                return_type,
+                body,
+                ..
+            } => {
                 // Push closure params into the inference-scope stack so
                 // references inside the body resolve to their declared
                 // types instead of "Unknown".
@@ -131,8 +136,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
                 self.inference_scope_stack.borrow_mut().push(frame);
-                let body_type = self.infer_type(body, file);
+                let inferred_body_type = self.infer_type(body, file);
                 self.inference_scope_stack.borrow_mut().pop();
+                // Audit #38: prefer the explicit return type when present;
+                // fall back to body inference otherwise.
+                let body_type = return_type
+                    .as_ref()
+                    .map_or(inferred_body_type, Self::type_to_string);
                 match params.split_first() {
                     None => format!("() -> {body_type}"),
                     Some((only, [])) => {

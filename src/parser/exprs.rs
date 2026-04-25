@@ -296,6 +296,7 @@ where
             .ignore_then(expr.clone())
             .map_with(|body, e| Expr::ClosureExpr {
                 params: vec![],
+                return_type: None,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -310,6 +311,7 @@ where
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::ClosureExpr {
                 params,
+                return_type: None,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -330,8 +332,9 @@ where
                 just(Token::Arrow).ignore_then(type_parser()).or_not(),
             )
             .then(expr.clone())
-            .map_with(|((params, _return_type), body), e| Expr::ClosureExpr {
+            .map_with(|((params, return_type), body), e| Expr::ClosureExpr {
                 params,
+                return_type,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });

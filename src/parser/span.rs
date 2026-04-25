@@ -333,8 +333,13 @@ pub(super) fn fill_expr_span(expr: &mut Expr, source: &str) {
             fill_span(&mut field.span, source);
             fill_span(span, source);
         }
-        Expr::ClosureExpr { params, body, span } => {
-            fill_closure_expr_spans(params, body, span, source);
+        Expr::ClosureExpr {
+            params,
+            return_type,
+            body,
+            span,
+        } => {
+            fill_closure_expr_spans(params, return_type.as_mut(), body, span, source);
         }
         Expr::LetExpr {
             pattern,
@@ -408,6 +413,7 @@ fn fill_invocation_expr_spans(
 
 fn fill_closure_expr_spans(
     params: &mut [crate::ast::ClosureParam],
+    return_type: Option<&mut crate::ast::Type>,
     body: &mut Expr,
     span: &mut crate::location::Span,
     source: &str,
@@ -418,6 +424,9 @@ fn fill_closure_expr_spans(
             fill_type_span(ty, source);
         }
         fill_span(&mut param.span, source);
+    }
+    if let Some(ty) = return_type {
+        fill_type_span(ty, source);
     }
     fill_expr_span(body, source);
     fill_span(span, source);
