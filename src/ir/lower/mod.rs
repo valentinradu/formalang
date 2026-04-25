@@ -242,7 +242,15 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
+        // Audit2 B18: thread the let's annotation as the inferred-enum
+        // target so `.variant` literals in the value resolve to the
+        // declared enum (e.g. `let s: Status = .pending`) instead of
+        // lowering to `TypeParam("InferredEnum")`.
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type =
+            let_binding.type_annotation.as_ref().map(Self::type_name);
         let mut value = self.lower_expr(&let_binding.value);
+        self.current_function_return_type = saved_return_type;
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
@@ -1352,12 +1360,19 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_struct_field(&mut self, f: &StructField) -> IrField {
+        // Audit2 B18: thread the field's declared type as the
+        // inferred-enum target so `.variant` literals inside the
+        // default expression resolve to the field's enum type.
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = Some(Self::type_name(&f.ty));
+        let default = f.default.as_ref().map(|e| self.lower_expr(e));
+        self.current_function_return_type = saved_return_type;
         IrField {
             name: f.name.name.clone(),
             ty: self.lower_type(&f.ty),
             mutable: f.mutable,
             optional: f.optional,
-            default: f.default.as_ref().map(|e| self.lower_expr(e)),
+            default,
             doc: f.doc.clone(),
         }
     }

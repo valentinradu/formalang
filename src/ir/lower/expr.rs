@@ -1362,7 +1362,17 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(closure_frame);
 
+        // Audit2 B18: set `current_function_return_type` from the
+        // closure's declared return type so an inferred-enum
+        // `.variant` inside the body resolves against the closure's
+        // own return type, not the surrounding context (which after B18
+        // can be the *outer* type, e.g. the field's `Closure` type).
+        let saved_return_type = self.current_function_return_type.take();
+        self.current_function_return_type = return_type.map(super::IrLowerer::type_name);
+
         let body_ir = self.lower_expr(body);
+
+        self.current_function_return_type = saved_return_type;
         // Audit #38: prefer the declared return type when present so the
         // closure's `ResolvedType` reflects the explicit annotation rather
         // than the inferred body type (which may be `Unknown` or narrower).
