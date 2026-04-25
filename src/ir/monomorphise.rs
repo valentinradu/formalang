@@ -172,7 +172,7 @@ impl IrPass for MonomorphisePass {
         let enum_remap = build_enum_remap(&module);
         let impl_index_remap =
             drop_specialised_generic_impls(&mut module, &struct_remap, &enum_remap);
-        apply_remaps(&mut module, &struct_remap, &enum_remap);
+        apply_remaps(&mut module, &struct_remap, &enum_remap)?;
         apply_impl_index_remap(&mut module, &impl_index_remap);
         module.structs.retain(|s| s.generic_params.is_empty());
         module.enums.retain(|e| e.generic_params.is_empty());
@@ -1428,25 +1428,64 @@ fn build_enum_remap(module: &IrModule) -> Vec<Option<EnumId>> {
     out
 }
 
+/// Remap struct/enum IDs across the module after compaction.
+///
+/// Returns `Err` if an impl-target lookup hits an out-of-bounds index
+/// or a `None` slot (a "dropped" struct/enum that should have been
+/// removed alongside its impl by [`drop_specialised_generic_impls`]).
+/// Audit2 B22: previously these cases silently no-op'd, leaving
+/// dangling target IDs in the IR.
 fn apply_remaps(
     module: &mut IrModule,
     struct_remap: &[Option<StructId>],
     enum_remap: &[Option<EnumId>],
-) {
+) -> Result<(), Vec<CompilerError>> {
     walk_module_types_mut(module, |ty| remap_type(ty, struct_remap, enum_remap));
+    let mut errors: Vec<CompilerError> = Vec::new();
     for imp in &mut module.impls {
         match &mut imp.target {
-            crate::ir::ImplTarget::Struct(id) => {
-                if let Some(Some(new)) = struct_remap.get(id.0 as usize).copied() {
-                    *id = new;
-                }
-            }
-            crate::ir::ImplTarget::Enum(id) => {
-                if let Some(Some(new)) = enum_remap.get(id.0 as usize).copied() {
-                    *id = new;
-                }
-            }
+            crate::ir::ImplTarget::Struct(id) => match struct_remap.get(id.0 as usize).copied() {
+                Some(Some(new)) => *id = new,
+                Some(None) => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: impl block targets struct id {} which was dropped during compaction (drop_specialised_generic_impls missed it)",
+                        id.0
+                    ),
+                    span: Span::default(),
+                }),
+                None => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: impl block targets struct id {} which is out of bounds for the remap table (len {})",
+                        id.0,
+                        struct_remap.len()
+                    ),
+                    span: Span::default(),
+                }),
+            },
+            crate::ir::ImplTarget::Enum(id) => match enum_remap.get(id.0 as usize).copied() {
+                Some(Some(new)) => *id = new,
+                Some(None) => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: impl block targets enum id {} which was dropped during compaction (drop_specialised_generic_impls missed it)",
+                        id.0
+                    ),
+                    span: Span::default(),
+                }),
+                None => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: impl block targets enum id {} which is out of bounds for the remap table (len {})",
+                        id.0,
+                        enum_remap.len()
+                    ),
+                    span: Span::default(),
+                }),
+            },
         }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
     }
 }
 
