@@ -3262,6 +3262,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Handles user-defined methods in impl blocks and trait methods available
     /// to types that implement the trait (directly or via a generic constraint).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive lookup across local impls, trait impls, generic param constraints, cached modules, and qualified-name nested modules — splitting reduces locality without simplifying"
+    )]
     pub(super) fn method_exists_on_type(
         &self,
         type_name: &str,
@@ -3360,6 +3364,50 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // Audit2 B14: qualified-type lookup — when the receiver type is
+        // `m::Foo`, walk into the nested module path (inline modules in
+        // the current file, then cached imported modules) and check for
+        // an impl of `Foo` with the requested method. The bare-name
+        // checks above don't handle qualified receivers, so prior to
+        // this fix `f.method()` on an imported-module type silently
+        // returned "not defined".
+        if let Some((module_segments, bare_name)) = split_qualified_type(lookup) {
+            // Inline modules in the current file.
+            if let Some(defs) = find_nested_module_definitions(&file.statements, &module_segments) {
+                if impl_method_in_definitions(defs, bare_name, method_name) {
+                    return true;
+                }
+            }
+            // Imported modules in the cache.
+            for (cached_file, _) in self.module_cache.values() {
+                if let Some(defs) =
+                    find_nested_module_definitions(&cached_file.statements, &module_segments)
+                {
+                    if impl_method_in_definitions(defs, bare_name, method_name) {
+                        return true;
+                    }
+                }
+                // Also check the cached file's top-level when only the
+                // last segment is the module name (e.g. `use mod::*`
+                // re-exports flatten differently; staying defensive).
+                if module_segments.len() == 1 {
+                    for statement in &cached_file.statements {
+                        if let Statement::Definition(def) = statement {
+                            if let Definition::Impl(impl_def) = &**def {
+                                if impl_def.name.name == bare_name {
+                                    for func in &impl_def.functions {
+                                        if func.name.name == method_name {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         false
     }
 
@@ -3404,4 +3452,75 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         false
     }
+}
+
+/// Audit2 B14: split a qualified type name `m1::m2::Foo` into module
+/// segments `["m1", "m2"]` and bare name `"Foo"`. Returns `None` if the
+/// name has no `::`.
+fn split_qualified_type(name: &str) -> Option<(Vec<&str>, &str)> {
+    if !name.contains("::") {
+        return None;
+    }
+    let mut parts: Vec<&str> = name.split("::").collect();
+    let last = parts.pop()?;
+    Some((parts, last))
+}
+
+/// Audit2 B14: walk a slice of `Statement`s looking for the nested
+/// module path `segments`, returning that module's `definitions`.
+/// Recurses into nested `Definition::Module` matches.
+fn find_nested_module_definitions<'a>(
+    statements: &'a [Statement],
+    segments: &[&str],
+) -> Option<&'a [Definition]> {
+    let (head, rest) = segments.split_first()?;
+    for stmt in statements {
+        if let Statement::Definition(def) = stmt {
+            if let Definition::Module(module_def) = &**def {
+                if module_def.name.name == *head {
+                    return if rest.is_empty() {
+                        Some(&module_def.definitions)
+                    } else {
+                        find_nested_module_definitions_in_defs(&module_def.definitions, rest)
+                    };
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_nested_module_definitions_in_defs<'a>(
+    definitions: &'a [Definition],
+    segments: &[&str],
+) -> Option<&'a [Definition]> {
+    let (head, rest) = segments.split_first()?;
+    for def in definitions {
+        if let Definition::Module(module_def) = def {
+            if module_def.name.name == *head {
+                return if rest.is_empty() {
+                    Some(&module_def.definitions)
+                } else {
+                    find_nested_module_definitions_in_defs(&module_def.definitions, rest)
+                };
+            }
+        }
+    }
+    None
+}
+
+/// Audit2 B14: scan a slice of definitions for `impl <bare> { fn <method> }`.
+fn impl_method_in_definitions(definitions: &[Definition], bare: &str, method: &str) -> bool {
+    for def in definitions {
+        if let Definition::Impl(impl_def) = def {
+            if impl_def.name.name == bare {
+                for func in &impl_def.functions {
+                    if func.name.name == method {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
 }

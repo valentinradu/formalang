@@ -463,3 +463,22 @@ fn test_let_general_type_match_accepted() -> Result<(), Box<dyn std::error::Erro
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B14: a method call on a value whose type is qualified
+    // (`m::Foo`) used to fail with `UndefinedReference` because
+    // `method_exists_on_type` only matched bare receiver names.
+    let source = r"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+            impl Foo {
+                fn double(self) -> Number { self.x + self.x }
+            }
+        }
+        let f: m::Foo = m::Foo()
+        let v: Number = f.double()
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}
