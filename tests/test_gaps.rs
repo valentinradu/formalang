@@ -808,6 +808,108 @@ fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+// =============================================================================
+// Tier-1 escape analysis extension: a closure that captures a function-
+// local binding cannot escape the function frame even when wrapped in
+// an aggregate (struct, enum, tuple, array, dict).
+// =============================================================================
+
+#[test]
+fn test_struct_returned_with_closure_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Box { callback: () -> Number }
+        fn make() -> Box {
+            let local: Number = 1
+            Box(callback: () -> local)
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding when struct-wrapped closure captures \
+             a function-local; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_returned_with_closure_capturing_module_let_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        let factor: Number = 2
+        struct Box { callback: () -> Number }
+        fn make() -> Box {
+            Box(callback: () -> factor)
+        }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        fn outer() -> Number {
+            let mut f: () -> Number = () -> 0
+            {
+                let local: Number = 5
+                f = () -> local
+            }
+            f()
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding when closure assigned to outer mut \
+             binding captures inner-scope local; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_tuple_returned_with_closure_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        fn make() -> (n: Number, f: () -> Number) {
+            let local: Number = 7
+            (n: 0, f: () -> local)
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding for tuple-wrapped escape; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
 #[test]
 fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
