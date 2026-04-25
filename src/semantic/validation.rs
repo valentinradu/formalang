@@ -556,9 +556,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 params,
                 return_type,
                 body,
-                span,
+                ..
             } => {
-                self.validate_expr_closure(params, return_type.as_ref(), body, *span, file);
+                self.validate_expr_closure(params, return_type.as_ref(), body, file);
             }
             Expr::LetExpr { .. } => {
                 self.validate_expr_let(expr, file);
@@ -1509,7 +1509,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         params: &[crate::ast::ClosureParam],
         return_type: Option<&crate::ast::Type>,
         body: &Expr,
-        span: Span,
         file: &File,
     ) {
         for param in params {
@@ -1557,11 +1556,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.inference_scope_stack.borrow_mut().pop();
             let expected = Self::type_to_string(declared);
             if !self.type_strings_compatible(&expected, &body_type) {
+                // Audit2 B13: cite the body span (the offending expression),
+                // not the whole closure-position span — IDE goto-definition
+                // and `cargo check` output now point at the wrong return.
                 self.errors.push(CompilerError::FunctionReturnTypeMismatch {
                     function: "<closure>".to_string(),
                     expected,
                     actual: body_type,
-                    span,
+                    span: body.span(),
                 });
             }
         }
