@@ -429,3 +429,37 @@ fn test_dict_literal_homogeneous_accepted() -> Result<(), Box<dyn std::error::Er
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_let_general_type_mismatch_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B12: a let binding's value must be type-compatible with
+    // its declared annotation. Previously only the nil-vs-non-optional
+    // case was checked, so `let f: m::Foo = "wrong"` compiled silently.
+    let source = r#"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+        }
+        let f: m::Foo = "wrong"
+    "#;
+    let err = compile(source).err().ok_or("expected TypeMismatch")?;
+    if !err
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {err:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_let_general_type_match_accepted() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit2 B12 positive case.
+    let source = r"
+        mod m {
+            pub struct Foo { x: Number = 0 }
+        }
+        let f: m::Foo = m::Foo()
+    ";
+    compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
+    Ok(())
+}

@@ -40,9 +40,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "validates several let-binding rules in sequence; splitting them obscures the shared `declared`/`inferred` derivation"
+    )]
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
         self.validate_expr(&let_binding.value, file);
-        // nil literals must not be assigned to non-optional types
+        // nil literals must not be assigned to non-optional types, and
+        // (audit2 B12) the inferred value type must be compatible with
+        // the declared annotation. Previously only the nil case was
+        // checked, so `let f: m::Foo = "wrong"` compiled silently.
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
             let inferred = self.infer_type(&let_binding.value, file);
@@ -51,6 +58,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     expected: declared,
                     span: let_binding.span,
                 });
+            } else {
+                // General type-mismatch check, mirroring the field-default
+                // rule in `validate_struct_expressions`.
+                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                let inner_to_optional =
+                    declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
+                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
+                let is_closure_pair = matches!(type_ann, Type::Closure { .. })
+                    && matches!(let_binding.value, Expr::ClosureExpr { .. });
+                if !nil_to_optional
+                    && !inner_to_optional
+                    && !has_unknown
+                    && inferred != "Unknown"
+                    && declared != "Unknown"
+                    && !is_closure_pair
+                    && !self.type_strings_compatible(&declared, &inferred)
+                {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: declared,
+                        found: inferred,
+                        span: let_binding.span,
+                    });
+                }
             }
         }
         // Audit2 B9: when a let binding declares a closure type and is

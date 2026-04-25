@@ -346,9 +346,9 @@ fn test_lower_module_with_function() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_path_type_in_let() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"
-        let p: Path = "/"
-    "#;
+    let source = r"
+        let p: Path = /home/user/file
+    ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let binding = module
         .lets
