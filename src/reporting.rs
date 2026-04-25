@@ -17,9 +17,7 @@ use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source};
 /// colour-on-tty-only can set `NO_COLOR` from a shell wrapper. See
 /// <https://no-color.org>.
 fn colour_enabled() -> bool {
-    std::env::var_os("NO_COLOR")
-        .filter(|v| !v.is_empty())
-        .is_none()
+    std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
 }
 
 /// Report a single compiler error with beautiful formatting
