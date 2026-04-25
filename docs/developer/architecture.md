@@ -28,7 +28,10 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
   1–5 build symbol tables, resolve types, validate expressions, validate
   traits, detect cycles)
 - **IR Lowering**: Converts the validated AST + symbol table into a
-  fully type-resolved `IrModule`
+  fully type-resolved `IrModule`. Module nesting is **flattened**:
+  inline `mod foo { struct Bar { ... } }` lowers to a top-level
+  `IrStruct { name: "foo::Bar", ... }`, so backends always see a flat
+  list of definitions keyed by qualified name.
 - **Plugin System**: External `IrPass` transforms and `Backend` emitters
   composed through `Pipeline`
 

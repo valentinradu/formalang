@@ -1,10 +1,25 @@
-// Semantic analysis (validation only - no evaluation or expansion)
-// Pass 0: Resolve modules and imports
-// Pass 1: Build symbol table
-// Pass 2: Resolve type references
-// Pass 3: Validate expressions (operators, for/if/match)
-// Pass 4: Validate trait composition (model trait field requirements only; view traits are categories)
-// Pass 5: Detect circular dependencies
+//! Semantic analysis (validation only — no evaluation or expansion).
+//!
+//! The semantic layer runs six passes against a parsed `File`:
+//!
+//! - **Pass 0** — resolve modules and imports.
+//! - **Pass 1** — build the symbol table (structs, traits, enums,
+//!   impls, lets, functions, modules). Includes a sub-pass (`Pass 1.5`)
+//!   that validates duplicate generic parameters before later passes
+//!   consume them.
+//! - **Pass 2** — resolve type references; map AST `Type::Ident` /
+//!   `Type::Generic` to entries in the symbol table.
+//! - **Pass 3** — validate expressions: operator typing, `for`/`if`/
+//!   `match` shape, mutability/sink rules.
+//! - **Pass 4** — validate trait composition (model traits' required
+//!   field requirements; view traits are validated separately).
+//! - **Pass 5** — detect circular dependencies in let-bindings and
+//!   in struct/trait/enum field types.
+//!
+//! Audit2 B40: this file's overview comment used `//` (a regular line
+//! comment) and didn't reach `cargo doc`. Promoted to `//!` so the
+//! pass list shows up in the rendered API docs alongside the
+//! `SemanticAnalyzer` type.
 
 pub(crate) mod import_graph;
 pub mod module_resolver;

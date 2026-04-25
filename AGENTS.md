@@ -110,8 +110,8 @@ system.
   (AST) via `compile`
 - **Plugin system**: `IrPass` for IR transforms; `Backend` for code
   generation; composed with `Pipeline`
-- **Built-in passes**: `DeadCodeEliminationPass`, `ConstantFoldingPass` in
-  `formalang::ir`
+- **Built-in passes**: `DeadCodeEliminationPass`, `ConstantFoldingPass`,
+  `MonomorphisePass` in `formalang::ir`
 
 ### Module Resolution
 
