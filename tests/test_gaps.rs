@@ -557,3 +557,51 @@ fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
 }
+
+// =============================================================================
+// Tier-1 audit (item B): IR lowering surfaces unresolved type names as
+// `UndefinedType` instead of silently producing `TypeParam(name)`. This
+// catches typos and out-of-scope generic parameter references that
+// would otherwise leak through to monomorphisation.
+// =============================================================================
+
+#[test]
+fn test_unresolved_type_in_struct_field_is_loud() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Holder { value: Numbr }
+    ";
+    let result = compile_to_ir(source);
+    let errors = result.err().ok_or("expected an UndefinedType error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "Numbr"))
+    {
+        return Err(format!("expected UndefinedType for `Numbr`, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_in_scope_generic_param_still_lowers_as_typeparam() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Sanity: a real generic parameter must NOT trigger the new
+    // UndefinedType error — it should still resolve to TypeParam(name).
+    let source = r"
+        pub struct Box<T> { value: T }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let s = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Box")
+        .ok_or("Box struct missing")?;
+    let value_field = s
+        .fields
+        .iter()
+        .find(|f| f.name == "value")
+        .ok_or("value field missing")?;
+    if !matches!(&value_field.ty, formalang::ir::ResolvedType::TypeParam(n) if n == "T") {
+        return Err(format!("expected value: TypeParam(T), got {:?}", value_field.ty).into());
+    }
+    Ok(())
+}

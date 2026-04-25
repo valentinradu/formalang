@@ -473,8 +473,27 @@ impl IrLowerer<'_> {
                 reason = "len == 1 check above guarantees index 0"
             )]
             let name = &path_strs[0];
-            if let Some(let_type) = self.symbols.get_let_type(name) {
-                let ty = self.string_to_resolved_type(let_type);
+            if let Some(let_type) = self.symbols.get_let_type(name).map(str::to_string) {
+                // Audit Tier-1: prefer the simple-name resolution; fall
+                // back to the value's known type for composite type
+                // strings the helper can't reparse (closures, tuples,
+                // arrays, etc.). The let was previously lowered, so its
+                // resolved type is already cached on the IR side.
+                if let Some(ty) = self.string_to_resolved_type(&let_type) {
+                    return IrExpr::LetRef {
+                        name: name.clone(),
+                        ty,
+                    };
+                }
+                let ty = self
+                    .module
+                    .lets
+                    .iter()
+                    .find(|l| l.name == *name)
+                    .map_or_else(
+                        || ResolvedType::TypeParam("Unknown".to_string()),
+                        |l| l.value.ty().clone(),
+                    );
                 return IrExpr::LetRef {
                     name: name.clone(),
                     ty,

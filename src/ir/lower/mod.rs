@@ -190,6 +190,20 @@ impl<'a> IrLowerer<'a> {
         None
     }
 
+    /// Whether `name` matches a generic parameter declared in any
+    /// currently-active generic scope (struct/enum/trait/impl/function).
+    /// Used by `lower_type` and `string_to_resolved_type` to tell
+    /// legitimate type-parameter references apart from references to
+    /// names that fail to resolve to any known type.
+    pub(super) fn is_generic_param_in_scope(&self, name: &str) -> bool {
+        for frame in &self.generic_scopes {
+            if frame.iter().any(|p| p.name == name) {
+                return true;
+            }
+        }
+        false
+    }
+
     fn lower_file(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
         // Pre-pass: register imported structs and enums so they have IDs
         self.register_imported_types();
@@ -262,10 +276,12 @@ impl<'a> IrLowerer<'a> {
         self.current_function_return_type = saved_return_type;
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
-        } else if let Some(let_type) = self.symbols.get_let_type(ident_name) {
-            self.string_to_resolved_type(let_type)
         } else {
-            value.ty().clone()
+            self.symbols
+                .get_let_type(ident_name)
+                .map(str::to_string)
+                .and_then(|s| self.string_to_resolved_type(&s))
+                .unwrap_or_else(|| value.ty().clone())
         };
         // Audit #41: an empty array literal lowers to `Array(Never)`
         // because it has no elements to seed the element type from.
@@ -565,6 +581,7 @@ impl<'a> IrLowerer<'a> {
         for (name, trait_info) in &module_symbols.traits {
             let qualified_name = format!("{module_prefix}::{name}");
             let generic_params = self.lower_generic_params(&trait_info.generics);
+            self.generic_scopes.push(generic_params.clone());
             let fields: Vec<IrField> = trait_info
                 .fields
                 .iter()
@@ -582,6 +599,7 @@ impl<'a> IrLowerer<'a> {
                 .iter()
                 .map(|m| self.lower_fn_sig(m))
                 .collect();
+            self.generic_scopes.pop();
             if let Err(e) = self.module.add_trait(
                 qualified_name.clone(),
                 IrTrait {
@@ -645,6 +663,7 @@ impl<'a> IrLowerer<'a> {
     /// so imported-module enums carry real variant shapes into the IR.
     fn register_enum(&mut self, name: &str, enum_info: &EnumInfo) {
         let generic_params = self.lower_generic_params(&enum_info.generics);
+        self.generic_scopes.push(generic_params.clone());
 
         let variants: Vec<IrEnumVariant> = enum_info
             .variants
@@ -673,6 +692,8 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
+        self.generic_scopes.pop();
+
         if let Err(e) = self.module.add_enum(
             name.to_string(),
             IrEnum {
@@ -689,7 +710,12 @@ impl<'a> IrLowerer<'a> {
 
     /// Helper method to register a struct with full field information
     fn register_struct(&mut self, name: &str, struct_info: &StructInfo) {
-        // Convert fields from StructInfo to IrField
+        // Convert generic params first so field types referencing `T`
+        // resolve as in-scope params instead of triggering an
+        // `UndefinedType` from the tightened `lower_type` fallback.
+        let generic_params = self.lower_generic_params(&struct_info.generics);
+        self.generic_scopes.push(generic_params.clone());
+
         let fields: Vec<IrField> = struct_info
             .fields
             .iter()
@@ -706,6 +732,8 @@ impl<'a> IrLowerer<'a> {
             })
             .collect();
 
+        self.generic_scopes.pop();
+
         // Convert trait names to trait IDs
         // Use get_all_traits_for_struct to include both inline traits and impl blocks
         let all_trait_names = self.symbols.get_all_traits_for_struct(name);
@@ -713,9 +741,6 @@ impl<'a> IrLowerer<'a> {
             .iter()
             .filter_map(|trait_name| self.module.trait_id(trait_name))
             .collect();
-
-        // Convert generic params
-        let generic_params = self.lower_generic_params(&struct_info.generics);
 
         if let Err(e) = self.module.add_struct(
             name.to_string(),
@@ -873,8 +898,10 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let generic_params = self.lower_generic_params(&t.generics);
+        self.generic_scopes.push(generic_params.clone());
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
+        self.generic_scopes.pop();
 
         let Some(trait_def) = self.module.trait_mut(id) else {
             self.record_missing_id("trait", id.0);
@@ -915,11 +942,13 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let generic_params = self.lower_generic_params(&s.generics);
+        self.generic_scopes.push(generic_params.clone());
         let fields: Vec<IrField> = s
             .fields
             .iter()
             .map(|f| self.lower_struct_field(f))
             .collect();
+        self.generic_scopes.pop();
 
         let Some(struct_def) = self.module.struct_mut(id) else {
             self.record_missing_id("struct", id.0);
@@ -944,6 +973,7 @@ impl<'a> IrLowerer<'a> {
         };
 
         let generic_params = self.lower_generic_params(&e.generics);
+        self.generic_scopes.push(generic_params.clone());
         let variants: Vec<IrEnumVariant> = e
             .variants
             .iter()
@@ -963,6 +993,7 @@ impl<'a> IrLowerer<'a> {
                     .collect(),
             })
             .collect();
+        self.generic_scopes.pop();
 
         let Some(enum_def) = self.module.enum_mut(id) else {
             self.record_missing_id("enum", id.0);
@@ -990,10 +1021,13 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let generic_params = self.lower_generic_params(&t.generics);
+        self.generic_scopes.push(generic_params.clone());
 
         let fields: Vec<IrField> = t.fields.iter().map(|f| self.lower_field_def(f)).collect();
 
         let methods: Vec<IrFunctionSig> = t.methods.iter().map(|m| self.lower_fn_sig(m)).collect();
+
+        self.generic_scopes.pop();
 
         let Some(trait_def) = self.module.trait_mut(id) else {
             self.record_missing_id("trait", id.0);
@@ -1026,12 +1060,15 @@ impl<'a> IrLowerer<'a> {
             .collect();
 
         let generic_params = self.lower_generic_params(&s.generics);
+        self.generic_scopes.push(generic_params.clone());
 
         let fields: Vec<IrField> = s
             .fields
             .iter()
             .map(|f| self.lower_struct_field(f))
             .collect();
+
+        self.generic_scopes.pop();
 
         let Some(struct_def) = self.module.struct_mut(id) else {
             self.record_missing_id("struct", id.0);
@@ -1052,6 +1089,7 @@ impl<'a> IrLowerer<'a> {
         };
 
         let generic_params = self.lower_generic_params(&e.generics);
+        self.generic_scopes.push(generic_params.clone());
 
         let variants: Vec<IrEnumVariant> = e
             .variants
@@ -1061,6 +1099,8 @@ impl<'a> IrLowerer<'a> {
                 fields: v.fields.iter().map(|f| self.lower_field_def(f)).collect(),
             })
             .collect();
+
+        self.generic_scopes.pop();
 
         let Some(enum_def) = self.module.enum_mut(id) else {
             self.record_missing_id("enum", id.0);
@@ -1096,17 +1136,6 @@ impl<'a> IrLowerer<'a> {
         // Set current impl struct/enum for self reference resolution
         self.current_impl_struct = Some(i.name.name.clone());
 
-        // Pre-compute method return types so lowering a body can resolve
-        // forward references like `self.other_method()` without needing
-        // the impl to already be in `module.impls`.
-        let saved_impl_returns = self.current_impl_method_returns.take();
-        let mut impl_returns: HashMap<String, Option<ResolvedType>> = HashMap::new();
-        for f in &i.functions {
-            let ret = f.return_type.as_ref().map(|t| self.lower_type(t));
-            impl_returns.insert(f.name.name.clone(), ret);
-        }
-        self.current_impl_method_returns = Some(impl_returns);
-
         let generic_params = self.lower_generic_params(&i.generics);
         // The impl's methods reference type parameters whose trait
         // constraints are declared on the *target* struct/enum
@@ -1139,6 +1168,20 @@ impl<'a> IrLowerer<'a> {
             }
         }
         self.generic_scopes.push(scope);
+
+        // Pre-compute method return types so lowering a body can resolve
+        // forward references like `self.other_method()` without needing
+        // the impl to already be in `module.impls`. Must run *after* the
+        // generic-scope push so a method returning `T` resolves the type
+        // param against the impl/target scope instead of failing
+        // `UndefinedType` lookup.
+        let saved_impl_returns = self.current_impl_method_returns.take();
+        let mut impl_returns: HashMap<String, Option<ResolvedType>> = HashMap::new();
+        for f in &i.functions {
+            let ret = f.return_type.as_ref().map(|t| self.lower_type(t));
+            impl_returns.insert(f.name.name.clone(), ret);
+        }
+        self.current_impl_method_returns = Some(impl_returns);
         let functions: Vec<IrFunction> = i
             .functions
             .iter()
@@ -1408,9 +1451,19 @@ impl<'a> IrLowerer<'a> {
                     ResolvedType::Trait(id)
                 } else if let Some(id) = self.module.enum_id(lookup_name) {
                     ResolvedType::Enum(id)
-                } else {
-                    // Might be a type parameter
+                } else if self.is_generic_param_in_scope(name) {
                     ResolvedType::TypeParam(name.clone())
+                } else {
+                    // Tier-1 audit: surface unresolved type names loudly
+                    // instead of silently lowering to `TypeParam(name)`.
+                    // Semantic should normally catch this; reaching here
+                    // means a typo, an unimported type, or an out-of-
+                    // scope generic param.
+                    self.errors.push(CompilerError::UndefinedType {
+                        name: name.clone(),
+                        span: ident.span,
+                    });
+                    ResolvedType::TypeParam("Unknown".to_string())
                 }
             }
 
@@ -1436,8 +1489,14 @@ impl<'a> IrLowerer<'a> {
                         args: type_args,
                     };
                 }
-                // Fallback: type parameter (e.g. `T` in a generic definition)
-                ResolvedType::TypeParam(name.name.clone())
+                if self.is_generic_param_in_scope(&name.name) {
+                    return ResolvedType::TypeParam(name.name.clone());
+                }
+                self.errors.push(CompilerError::UndefinedType {
+                    name: name.name.clone(),
+                    span: name.span,
+                });
+                ResolvedType::TypeParam("Unknown".to_string())
             }
 
             Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),
