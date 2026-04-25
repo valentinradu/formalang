@@ -692,8 +692,8 @@ fn test_let_expr_as_value() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
             value: Number = (let x: Number = 5
-            let y: Number = 10
-            x + y)
+            in let y: Number = 10
+            in x + y)
         }
     ";
     compile(source).map_err(|e| format!("LetExpr as value: {e:?}"))?;

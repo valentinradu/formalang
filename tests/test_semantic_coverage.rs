@@ -1136,7 +1136,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
             value: Number = (let x: Number = 5
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Let expression: {e:?}"))?;

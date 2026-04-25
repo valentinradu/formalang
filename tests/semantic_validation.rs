@@ -188,7 +188,7 @@ fn test_let_expression_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
             a: Number = (let x = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -200,8 +200,8 @@ fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Logic {
             a: Boolean = (let x = true
-            let y = false
-            x)
+            in let y = false
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -585,7 +585,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
             value: Number = (let x: Number = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -597,7 +597,7 @@ fn test_let_mutable() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
             initial: Number = (let mut count = 0
-            count)
+            in count)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -609,7 +609,7 @@ fn test_let_simple_value() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
             value: Number = (let x = 2
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

@@ -593,9 +593,9 @@ fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calc {
             result: Number = (let a = 1
-            let b = 2
-            let c = 3
-            c)
+            in let b = 2
+            in let c = 3
+            in c)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -611,7 +611,7 @@ fn test_let_with_struct() -> Result<(), Box<dyn std::error::Error>> {
         }
         struct Container {
             point: Point = (let p = Point(x: 1, y: 2)
-            p)
+            in p)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

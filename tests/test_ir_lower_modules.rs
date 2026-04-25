@@ -2031,8 +2031,8 @@ fn dce_via_pipeline_block_expression_in_default() -> Result<(), Box<dyn std::err
         struct A {
             x: Number = (
                 let a = 1
-                let b = 2
-                a + b
+                in let b = 2
+                in a + b
             )
         }
     ";
@@ -2355,8 +2355,8 @@ fn fold_constants_block_expression_in_default() -> Result<(), Box<dyn std::error
         struct A {
             x: Number = (
                 let a = 2 + 3
-                let b = 4 * 2
-                a + b
+                in let b = 4 * 2
+                in a + b
             )
         }
     ";

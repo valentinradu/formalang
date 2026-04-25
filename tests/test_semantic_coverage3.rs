@@ -277,7 +277,7 @@ fn test_let_dep_via_let_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let base: Number = 10
         let computed: Number = (let tmp: Number = base
-        tmp + 1)
+        in tmp + 1)
     ";
     compile(source).map_err(|e| format!("Let expr as dependency: {e:?}"))?;
     Ok(())
@@ -1063,7 +1063,7 @@ fn test_let_expr_mutability() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config { mut val: Number = 0 }
         let cfg: Config = Config(val: (let x: Number = 5
-        x))
+        in x))
     ";
     let result = compile(source);
     if result.is_ok() {

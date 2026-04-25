@@ -219,12 +219,30 @@ fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
             x: Number = (let a = 1
-            let b = 2
-            let c = 3
-            a)
+            in let b = 2
+            in let c = 3
+            in a)
         }
     ";
     compile(source).map_err(|e| format!("Let chain: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_let_expr_requires_in_separator() -> Result<(), Box<dyn std::error::Error>> {
+    // Audit #21: a `let` expression without the `in` keyword between
+    // value and body should fail to parse — the grammar is no longer
+    // ambiguous and shouldn't fall back to greedy parsing.
+    let source = r"
+        struct A {
+            x: Number = (let a = 1
+            a)
+        }
+    ";
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected `let` without `in` to fail to parse, but it compiled".into());
+    }
     Ok(())
 }
 

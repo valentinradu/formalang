@@ -65,7 +65,7 @@ fn test_expr_span_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
             x: String = (let d = ["a": "b"]
-            d["a"])
+            in d["a"])
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1028,7 +1028,7 @@ fn test_module_impl_with_expressions() -> Result<(), Box<dyn std::error::Error>>
         mod math {
             pub struct Calculator {
                 x: Number = (let result = 1 + 2
-                result)
+                in result)
             }
         }
     ";
@@ -1293,7 +1293,7 @@ fn test_let_in_impl_scope() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calc {
             result: Number = (let doubled = 2
-            doubled)
+            in doubled)
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1306,7 +1306,7 @@ fn test_let_reference_in_impl() -> Result<(), Box<dyn std::error::Error>> {
         let base: Number = 1
         struct Config {
             result: Number = (let x = base
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;

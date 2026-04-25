@@ -607,7 +607,7 @@ fn test_let_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
             value: Number = (let x = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -619,7 +619,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
             value: Number = (let x: Number = 10
-            x)
+            in x)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -631,7 +631,7 @@ fn test_let_mut() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
             value: Number = (let mut count = 0
-            count)
+            in count)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -643,9 +643,9 @@ fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Computation {
             result: Number = (let a = 1
-            let b = 2
-            let c = 3
-            a)
+            in let b = 2
+            in let c = 3
+            in a)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

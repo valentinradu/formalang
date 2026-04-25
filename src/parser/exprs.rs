@@ -462,13 +462,17 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Let expression: let pattern = value body OR let pattern: Type = value body OR let mut pattern = value body
+        // Let expression: `let pattern = value in body` (also with `mut` and
+        // optional `: Type` annotation). Audit #21: the explicit `in`
+        // separator removes the value/body grammar ambiguity that
+        // previously relied on greedy parsing to find the boundary.
         let let_expr = just(Token::Let)
             .ignore_then(just(Token::Mut).or_not())
             .then(binding_pattern_parser())
             .then(just(Token::Colon).ignore_then(type_parser()).or_not())
             .then_ignore(just(Token::Equals))
             .then(expr.clone())
+            .then_ignore(just(Token::In))
             .then(expr.clone())
             .map_with(
                 |((((mutable, pattern), ty), value), body), e| Expr::LetExpr {

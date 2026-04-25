@@ -2024,7 +2024,7 @@ fn test_lower_let_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct S {
             value: Number = (let x = 5
-            x)
+            in x)
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;

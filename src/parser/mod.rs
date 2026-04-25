@@ -1616,9 +1616,9 @@ mod tests {
         reason = "match expression over all Expr variants — exhaustive arms cannot be extracted without losing context"
     )]
     fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let x = 42 x");
+        let result = parse_expr_from_let("let x = 42 in x");
         if result.is_err() {
-            return Err(format!("Failed to parse let x = 42 x: {result:?}").into());
+            return Err(format!("Failed to parse `let x = 42 in x`: {result:?}").into());
         }
         let expr = result.map_err(|e| format!("{e:?}"))?;
         match expr {
@@ -1729,7 +1729,7 @@ mod tests {
 
     #[test]
     fn test_let_expr_with_type() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let count: Number = 100 count");
+        let result = parse_expr_from_let("let count: Number = 100 in count");
         if result.is_err() {
             return Err(format!("Failed to parse let with type: : {result:?}").into());
         }
@@ -1776,7 +1776,7 @@ mod tests {
 
     #[test]
     fn test_let_expr_mutable() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let mut counter = 0 counter");
+        let result = parse_expr_from_let("let mut counter = 0 in counter");
         if result.is_err() {
             return Err(format!("Failed to parse let mut: {result:?}").into());
         }
@@ -1842,7 +1842,7 @@ mod tests {
 
     #[test]
     fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let x = 1 let y = 2 x");
+        let result = parse_expr_from_let("let x = 1 in let y = 2 in x");
         if result.is_err() {
             return Err(format!("Failed to parse nested let: {result:?}").into());
         }
@@ -1993,7 +1993,7 @@ mod tests {
     fn test_let_expr_method_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with method call value, then reference body
         // This uses the let EXPRESSION, not block statement
-        let result = parse_expr_from_let("let v = foo.bar(1) v");
+        let result = parse_expr_from_let("let v = foo.bar(1) in v");
         if result.is_err() {
             return Err(
                 format!("Failed to parse let expr method call then ref: : {result:?}").into(),
@@ -2005,7 +2005,7 @@ mod tests {
     #[test]
     fn test_let_expr_fn_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with function call value, then reference body
-        let result = parse_expr_from_let("let v = foo(1) v");
+        let result = parse_expr_from_let("let v = foo(1) in v");
         if result.is_err() {
             return Err(format!("Failed to parse let expr fn call then ref: : {result:?}").into());
         }
@@ -2015,7 +2015,7 @@ mod tests {
     #[test]
     fn test_let_expr_field_access_then_ref() -> Result<(), Box<dyn std::error::Error>> {
         // Let expression with field access value, then reference body
-        let result = parse_expr_from_let("let v = foo.bar v");
+        let result = parse_expr_from_let("let v = foo.bar in v");
         if result.is_err() {
             return Err(
                 format!("Failed to parse let expr field access then ref: : {result:?}").into(),
