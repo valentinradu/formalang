@@ -1483,14 +1483,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        // Audit finding #28: the AST has no separate `is_extern` flag on
-        // `FunctionDef` — `extern_fn_parser` produces `body: None` and
-        // `function_def_parser` always produces `body: Some(_)`. The
-        // parser invariant therefore enforces extern/body consistency at
-        // construction time; no additional semantic check is possible.
-        // `ExternFnWithBody` / `RegularFnWithoutBody` remain reachable
-        // through the impl-block path (`collect_definition_impl`) where
-        // `ImplDef` does carry an explicit `is_extern`.
+        // Audit finding #28: `FunctionDef` carries an explicit
+        // `is_extern` flag set by the parser (`extern_fn_parser` →
+        // `true`, `function_def_parser` → `false`). Cross-check it
+        // against `body` so a mismatch — which can happen under parser
+        // error recovery, even though the happy-path parsers preserve
+        // the invariant — surfaces a meaningful semantic error.
+        if func_def.is_extern && func_def.body.is_some() {
+            self.errors.push(CompilerError::ExternFnWithBody {
+                function: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+        } else if !func_def.is_extern && func_def.body.is_none() {
+            self.errors.push(CompilerError::RegularFnWithoutBody {
+                function: func_def.name.name.clone(),
+                span: func_def.name.span,
+            });
+        }
 
         let params: Vec<ParamInfo> = func_def
             .params

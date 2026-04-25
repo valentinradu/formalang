@@ -1155,7 +1155,11 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        let is_extern = body.is_none();
+        // Audit #28: trust the AST's explicit `is_extern` flag rather
+        // than re-deriving from `body.is_none()`. Under parser error
+        // recovery the two can diverge; the semantic layer surfaces
+        // that mismatch as `ExternFnWithBody` / `RegularFnWithoutBody`.
+        let is_extern = f.is_extern;
 
         self.local_binding_scopes.pop();
 

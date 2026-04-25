@@ -372,6 +372,7 @@ where
                     params,
                     return_type,
                     body: None,
+                    is_extern: true,
                     doc: None,
                     span,
                 }
@@ -676,6 +677,7 @@ where
                     params,
                     return_type,
                     body: Some(body),
+                    is_extern: false,
                     doc: None,
                     span,
                 }

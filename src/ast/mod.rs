@@ -107,6 +107,13 @@ pub struct FunctionDef {
     pub return_type: Option<Type>,
     /// `None` for `extern fn`; `Some(_)` for regular functions.
     pub body: Option<Expr>,
+    /// `true` when produced by `extern_fn_parser` (`extern fn name(...)`).
+    /// `false` for regular function definitions. Tracked alongside
+    /// `body` so the semantic layer can detect `extern fn { ... }` and
+    /// `fn name(...)` (without body) consistently — including under
+    /// parser error recovery, where the body may not match what the
+    /// `extern` keyword implies. Audit finding #28.
+    pub is_extern: bool,
     /// Joined `///` doc comments preceding this definition. Audit #51.
     pub doc: Option<String>,
     pub span: Span,
