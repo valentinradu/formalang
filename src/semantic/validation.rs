@@ -45,6 +45,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         reason = "validates several let-binding rules in sequence; splitting them obscures the shared `declared`/`inferred` derivation"
     )]
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
+        if let Some(type_ann) = &let_binding.type_annotation {
+            // Tier-1 item E2: surface
+            // `let x: SomeTrait = ...` as TraitUsedAsValueType (and
+            // any other invalid type in the annotation) before the
+            // value/declared compatibility check would mask it.
+            self.validate_type(type_ann);
+        }
         self.validate_expr(&let_binding.value, file);
         // nil literals must not be assigned to non-optional types, and
         // (audit2 B12) the inferred value type must be compatible with

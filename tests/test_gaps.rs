@@ -910,6 +910,103 @@ fn test_tuple_returned_with_closure_capturing_local_rejected(
     Ok(())
 }
 
+// =============================================================================
+// Tier-1 audit (item E2): `Trait` in a value-producing type position
+// (param, return, field, let annotation, closure params/return) is a
+// hard error. FormaLang has no dynamic dispatch; trait-bounded values
+// must go through generic parameters so the concrete type is known
+// after monomorphisation.
+// =============================================================================
+
+#[test]
+fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        fn render(d: Drawable) -> Number { 0 }
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        let d: Drawable = Circle(r: 1)
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_struct_field_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Container { d: Drawable }
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_generic_constraint_ok() -> Result<(), Box<dyn std::error::Error>> {
+    // `<T: Drawable>` is the canonical legal form — Drawable here is a
+    // *constraint*, not a value type. Should compile.
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        fn render<T: Drawable>(d: T) -> Number { 0 }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_impl_target_ok() -> Result<(), Box<dyn std::error::Error>> {
+    // `impl Trait for Foo` is the canonical legal form — Drawable is
+    // an *impl target*, not a value type.
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
 #[test]
 fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"

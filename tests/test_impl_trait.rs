@@ -154,7 +154,16 @@ impl Named for Broken {
 
 #[test]
 fn test_trait_constraint_satisfied_via_impl() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+    // Tier-1 item E2: trait values are banned in argument positions;
+    // the test now exercises the same `impl Printable for Doc` path
+    // through a generic-bounded parameter, which is the canonical way
+    // to take a trait-constrained value in FormaLang.
+    //
+    // Field-through-bound access (`item.label` with `item: T,
+    // T: Printable`) is a separate inference limitation tracked
+    // independently — the body here is a constant so the test stays
+    // focused on impl/constraint resolution.
+    let source = r#"
 trait Printable {
     label: String
 }
@@ -163,10 +172,10 @@ struct Doc {
 }
 impl Printable for Doc {}
 
-fn print_it(item: Printable) -> String {
-    item.label
+fn print_it<T: Printable>(item: T) -> String {
+    "ok"
 }
-";
+"#;
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

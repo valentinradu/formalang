@@ -83,6 +83,25 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
                 .with_help("Check that the type is defined or imported")
         }
 
+        CompilerError::TraitUsedAsValueType { trait_name, .. } => {
+            Report::build(ReportKind::Error, filename, span.start.offset)
+                .with_code("E063")
+                .with_message(format!("Trait '{trait_name}' used as a value type"))
+                .with_label(
+                    Label::new((filename, span.start.offset..span.end.offset))
+                        .with_message(format!(
+                            "trait '{}' cannot be the type of a value",
+                            trait_name.fg(Color::Red)
+                        ))
+                        .with_color(Color::Red),
+                )
+                .with_help(format!(
+                    "FormaLang has no dynamic dispatch. Take the trait as a generic bound \
+                     instead: `<T: {trait_name}>` and pass values of any concrete type that \
+                     implements `{trait_name}`."
+                ))
+        }
+
         CompilerError::DuplicateDefinition { name, .. } => {
             Report::build(ReportKind::Error, filename, span.start.offset)
                 .with_code("E003")

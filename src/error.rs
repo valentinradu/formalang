@@ -85,6 +85,18 @@ pub enum CompilerError {
     #[error("Cannot redefine primitive type '{name}'")]
     PrimitiveRedefinition { name: String, span: Span },
 
+    /// A trait name appeared in a type position that produces a value
+    /// (parameter, return, let annotation, struct/enum field, closure
+    /// param/return). `FormaLang` has no dynamic dispatch — trait values
+    /// must be passed via a generic-bounded parameter
+    /// (`fn foo<T: SomeTrait>(x: T)`) so the concrete type is known
+    /// after monomorphisation.
+    #[error(
+        "trait '{trait_name}' cannot be used as a value type — use a generic bound \
+         like `<T: {trait_name}>` instead"
+    )]
+    TraitUsedAsValueType { trait_name: String, span: Span },
+
     // Trait validation errors
     #[error("Undefined trait: '{name}'")]
     UndefinedTrait { name: String, span: Span },
@@ -349,6 +361,7 @@ impl CompilerError {
             | Self::ParseError { span, .. }
             | Self::UndefinedType { span, .. }
             | Self::PrimitiveRedefinition { span, .. }
+            | Self::TraitUsedAsValueType { span, .. }
             | Self::UndefinedTrait { span, .. }
             | Self::NotATrait { span, .. }
             | Self::MissingTraitField { span, .. }

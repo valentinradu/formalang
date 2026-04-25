@@ -395,11 +395,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     span: ident.span,
                 });
             }
-        } else if self.symbols.is_type(&ident.name)
-            || self.symbols.is_trait(&ident.name)
-            || self.is_type_parameter(&ident.name)
-        {
-            // Valid type, trait type, or type parameter — nothing to report
+        } else if self.symbols.is_trait(&ident.name) {
+            // FormaLang has no dynamic dispatch: a trait name in a
+            // value-producing type position (param, return, field,
+            // let annotation) means the user expected a trait object
+            // value, which the IR does not represent. Tier-1 audit:
+            // require `<T: Trait>` instead of `: Trait`.
+            self.errors.push(CompilerError::TraitUsedAsValueType {
+                trait_name: ident.name.clone(),
+                span: ident.span,
+            });
+        } else if self.symbols.is_type(&ident.name) || self.is_type_parameter(&ident.name) {
+            // Valid struct/enum type or generic type parameter — OK.
         } else if ident.name.len() == 1 && ident.name.chars().next().is_some_and(char::is_uppercase)
         {
             self.errors.push(CompilerError::OutOfScopeTypeParameter {
@@ -424,6 +431,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         args: &[Type],
         span: crate::location::Span,
     ) {
+        if self.symbols.is_trait(&name.name) {
+            // `Trait<X>` in a value position is also banned — same
+            // reason as `Trait` (no dynamic dispatch). The fix is the
+            // same: `<T: Trait<X>>` (currently unsupported, see
+            // generic-trait deferred PR).
+            self.errors.push(CompilerError::TraitUsedAsValueType {
+                trait_name: name.name.clone(),
+                span: name.span,
+            });
+            return;
+        }
         if !self.symbols.is_type(&name.name) {
             self.errors.push(CompilerError::UndefinedType {
                 name: name.name.clone(),
