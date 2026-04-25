@@ -4,7 +4,9 @@
 //! hover, go-to-definition, etc. These queries use the `SemanticAnalyzer`'s symbol
 //! table and the AST node finder to provide context-aware information.
 
-use super::symbol_table::{EnumInfo, LetInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo};
+use super::symbol_table::{
+    EnumInfo, FunctionInfo, LetInfo, StructInfo, SymbolKind, SymbolTable, TraitInfo,
+};
 use crate::ast::Visibility;
 use crate::location::Span;
 use std::path::PathBuf;
@@ -213,6 +215,11 @@ impl<'a> QueryProvider<'a> {
             return Some(Self::let_info_to_hover(name, info));
         }
 
+        // Check standalone functions (audit2 B16).
+        if let Some(info) = self.symbols.get_function(name) {
+            return Some(Self::function_info_to_hover(name, info));
+        }
+
         // Cross-module: search the imported-module cache when provided.
         if let Some(cache) = self.module_cache {
             for (_, symbols) in cache.values() {
@@ -227,6 +234,9 @@ impl<'a> QueryProvider<'a> {
                 }
                 if let Some(info) = symbols.lets.get(name) {
                     return Some(Self::let_info_to_hover(name, info));
+                }
+                if let Some(info) = symbols.get_function(name) {
+                    return Some(Self::function_info_to_hover(name, info));
                 }
             }
         }
@@ -273,6 +283,15 @@ impl<'a> QueryProvider<'a> {
             });
         }
 
+        // Check standalone functions (audit2 B16).
+        if let Some(info) = self.symbols.get_function(name) {
+            return Some(DefinitionInfo {
+                symbol_name: name.to_string(),
+                kind: SymbolKind::Function,
+                span: info.span,
+            });
+        }
+
         // Cross-module: search the imported-module cache if provided.
         if let Some(cache) = self.module_cache {
             for (_, symbols) in cache.values() {
@@ -301,6 +320,13 @@ impl<'a> QueryProvider<'a> {
                     return Some(DefinitionInfo {
                         symbol_name: name.to_string(),
                         kind: SymbolKind::Let,
+                        span: info.span,
+                    });
+                }
+                if let Some(info) = symbols.get_function(name) {
+                    return Some(DefinitionInfo {
+                        symbol_name: name.to_string(),
+                        kind: SymbolKind::Function,
                         span: info.span,
                     });
                 }
@@ -399,6 +425,63 @@ impl<'a> QueryProvider<'a> {
         }
     }
 
+    /// Audit2 B16: build a hover signature from a `FunctionInfo`. For
+    /// overloaded functions, only the first overload is shown; full
+    /// overload resolution is left for a future LSP enhancement.
+    fn function_info_to_hover(name: &str, info: &FunctionInfo) -> HoverInfo {
+        let vis = if matches!(info.visibility, Visibility::Public) {
+            "pub "
+        } else {
+            ""
+        };
+
+        let generics = if info.generics.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<{}>",
+                info.generics
+                    .iter()
+                    .map(|g| g.name.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        let params = info
+            .params
+            .iter()
+            .map(|p| {
+                let label = p
+                    .external_label
+                    .as_ref()
+                    .map(|l| format!("{} ", l.name))
+                    .unwrap_or_default();
+                let ty = p.ty.as_ref().map_or_else(String::new, format_type_brief);
+                if ty.is_empty() {
+                    format!("{label}{}", p.name.name)
+                } else {
+                    format!("{label}{}: {ty}", p.name.name)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let ret = info
+            .return_type
+            .as_ref()
+            .map(|t| format!(" -> {}", format_type_brief(t)))
+            .unwrap_or_default();
+
+        HoverInfo {
+            symbol_name: name.to_string(),
+            kind: SymbolKind::Function,
+            signature: format!("{vis}fn {name}{generics}({params}){ret}"),
+            documentation: info.doc.clone(),
+            source_span: info.span,
+        }
+    }
+
     fn let_info_to_hover(name: &str, info: &LetInfo) -> HoverInfo {
         let vis = if matches!(info.visibility, Visibility::Public) {
             "pub "
@@ -417,6 +500,52 @@ impl<'a> QueryProvider<'a> {
             signature,
             documentation: info.doc.clone(),
             source_span: info.span,
+        }
+    }
+}
+
+/// Audit2 B16: minimal type-to-string formatter for hover signatures.
+/// Mirrors the analyser-internal `type_to_string` (in `trait_check`) but
+/// is callable from `QueryProvider` without a full analyser instance.
+fn format_type_brief(ty: &crate::ast::Type) -> String {
+    use crate::ast::{PrimitiveType, Type};
+    match ty {
+        Type::Primitive(p) => match p {
+            PrimitiveType::String => "String".to_string(),
+            PrimitiveType::Number => "Number".to_string(),
+            PrimitiveType::Boolean => "Boolean".to_string(),
+            PrimitiveType::Path => "Path".to_string(),
+            PrimitiveType::Regex => "Regex".to_string(),
+            PrimitiveType::Never => "Never".to_string(),
+        },
+        Type::Ident(ident) => ident.name.clone(),
+        Type::Array(inner) => format!("[{}]", format_type_brief(inner)),
+        Type::Optional(inner) => format!("{}?", format_type_brief(inner)),
+        Type::Tuple(fields) => {
+            let parts: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name.name, format_type_brief(&f.ty)))
+                .collect();
+            format!("({})", parts.join(", "))
+        }
+        Type::Generic { name, args, .. } => {
+            if args.is_empty() {
+                name.name.clone()
+            } else {
+                let arg_strs: Vec<String> = args.iter().map(format_type_brief).collect();
+                format!("{}<{}>", name.name, arg_strs.join(", "))
+            }
+        }
+        Type::Dictionary { key, value } => {
+            format!("[{}: {}]", format_type_brief(key), format_type_brief(value))
+        }
+        Type::Closure { params, ret } => {
+            let parts: Vec<String> = params.iter().map(|(_, p)| format_type_brief(p)).collect();
+            if parts.is_empty() {
+                format!("() -> {}", format_type_brief(ret))
+            } else {
+                format!("{} -> {}", parts.join(", "), format_type_brief(ret))
+            }
         }
     }
 }
