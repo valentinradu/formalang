@@ -1323,7 +1323,7 @@ impl<'a> IrLowerer<'a> {
                 return_type,
                 body,
                 extern_abi,
-                attributes: f.attributes.clone(),
+                attributes: f.attributes.iter().map(|a| a.kind).collect(),
                 doc: f.doc.clone(),
             },
         ) {
@@ -1407,7 +1407,7 @@ impl<'a> IrLowerer<'a> {
             return_type,
             body,
             extern_abi,
-            attributes: f.attributes.clone(),
+            attributes: f.attributes.iter().map(|a| a.kind).collect(),
             doc: f.doc.clone(),
         }
     }
@@ -1431,7 +1431,7 @@ impl<'a> IrLowerer<'a> {
             name: sig.name.name.clone(),
             params,
             return_type,
-            attributes: sig.attributes.clone(),
+            attributes: sig.attributes.iter().map(|a| a.kind).collect(),
         }
     }
 
