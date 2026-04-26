@@ -1,6 +1,6 @@
 # IR Reference
 
-**Last Updated**: 2026-04-22
+**Last Updated**: 2026-04-26
 
 This document provides a complete reference for the FormaLang Intermediate
 Representation (IR). The IR is the recommended output for building code
@@ -64,7 +64,13 @@ The IR intentionally omits:
 - **Comments**: Purely syntactic, not needed for codegen
 - **Parentheses/grouping**: Expression structure is normalized
 - **String type references**: All resolved to typed IDs
-- **Module nesting**: Currently flattened (nested modules TODO)
+
+Module nesting is flattened in the per-type vectors — a struct
+inside `mod foo { ... }` is stored on `IrModule.structs` with a
+qualified name `"foo::Bar"`. A parallel `IrModule.modules:
+Vec<IrModuleNode>` tree mirrors the source `mod` hierarchy with
+per-module ID lists for backends that need namespaced output (see
+[`IrModuleNode`](#irmodulenode-—-source-mod-hierarchy) below).
 
 ### Relationship to the Symbol Table
 
@@ -123,7 +129,7 @@ IrModule (root)
 |   |
 |   +-- name: String
 |   +-- visibility: Visibility
-|   +-- traits: Vec<TraitId> -----> points to IrTrait entries
+|   +-- traits: Vec<IrTraitRef> ----> trait_id + optional generic-trait args
 |   +-- fields: Vec<IrField>
 |   |   |
 |   |   +-- name: String
@@ -135,7 +141,7 @@ IrModule (root)
 |   +-- generic_params: Vec<IrGenericParam>
 |       |
 |       +-- name: String
-|       +-- constraints: Vec<TraitId>
+|       +-- constraints: Vec<IrTraitRef>  (trait_id + Vec<ResolvedType> args)
 |
 +-- traits: Vec<IrTrait>
 |   |
@@ -180,8 +186,14 @@ pub struct IrModule {
     pub lets: Vec<IrLet>,        // Module-level let bindings
     pub functions: Vec<IrFunction>, // Standalone function definitions
     pub imports: Vec<IrImport>,  // External module imports
+    pub modules: Vec<IrModuleNode>, // Source `mod foo { ... }` hierarchy
 }
 ```
+
+The flat per-type vectors remain authoritative — every definition
+lives in the appropriate slot regardless of source nesting. The
+`modules` tree is an *index* on top of those flat vectors, opt-in
+for backends that need to emit code into namespaces.
 
 #### Lookup Methods
 
@@ -425,11 +437,15 @@ pub enum ResolvedType {
     },
 }
 
-/// Target of a `Generic` instantiation — either a generic struct or a
-/// generic enum. Match exhaustively when extracting the underlying ID.
+/// Target of a `Generic` instantiation — a generic struct, enum, or
+/// trait. Traits appear here only inside generic constraints
+/// (`<T: Foo<X>>`) and impl headers (`impl Foo<X> for Y`); FormaLang
+/// has no dynamic dispatch, so a trait base never sits in a value-
+/// type position. Match exhaustively when extracting the underlying ID.
 pub enum GenericBase {
     Struct(StructId),
     Enum(EnumId),
+    Trait(TraitId),
 }
 ```
 
@@ -484,8 +500,10 @@ pub struct IrStruct {
     /// Visibility (public or private)
     pub visibility: Visibility,
 
-    /// Traits implemented by this struct
-    pub traits: Vec<TraitId>,
+    /// Traits implemented by this struct, with optional generic-trait
+    /// args (`impl Container<Number> for Foo` → entry with non-empty
+    /// args). Empty args means a non-generic trait.
+    pub traits: Vec<IrTraitRef>,
 
     /// Regular fields
     pub fields: Vec<IrField>,
@@ -533,6 +551,9 @@ pub struct IrFunctionSig {
 
     /// Return type (None = unit/void)
     pub return_type: Option<ResolvedType>,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`).
+    pub attributes: Vec<FunctionAttribute>,
 }
 ```
 
@@ -582,11 +603,29 @@ pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
 
+    /// `Some(IrTraitRef { trait_id, args })` for `impl Trait for Type`
+    /// or `impl Trait<X> for Type`; `None` for inherent impls. Args
+    /// are empty for non-generic traits and carry the concrete
+    /// instantiation for generic-trait impls.
+    pub trait_ref: Option<IrTraitRef>,
+
+    /// Whether this is an `extern impl` block (all methods have
+    /// `extern_abi = Some(_)` and `body = None`).
+    pub is_extern: bool,
+
+    /// Generic parameters declared on the impl block itself
+    /// (`impl<T: Bound> Box<T>`).
+    pub generic_params: Vec<IrGenericParam>,
+
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
 }
 
 impl IrImpl {
+    /// Convenience: trait id of the impl, ignoring args. Equivalent
+    /// to `self.trait_ref.as_ref().map(|t| t.trait_id)`.
+    pub fn trait_id(&self) -> Option<TraitId>;
+
     /// Returns the struct ID if `target` is a struct, otherwise `None`.
     pub fn struct_id(&self) -> Option<StructId>;
 
@@ -628,8 +667,32 @@ pub struct IrGenericParam {
     /// Parameter name (e.g., "T")
     pub name: String,
 
-    /// Trait constraints (e.g., T: Container)
-    pub constraints: Vec<TraitId>,
+    /// Trait constraints. Each entry carries the constrained trait
+    /// id plus zero or more concrete arg types — empty when the
+    /// trait isn't generic (`T: Container`), populated for
+    /// generic-trait constraints (`T: Container<Number>`).
+    pub constraints: Vec<IrTraitRef>,
+}
+```
+
+### IrTraitRef
+
+A reference to a trait, optionally with concrete type arguments.
+Used in two places: as the constraint shape on [`IrGenericParam`]
+and as the implements-relationship shape on [`IrImpl`] /
+[`IrStruct.traits`]. An empty `args` slot means the trait isn't
+generic; a non-empty slot carries the instantiation so
+monomorphisation can specialise generic traits.
+
+```rust
+pub struct IrTraitRef {
+    pub trait_id: TraitId,
+    pub args: Vec<ResolvedType>,
+}
+
+impl IrTraitRef {
+    /// Construct a non-generic trait reference (no args).
+    pub const fn simple(trait_id: TraitId) -> Self;
 }
 ```
 
@@ -714,13 +777,21 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Closure expression: |x: Number, y: Number| x + y
+    /// Closure expression: x, y -> x + y
     ///
     /// Each element of `params` is `(convention, name, type)`.
     /// Convention constrains the **caller** — `Mut` requires mutable arg,
     /// `Sink` consumes the caller's binding.
+    ///
+    /// `captures` lists every free variable the closure body
+    /// references that's bound in an enclosing scope, with the
+    /// outer binding's `ParamConvention` (`Let` for plain immutable
+    /// captures) and resolved type. Backends can use this to emit
+    /// capture-environment structs or reject closures that capture
+    /// values whose lifetime the target language can't express.
     Closure {
         params: Vec<(ParamConvention, String, ResolvedType)>,
+        captures: Vec<(String, ParamConvention, ResolvedType)>,
         body: Box<IrExpr>,
         ty: ResolvedType,    // ResolvedType::Closure { param_tys, return_ty }
     },
@@ -816,6 +887,12 @@ pub struct IrFunction {
     /// Function name
     pub name: String,
 
+    /// Generic type parameters declared on the function itself
+    /// (e.g. `fn identity<T>(x: T) -> T`). Empty for impl methods —
+    /// method-level generics aren't yet supported; enclosing-type
+    /// generics live on the containing `IrImpl` / `IrStruct`.
+    pub generic_params: Vec<IrGenericParam>,
+
     /// Parameters (first is `self` for methods; no `self` for standalone functions)
     pub params: Vec<IrFunctionParam>,
 
@@ -825,10 +902,56 @@ pub struct IrFunction {
     /// Function body expression (None for extern functions)
     pub body: Option<IrExpr>,
 
-    /// Whether this function is extern (defined outside FormaLang)
-    pub is_extern: bool,
+    /// Calling convention when the function is `extern`. `None` for
+    /// regular functions; `Some(ExternAbi::C)` for `extern fn` /
+    /// `extern "C" fn`; `Some(ExternAbi::System)` for
+    /// `extern "system" fn`.
+    pub extern_abi: Option<ExternAbi>,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`)
+    /// declared as keyword prefixes before `fn`.
+    pub attributes: Vec<FunctionAttribute>,
+
+    /// Joined `///` doc comments preceding this function.
+    pub doc: Option<String>,
+}
+
+impl IrFunction {
+    /// Whether this function is declared `extern`. Convenience
+    /// wrapper over `extern_abi.is_some()`.
+    pub const fn is_extern(&self) -> bool;
 }
 ```
+
+#### ExternAbi
+
+The FFI calling convention of an `extern` function.
+
+```rust
+pub enum ExternAbi {
+    C,       // `extern fn` (default) or `extern "C" fn`
+    System,  // `extern "system" fn`  (stdcall on Win32 x86, C elsewhere)
+}
+```
+
+Unknown ABI strings (`extern "rustcall" fn ...`) are rejected at
+parse time. A backend-side mapping by function name still owns
+symbol-name overrides and type marshalling rules across the FFI
+boundary.
+
+#### FunctionAttribute
+
+```rust
+pub enum FunctionAttribute {
+    Inline,    // `inline fn`
+    NoInline,  // `no_inline fn`
+    Cold,      // `cold fn`
+}
+```
+
+Source syntax stacks freely with `pub` and `extern`:
+`pub cold extern fn abort() -> Never`. The frontend passes
+attributes through unchanged; backends decide whether to honour them.
 
 ### IrFunctionParam
 
@@ -871,6 +994,42 @@ fn emit_param(param: &IrFunctionParam) {
     }
 }
 ```
+
+### IrModuleNode — source `mod` hierarchy
+
+`IrModule.modules` mirrors the source `mod foo { ... }` tree. Each
+node lists the IDs of struct/trait/enum/function definitions
+declared *directly* in that module plus nested sub-modules. The
+flat per-type vectors on [`IrModule`] remain authoritative — this
+tree is an *index* on top of them for backends that need to
+preserve source structure in their output (JS `export * from`,
+Swift nested types, Kotlin packages).
+
+```rust
+pub struct IrModuleNode {
+    /// Module name as written in source (the unqualified segment,
+    /// e.g. `"shapes"` for `mod shapes { ... }`).
+    pub name: String,
+
+    /// IDs of structs declared directly in this module.
+    pub structs: Vec<StructId>,
+
+    /// IDs of traits declared directly in this module.
+    pub traits: Vec<TraitId>,
+
+    /// IDs of enums declared directly in this module.
+    pub enums: Vec<EnumId>,
+
+    /// IDs of functions declared directly in this module.
+    pub functions: Vec<FunctionId>,
+
+    /// Nested sub-modules.
+    pub modules: Vec<IrModuleNode>,
+}
+```
+
+Top-level (non-`mod`) definitions are not mirrored in the tree —
+backends iterate the flat vectors for those.
 
 ## Visitor Pattern
 
@@ -1355,6 +1514,7 @@ impl<'a> TypeScriptGenerator<'a> {
                 let base_name = match base {
                     GenericBase::Struct(id) => self.module.get_struct(*id).unwrap().name.clone(),
                     GenericBase::Enum(id) => self.module.get_enum(*id).unwrap().name.clone(),
+                    GenericBase::Trait(id) => self.module.get_trait(*id).unwrap().name.clone(),
                 };
                 let args_str: Vec<_> = args.iter().map(|a| self.resolve_type(a)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))

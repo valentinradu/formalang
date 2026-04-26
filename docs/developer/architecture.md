@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Last Updated**: 2026-04-22
+**Last Updated**: 2026-04-26
 
 ## Design
 
@@ -28,10 +28,13 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
   1–5 build symbol tables, resolve types, validate expressions, validate
   traits, detect cycles)
 - **IR Lowering**: Converts the validated AST + symbol table into a
-  fully type-resolved `IrModule`. Module nesting is **flattened**:
-  inline `mod foo { struct Bar { ... } }` lowers to a top-level
-  `IrStruct { name: "foo::Bar", ... }`, so backends always see a flat
-  list of definitions keyed by qualified name.
+  fully type-resolved `IrModule`. Module nesting is **flattened in
+  the per-type vectors** — inline `mod foo { struct Bar { ... } }`
+  lowers to a top-level `IrStruct { name: "foo::Bar", ... }`, so
+  backends that don't care about source structure see a flat list of
+  definitions keyed by qualified name. A parallel `IrModule.modules:
+  Vec<IrModuleNode>` tree mirrors the source `mod` hierarchy with
+  per-module ID lists for backends that need namespaced output.
 - **Plugin System**: External `IrPass` transforms and `Backend` emitters
   composed through `Pipeline`
 
@@ -64,6 +67,11 @@ IrModule → [IrPass, IrPass, ...] → IrModule → Backend → Output
 
 Built-in passes exported from `formalang::ir`:
 
+- `MonomorphisePass` — specialises every `Generic { base, args }`
+  instantiation (struct, enum, trait), specialises generic functions
+  per call-site arg-tuple, and devirtualises `Virtual` dispatch on
+  concrete receivers. The frontend has no dynamic dispatch, so this
+  pass is the bridge from generic source to fully-resolved IR.
 - `DeadCodeEliminationPass` — removes unreachable definitions
 - `ConstantFoldingPass` — evaluates constant expressions at compile time
 

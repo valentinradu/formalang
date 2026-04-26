@@ -1,6 +1,6 @@
 # AST Reference
 
-**Last Updated**: 2026-04-22
+**Last Updated**: 2026-04-26
 
 This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
 
@@ -239,6 +239,7 @@ implementations, and extern impl blocks.
 ```rust
 pub struct ImplDef {
     pub trait_name: Option<Ident>,    // None for inherent impl, Some for trait impl
+    pub trait_args: Vec<Type>,        // generic-trait args: `impl Foo<X> for Y` → [X]
     pub name: Ident,                  // Struct/enum being implemented
     pub generics: Vec<GenericParam>,
     pub functions: Vec<FnDef>,        // Method definitions
@@ -246,6 +247,10 @@ pub struct ImplDef {
     pub span: Span,
 }
 ```
+
+`trait_args` carries the concrete type arguments when the impl
+instantiates a generic trait (`impl Container<Number> for Box`).
+Empty for non-generic traits and inherent impls.
 
 #### FnDef
 
@@ -256,10 +261,16 @@ pub struct FnDef {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub body: Option<Expr>,    // None for extern fn / extern impl methods
+    pub body: Option<Expr>,           // None for extern fn / extern impl methods
+    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold prefixes
     pub span: Span,
 }
 ```
+
+`attributes` carries codegen-hint keyword prefixes parsed before
+`fn` — `inline fn foo() { ... }`, `cold fn rare() { ... }`. The
+frontend passes them through unchanged; backends decide whether to
+honour them.
 
 #### FnSig
 
@@ -270,6 +281,7 @@ pub struct FnSig {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
+    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold
     pub span: Span,
 }
 ```
@@ -327,12 +339,44 @@ pub struct FnParam {
 pub struct FunctionDef {
     pub visibility: Visibility,
     pub name: Ident,
+    pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub body: Option<Expr>,    // None for `extern fn` declarations
+    pub body: Option<Expr>,           // None for `extern fn` declarations
+    pub extern_abi: Option<ExternAbi>, // Some(_) for `extern fn`; None otherwise
+    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold
     pub span: Span,
 }
 ```
+
+`extern_abi` carries the FFI calling convention. Source forms:
+
+| Source                      | `extern_abi`               |
+|-----------------------------|----------------------------|
+| `fn foo() { ... }`          | `None`                     |
+| `extern fn foo()`           | `Some(ExternAbi::C)`       |
+| `extern "C" fn foo()`       | `Some(ExternAbi::C)`       |
+| `extern "system" fn foo()`  | `Some(ExternAbi::System)`  |
+
+Unknown ABI strings are rejected at parse time. The convenience
+method `is_extern()` returns `extern_abi.is_some()` for the common
+boolean check.
+
+#### FunctionAttribute
+
+Codegen-hint keyword prefixes parsed before `fn`. The frontend
+passes them through unchanged; backends with inlining heuristics or
+section-placement controls consume them as hints.
+
+```rust
+pub enum FunctionAttribute {
+    Inline,    // `inline fn`
+    NoInline,  // `no_inline fn`
+    Cold,      // `cold fn`
+}
+```
+
+Multiple prefixes can stack: `pub cold no_inline fn rare_path() { ... }`.
 
 ### Enum Definitions
 
@@ -387,9 +431,13 @@ pub struct GenericParam {
 
 ```rust
 pub enum GenericConstraint {
-    Trait(Ident),  // Trait bound: T: TraitName
+    Trait { name: Ident, args: Vec<Type> },  // T: TraitName  or  T: TraitName<X, Y>
 }
 ```
+
+The `args` slot carries concrete type arguments when the constraint
+references a generic trait — `<T: Container<Number>>` parses with
+`args = [Number]`. Empty `args` means a non-generic trait bound.
 
 ### Type System
 
@@ -844,7 +892,7 @@ File
         │   └── [0] GenericParam
         │       ├── name: "T"
         │       └── constraints:
-        │           └── [0] GenericConstraint::Trait("Container")
+        │           └── [0] GenericConstraint::Trait { name: "Container", args: [] }
         └── fields:
             ├── [0] StructField
             │   ├── name: "content"
@@ -890,6 +938,7 @@ File
 └── statements[1]: Statement::Definition
     └── Definition::Impl
         ├── trait_name: None
+        ├── trait_args: []
         ├── name: "Counter"
         ├── generics: []
         └── functions:
@@ -928,6 +977,7 @@ File
 └── statements[1]: Statement::Definition
     └── Definition::Impl
         ├── trait_name: Some("Drawable")
+        ├── trait_args: []
         ├── name: "Counter"
         ├── generics: []
         └── functions:
