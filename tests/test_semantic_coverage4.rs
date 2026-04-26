@@ -259,23 +259,22 @@ fn test_generic_with_undefined_base_type() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn test_generic_base_type_is_trait_not_struct() -> Result<(), Box<dyn std::error::Error>> {
-    // Using a trait name as the base generic type - it's not in is_type()
-    // (traits are separate from types), so this should work if trait is a valid type
+    // Tier-1 item E2: a trait name in a value-type position is
+    // rejected with TraitUsedAsValueType — even when written as a
+    // generic application (`Container<Number>`). The recommended fix
+    // is `<T: Container>` once generic-trait constraints with args
+    // land; for now `<T: Container>` (no args) is the closest legal
+    // form.
     let source = r"
         trait Container { val: Number }
         struct Config { item: Container<Number> }
     ";
     let result = compile(source);
-    // Traits aren't generic and Container isn't a struct - should produce error
     if result.is_ok() {
-        return Err(format!(
-            "expected UndefinedType for trait used as generic base: {:?}",
-            result.ok()
-        )
-        .into());
+        return Err(format!("expected TraitUsedAsValueType: {:?}", result.ok()).into());
     }
     let err = format!("{:?}", result.err());
-    if !err.contains("UndefinedType") {
+    if !err.contains("TraitUsedAsValueType") {
         return Err(format!("wrong error: {err}").into());
     }
     Ok(())

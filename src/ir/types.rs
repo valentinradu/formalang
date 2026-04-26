@@ -129,6 +129,13 @@ pub struct IrFunctionSig {
 
     /// Return type (None = unit/void)
     pub return_type: Option<ResolvedType>,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`)
+    /// declared on the trait method signature. Empty when none are
+    /// present. Round-trips serialised IR while remaining backwards-
+    /// compatible with documents that predate this field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<crate::ast::FunctionAttribute>,
 }
 
 /// An enum definition in the IR.
@@ -273,12 +280,33 @@ pub struct IrFunction {
     /// Function body expression (None for extern functions)
     pub body: Option<IrExpr>,
 
-    /// Whether this function is extern (no body, defined outside `FormaLang`)
-    pub is_extern: bool,
+    /// Calling convention when this function is declared `extern` (no
+    /// body, defined outside `FormaLang`). `None` for regular
+    /// functions. Tier-1 item E: replaces the previous `is_extern: bool`
+    /// flag so backends targeting languages with distinguished calling
+    /// conventions can emit the correct call sequence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extern_abi: Option<crate::ast::ExternAbi>,
+
+    /// Codegen-hint attributes (`inline`, `no_inline`, `cold`) declared
+    /// before the `fn` keyword. Empty when none are present. Round-
+    /// trips serialised IR while remaining backwards-compatible with
+    /// documents that predate this field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<crate::ast::FunctionAttribute>,
 
     /// Joined `///` doc comments preceding this function. Audit #51.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+}
+
+impl IrFunction {
+    /// Whether this function is declared `extern`. Convenience wrapper
+    /// over [`Self::extern_abi`] for the common boolean check.
+    #[must_use]
+    pub const fn is_extern(&self) -> bool {
+        self.extern_abi.is_some()
+    }
 }
 
 /// A function parameter in the IR.

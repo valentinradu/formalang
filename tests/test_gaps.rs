@@ -557,3 +557,599 @@ fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
 }
+
+// =============================================================================
+// Tier-1 audit (item B): IR lowering surfaces unresolved type names as
+// `UndefinedType` instead of silently producing `TypeParam(name)`. This
+// catches typos and out-of-scope generic parameter references that
+// would otherwise leak through to monomorphisation.
+// =============================================================================
+
+#[test]
+fn test_unresolved_type_in_struct_field_is_loud() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Holder { value: Numbr }
+    ";
+    let result = compile_to_ir(source);
+    let errors = result.err().ok_or("expected an UndefinedType error")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::UndefinedType { name, .. } if name == "Numbr"))
+    {
+        return Err(format!("expected UndefinedType for `Numbr`, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_in_scope_generic_param_still_lowers_as_typeparam() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Sanity: a real generic parameter must NOT trigger the new
+    // UndefinedType error — it should still resolve to TypeParam(name).
+    let source = r"
+        pub struct Box<T> { value: T }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let s = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Box")
+        .ok_or("Box struct missing")?;
+    let value_field = s
+        .fields
+        .iter()
+        .find(|f| f.name == "value")
+        .ok_or("value field missing")?;
+    if !matches!(&value_field.ty, formalang::ir::ResolvedType::TypeParam(n) if n == "T") {
+        return Err(format!("expected value: TypeParam(T), got {:?}", value_field.ty).into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item D): Inline / no_inline / cold codegen attributes
+// surface as keyword prefixes on `fn` and round-trip through the IR.
+// =============================================================================
+
+#[test]
+fn test_inline_attribute_round_trips() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub inline fn fast(x: Number) -> Number { x + 1 }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "fast")
+        .ok_or("fast missing")?;
+    if f.attributes != vec![FunctionAttribute::Inline] {
+        return Err(format!("expected [Inline], got {:?}", f.attributes).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_multiple_attributes_preserve_order() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        cold no_inline fn rare() -> Number { 0 }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "rare")
+        .ok_or("rare missing")?;
+    if f.attributes != vec![FunctionAttribute::Cold, FunctionAttribute::NoInline] {
+        return Err(format!(
+            "expected [Cold, NoInline] in source order, got {:?}",
+            f.attributes
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_carries_attributes() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub cold extern fn abort() -> Never
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "abort")
+        .ok_or("abort missing")?;
+    if !f.is_extern() {
+        return Err("expected is_extern: true".into());
+    }
+    if f.attributes != vec![FunctionAttribute::Cold] {
+        return Err(format!("expected [Cold], got {:?}", f.attributes).into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item E): extern fn carries an explicit calling
+// convention. Bare `extern fn` defaults to C; `extern "C"` and
+// `extern "system"` are accepted; unknown ABI strings are rejected.
+// =============================================================================
+
+#[test]
+fn test_extern_fn_default_abi_is_c() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir("extern fn fetch(url: String) -> String")
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "fetch")
+        .ok_or("fetch missing")?;
+    if f.extern_abi != Some(ExternAbi::C) {
+        return Err(format!("expected Some(C), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_explicit_c_abi() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir(r#"extern "C" fn read(fd: Number) -> Number"#)
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "read")
+        .ok_or("read missing")?;
+    if f.extern_abi != Some(ExternAbi::C) {
+        return Err(format!("expected Some(C), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_system_abi() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::ExternAbi;
+    let module = compile_to_ir(r#"extern "system" fn GetTickCount() -> Number"#)
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "GetTickCount")
+        .ok_or("GetTickCount missing")?;
+    if f.extern_abi != Some(ExternAbi::System) {
+        return Err(format!("expected Some(System), got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_extern_fn_unknown_abi_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let result = compile_to_ir(r#"extern "rustcall" fn weird() -> Number"#);
+    if result.is_ok() {
+        return Err("expected unknown ABI to be rejected at parse time".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_regular_fn_has_no_extern_abi() -> Result<(), Box<dyn std::error::Error>> {
+    let module = compile_to_ir("pub fn double(n: Number) -> Number { n + n }")
+        .map_err(|e| format!("expected success: {e:?}"))?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "double")
+        .ok_or("double missing")?;
+    if f.extern_abi.is_some() {
+        return Err(format!("expected None, got {:?}", f.extern_abi).into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item G): nested-module hierarchy is preserved on
+// `IrModule.modules` so backends can reconstruct namespaced output
+// without re-parsing qualified names.
+// =============================================================================
+
+#[test]
+fn test_module_tree_records_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        mod shapes {
+            pub struct Circle { radius: Number }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let shapes = module
+        .modules
+        .iter()
+        .find(|n| n.name == "shapes")
+        .ok_or("expected `shapes` module node")?;
+    if shapes.structs.len() != 1 {
+        return Err(format!("expected 1 struct in shapes, got {}", shapes.structs.len()).into());
+    }
+    let circle_id = shapes.structs[0];
+    let circle = module
+        .get_struct(circle_id)
+        .ok_or("Circle id does not resolve")?;
+    if circle.name != "shapes::Circle" {
+        return Err(format!("expected qualified name, got {}", circle.name).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        mod outer {
+            mod inner {
+                pub struct Deep { x: Number }
+            }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let outer = module
+        .modules
+        .iter()
+        .find(|n| n.name == "outer")
+        .ok_or("expected `outer` module")?;
+    let inner = outer
+        .modules
+        .iter()
+        .find(|n| n.name == "inner")
+        .ok_or("expected `inner` nested under `outer`")?;
+    if inner.structs.is_empty() {
+        return Err("expected Deep struct id in inner".into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 escape analysis extension: a closure that captures a function-
+// local binding cannot escape the function frame even when wrapped in
+// an aggregate (struct, enum, tuple, array, dict).
+// =============================================================================
+
+#[test]
+fn test_struct_returned_with_closure_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Box { callback: () -> Number }
+        fn make() -> Box {
+            let local: Number = 1
+            Box(callback: () -> local)
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding when struct-wrapped closure captures \
+             a function-local; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_struct_returned_with_closure_capturing_module_let_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        let factor: Number = 2
+        struct Box { callback: () -> Number }
+        fn make() -> Box {
+            Box(callback: () -> factor)
+        }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        fn outer() -> Number {
+            let mut f: () -> Number = () -> 0
+            {
+                let local: Number = 5
+                f = () -> local
+            }
+            f()
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding when closure assigned to outer mut \
+             binding captures inner-scope local; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_tuple_returned_with_closure_capturing_local_rejected(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        fn make() -> (n: Number, f: () -> Number) {
+            let local: Number = 7
+            (n: 0, f: () -> local)
+        }
+    ";
+    let result = compile(source);
+    let errors = result
+        .err()
+        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
+    {
+        return Err(format!(
+            "expected ClosureCaptureEscapesLocalBinding for tuple-wrapped escape; got {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item E2): `Trait` in a value-producing type position
+// (param, return, field, let annotation, closure params/return) is a
+// hard error. FormaLang has no dynamic dispatch; trait-bounded values
+// must go through generic parameters so the concrete type is known
+// after monomorphisation.
+// =============================================================================
+
+#[test]
+fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        fn render(d: Drawable) -> Number { 0 }
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        let d: Drawable = Circle(r: 1)
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_struct_field_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Container { d: Drawable }
+    ";
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Drawable"
+        )
+    }) {
+        return Err(format!("expected TraitUsedAsValueType, got: {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_generic_constraint_ok() -> Result<(), Box<dyn std::error::Error>> {
+    // `<T: Drawable>` is the canonical legal form — Drawable here is a
+    // *constraint*, not a value type. Should compile.
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        fn render<T: Drawable>(d: T) -> Number { 0 }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_trait_as_impl_target_ok() -> Result<(), Box<dyn std::error::Error>> {
+    // `impl Trait for Foo` is the canonical legal form — Drawable is
+    // an *impl target*, not a value type.
+    let source = r"
+        trait Drawable { fn draw(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+    ";
+    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
+    Ok(())
+}
+
+// =============================================================================
+// Tier-1 audit (item E2 / Phase 2d + 2e): mono now specialises generic
+// functions and devirtualises trait-bounded calls inside them. End-to-
+// end check: `paint<T: Drawable>(shape: T)` invoked with Circle yields
+// `paint__Circle` whose body has Static dispatch on the Drawable impl.
+// =============================================================================
+
+fn walk_for_dispatch(
+    expr: &formalang::ir::IrExpr,
+    found_static: &mut bool,
+    found_virtual_concrete: &mut bool,
+) {
+    use formalang::ir::{DispatchKind, IrExpr};
+    if let IrExpr::MethodCall {
+        method, dispatch, ..
+    } = expr
+    {
+        if method == "area" {
+            match dispatch {
+                DispatchKind::Static { .. } => *found_static = true,
+                DispatchKind::Virtual { .. } => *found_virtual_concrete = true,
+            }
+        }
+    }
+    if let IrExpr::Block {
+        statements, result, ..
+    } = expr
+    {
+        for stmt in statements {
+            if let formalang::ir::IrBlockStatement::Expr(e) = stmt {
+                walk_for_dispatch(e, found_static, found_virtual_concrete);
+            }
+        }
+        walk_for_dispatch(result, found_static, found_virtual_concrete);
+    }
+}
+
+#[test]
+fn test_monomorphise_devirtualises_trait_bounded_call() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        trait Drawable { fn area(self) -> Number }
+        struct Circle { r: Number }
+        impl Drawable for Circle {
+            fn area(self) -> Number { self.r }
+        }
+        pub fn paint<T: Drawable>(shape: T) -> Number {
+            shape.area()
+        }
+        pub let p: Number = paint(Circle(r: 1))
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
+    let paint_specialised = result
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("paint__"))
+        .ok_or("expected paint__... specialised function")?;
+    let body = paint_specialised
+        .body
+        .as_ref()
+        .ok_or("paint specialised body missing")?;
+    let mut found_static = false;
+    let mut found_virtual_concrete = false;
+    walk_for_dispatch(body, &mut found_static, &mut found_virtual_concrete);
+    if found_virtual_concrete {
+        return Err("paint__Circle still contains Virtual dispatch on concrete receiver".into());
+    }
+    if !found_static {
+        return Err("expected paint__Circle body to dispatch via Static".into());
+    }
+    // Generic original should be gone.
+    if result.functions.iter().any(|f| f.name == "paint") {
+        return Err("generic `paint` should have been dropped after specialisation".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_monomorphise_specialises_generic_function() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // Simpler check focused on Phase 2e alone (no trait dispatch).
+    let source = r#"
+        pub fn identity<T>(x: T) -> T { x }
+        pub let n: Number = identity(1)
+        pub let s: String = identity("hi")
+    "#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("{e:?}"))?;
+    if result.functions.iter().any(|f| f.name == "identity") {
+        return Err("generic `identity` should have been dropped".into());
+    }
+    let specialised: Vec<&str> = result
+        .functions
+        .iter()
+        .filter(|f| f.name.starts_with("identity__"))
+        .map(|f| f.name.as_str())
+        .collect();
+    if specialised.len() != 2 {
+        return Err(format!(
+            "expected 2 identity specialisations (Number + String), got: {specialised:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Top { x: Number }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    if !module.modules.is_empty() {
+        return Err(format!(
+            "expected no nested modules, got {} entries",
+            module.modules.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::FunctionAttribute;
+    let source = r"
+        pub struct Counter { n: Number = 0 }
+        impl Counter {
+            inline fn next(self) -> Number { self.n + 1 }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
+    let imp = module.impls.first().ok_or("no impl")?;
+    let next = imp
+        .functions
+        .iter()
+        .find(|f| f.name == "next")
+        .ok_or("next missing")?;
+    if next.attributes != vec![FunctionAttribute::Inline] {
+        return Err(format!("expected [Inline], got {:?}", next.attributes).into());
+    }
+    Ok(())
+}

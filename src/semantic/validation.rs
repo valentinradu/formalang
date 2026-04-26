@@ -45,6 +45,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         reason = "validates several let-binding rules in sequence; splitting them obscures the shared `declared`/`inferred` derivation"
     )]
     fn validate_let_statement(&mut self, let_binding: &crate::ast::LetBinding, file: &File) {
+        if let Some(type_ann) = &let_binding.type_annotation {
+            // Tier-1 item E2: surface
+            // `let x: SomeTrait = ...` as TraitUsedAsValueType (and
+            // any other invalid type in the annotation) before the
+            // value/declared compatibility check would mask it.
+            self.validate_type(type_ann);
+        }
         self.validate_expr(&let_binding.value, file);
         // nil literals must not be assigned to non-optional types, and
         // (audit2 B12) the inferred value type must be compatible with
@@ -832,16 +839,47 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.collect_returned_closure_captures_rec(&arm.body, out);
                 }
             }
+            // Tier-1 escape extension: a closure stored into a struct
+            // / enum field that becomes part of the returned aggregate
+            // also escapes via return. Walk constructor args, but only
+            // when the path resolves to a struct (or the enum variant
+            // is named) — function-call invocations don't return their
+            // arguments and would over-trigger.
+            Expr::Invocation { path, args, .. } => {
+                let is_struct = path
+                    .last()
+                    .is_some_and(|seg| self.symbols.get_struct(&seg.name).is_some());
+                if is_struct {
+                    for (_, arg) in args {
+                        self.collect_returned_closure_captures_rec(arg, out);
+                    }
+                }
+            }
+            Expr::EnumInstantiation { data, .. } | Expr::InferredEnumInstantiation { data, .. } => {
+                for (_, field_expr) in data {
+                    self.collect_returned_closure_captures_rec(field_expr, out);
+                }
+            }
+            Expr::Tuple { fields, .. } => {
+                for (_, field_expr) in fields {
+                    self.collect_returned_closure_captures_rec(field_expr, out);
+                }
+            }
+            Expr::Array { elements, .. } => {
+                for elem in elements {
+                    self.collect_returned_closure_captures_rec(elem, out);
+                }
+            }
+            Expr::DictLiteral { entries, .. } => {
+                for (k, v) in entries {
+                    self.collect_returned_closure_captures_rec(k, out);
+                    self.collect_returned_closure_captures_rec(v, out);
+                }
+            }
             Expr::Literal { .. }
-            | Expr::Array { .. }
-            | Expr::Tuple { .. }
-            | Expr::Invocation { .. }
-            | Expr::EnumInstantiation { .. }
-            | Expr::InferredEnumInstantiation { .. }
             | Expr::BinaryOp { .. }
             | Expr::UnaryOp { .. }
             | Expr::ForExpr { .. }
-            | Expr::DictLiteral { .. }
             | Expr::DictAccess { .. }
             | Expr::FieldAccess { .. }
             | Expr::MethodCall { .. } => {}
@@ -854,42 +892,76 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// bindings and `let`/`mut` parameters would die with the function frame
     /// and leave a dangling capture.
     fn validate_function_return_escape(&mut self, return_type: Option<&Type>, body: &Expr) {
-        let Some(Type::Closure { .. }) = return_type else {
+        // The legacy fast-path: function returns a closure type directly
+        // (`fn make() -> () -> Number`). The recursive walk handles every
+        // concrete return shape — closure literals, references to
+        // closure bindings, branches, blocks. Tier-1 escape extension
+        // also fires on aggregate returns (struct / enum / tuple /
+        // array / dict): walking those is harmless when no closure
+        // hides inside them, since `collect_returned_closure_captures`
+        // simply returns an empty list.
+        let return_carries_aggregate = matches!(
+            return_type,
+            Some(
+                Type::Closure { .. }
+                    | Type::Ident(_)
+                    | Type::Generic { .. }
+                    | Type::Tuple(_)
+                    | Type::Array(_)
+                    | Type::Optional(_)
+                    | Type::Dictionary { .. }
+            )
+        );
+        if !return_carries_aggregate {
             return;
-        };
+        }
         let escaping = self.collect_returned_closure_captures(body);
         if escaping.is_empty() {
             return;
         }
-        let param_convs = self.current_fn_param_conventions.clone();
         for (captures, span) in escaping {
-            for cap in captures {
-                if let Some(convention) = param_convs.get(&cap) {
-                    match convention {
-                        crate::ast::ParamConvention::Sink => {
-                            // Ownership transfers into the returned closure.
-                            self.consumed_bindings.insert(cap);
-                        }
-                        crate::ast::ParamConvention::Let | crate::ast::ParamConvention::Mut => {
-                            self.errors
-                                .push(CompilerError::ClosureCaptureEscapesLocalBinding {
-                                    binding: cap,
-                                    span,
-                                });
-                        }
+            self.validate_escaping_captures(&captures, span);
+        }
+    }
+
+    /// Shared rule for "this closure value escapes the function frame".
+    ///
+    /// Captures are valid only when they refer to:
+    ///
+    /// - a `sink` parameter (ownership transfers into the closure;
+    ///   binding is marked consumed),
+    /// - a module-level `let` (outlives the function).
+    ///
+    /// `let`/`mut` parameters and function-local `let` bindings die
+    /// with the frame and produce
+    /// [`CompilerError::ClosureCaptureEscapesLocalBinding`].
+    fn validate_escaping_captures(&mut self, captures: &[String], span: Span) {
+        let param_convs = self.current_fn_param_conventions.clone();
+        for cap in captures {
+            if let Some(convention) = param_convs.get(cap) {
+                match convention {
+                    crate::ast::ParamConvention::Sink => {
+                        self.consumed_bindings.insert(cap.clone());
                     }
-                } else if self.symbols.is_let(&cap) {
-                    // Module-level let — outlives the function. OK.
-                } else {
-                    // Not a parameter, not a module-level let: must be a
-                    // function-local let introduced inside the body (by now the
-                    // block/let scope has been popped). It dies with the frame.
-                    self.errors
-                        .push(CompilerError::ClosureCaptureEscapesLocalBinding {
-                            binding: cap,
-                            span,
-                        });
+                    crate::ast::ParamConvention::Let | crate::ast::ParamConvention::Mut => {
+                        self.errors
+                            .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                                binding: cap.clone(),
+                                span,
+                            });
+                    }
                 }
+            } else if self.symbols.is_let(cap) {
+                // Module-level let — outlives the function. OK.
+            } else {
+                // Function-local `let` (or any other shorter-lifetime
+                // binding the block scope has popped by now). Dies
+                // with the frame.
+                self.errors
+                    .push(CompilerError::ClosureCaptureEscapesLocalBinding {
+                        binding: cap.clone(),
+                        span,
+                    });
             }
         }
     }
@@ -2252,6 +2324,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Block-local let bindings, closure conventions, and sink-consumption flags
     /// are isolated from the enclosing scope: snapshots are taken on entry and
     /// restored on exit so block-internal names do not leak.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "linear pass over block statements + assign-time escape check; splitting hides flow"
+    )]
     fn validate_expr_block(&mut self, statements: &[BlockStatement], result: &Expr, file: &File) {
         let saved_let_bindings = self.local_let_bindings.clone();
         let saved_closure_conventions = self.closure_binding_conventions.clone();
@@ -2334,6 +2410,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             found: value_type,
                             span: *span,
                         });
+                    }
+                    // Tier-1 escape extension: a closure value assigned
+                    // to an outer-scope `mut` binding outlives this
+                    // block; its captures must outlive the function
+                    // frame. `saved_let_bindings` is the set in scope
+                    // before this block opened — bindings declared in
+                    // *this* block are absent from it.
+                    if let Expr::Reference { path, .. } = target {
+                        if let [seg] = path.as_slice() {
+                            if saved_let_bindings.contains_key(&seg.name) {
+                                if let Some(caps) = self.closure_captures_of_expr(value) {
+                                    self.validate_escaping_captures(&caps, *span);
+                                }
+                            }
+                        }
                     }
                 }
                 BlockStatement::Expr(expr) => {

@@ -104,6 +104,20 @@ pub enum Token {
     SelfKeyword,
     #[token("fn")]
     Fn,
+    /// Codegen hint: inline this function at every call site when
+    /// possible. Parsed as a prefix keyword before `fn`. Frontend
+    /// passes the attribute through to the IR; backends honour it.
+    #[token("inline")]
+    Inline,
+    /// Codegen hint: do not inline this function. Mirrors `inline` but
+    /// in the opposite direction.
+    #[token("no_inline")]
+    NoInline,
+    /// Codegen hint: this function is rarely called (cold path).
+    /// Backends may place it in a separate section and bias surrounding
+    /// branches.
+    #[token("cold")]
+    Cold,
 
     // Literals
     //
@@ -428,6 +442,9 @@ impl Token {
                 | Self::As
                 | Self::SelfKeyword
                 | Self::Fn
+                | Self::Inline
+                | Self::NoInline
+                | Self::Cold
         )
     }
 
@@ -456,6 +473,9 @@ impl Token {
             Self::As => "as",
             Self::SelfKeyword => "self",
             Self::Fn => "fn",
+            Self::Inline => "inline",
+            Self::NoInline => "no_inline",
+            Self::Cold => "cold",
             Self::Dot => ".",
             Self::Colon => ":",
             Self::DoubleColon => "::",
@@ -535,6 +555,9 @@ impl std::fmt::Display for Token {
             | Self::As
             | Self::SelfKeyword
             | Self::Fn
+            | Self::Inline
+            | Self::NoInline
+            | Self::Cold
             | Self::Dot
             | Self::Colon
             | Self::DoubleColon

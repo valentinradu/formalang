@@ -4,30 +4,64 @@ use super::IrLowerer;
 use crate::ast::PrimitiveType;
 use crate::ir::ResolvedType;
 
+/// A "simple" type name is a bare identifier (struct / enum / trait /
+/// generic param). Composite stringifications produced by semantic's
+/// `type_to_string` (`[T]`, `T?`, `T -> U`, `(a: T)`, `[K: V]`) contain
+/// punctuation that disqualifies them.
+fn is_simple_type_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+}
+
 impl IrLowerer<'_> {
-    /// Convert a string type name from the symbol table into a `ResolvedType`.
-    pub(super) fn string_to_resolved_type(&self, type_str: &str) -> ResolvedType {
+    /// Best-effort conversion of a stringified type from the symbol
+    /// table into a `ResolvedType`.
+    ///
+    /// Semantic stores let / inference types via `type_to_string`, which
+    /// produces full type expressions like `[Number]`, `String -> String`,
+    /// or `(x: Number, y: Number)`. This helper only handles the
+    /// *simple* name cases (primitives, named structs/enums/traits, in-
+    /// scope generic params); for anything composite it returns `None`
+    /// so callers can fall back to the value's already-lowered type.
+    /// Tier-1 audit: an unrecognised *simple identifier* now surfaces
+    /// as `UndefinedType` rather than silently lowering to
+    /// `TypeParam(name)`.
+    pub(super) fn string_to_resolved_type(&mut self, type_str: &str) -> Option<ResolvedType> {
         match type_str {
-            "String" => ResolvedType::Primitive(PrimitiveType::String),
-            "Number" => ResolvedType::Primitive(PrimitiveType::Number),
-            "Boolean" => ResolvedType::Primitive(PrimitiveType::Boolean),
-            "Path" => ResolvedType::Primitive(PrimitiveType::Path),
-            "Regex" => ResolvedType::Primitive(PrimitiveType::Regex),
-            "Never" => ResolvedType::Primitive(PrimitiveType::Never),
-            name => self.module.struct_id(name).map_or_else(
-                || {
-                    self.module.enum_id(name).map_or_else(
-                        || {
-                            self.module.trait_id(name).map_or_else(
-                                || ResolvedType::TypeParam(name.to_string()),
-                                ResolvedType::Trait,
-                            )
-                        },
-                        ResolvedType::Enum,
-                    )
-                },
-                ResolvedType::Struct,
-            ),
+            "String" => Some(ResolvedType::Primitive(PrimitiveType::String)),
+            "Number" => Some(ResolvedType::Primitive(PrimitiveType::Number)),
+            "Boolean" => Some(ResolvedType::Primitive(PrimitiveType::Boolean)),
+            "Path" => Some(ResolvedType::Primitive(PrimitiveType::Path)),
+            "Regex" => Some(ResolvedType::Primitive(PrimitiveType::Regex)),
+            "Never" => Some(ResolvedType::Primitive(PrimitiveType::Never)),
+            // Inference's stringified marker for the `nil` literal —
+            // matches the IR representation in `lower_literal`.
+            "Nil" => Some(ResolvedType::Optional(Box::new(ResolvedType::Primitive(
+                PrimitiveType::Never,
+            )))),
+            name if is_simple_type_name(name) => {
+                if let Some(id) = self.module.struct_id(name) {
+                    Some(ResolvedType::Struct(id))
+                } else if let Some(id) = self.module.enum_id(name) {
+                    Some(ResolvedType::Enum(id))
+                } else if let Some(id) = self.module.trait_id(name) {
+                    Some(ResolvedType::Trait(id))
+                } else if self.is_generic_param_in_scope(name) {
+                    Some(ResolvedType::TypeParam(name.to_string()))
+                } else {
+                    self.errors
+                        .push(crate::error::CompilerError::UndefinedType {
+                            name: name.to_string(),
+                            span: self.current_span,
+                        });
+                    Some(ResolvedType::TypeParam("Unknown".to_string()))
+                }
+            }
+            // Composite stringification (e.g. "[T]", "T?", "(a: T)",
+            // "T -> U", "[K: V]"). The lowerer doesn't reparse these —
+            // callers fall back to the value expression's resolved type.
+            _ => None,
         }
     }
 

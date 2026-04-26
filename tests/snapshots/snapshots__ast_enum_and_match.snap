@@ -473,7 +473,8 @@ File {
                             },
                         },
                     ),
-                    is_extern: false,
+                    extern_abi: None,
+                    attributes: [],
                     doc: None,
                     span: Span {
                         start: Location {

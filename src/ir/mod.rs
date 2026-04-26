@@ -372,6 +372,16 @@ pub struct IrModule {
     /// enabling code generators to emit proper import statements.
     pub imports: Vec<IrImport>,
 
+    /// Top-level nested modules declared in source (`mod foo { ... }`).
+    /// Each [`IrModuleNode`] lists the IDs of its directly-contained
+    /// structs, traits, enums, and functions, plus its own nested
+    /// modules. The flat per-type vectors (`structs`, `traits`, etc.)
+    /// remain authoritative — this tree is an *index* on top of them
+    /// for backends that need to preserve module hierarchy in their
+    /// output. Tier-1 item G.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<IrModuleNode>,
+
     /// Mapping from struct names to IDs for lookup during lowering.
     /// Skipped during serde round-trips; rebuilt on load via
     /// `rebuild_indices`. See audit finding #34.
@@ -393,6 +403,48 @@ pub struct IrModule {
     /// Mapping from let binding names to their index in the lets vector.
     #[serde(skip)]
     let_names: HashMap<String, usize>,
+}
+
+/// One node of the module-hierarchy tree on [`IrModule::modules`].
+///
+/// `FormaLang` flattens nested-module type names during lowering
+/// (`outer::inner::Type`) so the per-type IR vectors are flat. This
+/// node lets backends that emit code into nested namespaces (e.g.
+/// JS `export * from`, Swift nested types) reconstruct the source
+/// module hierarchy without re-parsing qualified names.
+///
+/// IDs reference the corresponding flat vectors on [`IrModule`]; the
+/// strings on those records are the qualified names. Tier-1 item G.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct IrModuleNode {
+    /// Module name as written in source (the unqualified segment, e.g.
+    /// `"shapes"` for `mod shapes { ... }`).
+    pub name: String,
+
+    /// IDs of structs declared directly in this module (not in nested
+    /// sub-modules).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structs: Vec<StructId>,
+
+    /// IDs of traits declared directly in this module.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traits: Vec<TraitId>,
+
+    /// IDs of enums declared directly in this module.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enums: Vec<EnumId>,
+
+    /// IDs of functions declared directly in this module.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<FunctionId>,
+
+    /// Nested sub-modules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub modules: Vec<Self>,
 }
 
 impl IrModule {

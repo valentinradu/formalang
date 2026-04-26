@@ -986,7 +986,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
-            vec![],
+            func_def.generics.clone(),
             func_def.doc.clone(),
         ) {
             errors.push(CompilerError::DuplicateDefinition {
@@ -1564,12 +1564,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // against `body` so a mismatch — which can happen under parser
         // error recovery, even though the happy-path parsers preserve
         // the invariant — surfaces a meaningful semantic error.
-        if func_def.is_extern && func_def.body.is_some() {
+        if func_def.is_extern() && func_def.body.is_some() {
             self.errors.push(CompilerError::ExternFnWithBody {
                 function: func_def.name.name.clone(),
                 span: func_def.name.span,
             });
-        } else if !func_def.is_extern && func_def.body.is_none() {
+        } else if !func_def.is_extern() && func_def.body.is_none() {
             self.errors.push(CompilerError::RegularFnWithoutBody {
                 function: func_def.name.name.clone(),
                 span: func_def.name.span,
@@ -1593,7 +1593,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             func_def.span,
             params,
             func_def.return_type.clone(),
-            vec![],
+            func_def.generics.clone(),
             func_def.doc.clone(),
         ) {
             self.errors.push(CompilerError::DuplicateDefinition {

@@ -85,7 +85,8 @@ IrModule {
                             ),
                         },
                     ),
-                    is_extern: false,
+                    extern_abi: None,
+                    attributes: [],
                     doc: None,
                 },
             ],
@@ -94,6 +95,7 @@ IrModule {
     lets: [],
     functions: [],
     imports: [],
+    modules: [],
     struct_names: {
         "Point": StructId(
             0,

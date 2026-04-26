@@ -154,17 +154,30 @@ fn test_tuple_with_invalid_type() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // =============================================================================
-// validate_type: trait used as struct in type annotation
+// validate_type: trait used as a value type is rejected
 // =============================================================================
 
 #[test]
-fn test_trait_as_valid_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
-    // Traits are valid in type positions
+fn test_trait_as_value_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Tier-1 item E2: traits are NOT valid as value types (no
+    // dynamic dispatch in FormaLang). The fix is a generic bound:
+    // `struct Container<T: Shape> { shape: T }`.
     let source = r"
         trait Shape { area: Number }
         struct Container { shape: Shape }
     ";
-    compile(source).map_err(|e| format!("Traits should be valid in type position: {e:?}"))?;
+    let errors = compile(source)
+        .err()
+        .ok_or("expected TraitUsedAsValueType")?;
+    if !errors.iter().any(|e| matches!(
+        e,
+        formalang::CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Shape"
+    )) {
+        return Err(format!(
+            "expected TraitUsedAsValueType for `Shape` field type, got: {errors:?}"
+        )
+        .into());
+    }
     Ok(())
 }
 

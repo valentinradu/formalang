@@ -1,22 +1,23 @@
 # IR Gaps and Backend Guidance
 
-**Last Updated**: 2026-04-24
+**Last Updated**: 2026-04-26
 **Status**: Living document
 
 FormaLang ships as a compiler frontend: it produces a type-resolved
-`IrModule` and leaves code generation to embedder-supplied backends. Several
-lowering problems that a typed target normally expects from a frontend are
-*not* performed here. This document lists those gaps, what the IR gives you
-today, and what a backend has to fill in.
+`IrModule` and leaves code generation to embedder-supplied backends.
+Several lowering problems that a typed target normally expects from a
+frontend are *not* performed here. This document lists those gaps,
+what the IR gives you today, and what a backend has to fill in.
 
-## 1. Monomorphisation (implemented; limitations remain)
+## 1. Monomorphisation (implemented end-to-end except generic traits)
 
-`formalang::ir::MonomorphisePass` is a real pass now — it collects every
-`ResolvedType::Generic { base, args }` instantiation, clones each generic
-struct or enum once per unique argument tuple, substitutes
-`ResolvedType::TypeParam` references in field / method / body types, then
-rewrites every `Generic` reference to point at the specialised clone and
-drops the original generic definitions.
+`formalang::ir::MonomorphisePass` is a real pass — it collects every
+`ResolvedType::Generic { base, args }` instantiation, clones each
+generic struct, enum, **or function** once per unique argument tuple,
+substitutes `ResolvedType::TypeParam` references in field / method /
+param / body types, then rewrites every `Generic` reference and every
+`FunctionCall` path to point at the specialised clone and drops the
+original generic definitions.
 
 ```rust
 use formalang::{compile_to_ir, Pipeline};
@@ -25,71 +26,40 @@ use formalang::ir::MonomorphisePass;
 let source = "pub struct Box<T> { value: T }\n\
               pub let b: Box<Number> = Box<Number>(value: 1)";
 let module = compile_to_ir(source).unwrap();
-let result = Pipeline::new().pass(MonomorphisePass).run(module).unwrap();
+let result = Pipeline::new().pass(MonomorphisePass::default()).run(module).unwrap();
 // After the pass: no structs with `generic_params` remain; `Box<Number>`
 // has been replaced by a concrete clone `Box__Number`.
 ```
 
-### Remaining limitations
+`MonomorphisePass` runs in five sub-phases: 1a specialises external
+generic types via `with_imports`, 2 specialises generic structs/enums
+and rewrites references, 2b clones impls per specialisation, 2c
+rewrites `DispatchKind::Static { impl_id }` at call sites, 2d
+specialises generic functions and rewrites their call sites, and 2e
+devirtualises every `DispatchKind::Virtual` whose receiver became
+concrete after specialisation. FormaLang has no dynamic dispatch —
+trait values are rejected at semantic time
+(`CompilerError::TraitUsedAsValueType`), so any virtual dispatch on a
+concrete receiver surviving Phase 2e is reported as an
+`InternalError`.
 
-- **Generic traits are not supported.** A trait declaration with non-empty
-  `generic_params` that survives the pass is reported as an
-  `InternalError`. There is no mechanism to specialise a generic trait.
-- **Impl-block dispatch ids are not rewritten.** Phase 2b clones each
-  generic impl block per specialisation so the methods are attached to
-  the specialised struct/enum, but `DispatchKind::Static { impl_id }` at
-  call sites still points at the original generic-impl slot. Backends
-  that locate methods by walking `module.impls` (matching on
-  `ImplTarget`) resolve correctly; backends that honour the per-call
-  `impl_id` need a follow-up pass to rewrite those ids from the receiver
-  type.
-- **External generic type args are not specialised.** The pass walks
-  generic arguments on imported types (`ResolvedType::External { type_args, .. }`)
-  but does not chase through them to specialise definitions in other
-  modules.
-- **`ResolvedType::TypeParam` residues are tolerated.** The leftover
-  scanner intentionally does not flag `TypeParam(name)` after the pass
-  because IR lowering still emits `TypeParam` as a placeholder in a few
-  spots (empty array/dict element types, `nil` literal); this is tracked
-  as part of the IR-lowering cleanup, not a monomorphise bug.
+Phase 2c rewrites `DispatchKind::Static { impl_id }` at every call
+site so it points at the per-specialisation impl clone (audit #5b).
+Phase 1a specialises external generic types via
+`MonomorphisePass::with_imports`, cloning imported generic
+definitions into the current module with substituted arguments
+(audit #45).
 
-## 2. Trait method dispatch
+### Remaining limitation
 
-`IrExpr::MethodCall` carries a `DispatchKind`:
+- **Generic traits are not supported.** A trait declaration with
+  non-empty `generic_params` that survives the pass is reported as an
+  `InternalError`. Source has no way to use a generic trait yet
+  (`<T: Trait<X>>` constraint args and `impl Trait<X> for Foo`
+  aren't parsed), so declared-but-unused generic traits are the only
+  source-reachable case today. Tracked as its own follow-up PR.
 
-- `Static { impl_id }` — direct call on a concrete struct/enum with a known
-  `impl` block. Backends emit a direct function call.
-- `Virtual { trait_id, method_name }` — method call through a type
-  parameter bound or a trait object. The IR provides only the declaring
-  trait and the method name; it does **not** provide a vtable layout,
-  concrete impl resolution, or monomorphised dispatch.
-
-**Recommended backend posture**: for `Virtual` dispatch, the backend must
-decide between a vtable (runtime dispatch), duck-typing, or running a
-project-local resolver pass that rewrites `Virtual` into `Static` given a
-specific receiver type.
-
-## 3. Closure captures (covered)
-
-`IrExpr::Closure` has a `captures: Vec<(String, ResolvedType)>` field
-populated during lowering. It lists every free variable the closure body
-references, with its type, de-duplicated and in first-reference order.
-Closure parameters and locally-bound values are excluded.
-
-Backends can use this to emit capture-environment structs or reject
-closures that capture values whose lifetime the target language cannot
-express.
-
-Not covered (backend is on its own):
-
-- Capture mode (move vs reference / `mut` vs `sink`): the IR does not
-  annotate each capture with an ownership mode.
-- Captures through nested data structures: if a closure stores a captured
-  value inside another closure that itself escapes, the inner capture is
-  still listed but lifetime analysis across the nesting is the backend's
-  responsibility.
-
-## 4. Constant folding (partial)
+## 2. Constant folding (intentionally bounded)
 
 `formalang::ir::ConstantFoldingPass` evaluates:
 
@@ -97,59 +67,76 @@ Not covered (backend is on its own):
 - Boolean and comparison operators
 - Unary negation and `!`
 - String concatenation of string literals
+- `if true / false` collapsing to the taken branch (also performed by
+  DCE on dead branches; the two passes coexist by design)
 
-It does **not** fold struct literals with constant fields, `if` expressions
-with a constant condition, method or function calls on constants, or dict
-and array literals. Those are left as-is for backends or project-local
-passes to handle.
+It does **not** fold:
 
-## 5. Dead code elimination (covered)
+- Struct, enum, tuple, array, or dict literals with all-literal
+  contents. The IR has no "constant aggregate" representation, no
+  pass in this crate consumes such a marker, and backends that emit
+  static data do their own scan over `IrExpr::Literal` children.
+  Adding the fold without a consumer is performative; if a backend
+  needs it, it lives behind a `Pipeline::pass` opt-in there.
+- Method or function calls on constants. Compile-time evaluation
+  requires a `pure` / `const fn` language-level annotation that
+  FormaLang does not currently model. That's a language-design item
+  on top of a frontend extension; tracked separately rather than
+  forced into this doc.
 
-`DeadCodeEliminationPass` analyses used structs, traits, and enums, prunes
-unreachable branches of `if` expressions with constant conditions, and
-physically removes unused definitions by rewriting every `StructId` /
-`TraitId` / `EnumId` reference across the module. Impl blocks whose
-target is removed are also dropped.
+## 3. Escape analysis and lifetime elision
 
-DCE semantics: a bare `impl` block does **not** keep its target type
-alive. The type must be referenced from a field, a function parameter,
-an expression, or a trait constraint for it to survive.
+Not implemented as a general pass. The semantic analyser enforces
+targeted escape constraints — closures returned from a function may
+only capture `sink` parameters or outer-scope module-level bindings
+(`ClosureCaptureEscapesLocalBinding`); closures stored in arrays /
+tuples / dicts / struct fields, returned aggregates (struct / enum /
+tuple / array / dict), or assigned to outer-scope `mut` bindings are
+all run through the same outlives-the-frame rule. No region inference
+happens in the IR; backends targeting reference-counted or arena-
+allocated languages must compute lifetimes themselves.
 
-## 6. Escape analysis and lifetime elision
+---
 
-Not implemented. The semantic analyser enforces that closures returned
-from a function only capture `sink` parameters or outer-scope bindings
-(see `ClosureCaptureEscapesLocalBinding`), but no further escape analysis
-or region inference happens in the IR. Backends targeting reference-counted
-or arena-allocated languages must compute lifetimes themselves.
+## Implemented (no longer gaps)
 
-## 7. Inlining hints
+The items below were listed as gaps in earlier revisions and are now
+covered by the frontend. They are kept here briefly for the benefit of
+backends written against older snapshots; consult `docs/developer/ir.md`
+for the canonical descriptions.
 
-Not implemented. The IR does not carry `inline` / `no_inline` annotations
-or cost estimates. Backends with inlining heuristics use whatever signals
-they can derive from the IR structure (function size, call-graph depth).
-
-## 8. FFI calling conventions
-
-`is_extern: true` on an `IrFunction` marks the declaration as implemented
-outside FormaLang (no body). The IR does not specify:
-
-- Calling convention (C, stdcall, fastcall)
-- Native-symbol mapping (which symbol name the extern binds to)
-- Type marshalling rules across the FFI boundary
-
-Backends targeting FFI must encode these outside the IR — typically via a
-side table keyed on function name, or a compiler plugin.
-
-## 9. Module nesting
-
-Currently flattened during lowering. Nested modules in source become
-qualified names (`outer::inner::Type`) in the IR. Backends that need to
-preserve a module hierarchy in their output must reconstruct it from the
-qualified names.
+- **Closure capture mode.** `IrExpr::Closure.captures` is
+  `Vec<(String, ParamConvention, ResolvedType)>`. Each entry inherits
+  the outer binding's convention (`Let` / `Mut` / `Sink`) so backends
+  can decide between move/borrow/mutation/ownership semantics.
+- **Inlining hints.** `IrFunction.attributes` (and
+  `IrFunctionSig.attributes`) is `Vec<FunctionAttribute>`. Source
+  syntax: `inline fn`, `no_inline fn`, `cold fn` keyword prefixes
+  before `fn`. Frontend passes them through unchanged; backends with
+  inlining heuristics consume them as hints.
+- **FFI calling conventions.** `IrFunction.extern_abi` is
+  `Option<ExternAbi>`. Source syntax: `extern fn` (defaults to
+  `ExternAbi::C`), `extern "C" fn`, `extern "system" fn`. Unknown ABI
+  strings are rejected at parse time. Inherent `is_extern()` method
+  preserves the boolean check at call sites that don't care which ABI.
+- **Module nesting.** `IrModule.modules` is a `Vec<IrModuleNode>` that
+  mirrors the source `mod foo { ... }` tree. Each node carries
+  `Vec<StructId>` / `Vec<TraitId>` / `Vec<EnumId>` /
+  `Vec<FunctionId>` for definitions declared directly in that module
+  plus nested sub-modules. The flat per-type vectors on `IrModule`
+  remain authoritative; the tree is an *index* on top of them, opt-in
+  for backends that need the hierarchy.
+- **Dead code elimination.** `DeadCodeEliminationPass` analyses used
+  structs, traits, and enums, prunes unreachable branches of `if`
+  expressions with constant conditions, and physically removes unused
+  definitions by rewriting every `StructId` / `TraitId` / `EnumId`
+  reference across the module. Impl blocks whose target is removed
+  are also dropped. Note: a bare `impl` block does **not** keep its
+  target type alive.
 
 ---
 
 This list is the authoritative record of what the frontend does *not*
 lower for you. When a pass is implemented, move the entry to
-`docs/developer/ir.md` and remove it here.
+`docs/developer/ir.md` and remove it (or move it to the section
+above) here.
