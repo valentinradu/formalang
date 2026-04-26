@@ -16,4 +16,3 @@ backends via the plugin system.
 - [Architecture Overview](developer/architecture.md) - System design and compiler pipeline
 - [AST Reference](developer/ast.md) - Abstract Syntax Tree for tooling
 - [IR Reference](developer/ir.md) - Intermediate Representation for code generation
-- [IR Gaps and Backend Guidance](developer/ir-gaps.md) - What the frontend does not lower for you

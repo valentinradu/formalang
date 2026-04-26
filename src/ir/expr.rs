@@ -432,4 +432,38 @@ impl IrExpr {
             | Self::Block { ty, .. } => ty,
         }
     }
+
+    /// Whether this expression is a constant aggregate — a literal, or an
+    /// aggregate (array / tuple / struct / enum / dict) whose every leaf is a
+    /// literal. After [`fold_constants`](crate::ir::fold_constants) this
+    /// predicate is the load-bearing marker for "static initializer": backends
+    /// emitting read-only data segments can short-circuit on it instead of
+    /// re-walking children themselves.
+    #[must_use]
+    pub fn is_constant(&self) -> bool {
+        match self {
+            Self::Literal { .. } => true,
+            Self::Array { elements, .. } => elements.iter().all(Self::is_constant),
+            Self::Tuple { fields, .. }
+            | Self::StructInst { fields, .. }
+            | Self::EnumInst { fields, .. } => fields.iter().all(|(_, e)| e.is_constant()),
+            Self::DictLiteral { entries, .. } => entries
+                .iter()
+                .all(|(k, v)| k.is_constant() && v.is_constant()),
+            Self::Reference { .. }
+            | Self::SelfFieldRef { .. }
+            | Self::FieldAccess { .. }
+            | Self::LetRef { .. }
+            | Self::BinaryOp { .. }
+            | Self::UnaryOp { .. }
+            | Self::If { .. }
+            | Self::For { .. }
+            | Self::Match { .. }
+            | Self::FunctionCall { .. }
+            | Self::MethodCall { .. }
+            | Self::Closure { .. }
+            | Self::DictAccess { .. }
+            | Self::Block { .. } => false,
+        }
+    }
 }
