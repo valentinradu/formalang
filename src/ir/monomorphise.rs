@@ -47,7 +47,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::error::CompilerError;
 use crate::ir::{
     EnumId, GenericBase, ImportedKind, IrBlockStatement, IrEnum, IrExpr, IrField, IrFunction,
-    IrImpl, IrModule, IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId,
+    IrImpl, IrModule, IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId, TraitId,
 };
 use crate::location::Span;
 use crate::pipeline::IrPass;
@@ -563,6 +563,9 @@ fn externalise_imported_refs(ty: &mut ResolvedType, imported: &IrModule, module_
                 GenericBase::Enum(id) => imported
                     .get_enum(*id)
                     .map(|e| (e.name.clone(), ImportedKind::Enum)),
+                GenericBase::Trait(id) => imported
+                    .get_trait(*id)
+                    .map(|t| (t.name.clone(), ImportedKind::Trait)),
             }
             .unwrap_or_else(|| (String::new(), ImportedKind::Struct));
             for a in args.iter_mut() {
@@ -698,6 +701,7 @@ fn specialise(
     match base {
         GenericBase::Struct(id) => specialise_struct(module, *id, args),
         GenericBase::Enum(id) => specialise_enum(module, *id, args),
+        GenericBase::Trait(id) => specialise_trait(module, *id, args),
     }
 }
 
@@ -818,6 +822,81 @@ fn specialise_enum(
     Ok((GenericBase::Enum(new_id), discovered.into_iter().collect()))
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "CompilerError is large by design; errors are bounded to a Vec<CompilerError> at the pass boundary"
+)]
+fn specialise_trait(
+    module: &mut IrModule,
+    base_id: TraitId,
+    args: &[ResolvedType],
+) -> Result<SpecialiseOk, CompilerError> {
+    let Some(source) = module.get_trait(base_id).cloned() else {
+        return Err(CompilerError::InternalError {
+            detail: format!(
+                "monomorphise: missing trait id {} for instantiation",
+                base_id.0
+            ),
+            span: Span::default(),
+        });
+    };
+
+    if source.generic_params.len() != args.len() {
+        return Err(CompilerError::GenericArityMismatch {
+            name: source.name.clone(),
+            expected: source.generic_params.len(),
+            actual: args.len(),
+            span: Span::default(),
+        });
+    }
+
+    let subs: HashMap<String, ResolvedType> = source
+        .generic_params
+        .iter()
+        .zip(args.iter())
+        .map(|(p, a)| (p.name.clone(), a.clone()))
+        .collect();
+
+    let mangled = mangle_name(&source.name, args, module);
+    let mut spec = source;
+    spec.name.clone_from(&mangled);
+    spec.generic_params.clear();
+    for field in &mut spec.fields {
+        substitute_type(&mut field.ty, &subs);
+        if let Some(expr) = &mut field.default {
+            substitute_expr_types(expr, &subs);
+        }
+    }
+    for sig in &mut spec.methods {
+        for param in &mut sig.params {
+            if let Some(t) = &mut param.ty {
+                substitute_type(t, &subs);
+            }
+        }
+        if let Some(rt) = &mut sig.return_type {
+            substitute_type(rt, &subs);
+        }
+    }
+
+    let mut discovered: HashSet<Instantiation> = HashSet::new();
+    for field in &spec.fields {
+        collect_from_type(&field.ty, &mut discovered);
+    }
+    for sig in &spec.methods {
+        for param in &sig.params {
+            if let Some(t) = &param.ty {
+                collect_from_type(t, &mut discovered);
+            }
+        }
+        if let Some(rt) = &sig.return_type {
+            collect_from_type(rt, &mut discovered);
+        }
+    }
+
+    let new_id = module.add_trait(mangled, spec)?;
+    Ok((GenericBase::Trait(new_id), discovered.into_iter().collect()))
+}
+
 /// Build a stable mangled name for a specialisation. Collisions with
 /// existing names would break `rebuild_indices`, so on the off chance a
 /// user-written struct already has the mangled name, we append an
@@ -909,6 +988,9 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
                 }
                 GenericBase::Enum(id) => {
                     let _ = write_usize(out, "GE", usize::try_from(id.0).unwrap_or(0));
+                }
+                GenericBase::Trait(id) => {
+                    let _ = write_usize(out, "GT", usize::try_from(id.0).unwrap_or(0));
                 }
             }
             for a in args {
@@ -1034,6 +1116,7 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericB
                 *ty = match spec {
                     GenericBase::Struct(id) => ResolvedType::Struct(id),
                     GenericBase::Enum(id) => ResolvedType::Enum(id),
+                    GenericBase::Trait(id) => ResolvedType::Trait(id),
                 };
             }
         }
@@ -1099,6 +1182,10 @@ fn specialise_impls(
                 .get_enum(eid)
                 .map(|e| e.generic_params.iter().map(|p| p.name.clone()).collect())
                 .unwrap_or_default(),
+            // An impl never targets a trait base directly — `imp.target`
+            // is `ImplTarget::Struct(_)` or `ImplTarget::Enum(_)`. This
+            // arm is unreachable but kept for match exhaustiveness.
+            GenericBase::Trait(_) => Vec::new(),
         };
         if generic_param_names.is_empty() {
             continue;
@@ -1116,6 +1203,8 @@ fn specialise_impls(
             clone.target = match spec_base {
                 GenericBase::Struct(id) => crate::ir::ImplTarget::Struct(*id),
                 GenericBase::Enum(id) => crate::ir::ImplTarget::Enum(*id),
+                // Impl targets are struct/enum only — see above.
+                GenericBase::Trait(_) => continue,
             };
             for func in &mut clone.functions {
                 for param in &mut func.params {
@@ -2117,6 +2206,9 @@ fn remap_type(
                         *id = new;
                     }
                 }
+                // Trait remap lives outside this helper (Phase F);
+                // Generic{base:Trait} survivors are handled there.
+                GenericBase::Trait(_) => {}
             }
             for a in args {
                 remap_type(a, struct_remap, enum_remap);
@@ -2197,6 +2289,11 @@ fn scan_dispatch_leftovers(module: &IrModule, scanner: &mut LeftoverScanner) {
                 let kind = match base {
                     GenericBase::Struct(id) => format!("struct id {}", id.0),
                     GenericBase::Enum(id) => format!("enum id {}", id.0),
+                    // Trait base shouldn't appear as a method-call
+                    // receiver post item E2 — surface it in the
+                    // diagnostic anyway so unexpected leftovers are
+                    // visible.
+                    GenericBase::Trait(id) => format!("trait id {}", id.0),
                 };
                 scanner.note(format!(
                     "unresolved Virtual dispatch — method `{method}` on concrete receiver \
@@ -2327,6 +2424,7 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
             let (kind, id) = match base {
                 GenericBase::Struct(s) => ("struct", s.0),
                 GenericBase::Enum(e) => ("enum", e.0),
+                GenericBase::Trait(t) => ("trait", t.0),
             };
             Some(format!(
                 "unresolved Generic(base={kind}_id={id}, {} args)",

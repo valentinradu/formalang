@@ -746,6 +746,11 @@ impl IrLowerer<'_> {
             ResolvedType::Generic { base, .. } => match base {
                 crate::ir::GenericBase::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
                 crate::ir::GenericBase::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
+                // A generic trait base can't be a method-call
+                // receiver (FormaLang has no dynamic dispatch). Phase
+                // E2 rejects trait values; this branch is here only
+                // to keep the match exhaustive.
+                crate::ir::GenericBase::Trait(_) => None,
             },
             ResolvedType::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
             ResolvedType::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
@@ -804,6 +809,10 @@ impl IrLowerer<'_> {
             ResolvedType::Generic { base, .. } => match base {
                 crate::ir::GenericBase::Struct(id) => Some(ResolvedType::Struct(*id)),
                 crate::ir::GenericBase::Enum(id) => Some(ResolvedType::Enum(*id)),
+                // A trait base wouldn't appear here for a method
+                // call receiver post item E2. Stay None and let the
+                // resolver fall through to the existing error path.
+                crate::ir::GenericBase::Trait(_) => None,
             },
             ResolvedType::Primitive(_)
             | ResolvedType::Struct(_)
@@ -1384,6 +1393,9 @@ impl IrLowerer<'_> {
             let (target_struct_id, target_enum_id) = match base {
                 crate::ir::GenericBase::Struct(id) => (Some(*id), None),
                 crate::ir::GenericBase::Enum(id) => (None, Some(*id)),
+                // A trait base wouldn't appear here as a method-call
+                // receiver post item E2. Skip and fall through.
+                crate::ir::GenericBase::Trait(_) => (None, None),
             };
             let generic_params: Vec<String> = if let Some(sid) = target_struct_id {
                 self.module

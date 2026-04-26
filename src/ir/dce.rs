@@ -201,6 +201,9 @@ impl<'a> DeadCodeEliminator<'a> {
                     crate::ir::GenericBase::Enum(id) => {
                         self.used_enums.insert(*id);
                     }
+                    crate::ir::GenericBase::Trait(id) => {
+                        self.used_traits.insert(*id);
+                    }
                 }
                 for arg in args {
                     self.mark_used_in_type(arg);
@@ -787,6 +790,11 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
                 }
                 crate::ir::GenericBase::Enum(id) => {
                     if let Some(new) = remap.enum_of(*id) {
+                        *id = new;
+                    }
+                }
+                crate::ir::GenericBase::Trait(id) => {
+                    if let Some(new) = remap.trait_of(*id) {
                         *id = new;
                     }
                 }
