@@ -965,11 +965,11 @@ impl IrLowerer<'_> {
     fn find_trait_for_method(&mut self, param_name: &str, method_name: &str) -> Option<TraitId> {
         for frame in self.generic_scopes.iter().rev() {
             if let Some(param) = frame.iter().find(|p| p.name == param_name) {
-                for trait_id in &param.constraints {
-                    let idx = trait_id.0 as usize;
+                for constraint in &param.constraints {
+                    let idx = constraint.trait_id.0 as usize;
                     if let Some(trait_def) = self.module.traits.get(idx) {
                         if trait_def.methods.iter().any(|m| m.name == method_name) {
-                            return Some(*trait_id);
+                            return Some(constraint.trait_id);
                         }
                     }
                 }

@@ -1234,10 +1234,14 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_fn_def(f, enclosing_extern))
             .collect();
         self.generic_scopes.pop();
-        let trait_id = i
-            .trait_name
-            .as_ref()
-            .and_then(|t| self.module.trait_id(&t.name));
+        // Phase C: lower the trait reference together with any
+        // generic-trait args (`impl Foo<X> for Y`).
+        let trait_ref = i.trait_name.as_ref().and_then(|tname| {
+            self.module.trait_id(&tname.name).map(|trait_id| {
+                let args = i.trait_args.iter().map(|t| self.lower_type(t)).collect();
+                crate::ir::IrTraitRef { trait_id, args }
+            })
+        });
 
         // Clear the context
         self.current_impl_struct = None;
@@ -1245,7 +1249,7 @@ impl<'a> IrLowerer<'a> {
 
         if let Err(err) = self.module.add_impl(IrImpl {
             target,
-            trait_id,
+            trait_ref,
             is_extern: i.is_extern,
             generic_params,
             functions,
@@ -1442,24 +1446,34 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+    fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+        // Phase C: each constraint becomes an IrTraitRef carrying
+        // both the trait id and any generic-trait args
+        // (`<T: Container<Number>>`). Arg lowering goes through
+        // `lower_type`, which is why this method now needs `&mut self`.
         params
             .iter()
-            .map(|p| IrGenericParam {
-                name: p.name.name.clone(),
-                constraints: p
+            .map(|p| {
+                let constraints: Vec<crate::ir::IrTraitRef> = p
                     .constraints
                     .iter()
                     .filter_map(|c| match c {
-                        // Phase A: args carried by the constraint
-                        // are not yet threaded into IrGenericParam —
-                        // Phase C will replace this Vec<TraitId> with
-                        // a Vec<TraitConstraint> shape that carries
-                        // them. For now we keep behaviour identical
-                        // by collecting just the trait ids.
-                        GenericConstraint::Trait { name, .. } => self.module.trait_id(&name.name),
+                        GenericConstraint::Trait { name, args } => {
+                            self.module.trait_id(&name.name).map(|trait_id| {
+                                let lowered_args: Vec<ResolvedType> =
+                                    args.iter().map(|t| self.lower_type(t)).collect();
+                                crate::ir::IrTraitRef {
+                                    trait_id,
+                                    args: lowered_args,
+                                }
+                            })
+                        }
                     })
-                    .collect(),
+                    .collect();
+                IrGenericParam {
+                    name: p.name.name.clone(),
+                    constraints,
+                }
             })
             .collect()
     }

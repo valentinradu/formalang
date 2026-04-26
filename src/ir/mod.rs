@@ -41,7 +41,7 @@ pub use lower::lower_to_ir;
 pub use monomorphise::MonomorphisePass;
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
-    IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait,
+    IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait, IrTraitRef,
 };
 pub use visitor::{
     walk_block_statement, walk_expr, walk_expr_children, walk_module, walk_module_children,

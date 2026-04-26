@@ -67,10 +67,13 @@ IrModule {
                     0,
                 ),
             ),
-            trait_id: Some(
-                TraitId(
-                    0,
-                ),
+            trait_ref: Some(
+                IrTraitRef {
+                    trait_id: TraitId(
+                        0,
+                    ),
+                    args: [],
+                },
             ),
             is_extern: false,
             generic_params: [],

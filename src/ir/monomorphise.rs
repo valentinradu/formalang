@@ -1851,12 +1851,12 @@ fn devirtualise_expr(expr: &mut IrExpr, impls: &[IrImpl]) {
     if let Some(impl_idx) = impls.iter().position(|imp| match imp.target {
         crate::ir::ImplTarget::Struct(id) => {
             target_base == GenericBase::Struct(id)
-                && imp.trait_id == Some(virt_trait_id)
+                && imp.trait_id() == Some(virt_trait_id)
                 && imp.functions.iter().any(|f| f.name == method_name_owned)
         }
         crate::ir::ImplTarget::Enum(id) => {
             target_base == GenericBase::Enum(id)
-                && imp.trait_id == Some(virt_trait_id)
+                && imp.trait_id() == Some(virt_trait_id)
                 && imp.functions.iter().any(|f| f.name == method_name_owned)
         }
     }) {
