@@ -563,13 +563,12 @@ fn test_monomorphise_removes_unused_generic_struct() -> Result<(), Box<dyn std::
 }
 
 #[test]
-fn test_monomorphise_rejects_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #35: generic traits aren't supported by the IR. The
-    // monomorphise pass's leftover scan should surface a clear
-    // InternalError instead of silently leaving the generic trait in
-    // the module.
+fn test_monomorphise_drops_unused_generic_trait() -> Result<(), Box<dyn std::error::Error>> {
+    // Generic-traits PR (formerly audit #35): a generic trait that is
+    // declared but never instantiated has nothing to specialise to —
+    // monomorphise drops it during compaction (mirroring the
+    // struct/enum rule). No more InternalError.
     use formalang::ir::MonomorphisePass;
-    use formalang::CompilerError;
 
     let source = r"
         pub trait Container<T> {
@@ -578,20 +577,11 @@ fn test_monomorphise_rejects_generic_trait() -> Result<(), Box<dyn std::error::E
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
-    let errs = pipeline
-        .run(module)
-        .err()
-        .ok_or("expected monomorphise to reject a generic trait")?;
-    let saw_internal = errs.iter().any(|e| {
-        matches!(
-            e,
-            CompilerError::InternalError { detail, .. }
-                if detail.contains("generic trait") && detail.contains("Container")
-        )
-    });
-    if !saw_internal {
+    let result = pipeline.run(module).map_err(|e| format!("mono: {e:?}"))?;
+    if result.traits.iter().any(|t| t.name == "Container") {
         return Err(format!(
-            "expected InternalError naming generic trait `Container`, got: {errs:?}"
+            "expected unused generic Container to be dropped, got: {:?}",
+            result.traits.iter().map(|t| &t.name).collect::<Vec<_>>()
         )
         .into());
     }

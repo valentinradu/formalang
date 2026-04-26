@@ -57,8 +57,12 @@ pub struct IrStruct {
     /// Visibility (public or private)
     pub visibility: Visibility,
 
-    /// Traits implemented by this struct
-    pub traits: Vec<TraitId>,
+    /// Traits implemented by this struct, with optional generic-trait
+    /// args (`<T>`). Empty args means a non-generic trait. Generic-
+    /// traits PR: changed from `Vec<TraitId>` so generic-trait
+    /// instantiations (`impl Eq<Number> for Foo`) can be tracked
+    /// distinctly per arg-tuple.
+    pub traits: Vec<IrTraitRef>,
 
     /// Regular fields
     pub fields: Vec<IrField>,

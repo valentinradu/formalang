@@ -9,15 +9,17 @@ Several lowering problems that a typed target normally expects from a
 frontend are *not* performed here. This document lists those gaps,
 what the IR gives you today, and what a backend has to fill in.
 
-## 1. Monomorphisation (implemented end-to-end except generic traits)
+## 1. Monomorphisation (implemented end-to-end)
 
 `formalang::ir::MonomorphisePass` is a real pass — it collects every
-`ResolvedType::Generic { base, args }` instantiation, clones each
-generic struct, enum, **or function** once per unique argument tuple,
-substitutes `ResolvedType::TypeParam` references in field / method /
-param / body types, then rewrites every `Generic` reference and every
-`FunctionCall` path to point at the specialised clone and drops the
-original generic definitions.
+`ResolvedType::Generic { base, args }` instantiation (including
+generic-trait constraints `<T: Foo<X>>` and impl-trait refs
+`impl Foo<X> for Y`), clones each generic struct, enum, function,
+**or trait** once per unique argument tuple, substitutes
+`ResolvedType::TypeParam` references in field / method / param /
+body types, then rewrites every `Generic` reference, every
+`FunctionCall` path, and every `IrTraitRef` to point at the
+specialised clone and drops the original generic definitions.
 
 ```rust
 use formalang::{compile_to_ir, Pipeline};
@@ -31,17 +33,18 @@ let result = Pipeline::new().pass(MonomorphisePass::default()).run(module).unwra
 // has been replaced by a concrete clone `Box__Number`.
 ```
 
-`MonomorphisePass` runs in five sub-phases: 1a specialises external
-generic types via `with_imports`, 2 specialises generic structs/enums
-and rewrites references, 2b clones impls per specialisation, 2c
-rewrites `DispatchKind::Static { impl_id }` at call sites, 2d
-specialises generic functions and rewrites their call sites, and 2e
-devirtualises every `DispatchKind::Virtual` whose receiver became
-concrete after specialisation. FormaLang has no dynamic dispatch —
-trait values are rejected at semantic time
-(`CompilerError::TraitUsedAsValueType`), so any virtual dispatch on a
-concrete receiver surviving Phase 2e is reported as an
-`InternalError`.
+`MonomorphisePass` runs in six sub-phases: 1a specialises external
+generic types via `with_imports`, 2 specialises generic
+structs/enums/traits and rewrites references (including `IrTraitRef`
+slots on generic-param constraints and impl headers), 2b clones
+impls per specialisation, 2c rewrites `DispatchKind::Static {
+impl_id }` at call sites, 2d specialises generic functions and
+rewrites their call sites, and 2e devirtualises every
+`DispatchKind::Virtual` whose receiver became concrete after
+specialisation. FormaLang has no dynamic dispatch — trait values are
+rejected at semantic time (`CompilerError::TraitUsedAsValueType`),
+so any virtual dispatch on a concrete receiver surviving Phase 2e is
+reported as an `InternalError`.
 
 Phase 2c rewrites `DispatchKind::Static { impl_id }` at every call
 site so it points at the per-specialisation impl clone (audit #5b).
@@ -50,14 +53,12 @@ Phase 1a specialises external generic types via
 definitions into the current module with substituted arguments
 (audit #45).
 
-### Remaining limitation
-
-- **Generic traits are not supported.** A trait declaration with
-  non-empty `generic_params` that survives the pass is reported as an
-  `InternalError`. Source has no way to use a generic trait yet
-  (`<T: Trait<X>>` constraint args and `impl Trait<X> for Foo`
-  aren't parsed), so declared-but-unused generic traits are the only
-  source-reachable case today. Tracked as its own follow-up PR.
+Source-level generic traits are now usable: `trait Foo<T> { ... }`
+plus `<T: Foo<Number>>` constraints and `impl Foo<Number> for Bar`
+all parse and round-trip through monomorphisation. The semantic
+trait-method check substitutes the trait's generic params with the
+impl's trait_args before comparing signatures, so the impl method
+can mention concrete types where the trait declares parameters.
 
 ## 2. Constant folding (intentionally bounded)
 

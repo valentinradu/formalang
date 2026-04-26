@@ -744,12 +744,19 @@ impl<'a> IrLowerer<'a> {
 
         self.generic_scopes.pop();
 
-        // Convert trait names to trait IDs
-        // Use get_all_traits_for_struct to include both inline traits and impl blocks
+        // Convert trait names to IrTraitRef. The symbol table's
+        // get_all_traits_for_struct only carries trait names today,
+        // so we always lower these as non-generic refs (empty args);
+        // the impl-block path (lower_impl) is what produces
+        // populated args via ImplDef.trait_args.
         let all_trait_names = self.symbols.get_all_traits_for_struct(name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
-            .filter_map(|trait_name| self.module.trait_id(trait_name))
+            .filter_map(|trait_name| {
+                self.module
+                    .trait_id(trait_name)
+                    .map(crate::ir::IrTraitRef::simple)
+            })
             .collect();
 
         if let Err(e) = self.module.add_struct(
@@ -962,7 +969,7 @@ impl<'a> IrLowerer<'a> {
 
         // Look up the struct's traits from the correct (nested) symbol table.
         let all_trait_names = self.get_traits_for_struct_in_module(prefix, &s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
             .filter_map(|trait_name| {
                 // The trait name from source is unqualified (e.g. "Drawable").
@@ -972,6 +979,7 @@ impl<'a> IrLowerer<'a> {
                 self.module
                     .trait_id(&qualified)
                     .or_else(|| self.module.trait_id(trait_name))
+                    .map(crate::ir::IrTraitRef::simple)
             })
             .collect();
 
@@ -1092,12 +1100,14 @@ impl<'a> IrLowerer<'a> {
 
         // Get all traits from both inline definition and impl blocks
         let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
             .filter_map(|trait_name| {
                 // Check if this is an external trait and track the import
                 self.try_track_imported_type(trait_name, ImportedKind::Trait);
-                self.module.trait_id(trait_name)
+                self.module
+                    .trait_id(trait_name)
+                    .map(crate::ir::IrTraitRef::simple)
             })
             .collect();
 

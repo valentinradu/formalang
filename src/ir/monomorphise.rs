@@ -47,7 +47,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::error::CompilerError;
 use crate::ir::{
     EnumId, GenericBase, ImportedKind, IrBlockStatement, IrEnum, IrExpr, IrField, IrFunction,
-    IrImpl, IrModule, IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId, TraitId,
+    IrGenericParam, IrImpl, IrModule, IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId,
+    TraitId,
 };
 use crate::location::Span;
 use crate::pipeline::IrPass;
@@ -201,12 +202,14 @@ impl IrPass for MonomorphisePass {
         // predicate below indexes into the pre-compaction remap tables.
         let struct_remap = build_struct_remap(&module);
         let enum_remap = build_enum_remap(&module);
+        let trait_remap = build_trait_remap(&module);
         let impl_index_remap =
             drop_specialised_generic_impls(&mut module, &struct_remap, &enum_remap);
-        apply_remaps(&mut module, &struct_remap, &enum_remap)?;
+        apply_remaps(&mut module, &struct_remap, &enum_remap, &trait_remap)?;
         apply_impl_index_remap(&mut module, &impl_index_remap);
         module.structs.retain(|s| s.generic_params.is_empty());
         module.enums.retain(|e| e.generic_params.is_empty());
+        module.traits.retain(|t| t.generic_params.is_empty());
         // Tier-1 Phase 2e: generic-function compaction mirrors the
         // struct/enum rules. Originals with non-empty `generic_params`
         // were either cloned per call-site arg-tuple (and the clones
@@ -237,6 +240,49 @@ fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantiation> {
     let mut out = HashSet::new();
     let mut collector = |ty: &ResolvedType| collect_from_type(ty, &mut out);
     walk_module_types(module, &mut collector);
+
+    // Phase E: generic-trait instantiations live on `IrTraitRef`
+    // slots that aren't reached by `walk_module_types`:
+    //   - constraints on every IrGenericParam in structs / enums /
+    //     traits / impls / functions
+    //   - the trait reference on every IrImpl
+    // For each non-empty args list, schedule the trait specialisation.
+    #[expect(clippy::items_after_statements, reason = "helper kept inline for locality")]
+    fn collect_constraints(params: &[IrGenericParam], out: &mut HashSet<Instantiation>) {
+        for p in params {
+            for c in &p.constraints {
+                if !c.args.is_empty() {
+                    out.insert((GenericBase::Trait(c.trait_id), c.args.clone()));
+                    for a in &c.args {
+                        collect_from_type(a, out);
+                    }
+                }
+            }
+        }
+    }
+    for s in &module.structs {
+        collect_constraints(&s.generic_params, &mut out);
+    }
+    for e in &module.enums {
+        collect_constraints(&e.generic_params, &mut out);
+    }
+    for t in &module.traits {
+        collect_constraints(&t.generic_params, &mut out);
+    }
+    for imp in &module.impls {
+        collect_constraints(&imp.generic_params, &mut out);
+        if let Some(tr) = &imp.trait_ref {
+            if !tr.args.is_empty() {
+                out.insert((GenericBase::Trait(tr.trait_id), tr.args.clone()));
+                for a in &tr.args {
+                    collect_from_type(a, &mut out);
+                }
+            }
+        }
+    }
+    for f in &module.functions {
+        collect_constraints(&f.generic_params, &mut out);
+    }
     out
 }
 
@@ -1078,8 +1124,67 @@ fn substitute_expr_types(expr: &mut IrExpr, subs: &HashMap<String, ResolvedType>
 // =============================================================================
 
 fn rewrite_module(module: &mut IrModule, mapping: &HashMap<Instantiation, GenericBase>) {
-    let rewrite = |ty: &mut ResolvedType| rewrite_type(ty, mapping);
-    walk_module_types_mut(module, rewrite);
+    {
+        let rewrite = |ty: &mut ResolvedType| rewrite_type(ty, mapping);
+        walk_module_types_mut(module, rewrite);
+    }
+    // Phase E: rewrite generic-trait references on IrTraitRef slots
+    // that don't live inside ResolvedType. After this, every
+    // constraint and impl-trait-ref with non-empty args points at
+    // its specialised trait id with the args slot cleared (the
+    // specialised trait isn't generic any more).
+    rewrite_trait_refs(module, mapping);
+}
+
+fn rewrite_trait_ref(
+    tr: &mut crate::ir::IrTraitRef,
+    mapping: &HashMap<Instantiation, GenericBase>,
+) {
+    if tr.args.is_empty() {
+        return;
+    }
+    // Rewrite nested generic args first so the lookup key matches
+    // the post-rewrite shape stored in `mapping`.
+    for a in &mut tr.args {
+        rewrite_type(a, mapping);
+    }
+    let key = (GenericBase::Trait(tr.trait_id), tr.args.clone());
+    if let Some(GenericBase::Trait(new_id)) = mapping.get(&key).copied() {
+        tr.trait_id = new_id;
+        tr.args.clear();
+    }
+}
+
+fn rewrite_trait_refs(module: &mut IrModule, mapping: &HashMap<Instantiation, GenericBase>) {
+    let rewrite_params = |params: &mut [IrGenericParam],
+                          mapping: &HashMap<Instantiation, GenericBase>| {
+        for p in params {
+            for c in &mut p.constraints {
+                rewrite_trait_ref(c, mapping);
+            }
+        }
+    };
+    for s in &mut module.structs {
+        for tr in &mut s.traits {
+            rewrite_trait_ref(tr, mapping);
+        }
+        rewrite_params(&mut s.generic_params, mapping);
+    }
+    for e in &mut module.enums {
+        rewrite_params(&mut e.generic_params, mapping);
+    }
+    for t in &mut module.traits {
+        rewrite_params(&mut t.generic_params, mapping);
+    }
+    for imp in &mut module.impls {
+        rewrite_params(&mut imp.generic_params, mapping);
+        if let Some(tr) = &mut imp.trait_ref {
+            rewrite_trait_ref(tr, mapping);
+        }
+    }
+    for f in &mut module.functions {
+        rewrite_params(&mut f.generic_params, mapping);
+    }
 }
 
 fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericBase>) {
@@ -2093,6 +2198,24 @@ fn build_enum_remap(module: &IrModule) -> Vec<Option<EnumId>> {
     out
 }
 
+/// Phase F: matching remap for traits. Generic traits are dropped
+/// post-specialisation (every reference to them was rewritten to
+/// the specialised clone in `rewrite_trait_refs`); surviving traits
+/// shift down to fill the gaps.
+fn build_trait_remap(module: &IrModule) -> Vec<Option<TraitId>> {
+    let mut out = Vec::with_capacity(module.traits.len());
+    let mut next: u32 = 0;
+    for t in &module.traits {
+        if t.generic_params.is_empty() {
+            out.push(Some(TraitId(next)));
+            next = next.saturating_add(1);
+        } else {
+            out.push(None);
+        }
+    }
+    out
+}
+
 /// Remap struct/enum IDs across the module after compaction.
 ///
 /// Returns `Err` if an impl-target lookup hits an out-of-bounds index
@@ -2100,13 +2223,96 @@ fn build_enum_remap(module: &IrModule) -> Vec<Option<EnumId>> {
 /// removed alongside its impl by [`drop_specialised_generic_impls`]).
 /// Audit2 B22: previously these cases silently no-op'd, leaving
 /// dangling target IDs in the IR.
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear walk over every TraitId-bearing slot in the module"
+)]
 fn apply_remaps(
     module: &mut IrModule,
     struct_remap: &[Option<StructId>],
     enum_remap: &[Option<EnumId>],
+    trait_remap: &[Option<TraitId>],
 ) -> Result<(), Vec<CompilerError>> {
-    walk_module_types_mut(module, |ty| remap_type(ty, struct_remap, enum_remap));
+    walk_module_types_mut(module, |ty| {
+        remap_type(ty, struct_remap, enum_remap, trait_remap);
+    });
+    // Phase F: walk every other slot that holds a TraitId outside
+    // ResolvedType. Constraints, composed-trait lists, impl-trait
+    // refs, and DispatchKind::Virtual all need their TraitIds
+    // remapped (or dropped, if a generic-trait id slipped through —
+    // by the time we reach apply_remaps, every constraint should
+    // already point at a specialised, non-generic id, but we tolerate
+    // None defensively).
     let mut errors: Vec<CompilerError> = Vec::new();
+    let remap_trait_id_in_place = |id: &mut TraitId, errors: &mut Vec<CompilerError>| {
+        match trait_remap.get(id.0 as usize).copied() {
+            Some(Some(new)) => *id = new,
+            Some(None) => errors.push(CompilerError::InternalError {
+                detail: format!(
+                    "monomorphise: stale TraitId({}) survived rewrite_trait_refs (generic trait dropped during compaction)",
+                    id.0
+                ),
+                span: Span::default(),
+            }),
+            None => errors.push(CompilerError::InternalError {
+                detail: format!(
+                    "monomorphise: TraitId({}) out of bounds for trait remap table (len {})",
+                    id.0,
+                    trait_remap.len()
+                ),
+                span: Span::default(),
+            }),
+        }
+    };
+    for s in &mut module.structs {
+        // Drop traits entries that point at dropped generic traits.
+        // The symbol-table-driven `s.traits` index only ever held the
+        // unqualified trait id (no args), so a generic-trait impl
+        // (`impl Eq<Number> for Foo`) used to register both Eq AND
+        // the relevant args at the impl level — but the index slot
+        // can't tell them apart and ends up listing the generic id.
+        // After rewrite_trait_refs, the impl's trait_ref points at
+        // the specialised id; the struct.traits entry for the
+        // generic id is stale and gets dropped here.
+        s.traits.retain_mut(
+            |tr| match trait_remap.get(tr.trait_id.0 as usize).copied() {
+                Some(Some(new)) => {
+                    tr.trait_id = new;
+                    true
+                }
+                Some(None) | None => false,
+            },
+        );
+        for gp in &mut s.generic_params {
+            for c in &mut gp.constraints {
+                remap_trait_id_in_place(&mut c.trait_id, &mut errors);
+            }
+        }
+    }
+    for t in &mut module.traits {
+        for id in &mut t.composed_traits {
+            remap_trait_id_in_place(id, &mut errors);
+        }
+        for gp in &mut t.generic_params {
+            for c in &mut gp.constraints {
+                remap_trait_id_in_place(&mut c.trait_id, &mut errors);
+            }
+        }
+    }
+    for e in &mut module.enums {
+        for gp in &mut e.generic_params {
+            for c in &mut gp.constraints {
+                remap_trait_id_in_place(&mut c.trait_id, &mut errors);
+            }
+        }
+    }
+    for f in &mut module.functions {
+        for gp in &mut f.generic_params {
+            for c in &mut gp.constraints {
+                remap_trait_id_in_place(&mut c.trait_id, &mut errors);
+            }
+        }
+    }
     for imp in &mut module.impls {
         match &mut imp.target {
             crate::ir::ImplTarget::Struct(id) => match struct_remap.get(id.0 as usize).copied() {
@@ -2146,6 +2352,65 @@ fn apply_remaps(
                 }),
             },
         }
+        if let Some(tr) = &mut imp.trait_ref {
+            remap_trait_id_in_place(&mut tr.trait_id, &mut errors);
+        }
+        for gp in &mut imp.generic_params {
+            for c in &mut gp.constraints {
+                remap_trait_id_in_place(&mut c.trait_id, &mut errors);
+            }
+        }
+    }
+    // DispatchKind::Virtual call sites carry a trait id too. Walk
+    // every expression in the module.
+    #[expect(clippy::items_after_statements, reason = "helper kept inline for locality")]
+    fn walk_dispatch(
+        expr: &mut IrExpr,
+        trait_remap: &[Option<TraitId>],
+        errors: &mut Vec<CompilerError>,
+    ) {
+        for child in iter_expr_children_mut(expr) {
+            walk_dispatch(child, trait_remap, errors);
+        }
+        if let IrExpr::MethodCall {
+            dispatch: crate::ir::DispatchKind::Virtual { trait_id, .. },
+            ..
+        } = expr
+        {
+            match trait_remap.get(trait_id.0 as usize).copied() {
+                Some(Some(new)) => *trait_id = new,
+                Some(None) => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: Virtual dispatch references generic-trait id {} that was dropped",
+                        trait_id.0
+                    ),
+                    span: Span::default(),
+                }),
+                None => errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: Virtual dispatch trait id {} out of bounds for trait remap (len {})",
+                        trait_id.0,
+                        trait_remap.len()
+                    ),
+                    span: Span::default(),
+                }),
+            }
+        }
+    }
+    for f in &mut module.functions {
+        if let Some(body) = &mut f.body {
+            walk_dispatch(body, trait_remap, &mut errors);
+        }
+    }
+    for imp in &mut module.impls {
+        for f in &mut imp.functions {
+            if let Some(body) = &mut f.body {
+                walk_dispatch(body, trait_remap, &mut errors);
+            }
+        }
+    }
+    for l in &mut module.lets {
+        walk_dispatch(&mut l.value, trait_remap, &mut errors);
     }
     if errors.is_empty() {
         Ok(())
@@ -2158,6 +2423,7 @@ fn remap_type(
     ty: &mut ResolvedType,
     struct_remap: &[Option<StructId>],
     enum_remap: &[Option<EnumId>],
+    trait_remap: &[Option<TraitId>],
 ) {
     match ty {
         ResolvedType::Struct(id) => {
@@ -2170,31 +2436,36 @@ fn remap_type(
                 *id = new;
             }
         }
+        ResolvedType::Trait(id) => {
+            if let Some(Some(new)) = trait_remap.get(id.0 as usize).copied() {
+                *id = new;
+            }
+        }
         ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            remap_type(inner, struct_remap, enum_remap);
+            remap_type(inner, struct_remap, enum_remap, trait_remap);
         }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
-                remap_type(t, struct_remap, enum_remap);
+                remap_type(t, struct_remap, enum_remap, trait_remap);
             }
         }
         ResolvedType::Dictionary { key_ty, value_ty } => {
-            remap_type(key_ty, struct_remap, enum_remap);
-            remap_type(value_ty, struct_remap, enum_remap);
+            remap_type(key_ty, struct_remap, enum_remap, trait_remap);
+            remap_type(value_ty, struct_remap, enum_remap, trait_remap);
         }
         ResolvedType::Closure {
             param_tys,
             return_ty,
         } => {
             for (_, t) in param_tys {
-                remap_type(t, struct_remap, enum_remap);
+                remap_type(t, struct_remap, enum_remap, trait_remap);
             }
-            remap_type(return_ty, struct_remap, enum_remap);
+            remap_type(return_ty, struct_remap, enum_remap, trait_remap);
         }
         ResolvedType::Generic { base, args } => {
             // Defensive: by Phase 3 every Generic should have been
-            // rewritten to a concrete Struct/Enum, but remap the base just
-            // in case a caller is inspecting state mid-pass.
+            // rewritten to a concrete Struct/Enum/Trait base, but
+            // remap just in case a caller is inspecting mid-pass.
             match base {
                 GenericBase::Struct(id) => {
                     if let Some(Some(new)) = struct_remap.get(id.0 as usize).copied() {
@@ -2206,20 +2477,22 @@ fn remap_type(
                         *id = new;
                     }
                 }
-                // Trait remap lives outside this helper (Phase F);
-                // Generic{base:Trait} survivors are handled there.
-                GenericBase::Trait(_) => {}
+                GenericBase::Trait(id) => {
+                    if let Some(Some(new)) = trait_remap.get(id.0 as usize).copied() {
+                        *id = new;
+                    }
+                }
             }
             for a in args {
-                remap_type(a, struct_remap, enum_remap);
+                remap_type(a, struct_remap, enum_remap, trait_remap);
             }
         }
         ResolvedType::External { type_args, .. } => {
             for a in type_args {
-                remap_type(a, struct_remap, enum_remap);
+                remap_type(a, struct_remap, enum_remap, trait_remap);
             }
         }
-        ResolvedType::Primitive(_) | ResolvedType::Trait(_) | ResolvedType::TypeParam(_) => {}
+        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
     }
 }
 
@@ -2245,13 +2518,13 @@ impl LeftoverScanner {
     }
 
     fn scan(&mut self, module: &IrModule) {
-        // Traits with generic_params are still unsupported — the IR has no
-        // way to instantiate a generic trait today. Generic structs and
-        // enums are compacted in Phase 3.
+        // Phase F: generic traits are now compacted alongside generic
+        // structs and enums; a survivor here means the rewrite/remap
+        // chain dropped a reference somewhere.
         for t in &module.traits {
             if !t.generic_params.is_empty() {
                 self.note(format!(
-                    "generic trait `{}` remains (generic traits are not supported)",
+                    "generic trait `{}` survived compaction (rewrite_trait_refs missed a reference)",
                     t.name
                 ));
             }

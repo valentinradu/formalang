@@ -1116,6 +1116,96 @@ fn test_monomorphise_specialises_generic_function() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+// =============================================================================
+// Generic traits PR: a generic trait used as a constraint with concrete
+// args specialises end-to-end via MonomorphisePass.
+// =============================================================================
+
+#[test]
+fn test_generic_trait_specialises() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    let source = r"
+        pub trait Eq<T> {
+            fn eq(self, other: T) -> Boolean
+        }
+        pub struct Number2 { value: Number }
+        impl Eq<Number2> for Number2 {
+            fn eq(self, other: Number2) -> Boolean { true }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("mono: {e:?}"))?;
+    // Original generic Eq is gone; specialised clone Eq__... remains.
+    if result.traits.iter().any(|t| t.name == "Eq") {
+        return Err("generic `Eq` should have been dropped".into());
+    }
+    if !result.traits.iter().any(|t| t.name.starts_with("Eq__")) {
+        return Err(format!(
+            "expected Eq__... specialisation, got: {:?}",
+            result.traits.iter().map(|t| &t.name).collect::<Vec<_>>()
+        )
+        .into());
+    }
+    // The impl block targets Number2 with the specialised trait_id.
+    let number2_id = result
+        .structs
+        .iter()
+        .position(|s| s.name == "Number2")
+        .and_then(|i| u32::try_from(i).ok().map(formalang::StructId))
+        .ok_or("Number2 missing")?;
+    let imp = result
+        .impls
+        .iter()
+        .find(|i| matches!(i.target, formalang::ir::ImplTarget::Struct(id) if id == number2_id))
+        .ok_or("Number2 impl missing")?;
+    let tr_ref = imp.trait_ref.as_ref().ok_or("impl missing trait_ref")?;
+    if !tr_ref.args.is_empty() {
+        return Err(format!(
+            "expected specialised trait_ref to have empty args, got {:?}",
+            tr_ref.args
+        )
+        .into());
+    }
+    let trait_def = result
+        .get_trait(tr_ref.trait_id)
+        .ok_or("trait_id does not resolve")?;
+    if !trait_def.name.starts_with("Eq__") {
+        return Err(format!("expected impl to point at Eq__..., got: {}", trait_def.name).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_generic_trait_constraint_specialises() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::MonomorphisePass;
+    // A generic-bounded function constrained on `Container<Number>`
+    // should also drive specialisation of Container.
+    let source = r"
+        pub trait Container<T> {
+            fn get(self) -> Number
+        }
+        pub struct Box { value: Number }
+        impl Container<Number> for Box {
+            fn get(self) -> Number { self.value }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
+    let result = pipeline.run(module).map_err(|e| format!("mono: {e:?}"))?;
+    if result.traits.iter().any(|t| t.name == "Container") {
+        return Err("generic Container should be dropped after specialisation".into());
+    }
+    if !result
+        .traits
+        .iter()
+        .any(|t| t.name.starts_with("Container__"))
+    {
+        return Err("expected Container__... specialisation".into());
+    }
+    Ok(())
+}
+
 #[test]
 fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"

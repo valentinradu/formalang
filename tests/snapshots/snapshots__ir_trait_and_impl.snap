@@ -9,9 +9,12 @@ IrModule {
             name: "Square",
             visibility: Private,
             traits: [
-                TraitId(
-                    0,
-                ),
+                IrTraitRef {
+                    trait_id: TraitId(
+                        0,
+                    ),
+                    args: [],
+                },
             ],
             fields: [
                 IrField {

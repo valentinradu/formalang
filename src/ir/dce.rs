@@ -89,8 +89,11 @@ impl<'a> DeadCodeEliminator<'a> {
             for field in &s.fields {
                 self.mark_used_in_type(&field.ty);
             }
-            for trait_id in &s.traits {
-                self.used_traits.insert(*trait_id);
+            for trait_ref in &s.traits {
+                self.used_traits.insert(trait_ref.trait_id);
+                for arg in &trait_ref.args {
+                    self.mark_used_in_type(arg);
+                }
             }
             for gp in &s.generic_params {
                 for constraint in &gp.constraints {
@@ -1032,7 +1035,7 @@ fn retain_trait_ref(constraint: &mut crate::ir::IrTraitRef, remap: &IdRemap) -> 
 
 fn remap_module(module: &mut IrModule, remap: &IdRemap) {
     for s in &mut module.structs {
-        s.traits.retain_mut(|id| retain_trait_id(id, remap));
+        s.traits.retain_mut(|tr| retain_trait_ref(tr, remap));
         for f in &mut s.fields {
             remap_type(&mut f.ty, remap);
             if let Some(default) = &mut f.default {
