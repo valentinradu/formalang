@@ -14,7 +14,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.1"
+formalang = "0.2"
 ```
 
 Compile a source string:
@@ -354,10 +354,11 @@ let module = compile_to_ir(source)?;
 module.structs    // Vec<IrStruct>
 module.traits     // Vec<IrTrait>
 module.enums      // Vec<IrEnum>
-module.functions  // Vec<IrFunction>   (extern fns have is_extern = true and body = None)
+module.functions  // Vec<IrFunction>   (extern fns: extern_abi = Some(_), body = None)
 module.impls      // Vec<IrImpl>
 module.lets       // Vec<IrLet>
 module.imports    // Vec<IrImport>
+module.modules    // Vec<IrModuleNode>  (preserves source `mod foo { ... }` hierarchy)
 
 // ID-based lookup
 let id = module.struct_id("User").unwrap();

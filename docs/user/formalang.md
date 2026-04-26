@@ -444,23 +444,73 @@ impl Extended for Item {
 
 #### Trait-Bounded Polymorphism
 
-Traits can be used as types in field and parameter declarations:
+FormaLang has **no dynamic dispatch** — a trait name in a value-
+producing type position (parameter, return, let annotation, struct
+field, closure params/return) is a compile-time error
+(`TraitUsedAsValueType`). Take a trait-constrained value through a
+generic-bounded parameter so the concrete type is known after
+monomorphisation:
 
 ```formalang
 pub trait Printable {
-  label: String
+  fn label(self) -> String
 }
 
 pub struct Doc {
-  label: String
+  text: String
 }
 
-impl Printable for Doc {}
+impl Printable for Doc {
+  fn label(self) -> String { self.text }
+}
 
-fn print_it(item: Printable) -> String {
-  item.label
+fn print_it<T: Printable>(item: T) -> String {
+  item.label()
 }
 ```
+
+##### Generic traits
+
+Traits can themselves be generic, and constraints / impls can carry
+the concrete arguments:
+
+```formalang
+pub trait Container<T> {
+  fn get(self) -> T
+}
+
+pub struct Box {
+  value: Number
+}
+
+impl Container<Number> for Box {
+  fn get(self) -> Number { self.value }
+}
+
+fn unwrap<T: Container<Number>>(b: T) -> Number {
+  b.get()
+}
+```
+
+The monomorphisation pass clones generic traits, structs, enums,
+and functions per unique argument tuple, then rewrites every
+reference (including `DispatchKind::Virtual` on now-concrete
+receivers) to point at the specialised clone. After mono runs, no
+generic definitions remain in the IR.
+
+**Allowed trait positions**:
+
+- Generic constraint: `<T: Trait>` or `<T: Trait<X>>`
+- Impl target: `impl Trait for Foo` or `impl Trait<X> for Foo`
+- Trait composition: `trait A: B + C`
+
+**Rejected trait positions** (use a generic bound instead):
+
+- Function parameter type: `fn foo(x: Trait)` ✗
+- Function return type: `fn make() -> Trait` ✗
+- Let annotation: `let x: Trait = ...` ✗
+- Struct/enum field: `field: Trait` ✗
+- Closure params/return: `(x: Trait) -> Number` ✗
 
 ### Enum Definitions
 
@@ -512,7 +562,15 @@ methods to a struct, and `extern fn` for standalone host-provided functions.
 extern fn create_canvas(width: Number, height: Number) -> Canvas
 extern fn connect(url: String) -> Connection
 extern fn log(message: String)
+
+extern "C" fn read(fd: Number) -> Number
+extern "system" fn GetTickCount() -> Number
 ```
+
+A bare `extern fn` defaults to the C calling convention. Specify
+`"C"` or `"system"` explicitly when the calling convention matters
+(e.g. Win32 stdcall on x86). Unknown ABI strings are rejected at
+parse time.
 
 **Extern impl** — host-provided methods on a struct:
 
@@ -555,6 +613,27 @@ pub fn identity<T>(value: T) -> T {
   value
 }
 ```
+
+#### Codegen Attributes
+
+Three optional keyword prefixes hint to backends about call-site
+behavior. They are pure metadata — the frontend passes them through
+unchanged. Multiple prefixes can stack and combine freely with
+`pub` and `extern`.
+
+```formalang
+inline fn fast_add(a: Number, b: Number) -> Number { a + b }
+no_inline fn dont_inline_me() -> Number { 42 }
+cold fn rare_error_path() { 0 }
+
+pub cold extern fn abort() -> Never
+```
+
+| Prefix      | Meaning                                                |
+| ----------- | ------------------------------------------------------ |
+| `inline`    | Hint: inline this function at every call site if possible |
+| `no_inline` | Hint: do not inline                                    |
+| `cold`      | Hint: this function is rarely called (error / branch)  |
 
 ### Parameter Conventions
 
