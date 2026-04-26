@@ -1,4 +1,5 @@
 use super::module_resolver::ModuleResolver;
+use super::sem_type::SemType;
 use super::SemanticAnalyzer;
 use crate::ast::{BinaryOperator, Definition, Expr, File, Literal, Statement, UnaryOperator};
 use std::collections::HashMap;
@@ -6,58 +7,66 @@ use std::collections::HashMap;
 use super::collect_bindings_from_pattern;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
-    /// Infer the type of an expression (simplified type inference)
+    /// Infer the type of an expression and return the legacy
+    /// string format. Thin bridge over [`Self::infer_type_sem`] —
+    /// callers in `validation.rs` still consume strings; step 4 will
+    /// migrate them and this wrapper goes away.
+    pub(super) fn infer_type(&self, expr: &Expr, file: &File) -> String {
+        self.infer_type_sem(expr, file).display()
+    }
+
+    /// Infer the type of an expression as a structural [`SemType`].
     #[expect(
         clippy::too_many_lines,
         reason = "dispatcher match over all Expr variants"
     )]
-    pub(super) fn infer_type(&self, expr: &Expr, file: &File) -> String {
+    pub(super) fn infer_type_sem(&self, expr: &Expr, file: &File) -> SemType {
+        use crate::ast::PrimitiveType;
         match expr {
             Expr::Literal { value: lit, .. } => match lit {
-                Literal::String(_) => "String".to_string(),
-                Literal::Number(_) => "Number".to_string(),
-                Literal::Boolean(_) => "Boolean".to_string(),
-                Literal::Regex { .. } => "Regex".to_string(),
-                Literal::Path(_) => "Path".to_string(),
-                Literal::Nil => "Nil".to_string(),
+                Literal::String(_) => SemType::Primitive(PrimitiveType::String),
+                Literal::Number(_) => SemType::Primitive(PrimitiveType::Number),
+                Literal::Boolean(_) => SemType::Primitive(PrimitiveType::Boolean),
+                Literal::Regex { .. } => SemType::Primitive(PrimitiveType::Regex),
+                Literal::Path(_) => SemType::Primitive(PrimitiveType::Path),
+                Literal::Nil => SemType::Nil,
             },
             Expr::Array { elements, .. } => elements.first().map_or_else(
-                || "[Unknown]".to_string(),
-                |first| format!("[{}]", self.infer_type(first, file)),
+                || SemType::array_of(SemType::Unknown),
+                |first| SemType::array_of(self.infer_type_sem(first, file)),
             ),
-            Expr::Tuple { fields, .. } => {
-                let field_types: Vec<String> = fields
+            Expr::Tuple { fields, .. } => SemType::Tuple(
+                fields
                     .iter()
-                    .map(|(name, expr)| format!("{}: {}", name.name, self.infer_type(expr, file)))
-                    .collect();
-                format!("({})", field_types.join(", "))
-            }
+                    .map(|(name, expr)| (name.name.clone(), self.infer_type_sem(expr, file)))
+                    .collect(),
+            ),
             Expr::Invocation {
                 path,
                 type_args,
                 args,
                 ..
             } => self.infer_type_invocation(path, type_args, args, file),
-            Expr::EnumInstantiation { enum_name, .. } => enum_name.name.clone(),
-            Expr::InferredEnumInstantiation { .. } => "InferredEnum".to_string(),
+            Expr::EnumInstantiation { enum_name, .. } => SemType::Named(enum_name.name.clone()),
+            Expr::InferredEnumInstantiation { .. } => SemType::InferredEnum,
             Expr::Reference { path, .. } => self.infer_type_reference(path, file),
             Expr::BinaryOp { left, op, .. } => self.infer_type_binary_op(left, *op, file),
             Expr::UnaryOp { op, operand, .. } => match op {
-                UnaryOperator::Neg => self.infer_type(operand, file),
-                UnaryOperator::Not => "Boolean".to_string(),
+                UnaryOperator::Neg => self.infer_type_sem(operand, file),
+                UnaryOperator::Not => SemType::Primitive(PrimitiveType::Boolean),
             },
-            Expr::ForExpr { body, .. } => format!("[{}]", self.infer_type(body, file)),
+            Expr::ForExpr { body, .. } => SemType::array_of(self.infer_type_sem(body, file)),
             Expr::IfExpr {
                 then_branch,
                 else_branch,
                 ..
             } => {
-                let then_ty = self.infer_type(then_branch, file);
+                let then_ty = self.infer_type_sem(then_branch, file);
                 else_branch.as_ref().map_or_else(
                     || then_ty.clone(),
                     |else_expr| {
-                        let else_ty = self.infer_type(else_expr, file);
-                        Self::widen_branch_types(&then_ty, &else_ty)
+                        let else_ty = self.infer_type_sem(else_expr, file);
+                        SemType::widen_branches(&then_ty, &else_ty)
                     },
                 )
             }
@@ -67,49 +76,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Audit #27: pre-populate each arm's pattern bindings into
                 // an inference-scope frame so references inside the arm
                 // body resolve to concrete types instead of "Unknown".
-                let scrutinee_ty = self.infer_type(scrutinee, file);
-                let enum_name = scrutinee_ty.trim_end_matches('?');
-                let mut types: Vec<String> = Vec::with_capacity(arms.len());
+                let scrutinee_ty = self.infer_type_sem(scrutinee, file);
+                let scrutinee_str = scrutinee_ty.display();
+                let enum_name = scrutinee_str.trim_end_matches('?');
+                let mut types: Vec<SemType> = Vec::with_capacity(arms.len());
                 for arm in arms {
                     let frame = self.build_match_arm_scope(enum_name, &arm.pattern);
                     self.inference_scope_stack.borrow_mut().push(frame);
-                    types.push(self.infer_type(&arm.body, file));
+                    types.push(self.infer_type_sem(&arm.body, file));
                     self.inference_scope_stack.borrow_mut().pop();
                 }
                 let Some(mut result) = types.pop() else {
-                    return "Unknown".to_string();
+                    return SemType::Unknown;
                 };
                 while let Some(next) = types.pop() {
-                    result = Self::widen_branch_types(&result, &next);
+                    result = SemType::widen_branches(&result, &next);
                 }
                 result
             }
-            Expr::Group { expr, .. } => self.infer_type(expr, file),
+            Expr::Group { expr, .. } => self.infer_type_sem(expr, file),
             Expr::DictLiteral { entries, .. } => {
                 if let Some((first_key, first_value)) = entries.first() {
-                    let key_type = self.infer_type(first_key, file);
-                    let value_type = self.infer_type(first_value, file);
-                    format!("[{key_type}: {value_type}]")
+                    let key = self.infer_type_sem(first_key, file);
+                    let value = self.infer_type_sem(first_value, file);
+                    SemType::dictionary(key, value)
                 } else {
-                    "[Unknown: Unknown]".to_string()
+                    SemType::dictionary(SemType::Unknown, SemType::Unknown)
                 }
             }
             Expr::DictAccess { dict, .. } => {
-                // Audit2 B8: extract V from a dict type `[K: V]`. Uses
-                // depth-aware splitting so a nested-dict key like
-                // `[[X: Y]: V]` returns `V`, not `Y]: V`.
-                let dict_type = self.infer_type(dict, file);
-                super::strip_dict_value_type(&dict_type)
-                    .map_or_else(|| "Unknown".to_string(), str::to_string)
+                // Audit2 B8: extract V from a Dictionary shape.
+                // Structural unpacking — no string scanning needed.
+                if let SemType::Dictionary { value, .. } = self.infer_type_sem(dict, file) {
+                    *value
+                } else {
+                    SemType::Unknown
+                }
             }
             Expr::FieldAccess { object, field, .. } => {
-                let obj_type = self.infer_type(object, file);
-                self.infer_field_type_from_string(&obj_type, &field.name)
+                let obj_type = self.infer_type_sem(object, file);
+                self.infer_field_type(&obj_type, &field.name)
             }
             Expr::MethodCall {
                 receiver, method, ..
             } => {
-                let receiver_type = self.infer_type(receiver, file);
+                let receiver_type = self.infer_type_sem(receiver, file);
                 self.infer_method_return_type(&receiver_type, &method.name, file)
             }
             Expr::ClosureExpr {
@@ -128,35 +139,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
                 self.inference_scope_stack.borrow_mut().push(frame);
-                let inferred_body_type = self.infer_type(body, file);
+                let inferred_body_type = self.infer_type_sem(body, file);
                 self.inference_scope_stack.borrow_mut().pop();
                 // Audit #38: prefer the explicit return type when present;
                 // fall back to body inference otherwise.
-                let body_type = return_type
+                let return_ty = return_type
                     .as_ref()
-                    .map_or(inferred_body_type, Self::type_to_string);
-                match params.split_first() {
-                    None => format!("() -> {body_type}"),
-                    Some((only, [])) => {
-                        let param_type = only
-                            .ty
-                            .as_ref()
-                            .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
-                        format!("{param_type} -> {body_type}")
-                    }
-                    Some(_) => {
-                        let param_types: Vec<String> = params
-                            .iter()
-                            .map(|p| {
-                                p.ty.as_ref()
-                                    .map_or_else(|| "Unknown".to_string(), Self::type_to_string)
-                            })
-                            .collect();
-                        format!("{} -> {body_type}", param_types.join(", "))
-                    }
-                }
+                    .map_or(inferred_body_type, SemType::from_ast);
+                let param_tys: Vec<SemType> = params
+                    .iter()
+                    .map(|p| p.ty.as_ref().map_or(SemType::Unknown, SemType::from_ast))
+                    .collect();
+                SemType::closure(param_tys, return_ty)
             }
-            Expr::LetExpr { body, .. } => self.infer_type(body, file),
+            Expr::LetExpr { body, .. } => self.infer_type_sem(body, file),
             Expr::Block {
                 statements, result, ..
             } => {
@@ -172,16 +168,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         pattern, ty, value, ..
                     } = stmt
                     {
-                        let value_ty = ty
-                            .as_ref()
-                            .map_or_else(|| self.infer_type(value, file), Self::type_to_string);
+                        let value_ty = ty.as_ref().map_or_else(
+                            || self.infer_type_sem(value, file).display(),
+                            Self::type_to_string,
+                        );
                         if let crate::ast::BindingPattern::Simple(ident) = pattern {
                             frame.insert(ident.name.clone(), value_ty);
                         }
                     }
                 }
                 self.inference_scope_stack.borrow_mut().push(frame);
-                let out = self.infer_type(result, file);
+                let out = self.infer_type_sem(result, file);
                 self.inference_scope_stack.borrow_mut().pop();
                 out
             }
@@ -195,7 +192,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
         file: &File,
-    ) -> String {
+    ) -> SemType {
         let name = path
             .iter()
             .map(|id| id.name.as_str())
@@ -203,7 +200,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .join("::");
 
         // Closure-typed binding called as a function (`cb()` where
-        // `cb: (...) -> R`). Strip the parameter list and use R.
+        // `cb: (...) -> R`). Unpack the closure shape structurally
+        // and yield its return type.
         if path.len() == 1 {
             let scope_lookup = {
                 let stack = self.inference_scope_stack.borrow();
@@ -215,8 +213,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let ty_str =
                 scope_lookup.or_else(|| self.local_let_bindings.get(&name).map(|(t, _)| t.clone()));
             if let Some(t) = ty_str {
-                if let Some(arrow) = t.rfind(" -> ") {
-                    return t[arrow.saturating_add(4)..].to_string();
+                if let SemType::Closure { return_ty, .. } = SemType::from_legacy_string(&t) {
+                    return *return_ty;
                 }
             }
         }
@@ -224,20 +222,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if self.symbols.is_struct(&name) {
             // Struct instantiation — return the struct type, with generic args if present
             if type_args.is_empty() {
-                name
+                SemType::Named(name)
             } else {
-                let arg_types: Vec<String> = type_args
-                    .iter()
-                    .map(|ty| Self::type_to_string(ty))
-                    .collect();
-                format!("{}<{}>", name, arg_types.join(", "))
+                SemType::Generic {
+                    base: name,
+                    args: type_args.iter().map(SemType::from_ast).collect(),
+                }
             }
         } else if let Some(func_info) = self.symbols.get_function(&name) {
             // User-defined standalone function — return its declared return type
             let raw = func_info
                 .return_type
                 .as_ref()
-                .map_or_else(|| "nil".to_string(), |ty| Self::type_to_string(ty));
+                .map_or(SemType::Nil, SemType::from_ast);
             // Tier-1 follow-up to item E2: if the function is generic
             // and the declared return type is itself a generic
             // parameter (`fn id<T>(x: T) -> T`), substitute the
@@ -247,7 +244,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // keep the original generic-param string — extending
             // this to compound shapes lives with the broader generic-
             // function inference work.
-            self.specialise_generic_return(func_info, &raw, args, file)
+            self.specialise_generic_return(func_info, raw, args, file)
         } else if path.len() >= 2 {
             // Audit #27: resolve impl-block static method calls
             // (`Type::method(...)`), enum variant constructors
@@ -255,7 +252,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // EnumInstantiation at parse time, and module-qualified
             // function calls (`math::compute(...)`).
             let (Some(first), Some(last)) = (path.first(), path.last()) else {
-                return "Unknown".to_string();
+                return SemType::Unknown;
             };
             let receiver = &first.name;
             let method_name = &last.name;
@@ -265,15 +262,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             if self.symbols.get_enum_variants(receiver).is_some() {
-                return receiver.clone();
+                return SemType::Named(receiver.clone());
             }
             // Module-qualified function: walk through module symbol tables.
             if let Some(ret) = self.lookup_qualified_function_return(path) {
                 return ret;
             }
-            "Unknown".to_string()
+            SemType::Unknown
         } else {
-            "Unknown".to_string()
+            SemType::Unknown
         }
     }
 
@@ -285,16 +282,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn specialise_generic_return(
         &self,
         func_info: &super::symbol_table::FunctionInfo,
-        raw_ret: &str,
+        raw_ret: SemType,
         args: &[(Option<crate::ast::Ident>, Expr)],
         file: &File,
-    ) -> String {
+    ) -> SemType {
         if func_info.generics.is_empty() {
-            return raw_ret.to_string();
+            return raw_ret;
         }
-        let is_generic_param = func_info.generics.iter().any(|g| g.name.name == raw_ret);
-        if !is_generic_param {
-            return raw_ret.to_string();
+        // Only a bare generic parameter (`-> T`) qualifies for the
+        // shortcut substitution. Compound shapes (`[T]`, `T -> U`,
+        // ...) are handled by the broader generic-function inference
+        // path elsewhere.
+        let SemType::Named(ref param_name) = raw_ret else {
+            return raw_ret;
+        };
+        if !func_info
+            .generics
+            .iter()
+            .any(|g| g.name.name == *param_name)
+        {
+            return raw_ret;
         }
         // Find the first parameter whose declared type is exactly
         // this generic param name; the corresponding argument's
@@ -304,7 +311,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let crate::ast::Type::Ident(ident) = declared else {
                 continue;
             };
-            if ident.name != raw_ret {
+            if ident.name != *param_name {
                 continue;
             }
             let arg_expr = args
@@ -316,24 +323,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 })
                 .or_else(|| args.get(i).map(|(_, e)| e));
             if let Some(arg) = arg_expr {
-                return self.infer_type(arg, file);
+                return self.infer_type_sem(arg, file);
             }
         }
-        raw_ret.to_string()
+        raw_ret
     }
 
     /// Resolve a qualified function path (`a::b::compute`) by walking
     /// `self.symbols.modules` segment by segment, then through the
     /// imported-module cache. Returns the function's declared return
     /// type as a string when found.
-    fn lookup_qualified_function_return(&self, path: &[crate::ast::Ident]) -> Option<String> {
+    fn lookup_qualified_function_return(&self, path: &[crate::ast::Ident]) -> Option<SemType> {
         let last = path.last()?;
         let segments: Vec<&str> = path
             .iter()
             .take(path.len().saturating_sub(1))
             .map(|i| i.name.as_str())
             .collect();
-        let look = |symbols: &super::SymbolTable| -> Option<String> {
+        let look = |symbols: &super::SymbolTable| -> Option<SemType> {
             let mut current = symbols;
             for part in &segments {
                 match current.modules.get(*part) {
@@ -344,7 +351,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             current.get_function(&last.name).map(|f| {
                 f.return_type
                     .as_ref()
-                    .map_or_else(|| "nil".to_string(), Self::type_to_string)
+                    .map_or(SemType::Nil, SemType::from_ast)
             })
         };
         if let Some(ty) = look(&self.symbols) {
@@ -418,7 +425,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         struct_name: &str,
         method_name: &str,
-    ) -> Option<String> {
+    ) -> Option<SemType> {
         let trait_names = self.symbols.get_all_traits_for_struct(struct_name);
         for trait_name in trait_names {
             if let Some(trait_info) = self.symbols.get_trait(&trait_name) {
@@ -427,7 +434,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         return Some(
                             m.return_type
                                 .as_ref()
-                                .map_or_else(|| "nil".to_string(), Self::type_to_string),
+                                .map_or(SemType::Nil, SemType::from_ast),
                         );
                     }
                 }
@@ -441,9 +448,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// For multi-segment paths like `p.name.x`, walks the chain starting from
     /// the root binding's type through each field access. Returns "Unknown"
     /// when any link in the chain can't be resolved.
-    fn infer_type_reference(&self, path: &[crate::ast::Ident], _file: &File) -> String {
+    fn infer_type_reference(&self, path: &[crate::ast::Ident], _file: &File) -> SemType {
         let Some(first) = path.first() else {
-            return "Unknown".to_string();
+            return SemType::Unknown;
         };
 
         // Resolve the root type. Audit #27: consult the inference-scope
@@ -461,33 +468,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             clippy::option_if_let_else,
             reason = "five-branch resolution: if/else-if reads clearer than chained map_or_else"
         )]
-        let root_type: String = if let Some(scope_ty) = scope_lookup {
-            scope_ty
+        let root_type: SemType = if let Some(scope_ty) = scope_lookup {
+            SemType::from_legacy_string(&scope_ty)
         } else if first.name == "self" {
             self.current_impl_struct
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_string())
+                .as_ref()
+                .map_or(SemType::Unknown, |s| SemType::Named(s.clone()))
         } else if let Some(let_type) = self.symbols.get_let_type(&first.name) {
-            let_type.to_string()
+            SemType::from_legacy_string(let_type)
         } else if let Some((local_type, _mutable)) = self.local_let_bindings.get(&first.name) {
-            local_type.clone()
+            SemType::from_legacy_string(local_type)
         } else if let Some(ref struct_name) = self.current_impl_struct {
             // Top-level field reference in an impl body — resolve against self.
-            self.symbols.get_struct(struct_name).map_or_else(
-                || "Unknown".to_string(),
-                |struct_info| {
+            self.symbols
+                .get_struct(struct_name)
+                .map_or(SemType::Unknown, |struct_info| {
                     struct_info
                         .fields
                         .iter()
                         .find(|f| f.name == first.name)
-                        .map_or_else(
-                            || "Unknown".to_string(),
-                            |field| Self::type_to_string(&field.ty),
-                        )
-                },
-            )
+                        .map_or(SemType::Unknown, |field| SemType::from_ast(&field.ty))
+                })
         } else {
-            "Unknown".to_string()
+            SemType::Unknown
         };
 
         if path.len() == 1 {
@@ -497,8 +500,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Walk the field chain from the root type.
         let mut current = root_type;
         for seg in path.iter().skip(1) {
-            current = self.infer_field_type_from_string(&current, &seg.name);
-            if current == "Unknown" {
+            current = self.infer_field_type(&current, &seg.name);
+            if current.is_unknown() {
                 return current;
             }
         }
@@ -506,13 +509,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Infer the result type of a binary operator expression
-    fn infer_type_binary_op(&self, left: &Expr, op: BinaryOperator, file: &File) -> String {
+    fn infer_type_binary_op(&self, left: &Expr, op: BinaryOperator, file: &File) -> SemType {
+        use crate::ast::PrimitiveType;
         match op {
             BinaryOperator::Add
             | BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
-            | BinaryOperator::Mod => self.infer_type(left, file),
+            | BinaryOperator::Mod => self.infer_type_sem(left, file),
             BinaryOperator::Lt
             | BinaryOperator::Gt
             | BinaryOperator::Le
@@ -520,8 +524,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | BinaryOperator::Eq
             | BinaryOperator::Ne
             | BinaryOperator::And
-            | BinaryOperator::Or => "Boolean".to_string(),
-            BinaryOperator::Range => format!("Range<{}>", self.infer_type(left, file)),
+            | BinaryOperator::Or => SemType::Primitive(PrimitiveType::Boolean),
+            BinaryOperator::Range => SemType::Generic {
+                base: "Range".to_string(),
+                args: vec![self.infer_type_sem(left, file)],
+            },
         }
     }
 
@@ -641,7 +648,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
 
             // Get the type of this field to continue checking the chain
-            current_type = Self::get_field_type(&current_type, &field_ident.name, file);
+            current_type = Self::get_field_type(&current_type, &field_ident.name, file).display();
         }
 
         true
@@ -680,71 +687,42 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Combine two branch types for if-expressions and match expressions.
-    ///
-    /// Widening rules:
-    /// - `T` and `Nil` -> `T?`
-    /// - `T` and `T?` -> `T?`
-    /// - Identical types -> themselves
-    /// - Otherwise, return the first type (callers rely on validation to flag
-    ///   incompatible branches separately; inference just picks a usable type).
-    fn widen_branch_types(a: &str, b: &str) -> String {
-        if a == b {
-            return a.to_string();
-        }
-        if a == "Nil" && !b.is_empty() && b != "Nil" {
-            return if b.ends_with('?') {
-                b.to_string()
-            } else {
-                format!("{b}?")
-            };
-        }
-        if b == "Nil" && !a.is_empty() && a != "Nil" {
-            return if a.ends_with('?') {
-                a.to_string()
-            } else {
-                format!("{a}?")
-            };
-        }
-        if let Some(inner) = a.strip_suffix('?') {
-            if inner == b {
-                return a.to_string();
-            }
-        }
-        if let Some(inner) = b.strip_suffix('?') {
-            if inner == a {
-                return b.to_string();
-            }
-        }
-        // Audit #26: for truly incompatible branches we used to silently
-        // return `a`, which both hid real type errors and let a wrong
-        // inferred type flow downstream. Return "Unknown" so the validator
-        // sees an indeterminate type (rejected by type_strings_compatible
-        // unless the expected side is also Unknown, which would itself
-        // surface upstream once the inference cleanup lands).
-        "Unknown".to_string()
-    }
-
-    /// Infer the type of a field access given the receiver's type string.
+    /// Infer the type of a field access given the receiver's type.
     ///
     /// Handles optional receiver types by stripping `?`, looking up the struct,
-    /// and re-wrapping the result as `T?`. Returns "Unknown" when the receiver
-    /// is not a known struct or the field doesn't exist.
-    fn infer_field_type_from_string(&self, obj_type: &str, field_name: &str) -> String {
-        if obj_type == "Unknown" || obj_type.contains("Unknown") {
-            return "Unknown".to_string();
+    /// and re-wrapping the result as `T?`. Returns [`SemType::Unknown`] when
+    /// the receiver is not a known struct or the field doesn't exist.
+    fn infer_field_type(&self, obj_type: &SemType, field_name: &str) -> SemType {
+        if obj_type.is_indeterminate() {
+            return SemType::Unknown;
         }
-        let (base, is_optional) = obj_type
-            .strip_suffix('?')
-            .map_or((obj_type, false), |s| (s, true));
-        // Strip generic args like Container<T> -> Container for struct lookup
-        let lookup_name = base.split_once('<').map_or(base, |(n, _)| n);
+        let is_optional = obj_type.is_optional();
+        let stripped = obj_type.strip_optional();
+        // Strip generic args like Container<T> -> Container for struct lookup.
+        let lookup_name: &str = match &stripped {
+            SemType::Generic { base, .. } | SemType::Named(base) => base.as_str(),
+            SemType::Primitive(_)
+            | SemType::Array(_)
+            | SemType::Optional(_)
+            | SemType::Tuple(_)
+            | SemType::Dictionary { .. }
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => return SemType::Unknown,
+        };
+        let wrap = |ty: SemType| -> SemType {
+            if is_optional {
+                SemType::optional_of(ty)
+            } else {
+                ty
+            }
+        };
         // Top-level struct lookup.
         if let Some(struct_info) = self.symbols.get_struct(lookup_name) {
             for field in &struct_info.fields {
                 if field.name == field_name {
-                    let ty = Self::type_to_string(&field.ty);
-                    return if is_optional { format!("{ty}?") } else { ty };
+                    return wrap(SemType::from_ast(&field.ty));
                 }
             }
         }
@@ -753,106 +731,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // `item.field` access.
         if let Some(trait_info) = self.symbols.get_trait(lookup_name) {
             if let Some(field) = trait_info.fields.iter().find(|f| f.name == field_name) {
-                let ty_str = Self::type_to_string(&field.ty);
-                return if is_optional {
-                    format!("{ty_str}?")
-                } else {
-                    ty_str
-                };
+                return wrap(SemType::from_ast(&field.ty));
             }
         }
         // Module-nested struct: walk the symbol table's modules.
         if let Some(ty) = Self::lookup_field_in_modules(&self.symbols, lookup_name, field_name) {
-            return if is_optional { format!("{ty}?") } else { ty };
+            return wrap(ty);
         }
         // Imported-module struct: walk the analyser's module cache.
         for (_, symbols) in self.module_cache.values() {
             if let Some(struct_info) = symbols.get_struct(lookup_name) {
                 for field in &struct_info.fields {
                     if field.name == field_name {
-                        let ty = Self::type_to_string(&field.ty);
-                        return if is_optional { format!("{ty}?") } else { ty };
+                        return wrap(SemType::from_ast(&field.ty));
                     }
                 }
             }
             if let Some(ty) = Self::lookup_field_in_modules(symbols, lookup_name, field_name) {
-                return if is_optional { format!("{ty}?") } else { ty };
+                return wrap(ty);
             }
         }
-        "Unknown".to_string()
-    }
-
-    /// Parse generic arguments from a receiver type-string. For
-    /// `"Box<Number>"` returns `["Number"]`; for `"Map<String, Item>"`
-    /// returns `["String", "Item"]`; for non-generic types returns `[]`.
-    /// Splits on the top-level commas inside the angle brackets so
-    /// nested generics (`Box<Pair<A, B>>`) survive.
-    fn parse_receiver_type_args(receiver: &str) -> Vec<String> {
-        let Some(open) = receiver.find('<') else {
-            return Vec::new();
-        };
-        let Some(close) = receiver.rfind('>') else {
-            return Vec::new();
-        };
-        if close <= open.saturating_add(1) {
-            return Vec::new();
-        }
-        let inner = &receiver[open.saturating_add(1)..close];
-        let mut args = Vec::new();
-        let mut depth: i32 = 0;
-        let mut start = 0;
-        for (i, ch) in inner.char_indices() {
-            match ch {
-                '<' | '(' | '[' => depth = depth.saturating_add(1),
-                '>' | ')' | ']' => depth = depth.saturating_sub(1),
-                ',' if depth == 0 => {
-                    args.push(inner[start..i].trim().to_string());
-                    start = i.saturating_add(1);
-                }
-                _ => {}
-            }
-        }
-        let tail = inner[start..].trim();
-        if !tail.is_empty() {
-            args.push(tail.to_string());
-        }
-        args
-    }
-
-    /// Substitute every standalone occurrence of the type-parameter name
-    /// `param` in `ty` with `concrete`. "Standalone" means the name
-    /// isn't part of a longer identifier (so `T` in `Box<T>` is
-    /// substituted but `T` in `TList` is not).
-    fn substitute_type_string(ty: &str, param: &str, concrete: &str) -> String {
-        let mut out = String::with_capacity(ty.len());
-        let bytes = ty.as_bytes();
-        let plen = param.len();
-        let mut i = 0;
-        while i < bytes.len() {
-            let rest = &ty[i..];
-            if rest.starts_with(param) {
-                let prev_is_ident = i > 0
-                    && bytes
-                        .get(i.saturating_sub(1))
-                        .copied()
-                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_');
-                let next_is_ident = bytes
-                    .get(i.saturating_add(plen))
-                    .copied()
-                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_');
-                if !prev_is_ident && !next_is_ident {
-                    out.push_str(concrete);
-                    i = i.saturating_add(plen);
-                    continue;
-                }
-            }
-            let Some(ch) = ty[i..].chars().next() else {
-                break;
-            };
-            out.push(ch);
-            i = i.saturating_add(ch.len_utf8());
-        }
-        out
+        SemType::Unknown
     }
 
     /// Walk a `SymbolTable`'s module hierarchy looking for a struct by
@@ -864,12 +763,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         symbols: &super::SymbolTable,
         struct_name: &str,
         field_name: &str,
-    ) -> Option<String> {
+    ) -> Option<SemType> {
         for module_info in symbols.modules.values() {
             if let Some(struct_info) = module_info.symbols.get_struct(struct_name) {
                 for field in &struct_info.fields {
                     if field.name == field_name {
-                        return Some(Self::type_to_string(&field.ty));
+                        return Some(SemType::from_ast(&field.ty));
                     }
                 }
             }
@@ -889,27 +788,36 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// trait. Returns "Unknown" when the method cannot be resolved.
     fn infer_method_return_type(
         &self,
-        receiver_type: &str,
+        receiver_type: &SemType,
         method_name: &str,
         file: &File,
-    ) -> String {
-        if receiver_type == "Unknown" || receiver_type.contains("Unknown") {
-            return "Unknown".to_string();
+    ) -> SemType {
+        if receiver_type.is_indeterminate() {
+            return SemType::Unknown;
         }
-        let (base, is_optional) = receiver_type
-            .strip_suffix('?')
-            .map_or((receiver_type, false), |s| (s, true));
-        let lookup_name = base.split_once('<').map_or(base, |(n, _)| n);
-        // Parse generic args from the receiver type, if any (`Box<Number>`
-        // → `["Number"]`). Used to substitute the impl method's
-        // `TypeParam` references with concrete types.
-        let receiver_type_args = Self::parse_receiver_type_args(base);
+        let is_optional = receiver_type.is_optional();
+        let stripped = receiver_type.strip_optional();
+        // Receiver-side generic args (`Box<Number>` → `["Number"]`)
+        // for substituting the impl method's `TypeParam` references
+        // with concrete types.
+        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = match &stripped {
+            SemType::Generic { base, args } => (base.as_str(), args.clone()),
+            SemType::Named(base) => (base.as_str(), Vec::new()),
+            SemType::Primitive(_)
+            | SemType::Array(_)
+            | SemType::Optional(_)
+            | SemType::Tuple(_)
+            | SemType::Dictionary { .. }
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => return SemType::Unknown,
+        };
 
-        let substitute = |ret: String| -> String {
+        let substitute = |ret: SemType| -> SemType {
             if receiver_type_args.is_empty() {
                 return ret;
             }
-            // Look up the struct's generic parameter names and substitute.
             let generics = self
                 .symbols
                 .structs
@@ -925,15 +833,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let mut out = ret;
             for (i, param) in generics.iter().enumerate() {
                 if let Some(arg) = receiver_type_args.get(i) {
-                    out = Self::substitute_type_string(&out, &param.name.name, arg);
+                    out = out.substitute_named(&param.name.name, arg);
                 }
             }
             out
         };
-        let wrap_if_optional = |ret: String| -> String {
+        let wrap_if_optional = |ret: SemType| -> SemType {
             let ret = substitute(ret);
-            if is_optional && !ret.ends_with('?') && ret != "Nil" {
-                format!("{ret}?")
+            // Don't double-wrap optional or wrap Nil — preserves prior behaviour.
+            if is_optional && !ret.is_optional() && !matches!(ret, SemType::Nil) {
+                SemType::optional_of(ret)
             } else {
                 ret
             }
@@ -964,7 +873,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
-        "Unknown".to_string()
+        SemType::Unknown
     }
 
     /// Search impl blocks in a file for `method_name` on `type_name`.
@@ -972,17 +881,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         type_name: &str,
         method_name: &str,
         file: &File,
-    ) -> Option<String> {
+    ) -> Option<SemType> {
         for stmt in &file.statements {
             if let Statement::Definition(def) = stmt {
                 if let Definition::Impl(impl_def) = &**def {
                     if impl_def.name.name == type_name {
                         for func in &impl_def.functions {
                             if func.name.name == method_name {
-                                return Some(func.return_type.as_ref().map_or_else(
-                                    || "Nil".to_string(),
-                                    |t| Self::type_to_string(t),
-                                ));
+                                return Some(
+                                    func.return_type
+                                        .as_ref()
+                                        .map_or(SemType::Nil, SemType::from_ast),
+                                );
                             }
                         }
                     }
@@ -999,7 +909,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///    generic type parameter via its trait constraints.
     /// 2. As a struct name — walks every trait the struct implements
     ///    and searches their methods.
-    fn find_trait_method_return(&self, type_name: &str, method_name: &str) -> Option<String> {
+    fn find_trait_method_return(&self, type_name: &str, method_name: &str) -> Option<SemType> {
         if let Some(trait_info) = self.symbols.get_trait(type_name) {
             for method in &trait_info.methods {
                 if method.name.name == method_name {
@@ -1007,7 +917,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         method
                             .return_type
                             .as_ref()
-                            .map_or_else(|| "Nil".to_string(), Self::type_to_string),
+                            .map_or(SemType::Nil, SemType::from_ast),
                     );
                 }
             }
@@ -1021,7 +931,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             method
                                 .return_type
                                 .as_ref()
-                                .map_or_else(|| "Nil".to_string(), Self::type_to_string),
+                                .map_or(SemType::Nil, SemType::from_ast),
                         );
                     }
                 }
@@ -1030,21 +940,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
-    /// Get the type of a struct field
-    pub(super) fn get_field_type(type_name: &str, field_name: &str, file: &File) -> String {
+    /// Get the type of a struct field. Returns [`SemType::Unknown`]
+    /// when the struct or field cannot be resolved.
+    pub(super) fn get_field_type(type_name: &str, field_name: &str, file: &File) -> SemType {
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
                 if let Definition::Struct(struct_def) = &**def {
                     if struct_def.name.name == type_name {
                         for field in &struct_def.fields {
                             if field.name.name == field_name {
-                                return Self::type_to_string(&field.ty);
+                                return SemType::from_ast(&field.ty);
                             }
                         }
                     }
                 }
             }
         }
-        "Unknown".to_string()
+        SemType::Unknown
     }
 }
