@@ -59,7 +59,7 @@ definitions into the current module with substituted arguments
   aren't parsed), so declared-but-unused generic traits are the only
   source-reachable case today. Tracked as its own follow-up PR.
 
-## 2. Constant folding (partial)
+## 2. Constant folding (intentionally bounded)
 
 `formalang::ir::ConstantFoldingPass` evaluates:
 
@@ -70,13 +70,19 @@ definitions into the current module with substituted arguments
 - `if true / false` collapsing to the taken branch (also performed by
   DCE on dead branches; the two passes coexist by design)
 
-It does **not** fold struct literals with constant fields, method or
-function calls on constants, or dict and array literals. Those are
-left as-is for backends or project-local passes to handle. Folding
-all-literal aggregates is a backend concern because the IR has no
-representation for "constant aggregate" — every `IrExpr::StructInst`
-and friends carry their constructed-at-runtime semantics until a
-backend chooses otherwise.
+It does **not** fold:
+
+- Struct, enum, tuple, array, or dict literals with all-literal
+  contents. The IR has no "constant aggregate" representation, no
+  pass in this crate consumes such a marker, and backends that emit
+  static data do their own scan over `IrExpr::Literal` children.
+  Adding the fold without a consumer is performative; if a backend
+  needs it, it lives behind a `Pipeline::pass` opt-in there.
+- Method or function calls on constants. Compile-time evaluation
+  requires a `pure` / `const fn` language-level annotation that
+  FormaLang does not currently model. That's a language-design item
+  on top of a frontend extension; tracked separately rather than
+  forced into this doc.
 
 ## 3. Escape analysis and lifetime elision
 
