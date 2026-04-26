@@ -319,6 +319,22 @@ pub enum ResolvedType {
         /// Return type
         return_ty: Box<Self>,
     },
+
+    /// A typed-out-of-band error placeholder.
+    ///
+    /// Produced by IR lowering when an upstream `CompilerError` has
+    /// already been pushed (e.g. `UndefinedType`, `InternalError`) but
+    /// the surrounding lowering code still needs to materialise *some*
+    /// `ResolvedType` to keep walking the AST. Replaces the previous
+    /// stringly-typed `TypeParam("Unknown")` sentinel, which collided
+    /// with any user-defined type literally named `Unknown` and made
+    /// downstream "is this an error or a real type-param?" checks
+    /// ambiguous.
+    ///
+    /// Backends should treat `Error` as unreachable: if it survives to
+    /// code generation, the compile would already have returned the
+    /// associated `CompilerError` to the caller.
+    Error,
 }
 
 /// The root IR node containing all definitions.
@@ -829,6 +845,7 @@ impl ResolvedType {
                     return_ty.display_name(module)
                 )
             }
+            Self::Error => "<error>".to_string(),
         }
     }
 }

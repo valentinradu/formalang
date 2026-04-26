@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 167
 expression: module
 ---
 IrModule {
@@ -119,8 +118,8 @@ IrModule {
                                 path: [
                                     "since",
                                 ],
-                                ty: TypeParam(
-                                    "since",
+                                ty: Primitive(
+                                    Number,
                                 ),
                             },
                         },

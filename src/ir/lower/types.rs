@@ -55,7 +55,7 @@ impl IrLowerer<'_> {
                             name: name.to_string(),
                             span: self.current_span,
                         });
-                    Some(ResolvedType::TypeParam("Unknown".to_string()))
+                    Some(ResolvedType::Error)
                 }
             }
             // Composite stringification (e.g. "[T]", "T?", "(a: T)",
@@ -117,7 +117,8 @@ impl IrLowerer<'_> {
             | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::External { .. }
-            | ResolvedType::TypeParam(_) => None,
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::Error => None,
         };
         if let Some(id) = enum_id {
             if let Some(enum_def) = self.module.get_enum(id) {

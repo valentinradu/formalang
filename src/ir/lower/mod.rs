@@ -104,7 +104,7 @@ struct IrLowerer<'a> {
     /// expected closure type from the call/assignment context. The
     /// closure lowerer reads it to fill in any param/return types that
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
-    /// `x: Number` instead of `x: TypeParam("Unknown")`.
+    /// `x: Number` instead of `x: ResolvedType::Error`.
     pub(super) expected_closure_type: Option<ResolvedType>,
     /// Stack of currently-open module nodes during lowering. The
     /// outermost source module is at index 0; the deepest in-progress
@@ -142,22 +142,21 @@ impl<'a> IrLowerer<'a> {
             detail,
             span: self.current_span,
         });
-        ResolvedType::TypeParam("Unknown".to_string())
+        ResolvedType::Error
     }
 
     /// Like `internal_error_type`, but skips the error push when the
-    /// offending type is already a `TypeParam` — that indicates an upstream
-    /// lowering step already produced a placeholder (unresolved path, tuple
-    /// type rendered as a string, etc.) and will have errored on its own
-    /// behalf. This avoids a cascade of secondary errors until the upstream
-    /// `TypeParam` sources are removed (audit finding #8 follow-up).
+    /// offending type is already `ResolvedType::Error` — that indicates an
+    /// upstream lowering step already pushed its own `CompilerError` and
+    /// returned the placeholder. This avoids a cascade of secondary
+    /// `InternalError` diagnostics for the same root cause (audit finding #8).
     pub(super) fn internal_error_type_if_concrete(
         &mut self,
         bad_ty: &ResolvedType,
         detail: String,
     ) -> ResolvedType {
-        if matches!(bad_ty, ResolvedType::TypeParam(_)) {
-            ResolvedType::TypeParam("Unknown".to_string())
+        if matches!(bad_ty, ResolvedType::Error) {
+            ResolvedType::Error
         } else {
             self.internal_error_type(detail)
         }
@@ -420,7 +419,7 @@ impl<'a> IrLowerer<'a> {
                 tuple_types.len(),
             ))
         } else {
-            ResolvedType::TypeParam("Unknown".to_string())
+            ResolvedType::Error
         };
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_simple_binding_name(element) {
@@ -1552,7 +1551,7 @@ impl<'a> IrLowerer<'a> {
                         name: name.clone(),
                         span: ident.span,
                     });
-                    ResolvedType::TypeParam("Unknown".to_string())
+                    ResolvedType::Error
                 }
             }
 
@@ -1585,7 +1584,7 @@ impl<'a> IrLowerer<'a> {
                     name: name.name.clone(),
                     span: name.span,
                 });
-                ResolvedType::TypeParam("Unknown".to_string())
+                ResolvedType::Error
             }
 
             Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),

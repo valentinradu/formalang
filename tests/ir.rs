@@ -1505,7 +1505,8 @@ fn type_name(ty: &ResolvedType) -> String {
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. } => "Other".to_string(),
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error => "Other".to_string(),
     }
 }
 
@@ -2989,9 +2990,8 @@ struct Main {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3097,9 +3097,8 @@ struct Item {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3175,9 +3174,8 @@ struct Wrapper {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3269,9 +3267,8 @@ struct Container {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3467,9 +3464,8 @@ struct Collection {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }) => {
-                return Err(format!("Unexpected variant: {other:?}").into())
-            }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         },
         other @ (ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
@@ -3482,9 +3478,8 @@ struct Collection {
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3535,9 +3530,8 @@ struct Container {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }) => {
-                return Err(format!("Unexpected variant: {other:?}").into())
-            }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         },
         other @ (ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
@@ -3550,9 +3544,8 @@ struct Container {
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3656,7 +3649,8 @@ struct Main {
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => {}
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => {}
         }
     }
     Ok(())
@@ -3720,7 +3714,8 @@ struct Main {
             | ResolvedType::Enum(_)
             | ResolvedType::TypeParam(_)
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => {}
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => {}
         }
     }
 
@@ -3822,9 +3817,8 @@ struct Container { h: Helper = Helper(name: "test") }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }) => {
-                return Err(format!("Unexpected variant: {other:?}").into())
-            }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         }
     } else {
         return Err(format!("Expected StructInst expression, got {expr:?}").into());
@@ -3894,9 +3888,8 @@ struct Item { status: Status = Status.active }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }) => {
-                return Err(format!("Unexpected variant: {other:?}").into())
-            }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         }
     } else {
         return Err(format!("Expected EnumInst expression, got {expr:?}").into());
@@ -4296,9 +4289,8 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::Closure { .. }) => {
-            return Err(format!("Unexpected variant: {other:?}").into())
-        }
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
