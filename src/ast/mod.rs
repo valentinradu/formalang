@@ -276,11 +276,17 @@ pub struct StructField {
 ///
 /// - `impl Type { ... }` — inherent implementation
 /// - `impl Trait for Type { ... }` — trait implementation
+/// - `impl Trait<X> for Type { ... }` — generic-trait instantiation
 /// - `extern impl Type { ... }` — extern method declarations (bodies must all be `None`)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImplDef {
     pub trait_name: Option<Ident>,
+    /// Type arguments applied to `trait_name` for generic-trait
+    /// instantiations (`impl Foo<X> for Y`). Empty when the trait
+    /// is non-generic, or when the impl is inherent (`trait_name`
+    /// is `None`).
+    pub trait_args: Vec<Type>,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub functions: Vec<FnDef>,

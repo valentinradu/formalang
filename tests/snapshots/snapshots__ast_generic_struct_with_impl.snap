@@ -129,6 +129,7 @@ File {
             Impl(
                 ImplDef {
                     trait_name: None,
+                    trait_args: [],
                     name: Ident {
                         name: "Box",
                         span: Span {
