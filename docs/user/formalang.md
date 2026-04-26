@@ -1066,8 +1066,8 @@ Pattern matching on enums (exhaustive):
 pub enum Status { pending, active, completed }
 
 match status {
-  .pending: waitFor()
-  .active: runNow()
+  .pending: waitFor(),
+  .active: runNow(),
   .completed: finalize()
 }
 
@@ -1078,7 +1078,7 @@ pub enum Message {
 }
 
 match message {
-  .text(content): displayText(value: content)
+  .text(content): displayText(value: content),
   .image(url, size): displayImage(src: url, bytes: size)
 }
 ```

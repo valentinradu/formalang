@@ -1,4 +1,5 @@
 use super::module_resolver::ModuleResolver;
+use super::sem_type::SemType;
 use super::SemanticAnalyzer;
 use crate::ast::{
     BinaryOperator, BindingPattern, BlockStatement, Definition, Expr, File, Statement, StructDef,
@@ -59,8 +60,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // checked, so `let f: m::Foo = "wrong"` compiled silently.
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
-            let inferred = self.infer_type(&let_binding.value, file);
-            if inferred == "Nil" && !declared.ends_with('?') {
+            let inferred_sem = self.infer_type_sem(&let_binding.value, file);
+            let inferred = inferred_sem.display();
+            if matches!(inferred_sem, SemType::Nil) && !declared.ends_with('?') {
                 self.errors.push(CompilerError::NilAssignedToNonOptional {
                     expected: declared,
                     span: let_binding.span,
@@ -68,16 +70,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } else {
                 // General type-mismatch check, mirroring the field-default
                 // rule in `validate_struct_expressions`.
-                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                let nil_to_optional =
+                    matches!(inferred_sem, SemType::Nil) && declared.ends_with('?');
                 let inner_to_optional =
                     declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
-                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
                 let is_closure_pair = matches!(type_ann, Type::Closure { .. })
                     && matches!(let_binding.value, Expr::ClosureExpr { .. });
                 if !nil_to_optional
                     && !inner_to_optional
-                    && !has_unknown
-                    && inferred != "Unknown"
+                    && !inferred_sem.is_indeterminate()
                     && declared != "Unknown"
                     && !is_closure_pair
                     && !self.type_strings_compatible(&declared, &inferred)
@@ -121,19 +122,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     seed.insert(lit.name.name.clone(), ty_str);
                 }
                 self.inference_scope_stack.borrow_mut().push(seed);
-                let inferred_body = self.infer_type(body, file);
+                let inferred_body_sem = self.infer_type_sem(body, file);
                 self.inference_scope_stack.borrow_mut().pop();
                 let expected_ret = lit_ret
                     .as_ref()
                     .map_or_else(|| Self::type_to_string(declared_ret), Self::type_to_string);
-                let body_indeterminate =
-                    inferred_body.contains("Unknown") || inferred_body.contains("InferredEnum");
-                if !body_indeterminate
-                    && !self.type_strings_compatible(&expected_ret, &inferred_body)
+                if !inferred_body_sem.is_indeterminate()
+                    && !self.type_strings_compatible(&expected_ret, &inferred_body_sem.display())
                 {
                     self.errors.push(CompilerError::TypeMismatch {
                         expected: expected_ret,
-                        found: inferred_body,
+                        found: inferred_body_sem.display(),
                         span: let_binding.span,
                     });
                 }
@@ -254,19 +253,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(default_expr) = &field.default {
                 self.validate_expr(default_expr, file);
                 // Check that the default expression type matches the declared field type
-                let inferred = self.infer_type(default_expr, file);
+                let inferred_sem = self.infer_type_sem(default_expr, file);
+                let inferred = inferred_sem.display();
                 let declared = Self::type_to_string(&field.ty);
                 // nil is compatible with any optional type
-                let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+                let nil_to_optional =
+                    matches!(inferred_sem, SemType::Nil) && declared.ends_with('?');
                 // a value of type T is compatible with T? (implicit wrapping)
                 let inner_to_optional =
                     declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
-                // treat any type containing "Unknown" or "InferredEnum" as indeterminate
-                let has_unknown = inferred.contains("Unknown") || inferred.contains("InferredEnum");
                 if !nil_to_optional
                     && !inner_to_optional
-                    && !has_unknown
-                    && inferred != "Unknown"
+                    && !inferred_sem.is_indeterminate()
                     && declared != "Unknown"
                     && !self.type_strings_compatible(&declared, &inferred)
                 {
@@ -415,19 +413,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(else_expr, file);
                     // Check that both branch types are compatible.
                     // Widening rules: T and Nil unify to T?; T and T? unify to T?.
-                    let then_type = self.infer_type(then_branch, file);
-                    let else_type = self.infer_type(else_expr, file);
-                    // Skip when either type is unknown or contains unknown (e.g. [Unknown])
-                    if !then_type.contains("Unknown")
-                        && !else_type.contains("Unknown")
-                        && !Self::types_unify_with_optional_widening(&then_type, &else_type)
-                        && !self.type_strings_compatible(&then_type, &else_type)
+                    let then_sem = self.infer_type_sem(then_branch, file);
+                    let else_sem = self.infer_type_sem(else_expr, file);
+                    // Skip when either type is indeterminate (Unknown / nested Unknown / InferredEnum).
+                    if !then_sem.is_indeterminate()
+                        && !else_sem.is_indeterminate()
+                        && !SemType::unifies_with_optional_widening(&then_sem, &else_sem)
                     {
-                        self.errors.push(CompilerError::TypeMismatch {
-                            expected: then_type,
-                            found: else_type,
-                            span: *span,
-                        });
+                        let then_type = then_sem.display();
+                        let else_type = else_sem.display();
+                        if !self.type_strings_compatible(&then_type, &else_type) {
+                            self.errors.push(CompilerError::TypeMismatch {
+                                expected: then_type,
+                                found: else_type,
+                                span: *span,
+                            });
+                        }
                     }
                 }
                 // Current state = after_else (or pre_if if no else branch).
@@ -443,7 +444,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr(scrutinee, file);
                 let pre_match = self.consumed_bindings.clone();
                 let mut post_union: HashSet<String> = HashSet::new();
-                let mut arm_types: Vec<String> = Vec::new();
+                let mut arm_sems: Vec<SemType> = Vec::new();
                 for arm in arms {
                     self.consumed_bindings.clone_from(&pre_match);
                     // Register arm pattern bindings into a temporary scope
@@ -456,8 +457,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     } else {
                         self.validate_expr(&arm.body, file);
                     }
-                    let arm_type = self.infer_type(&arm.body, file);
-                    arm_types.push(arm_type);
+                    arm_sems.push(self.infer_type_sem(&arm.body, file));
                     // Drain the per-arm state into post_union without cloning.
                     post_union.extend(self.consumed_bindings.drain());
                 }
@@ -466,16 +466,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.consumed_bindings = post_union;
                 // Check that all arm types are compatible with the first arm's type.
                 // Widening: variations of T and T?/Nil unify to T?.
-                if let Some(first_type) = arm_types.first().cloned() {
-                    if !first_type.contains("Unknown") {
-                        for (arm, arm_type) in arms.iter().zip(arm_types.iter()).skip(1) {
-                            if !arm_type.contains("Unknown")
-                                && !Self::types_unify_with_optional_widening(&first_type, arm_type)
-                                && !self.type_strings_compatible(&first_type, arm_type)
+                if let Some(first_sem) = arm_sems.first().cloned() {
+                    if !first_sem.is_indeterminate() {
+                        let first_type = first_sem.display();
+                        for (arm, arm_sem) in arms.iter().zip(arm_sems.iter()).skip(1) {
+                            if arm_sem.is_indeterminate()
+                                || SemType::unifies_with_optional_widening(&first_sem, arm_sem)
                             {
+                                continue;
+                            }
+                            let arm_type = arm_sem.display();
+                            if !self.type_strings_compatible(&first_type, &arm_type) {
                                 self.errors.push(CompilerError::TypeMismatch {
                                     expected: first_type.clone(),
-                                    found: arm_type.clone(),
+                                    found: arm_type,
                                     span: arm.span,
                                 });
                             }
@@ -505,24 +509,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
-                // Validate key type against declared dict type. Audit2 B8:
-                // depth-aware extraction so nested-dict keys / values
-                // are handled correctly.
-                let dict_type = self.infer_type(dict, file);
-                if let Some(inner) = dict_type
-                    .strip_prefix('[')
-                    .and_then(|s| s.strip_suffix(']'))
+                // Validate key type against declared dict type.
+                // Structural unpacking — no string scanning needed.
+                if let SemType::Dictionary {
+                    key: expected_key, ..
+                } = self.infer_type_sem(dict, file)
                 {
-                    if let Some(colon_pos) = super::depth_zero_colon_index(inner) {
-                        let expected_key_type = inner[..colon_pos].trim();
-                        let actual_key_type = self.infer_type(key, file);
-                        if actual_key_type != "Unknown" && actual_key_type != expected_key_type {
-                            self.errors.push(CompilerError::TypeMismatch {
-                                expected: expected_key_type.to_string(),
-                                found: actual_key_type,
-                                span: *span,
-                            });
-                        }
+                    let actual_key_sem = self.infer_type_sem(key, file);
+                    if !actual_key_sem.is_unknown() && actual_key_sem != *expected_key {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: expected_key.display(),
+                            found: actual_key_sem.display(),
+                            span: *span,
+                        });
                     }
                 }
             }
@@ -532,26 +531,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(object, file);
-                let obj_type = self.infer_type(object, file);
-                if obj_type != "Unknown" {
+                let obj_sem = self.infer_type_sem(object, file);
+                if !obj_sem.is_unknown() {
                     // Field access on an optional type requires unwrapping
-                    if obj_type.ends_with('?') {
-                        let base = obj_type.trim_end_matches('?');
-                        if base != "Unknown" && self.symbols.get_struct(base).is_some() {
+                    if let SemType::Optional(inner) = &obj_sem {
+                        let base = inner.display();
+                        if base != "Unknown" && self.symbols.get_struct(&base).is_some() {
                             self.errors.push(CompilerError::OptionalUsedAsNonOptional {
-                                actual: obj_type.clone(),
-                                expected: base.to_string(),
+                                actual: obj_sem.display(),
+                                expected: base,
                                 span: *span,
                             });
                         }
                     } else {
                         // Field must exist on the struct
-                        let base_type = obj_type.trim_end_matches('?');
-                        if let Some(struct_info) = self.symbols.get_struct(base_type) {
+                        let base_type = obj_sem.display();
+                        if let Some(struct_info) = self.symbols.get_struct(&base_type) {
                             if !struct_info.fields.iter().any(|f| f.name == field.name) {
                                 self.errors.push(CompilerError::UnknownField {
                                     field: field.name.clone(),
-                                    type_name: base_type.to_string(),
+                                    type_name: base_type,
                                     span: field.span,
                                 });
                             }
@@ -709,31 +708,39 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let Some((first_k, first_v)) = iter.next() else {
             return; // empty dict: nothing to unify
         };
-        let first_key_ty = self.infer_type(first_k, file);
-        let first_val_ty = self.infer_type(first_v, file);
-        let key_indeterminate = first_key_ty == "Unknown";
-        let val_indeterminate = first_val_ty == "Unknown";
+        let first_key_sem = self.infer_type_sem(first_k, file);
+        let first_val_sem = self.infer_type_sem(first_v, file);
+        let key_indeterminate = first_key_sem.is_unknown();
+        let val_indeterminate = first_val_sem.is_unknown();
+        let first_key_ty = first_key_sem.display();
+        let first_val_ty = first_val_sem.display();
         for (k, v) in iter {
             if !key_indeterminate {
-                let kty = self.infer_type(k, file);
-                if kty != "Unknown" && !self.type_strings_compatible(&first_key_ty, &kty) {
-                    self.errors.push(CompilerError::TypeMismatch {
-                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
-                        found: format!("key of type {kty}"),
-                        span,
-                    });
-                    return;
+                let kty_sem = self.infer_type_sem(k, file);
+                if !kty_sem.is_unknown() {
+                    let kty = kty_sem.display();
+                    if !self.type_strings_compatible(&first_key_ty, &kty) {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                            found: format!("key of type {kty}"),
+                            span,
+                        });
+                        return;
+                    }
                 }
             }
             if !val_indeterminate {
-                let vty = self.infer_type(v, file);
-                if vty != "Unknown" && !self.type_strings_compatible(&first_val_ty, &vty) {
-                    self.errors.push(CompilerError::TypeMismatch {
-                        expected: format!("[{first_key_ty}: {first_val_ty}]"),
-                        found: format!("value of type {vty}"),
-                        span,
-                    });
-                    return;
+                let vty_sem = self.infer_type_sem(v, file);
+                if !vty_sem.is_unknown() {
+                    let vty = vty_sem.display();
+                    if !self.type_strings_compatible(&first_val_ty, &vty) {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                            found: format!("value of type {vty}"),
+                            span,
+                        });
+                        return;
+                    }
                 }
             }
         }
@@ -747,16 +754,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let Some(first) = iter.next() else {
             return; // empty array: nothing to unify
         };
-        let first_ty = self.infer_type(first, file);
-        if first_ty == "Unknown" {
+        let first_sem = self.infer_type_sem(first, file);
+        if first_sem.is_unknown() {
             // Can't trust the inference; skip rather than emit noise.
             return;
         }
+        let first_ty = first_sem.display();
         for elem in iter {
-            let elem_ty = self.infer_type(elem, file);
-            if elem_ty == "Unknown" {
+            let elem_sem = self.infer_type_sem(elem, file);
+            if elem_sem.is_unknown() {
                 continue;
             }
+            let elem_ty = elem_sem.display();
             if !self.type_strings_compatible(&first_ty, &elem_ty) {
                 self.errors.push(CompilerError::TypeMismatch {
                     expected: format!("[{first_ty}]"),
@@ -1517,10 +1526,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return false;
             }
 
-            let first_arg_type = args.first().map_or_else(
-                || "Unknown".to_string(),
-                |(_, expr)| self.infer_type(expr, file),
-            );
+            let first_arg_sem = args.first().map_or(SemType::Unknown, |(_, expr)| {
+                self.infer_type_sem(expr, file)
+            });
 
             let first_param_type = params
                 .iter()
@@ -1529,9 +1537,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
 
             // Unknown means we can't tell — accept it (conservative)
-            first_arg_type == "Unknown"
+            first_arg_sem.is_unknown()
                 || first_param_type == "Unknown"
-                || self.type_strings_compatible(&first_param_type, &first_arg_type)
+                || self.type_strings_compatible(&first_param_type, &first_arg_sem.display())
         } else {
             // Mixed labeled / unlabeled args — reject. FormaLang's overload
             // resolution modes are "all-labeled" (A) or "all-unlabeled" (B);
@@ -1628,8 +1636,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             self.inference_scope_stack.borrow_mut().push(frame);
-            let body_type = self.infer_type(body, file);
+            let body_sem = self.infer_type_sem(body, file);
             self.inference_scope_stack.borrow_mut().pop();
+            let body_type = body_sem.display();
             let expected = Self::type_to_string(declared);
             if !self.type_strings_compatible(&expected, &body_type) {
                 // Audit2 B13: cite the body span (the offending expression),
@@ -2093,8 +2102,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = ty {
             let declared = Self::type_to_string(type_ann);
-            let inferred = self.infer_type(value, file);
-            if inferred == "Nil" && !declared.ends_with('?') {
+            let inferred_sem = self.infer_type_sem(value, file);
+            if matches!(inferred_sem, SemType::Nil) && !declared.ends_with('?') {
                 self.errors.push(CompilerError::NilAssignedToNonOptional {
                     expected: declared,
                     span: *span,
@@ -2131,7 +2140,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
                 continue;
             }
-            let inferred_ty = self.infer_type(value, file);
+            let inferred_ty = self.infer_type_sem(value, file).display();
             // If annotated as a closure type, record param conventions for call-site enforcement
             if let Some(Type::Closure { params, .. }) = ty {
                 let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
@@ -2177,7 +2186,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for (_, arg) in args {
             self.validate_expr(arg, file);
         }
-        let receiver_type = self.infer_type(receiver, file);
+        let receiver_type = self.infer_type_sem(receiver, file).display();
         if let Some(fn_def) = Self::find_method_fn_def(&receiver_type, &method.name, file) {
             let params = fn_def.params.clone();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
@@ -2347,9 +2356,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     ..
                 } => {
                     self.validate_expr(value, file);
-                    let ty_str = ty
-                        .as_ref()
-                        .map_or_else(|| self.infer_type(value, file), |t| Self::type_to_string(t));
+                    let ty_str = ty.as_ref().map_or_else(
+                        || self.infer_type_sem(value, file).display(),
+                        |t| Self::type_to_string(t),
+                    );
                     // Collect free variables once if this is a closure literal,
                     // so we can reuse them across all bindings in the pattern.
                     let captures = if matches!(ty, Some(Type::Closure { .. })) {
@@ -2403,17 +2413,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             .push(CompilerError::AssignmentToImmutable { span: *span });
                     }
                     // Check that value type is compatible with target's declared type
-                    let value_type = self.infer_type(value, file);
-                    let target_type = self.infer_type(target, file);
-                    if !value_type.contains("Unknown")
-                        && !target_type.contains("Unknown")
-                        && !self.type_strings_compatible(&target_type, &value_type)
-                    {
-                        self.errors.push(CompilerError::TypeMismatch {
-                            expected: target_type,
-                            found: value_type,
-                            span: *span,
-                        });
+                    let value_sem = self.infer_type_sem(value, file);
+                    let target_sem = self.infer_type_sem(target, file);
+                    if !value_sem.is_indeterminate() && !target_sem.is_indeterminate() {
+                        let value_type = value_sem.display();
+                        let target_type = target_sem.display();
+                        if !self.type_strings_compatible(&target_type, &value_type) {
+                            self.errors.push(CompilerError::TypeMismatch {
+                                expected: target_type,
+                                found: value_type,
+                                span: *span,
+                            });
+                        }
                     }
                     // Tier-1 escape extension: a closure value assigned
                     // to an outer-scope `mut` binding outlives this
@@ -2466,10 +2477,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         condition: &Expr,
         file: &File,
     ) -> (Option<String>, Option<(String, bool)>) {
-        let cond_ty = self.infer_type(condition, file);
-        let Some(unwrapped) = cond_ty.strip_suffix('?') else {
+        let cond_sem = self.infer_type_sem(condition, file);
+        let SemType::Optional(inner) = &cond_sem else {
             return (None, None);
         };
+        let unwrapped_owned = inner.display();
+        let unwrapped = unwrapped_owned.as_str();
         let name_opt = match condition {
             Expr::Reference { path, .. } => path.last().map(|id| id.name.clone()),
             Expr::FieldAccess { field, .. } => Some(field.name.clone()),
@@ -2562,19 +2575,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if generic_params.iter().any(|g| declared.contains(g)) {
                 continue;
             }
-            let inferred = self.infer_type(arg_value, file);
+            let inferred_sem = self.infer_type_sem(arg_value, file);
+            let inferred = inferred_sem.display();
             // nil is compatible with any optional type
-            let nil_to_optional = inferred == "Nil" && declared.ends_with('?');
+            let nil_to_optional = matches!(inferred_sem, SemType::Nil) && declared.ends_with('?');
             // T is compatible with T? (implicit wrapping)
             let inner_to_optional =
                 declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
-            // treat any type containing "Unknown" / "InferredEnum" as indeterminate
-            let has_unknown = inferred.contains("Unknown")
-                || inferred.contains("InferredEnum")
-                || declared.contains("Unknown");
+            // declared can still be a string with "Unknown" in it (e.g. unresolved
+            // type annotation); preserve the legacy guard for that case.
+            let declared_indeterminate = declared.contains("Unknown");
             if !nil_to_optional
                 && !inner_to_optional
-                && !has_unknown
+                && !inferred_sem.is_indeterminate()
+                && !declared_indeterminate
                 && !self.type_strings_compatible(declared, &inferred)
             {
                 self.errors.push(CompilerError::TypeMismatch {
@@ -2725,13 +2739,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        let left_type = self.infer_type(left, file);
-        let right_type = self.infer_type(right, file);
+        let left_sem = self.infer_type_sem(left, file);
+        let right_sem = self.infer_type_sem(right, file);
 
         // Skip validation when either operand type is unknown (field access, method calls, etc.)
-        if left_type == "Unknown" || right_type == "Unknown" {
+        if left_sem.is_unknown() || right_sem.is_unknown() {
             return;
         }
+        let left_type = left_sem.display();
+        let right_type = right_sem.display();
 
         // Check type compatibility based on operator. Audit #44: the
         // hardcoded GPU numeric compat (`f32`, `vec3`, etc.) was a wart
@@ -2774,53 +2790,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Check if two branch types unify via optional widening.
-    ///
-    /// Unifies:
-    /// - `T` and `Nil` -> `T?`
-    /// - `T` and `T?` (either order) -> `T?`
-    ///
-    /// Returns `true` when the two types unify under these rules. Other
-    /// compatibility checks (equality, GPU numeric) are handled elsewhere.
-    pub(super) fn types_unify_with_optional_widening(a: &str, b: &str) -> bool {
-        if a == "Nil" && b.ends_with('?') {
-            return true;
-        }
-        if b == "Nil" && a.ends_with('?') {
-            return true;
-        }
-        if a == "Nil" && b != "Nil" && !b.is_empty() {
-            // Any non-Nil, non-Unknown type T unifies with Nil as T?
-            return true;
-        }
-        if b == "Nil" && a != "Nil" && !a.is_empty() {
-            return true;
-        }
-        // T unifies with T? (either direction)
-        if let Some(inner) = a.strip_suffix('?') {
-            if inner == b {
-                return true;
-            }
-        }
-        if let Some(inner) = b.strip_suffix('?') {
-            if inner == a {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Validate for loop collection is an array or range
     pub(super) fn validate_for_loop(&mut self, collection: &Expr, span: Span, file: &File) {
-        let collection_type = self.infer_type(collection, file);
+        let collection_sem = self.infer_type_sem(collection, file);
 
-        let is_iterable = collection_type.starts_with('[')
-            || collection_type.starts_with("Range<")
-            || collection_type == "Unknown";
+        let is_iterable = matches!(collection_sem, SemType::Array(_) | SemType::Unknown)
+            || matches!(&collection_sem, SemType::Generic { base, .. } if base == "Range");
 
         if !is_iterable {
             self.errors.push(CompilerError::ForLoopNotArray {
-                actual: collection_type,
+                actual: collection_sem.display(),
                 span,
             });
         }
@@ -2834,19 +2813,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        let value_type = self.infer_type(value, file);
+        let value_sem = self.infer_type_sem(value, file);
 
         // Skip destructuring validation when value type is unknown (field access, etc.)
-        if value_type == "Unknown" {
+        if value_sem.is_unknown() {
             return;
         }
 
         match pattern {
             BindingPattern::Array { elements, .. } => {
                 // Array destructuring requires an array type
-                if !value_type.starts_with('[') {
+                if !matches!(value_sem, SemType::Array(_)) {
                     self.errors.push(CompilerError::ArrayDestructuringNotArray {
-                        actual: value_type,
+                        actual: value_sem.display(),
                         span,
                     });
                 } else if let Expr::Array {
@@ -2874,17 +2853,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             BindingPattern::Struct { fields, .. } => {
-                // Struct destructuring requires a struct type
-                // Check if the type is a known struct
-                if let Some(struct_info) = self.symbols.get_struct(&value_type) {
-                    // Validate that all destructured fields exist on the struct
+                // Struct destructuring requires a struct type.
+                // The type may also be `Generic { base, .. }` for instantiated
+                // generic structs — strip args for the lookup.
+                let lookup_name = match &value_sem {
+                    SemType::Generic { base, .. } | SemType::Named(base) => Some(base.as_str()),
+                    SemType::Primitive(_)
+                    | SemType::Array(_)
+                    | SemType::Optional(_)
+                    | SemType::Tuple(_)
+                    | SemType::Dictionary { .. }
+                    | SemType::Closure { .. }
+                    | SemType::Unknown
+                    | SemType::InferredEnum
+                    | SemType::Nil => None,
+                };
+                if let Some(struct_info) = lookup_name.and_then(|n| self.symbols.get_struct(n)) {
                     let field_names: Vec<&str> =
                         struct_info.fields.iter().map(|f| f.name.as_str()).collect();
                     for field in fields {
                         if !field_names.contains(&field.name.name.as_str()) {
                             self.errors.push(CompilerError::UnknownField {
                                 field: field.name.name.clone(),
-                                type_name: value_type.clone(),
+                                type_name: value_sem.display(),
                                 span: field.name.span,
                             });
                         }
@@ -2893,27 +2884,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Not a known struct - report error (includes primitives)
                     self.errors
                         .push(CompilerError::StructDestructuringNotStruct {
-                            actual: value_type,
+                            actual: value_sem.display(),
                             span,
                         });
                 }
             }
             BindingPattern::Tuple { elements, .. } => {
                 // Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
-                if let Some(inner) = value_type
-                    .strip_prefix('(')
-                    .and_then(|s| s.strip_suffix(')'))
-                {
-                    let field_count = if inner.is_empty() {
-                        0
-                    } else {
-                        inner.split(", ").count()
-                    };
+                if let SemType::Tuple(fields) = &value_sem {
+                    let field_count = fields.len();
                     let pattern_count = elements.len();
                     if pattern_count > field_count && field_count > 0 {
                         self.errors.push(CompilerError::TypeMismatch {
                             expected: format!("tuple with {field_count} field(s)"),
-                            found: value_type,
+                            found: value_sem.display(),
                             span,
                         });
                     }
@@ -2927,17 +2911,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Validate if condition is boolean or optional
     pub(super) fn validate_if_condition(&mut self, condition: &Expr, span: Span, file: &File) {
-        let condition_type = self.infer_type(condition, file);
+        use crate::ast::PrimitiveType;
+        let condition_sem = self.infer_type_sem(condition, file);
 
         // Skip when type is unknown (field access, method calls — IR lowering handles these)
-        if condition_type == "Unknown" {
+        if condition_sem.is_unknown() {
             return;
         }
 
-        // Condition must be Boolean or optional (ends with '?')
-        if condition_type != "Boolean" && !condition_type.ends_with('?') {
+        // Condition must be Boolean or optional
+        let is_valid = matches!(
+            condition_sem,
+            SemType::Primitive(PrimitiveType::Boolean) | SemType::Optional(_)
+        );
+        if !is_valid {
             self.errors.push(CompilerError::InvalidIfCondition {
-                actual: condition_type,
+                actual: condition_sem.display(),
                 span,
             });
         }
@@ -2952,7 +2941,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
     ) {
         // Infer scrutinee type - must be an enum
-        let scrutinee_type = self.infer_type(scrutinee, file);
+        let scrutinee_type = self.infer_type_sem(scrutinee, file).display();
 
         // Skip when type is unknown (field access, method calls — IR lowering handles these)
         if scrutinee_type == "Unknown" {
@@ -3244,7 +3233,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
-                let body_type = self.infer_type(body, file);
+                let body_type = self.infer_type_sem(body, file).display();
                 let expected_type = Self::type_to_string(declared_return_type);
 
                 // Check if types are compatible
@@ -3329,7 +3318,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
-                let body_type = self.infer_type(body, file);
+                let body_type = self.infer_type_sem(body, file).display();
                 let expected_type = Self::type_to_string(declared_return_type);
 
                 // Check if types are compatible

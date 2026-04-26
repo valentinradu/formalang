@@ -107,7 +107,7 @@ system.
   Plugin System
 - **Library design**: In-process, single-crate library
 - **Output**: `IrModule` (type-resolved IR) via `compile_to_ir`; raw `File`
-  (AST) via `compile`
+  (AST) via `parse_only`
 - **Plugin system**: `IrPass` for IR transforms; `Backend` for code
   generation; composed with `Pipeline`
 - **Built-in passes**: `DeadCodeEliminationPass`, `ConstantFoldingPass`,

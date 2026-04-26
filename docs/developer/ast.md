@@ -994,9 +994,9 @@ File
 
 ```formalang
 match status {
-    Active => Label(text: "Online"),
-    Inactive => Label(text: "Offline"),
-    _ => Label(text: "Unknown")
+    .active: Label(text: "Online"),
+    .inactive: Label(text: "Offline"),
+    _: Label(text: "Unknown")
 }
 ```
 
@@ -1007,10 +1007,10 @@ Expr::MatchExpr
 ├── scrutinee: Expr::Reference { path: ["status"] }
 └── arms:
     ├── [0] MatchArm
-    │   ├── pattern: Pattern::Variant { name: "Active", bindings: [] }
+    │   ├── pattern: Pattern::Variant { name: "active", bindings: [] }
     │   └── body: Expr::Invocation { path: ["Label"], ... }
     ├── [1] MatchArm
-    │   ├── pattern: Pattern::Variant { name: "Inactive", bindings: [] }
+    │   ├── pattern: Pattern::Variant { name: "inactive", bindings: [] }
     │   └── body: Expr::Invocation { path: ["Label"], ... }
     └── [2] MatchArm
         ├── pattern: Pattern::Wildcard
