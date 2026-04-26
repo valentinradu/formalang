@@ -950,3 +950,203 @@ fn test_fold_chain_with_divide_by_zero() -> Result<(), Box<dyn std::error::Error
     }
     Ok(())
 }
+
+// =============================================================================
+// IrExpr::is_constant — aggregate-literal predicate.
+//
+// Backends emitting static data segments use this to short-circuit the
+// "is this a constant initializer?" check after `fold_constants` has run.
+// =============================================================================
+
+fn struct_default_expr(
+    folded: &formalang::ir::IrModule,
+) -> Result<&IrExpr, Box<dyn std::error::Error>> {
+    folded
+        .structs
+        .first()
+        .ok_or("no struct")?
+        .fields
+        .first()
+        .ok_or("no field")?
+        .default
+        .as_ref()
+        .ok_or_else(|| "no default".into())
+}
+
+#[test]
+fn test_is_constant_literal() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"struct Config { val: Number = 42 }";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = struct_default_expr(&folded)?;
+    if !expr.is_constant() {
+        return Err(format!("literal must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_array_of_literals_after_fold() -> Result<(), Box<dyn std::error::Error>> {
+    // `[1+1, 2*2]` folds children to `[2, 4]`, which is a constant aggregate.
+    let source = r"struct Config { vals: [Number] = [1 + 1, 2 * 2] }";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = struct_default_expr(&folded)?;
+    if !expr.is_constant() {
+        return Err(format!("folded array must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_nested_array() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"struct Config { grid: [[Number]] = [[1, 2], [3, 4]] }";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = struct_default_expr(&folded)?;
+    if !expr.is_constant() {
+        return Err(format!("nested array of literals must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_tuple() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"struct Config { pair: (n: Number, s: String) = (n: 1, s: "x") }"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = struct_default_expr(&folded)?;
+    if !expr.is_constant() {
+        return Err(format!("tuple of literals must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_struct_inst() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Point { x: Number, y: Number }
+        struct Config { origin: Point = Point(x: 0, y: 0) }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    // Config is the second struct
+    let config = folded
+        .structs
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("Config missing")?;
+    let expr = config
+        .fields
+        .first()
+        .ok_or("no field")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    if !expr.is_constant() {
+        return Err(format!("struct of literals must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        enum Status { active, inactive }
+        struct Config { state: Status = Status.active }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let config = folded
+        .structs
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("Config missing")?;
+    let expr = config
+        .fields
+        .first()
+        .ok_or("no field")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    if !expr.is_constant() {
+        return Err(format!("enum of literals must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"struct Config { data: [String: Number] = ["a": 1, "b": 2] }"#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let expr = struct_default_expr(&folded)?;
+    if !expr.is_constant() {
+        return Err(format!("dict of literals must be constant, got {expr:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_rejects_let_ref() -> Result<(), Box<dyn std::error::Error>> {
+    // A reference to another binding is not a static-data leaf, even if
+    // the binding itself was a literal — backends can't emit a relocation
+    // through a name lookup.
+    let source = r"
+        let factor: Number = 2
+        struct Config { vals: [Number] = [factor, 1] }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let config = folded
+        .structs
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("Config missing")?;
+    let expr = config
+        .fields
+        .first()
+        .ok_or("no field")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    if expr.is_constant() {
+        return Err(format!(
+            "array containing a binding reference must not be constant, got {expr:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_is_constant_rejects_method_call_inside_aggregate() -> Result<(), Box<dyn std::error::Error>>
+{
+    // A method call inside an aggregate is not statically known.
+    let source = r"
+        struct Counter { n: Number = 0 }
+        impl Counter { fn next(self) -> Number { self.n + 1 } }
+        let c: Counter = Counter()
+        struct Config { vals: [Number] = [c.next(), 1] }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let folded = fold_constants(&module);
+    let config = folded
+        .structs
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("Config missing")?;
+    let expr = config
+        .fields
+        .first()
+        .ok_or("no field")?
+        .default
+        .as_ref()
+        .ok_or("no default")?;
+    if expr.is_constant() {
+        return Err(
+            format!("array containing a method call must not be constant, got {expr:?}").into(),
+        );
+    }
+    Ok(())
+}

@@ -1581,13 +1581,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Checks that the closure body does not capture any binding that has
     /// already been consumed by a sink parameter at closure-creation time.
-    ///
-    /// Limitation: this only detects the case where a referenced binding is
-    /// *already* in `consumed_bindings` when the closure is created. It does
-    /// not detect the trickier after-the-fact pattern where a closure retains
-    /// a binding that is consumed later (e.g.,
-    /// `let c = |_| x; consume(x); c(0)`). Full escape analysis is left for
-    /// a future pass.
+    /// The complementary after-the-fact check — closure created with a live
+    /// capture, capture consumed later, then closure invoked — fires at the
+    /// invocation site (see the `closure_binding_captures` lookup in the
+    /// closure-call branch of `validate_expr_invocation`), so dormant
+    /// closures whose captures are consumed but never invoked are tolerated
+    /// by design.
     fn validate_expr_closure(
         &mut self,
         params: &[crate::ast::ClosureParam],
