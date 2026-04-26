@@ -435,6 +435,15 @@ pub enum ResolvedType {
         param_tys: Vec<(ParamConvention, ResolvedType)>,
         return_ty: Box<ResolvedType>,
     },
+
+    /// Typed-out-of-band error placeholder. Produced by IR lowering when an
+    /// upstream `CompilerError` has already been pushed but the surrounding
+    /// code still needs to materialise *some* `ResolvedType` to keep walking
+    /// the AST. Backends should treat `Error` as unreachable: if it survives
+    /// to code generation, the compile would already have returned the
+    /// associated `CompilerError` to the caller. Replaced the previous
+    /// stringly-typed `TypeParam("Unknown")` sentinel.
+    Error,
 }
 
 /// Target of a `Generic` instantiation — a generic struct, enum, or
