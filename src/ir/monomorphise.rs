@@ -247,7 +247,10 @@ fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantiation> {
     //     traits / impls / functions
     //   - the trait reference on every IrImpl
     // For each non-empty args list, schedule the trait specialisation.
-    #[expect(clippy::items_after_statements, reason = "helper kept inline for locality")]
+    #[expect(
+        clippy::items_after_statements,
+        reason = "helper kept inline for locality"
+    )]
     fn collect_constraints(params: &[IrGenericParam], out: &mut HashSet<Instantiation>) {
         for p in params {
             for c in &p.constraints {
@@ -2363,7 +2366,10 @@ fn apply_remaps(
     }
     // DispatchKind::Virtual call sites carry a trait id too. Walk
     // every expression in the module.
-    #[expect(clippy::items_after_statements, reason = "helper kept inline for locality")]
+    #[expect(
+        clippy::items_after_statements,
+        reason = "helper kept inline for locality"
+    )]
     fn walk_dispatch(
         expr: &mut IrExpr,
         trait_remap: &[Option<TraitId>],
