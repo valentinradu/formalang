@@ -28,18 +28,24 @@ pub const FORMAT_VERSION: u32 = 1;
 
 /// Generic type parameter (e.g., T in `Box<T>`)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericParam {
     pub name: Ident,
     pub constraints: Vec<GenericConstraint>,
     pub span: Span,
 }
 
-/// Constraint on a generic parameter (e.g., Container in T: Container)
+/// Constraint on a generic parameter.
+///
+/// `Trait { name, args }` represents a trait bound — `T: Foo` (with
+/// `args: []`) or `T: Foo<X, Y>` (with concrete or generic-param type
+/// arguments). The args slot lets generic-trait constraints survive
+/// monomorphisation: `<T: Container<Number>>` instantiates Container
+/// for `Number` and constrains T against that specialised trait.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GenericConstraint {
-    Trait(Ident),
+    Trait { name: Ident, args: Vec<Type> },
 }
 
 /// Root node representing a complete `.fv` file.

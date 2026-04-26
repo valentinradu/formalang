@@ -1451,7 +1451,13 @@ impl<'a> IrLowerer<'a> {
                     .constraints
                     .iter()
                     .filter_map(|c| match c {
-                        GenericConstraint::Trait(ident) => self.module.trait_id(&ident.name),
+                        // Phase A: args carried by the constraint
+                        // are not yet threaded into IrGenericParam —
+                        // Phase C will replace this Vec<TraitId> with
+                        // a Vec<TraitConstraint> shape that carries
+                        // them. For now we keep behaviour identical
+                        // by collecting just the trait ids.
+                        GenericConstraint::Trait { name, .. } => self.module.trait_id(&name.name),
                     })
                     .collect(),
             })

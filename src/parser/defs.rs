@@ -99,12 +99,33 @@ pub(super) fn generic_params_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    // Parse a single generic parameter: T or T: Trait or T: Trait1 + Trait2
+    // A single trait constraint: `Foo` or `Foo<X, Y>`. Args are
+    // parsed via `type_parser()` so any legal type — including
+    // nested generics — can appear (`<T: Container<Box<Number>>>`).
+    let trait_constraint = ident_parser()
+        .then(
+            type_parser()
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::Lt), just(Token::Gt))
+                .or_not(),
+        )
+        .map(|(name, args)| GenericConstraint::Trait {
+            name,
+            args: args.unwrap_or_default(),
+        });
+
+    // Parse a single generic parameter:
+    //   T
+    //   T: Trait
+    //   T: Trait<X>
+    //   T: Trait1 + Trait2<Y>
     let generic_param = ident_parser()
         .then(
             just(Token::Colon)
                 .ignore_then(
-                    ident_parser()
+                    trait_constraint
                         .separated_by(just(Token::Plus))
                         .at_least(1)
                         .collect::<Vec<_>>(),
@@ -113,11 +134,7 @@ where
         )
         .map_with(|(name, constraints), e| GenericParam {
             name,
-            constraints: constraints
-                .unwrap_or_default()
-                .into_iter()
-                .map(GenericConstraint::Trait)
-                .collect(),
+            constraints: constraints.unwrap_or_default(),
             span: span_from_simple(e.span()),
         });
 

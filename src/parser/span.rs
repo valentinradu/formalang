@@ -72,7 +72,12 @@ fn fill_generic_params_spans(params: &mut [crate::ast::GenericParam], source: &s
         fill_span(&mut param.name.span, source);
         for constraint in &mut param.constraints {
             match constraint {
-                GenericConstraint::Trait(ident) => fill_span(&mut ident.span, source),
+                GenericConstraint::Trait { name, args } => {
+                    fill_span(&mut name.span, source);
+                    for arg in args {
+                        fill_type_span(arg, source);
+                    }
+                }
             }
         }
         fill_span(&mut param.span, source);

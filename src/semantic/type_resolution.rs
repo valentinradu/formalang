@@ -465,7 +465,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             for (i, arg) in args.iter().enumerate() {
                 if let Some(param) = expected_params.get(i) {
                     for constraint in &param.constraints {
-                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        let crate::ast::GenericConstraint::Trait {
+                            name: trait_ref, ..
+                        } = constraint;
                         if !self.type_satisfies_trait_constraint(arg, &trait_ref.name) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(arg),

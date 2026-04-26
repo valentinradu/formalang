@@ -1144,11 +1144,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Validate constraints reference valid traits
                     for constraint in &param.constraints {
                         match constraint {
-                            GenericConstraint::Trait(trait_ref) => {
-                                if !self.symbols.is_trait(&trait_ref.name) {
+                            GenericConstraint::Trait { name, .. } => {
+                                if !self.symbols.is_trait(&name.name) {
                                     self.errors.push(CompilerError::UndefinedTrait {
-                                        name: trait_ref.name.clone(),
-                                        span: trait_ref.span,
+                                        name: name.name.clone(),
+                                        span: name.span,
                                     });
                                 }
                             }
@@ -1618,7 +1618,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .constraints
                 .iter()
                 .map(|c| match c {
-                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                    crate::ast::GenericConstraint::Trait { name, .. } => name.name.clone(),
                 })
                 .collect();
 
@@ -1648,7 +1648,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .constraints
                 .iter()
                 .map(|c| match c {
-                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                    crate::ast::GenericConstraint::Trait { name, .. } => name.name.clone(),
                 })
                 .collect();
             scope.params.insert(param.name.name.clone(), constraints);
@@ -1666,7 +1666,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .constraints
                 .iter()
                 .map(|c| match c {
-                    crate::ast::GenericConstraint::Trait(ident) => ident.name.clone(),
+                    crate::ast::GenericConstraint::Trait { name, .. } => name.name.clone(),
                 })
                 .collect();
             let entry = scope.params.entry(param.name.name.clone()).or_default();
