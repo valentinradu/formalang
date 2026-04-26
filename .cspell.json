@@ -79,7 +79,10 @@
     "Validatable",
     "bodyless",
     "serde",
-    "Serde"
+    "Serde",
+    "stringly",
+    "behaviour",
+    "unrecognised"
   ],
   "ignorePaths": [
     "node_modules",

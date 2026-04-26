@@ -210,8 +210,8 @@ for item in items {
 
 // match — exhaustive, on enums
 match message {
-    .text(content): display(value: content)
-    .image(url, size): showImage(src: url)
+    .text(content): display(value: content),
+    .image(url, size): showImage(src: url),
     .quit: stop()
 }
 ```

@@ -26,7 +26,11 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 - **Parser**: Builds AST from tokens with `chumsky` (Pratt precedence)
 - **Semantic Analyzer**: 6-pass validation (Pass 0 resolves modules, Passes
   1–5 build symbol tables, resolve types, validate expressions, validate
-  traits, detect cycles)
+  traits, detect cycles). Inference and validation operate on `SemType`,
+  a structural representation of type expressions that replaces the older
+  stringly-typed format and removes the `"Unknown"` / `"InferredEnum"` /
+  `"Nil"` sentinel-collision class of bugs. The `SymbolTable` boundary
+  with IR lowering and external consumers stays string-typed.
 - **IR Lowering**: Converts the validated AST + symbol table into a
   fully type-resolved `IrModule`. Module nesting is **flattened in
   the per-type vectors** — inline `mod foo { struct Bar { ... } }`
