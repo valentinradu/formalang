@@ -28,18 +28,24 @@ pub const FORMAT_VERSION: u32 = 1;
 
 /// Generic type parameter (e.g., T in `Box<T>`)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericParam {
     pub name: Ident,
     pub constraints: Vec<GenericConstraint>,
     pub span: Span,
 }
 
-/// Constraint on a generic parameter (e.g., Container in T: Container)
+/// Constraint on a generic parameter.
+///
+/// `Trait { name, args }` represents a trait bound — `T: Foo` (with
+/// `args: []`) or `T: Foo<X, Y>` (with concrete or generic-param type
+/// arguments). The args slot lets generic-trait constraints survive
+/// monomorphisation: `<T: Container<Number>>` instantiates Container
+/// for `Number` and constrains T against that specialised trait.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GenericConstraint {
-    Trait(Ident),
+    Trait { name: Ident, args: Vec<Type> },
 }
 
 /// Root node representing a complete `.fv` file.
@@ -270,11 +276,17 @@ pub struct StructField {
 ///
 /// - `impl Type { ... }` — inherent implementation
 /// - `impl Trait for Type { ... }` — trait implementation
+/// - `impl Trait<X> for Type { ... }` — generic-trait instantiation
 /// - `extern impl Type { ... }` — extern method declarations (bodies must all be `None`)
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImplDef {
     pub trait_name: Option<Ident>,
+    /// Type arguments applied to `trait_name` for generic-trait
+    /// instantiations (`impl Foo<X> for Y`). Empty when the trait
+    /// is non-generic, or when the impl is inherent (`trait_name`
+    /// is `None`).
+    pub trait_args: Vec<Type>,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub functions: Vec<FnDef>,

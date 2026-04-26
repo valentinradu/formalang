@@ -4495,14 +4495,14 @@ extern impl Printer {
     }
     let trait_impl = person_impls
         .iter()
-        .find(|i| i.trait_id == Some(greeter_id))
+        .find(|i| i.trait_id() == Some(greeter_id))
         .ok_or("no impl records trait_id = Greeter for Person")?;
     if trait_impl.is_extern {
         return Err("Greeter-for-Person impl should not be is_extern".into());
     }
     let inherent = person_impls
         .iter()
-        .find(|i| i.trait_id.is_none())
+        .find(|i| i.trait_id().is_none())
         .ok_or("no inherent impl on Person")?;
     if inherent.is_extern {
         return Err("inherent Person impl should not be is_extern".into());

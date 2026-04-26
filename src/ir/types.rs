@@ -57,8 +57,12 @@ pub struct IrStruct {
     /// Visibility (public or private)
     pub visibility: Visibility,
 
-    /// Traits implemented by this struct
-    pub traits: Vec<TraitId>,
+    /// Traits implemented by this struct, with optional generic-trait
+    /// args (`<T>`). Empty args means a non-generic trait. Generic-
+    /// traits PR: changed from `Vec<TraitId>` so generic-trait
+    /// instantiations (`impl Eq<Number> for Foo`) can be tracked
+    /// distinctly per arg-tuple.
+    pub traits: Vec<IrTraitRef>,
 
     /// Regular fields
     pub fields: Vec<IrField>,
@@ -208,8 +212,12 @@ pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
 
-    /// `Some(id)` for `impl Trait for Type`, `None` for inherent impls.
-    pub trait_id: Option<TraitId>,
+    /// `Some(IrTraitRef { trait_id, args })` for `impl Trait for Type`
+    /// or `impl Trait<X> for Type`; `None` for inherent impls. The
+    /// args slot is empty for non-generic traits — Phase C of the
+    /// generic-traits work added it so monomorphisation can
+    /// specialise generic-trait impls.
+    pub trait_ref: Option<IrTraitRef>,
 
     /// Whether this is an `extern impl` block (all methods `is_extern = true`).
     pub is_extern: bool,
@@ -223,6 +231,13 @@ pub struct IrImpl {
 }
 
 impl IrImpl {
+    /// Convenience: trait id of the impl, ignoring args. Equivalent
+    /// to `self.trait_ref.as_ref().map(|t| t.trait_id)`.
+    #[must_use]
+    pub fn trait_id(&self) -> Option<TraitId> {
+        self.trait_ref.as_ref().map(|t| t.trait_id)
+    }
+
     /// Get the struct ID if this impl is for a struct.
     #[must_use]
     pub const fn struct_id(&self) -> Option<StructId> {
@@ -374,6 +389,38 @@ pub struct IrGenericParam {
     /// Parameter name (e.g., "T")
     pub name: String,
 
-    /// Trait constraints (e.g., T: Container)
-    pub constraints: Vec<TraitId>,
+    /// Trait constraints (e.g., `T: Container` or `T: Container<Number>`).
+    /// Each entry carries the constrained trait id plus zero or more
+    /// concrete arg types — empty when the trait isn't generic.
+    pub constraints: Vec<IrTraitRef>,
+}
+
+/// A reference to a trait, optionally with concrete type arguments.
+///
+/// Used in two places after Phase C: as the constraint shape on
+/// [`IrGenericParam`] and as the trait-impl shape on [`IrImpl`]. An
+/// empty `args` slot means the trait isn't generic (`T: Container`,
+/// `impl Container for X`); a non-empty slot carries the
+/// instantiation (`T: Container<Number>`, `impl Container<Number> for X`)
+/// so monomorphisation can specialise generic traits.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct IrTraitRef {
+    pub trait_id: TraitId,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<ResolvedType>,
+}
+
+impl IrTraitRef {
+    /// Construct a non-generic trait reference (no args).
+    #[must_use]
+    pub const fn simple(trait_id: TraitId) -> Self {
+        Self {
+            trait_id,
+            args: Vec::new(),
+        }
+    }
 }

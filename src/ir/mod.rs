@@ -41,7 +41,7 @@ pub use lower::lower_to_ir;
 pub use monomorphise::MonomorphisePass;
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
-    IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait,
+    IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait, IrTraitRef,
 };
 pub use visitor::{
     walk_block_statement, walk_expr, walk_expr_children, walk_module, walk_module_children,
@@ -195,11 +195,16 @@ pub struct IrImportItem {
     pub kind: ImportedKind,
 }
 
-/// The target of a [`ResolvedType::Generic`] instantiation — either a
-/// generic struct or a generic enum.
+/// The target of a [`ResolvedType::Generic`] instantiation — a
+/// generic struct, enum, or trait.
+///
+/// Traits appear here only inside generic constraints
+/// (`<T: Foo<X>>`) and impl headers (`impl Foo<X> for Y`);
+/// `FormaLang` has no dynamic dispatch, so a trait base never sits
+/// in a value-type position.
 #[expect(
     clippy::exhaustive_enums,
-    reason = "every generic target is either a struct or an enum; other kinds have their own ResolvedType variants"
+    reason = "every generic target is a struct, enum, or trait; other kinds have their own ResolvedType variants"
 )]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GenericBase {
@@ -207,6 +212,9 @@ pub enum GenericBase {
     Struct(StructId),
     /// A generic enum base, e.g. `Option` in `Option<T>`.
     Enum(EnumId),
+    /// A generic trait base, e.g. `Container` in `Container<Number>`.
+    /// Phase D follow-up to item E2.
+    Trait(TraitId),
 }
 
 /// A fully resolved type.
@@ -781,6 +789,9 @@ impl ResolvedType {
                     GenericBase::Enum(id) => module
                         .get_enum(*id)
                         .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
+                    GenericBase::Trait(id) => module
+                        .get_trait(*id)
+                        .map_or_else(|| format!("<invalid-trait-{}>", id.0), |t| t.name.clone()),
                 };
                 let args_str: Vec<_> = args.iter().map(|a| a.display_name(module)).collect();
                 format!("{}<{}>", base_name, args_str.join(", "))

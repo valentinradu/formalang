@@ -19,6 +19,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             self.validate_impl_trait_methods(
                                 &impl_def.functions,
                                 &trait_ident.name,
+                                &impl_def.trait_args,
                                 &impl_def.name.name,
                                 impl_def.span,
                             );
@@ -34,17 +35,52 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check that an `impl Trait for Struct` block provides all methods declared in the trait.
+    ///
+    /// Generic-traits PR: when the impl is `impl Foo<X, Y> for Z`, the
+    /// `trait_args` slot carries the concrete arg types and the
+    /// trait's required-method signatures get their generic params
+    /// substituted before comparison. Without this, `impl Eq<Number>
+    /// for Foo` would always report a `TraitMethodSignatureMismatch`
+    /// because the trait declares `fn eq(self, other: T)` and the
+    /// impl declares `fn eq(self, other: Number)`.
     fn validate_impl_trait_methods(
         &mut self,
         impl_functions: &[FnDef],
         trait_name: &str,
+        trait_args: &[Type],
         _struct_name: &str,
         impl_span: crate::location::Span,
     ) {
         // Collect all required methods from the trait (including composed traits)
         let required_methods = self.collect_all_trait_methods(trait_name);
 
+        // Build trait-param → concrete-arg substitution map. Empty
+        // when the trait isn't generic or no args were supplied.
+        let trait_generic_params: Vec<String> = self
+            .symbols
+            .get_trait(trait_name)
+            .map(|info| info.generics.iter().map(|g| g.name.name.clone()).collect())
+            .unwrap_or_default();
+        let subs: std::collections::HashMap<String, Type> = trait_generic_params
+            .iter()
+            .zip(trait_args.iter())
+            .map(|(name, arg)| (name.clone(), arg.clone()))
+            .collect();
+
         for (method_name, required_params, required_return) in required_methods {
+            let required_params: Vec<crate::ast::FnParam> = required_params
+                .into_iter()
+                .map(|mut p| {
+                    if let Some(t) = &mut p.ty {
+                        Self::substitute_type_params(t, &subs);
+                    }
+                    p
+                })
+                .collect();
+            let required_return = required_return.map(|mut t| {
+                Self::substitute_type_params(&mut t, &subs);
+                t
+            });
             // Find this method in the impl block
             match impl_functions.iter().find(|f| f.name.name == method_name) {
                 None => {
@@ -201,6 +237,47 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
+        }
+    }
+
+    /// Replace any `Type::Ident(name)` whose name is a key in
+    /// `subs` with the corresponding concrete type, recursively. Used
+    /// by the trait-method check to substitute trait generic params
+    /// with the impl's `trait_args` before comparing signatures.
+    pub(super) fn substitute_type_params(
+        ty: &mut Type,
+        subs: &std::collections::HashMap<String, Type>,
+    ) {
+        match ty {
+            Type::Ident(ident) => {
+                if let Some(concrete) = subs.get(&ident.name) {
+                    *ty = concrete.clone();
+                }
+            }
+            Type::Array(inner) | Type::Optional(inner) => {
+                Self::substitute_type_params(inner, subs);
+            }
+            Type::Tuple(fields) => {
+                for f in fields {
+                    Self::substitute_type_params(&mut f.ty, subs);
+                }
+            }
+            Type::Generic { args, .. } => {
+                for a in args {
+                    Self::substitute_type_params(a, subs);
+                }
+            }
+            Type::Dictionary { key, value } => {
+                Self::substitute_type_params(key, subs);
+                Self::substitute_type_params(value, subs);
+            }
+            Type::Closure { params, ret } => {
+                for (_, p) in params {
+                    Self::substitute_type_params(p, subs);
+                }
+                Self::substitute_type_params(ret, subs);
+            }
+            Type::Primitive(_) => {}
         }
     }
 

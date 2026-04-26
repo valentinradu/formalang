@@ -44,7 +44,7 @@ IrModule {
                     0,
                 ),
             ),
-            trait_id: None,
+            trait_ref: None,
             is_extern: false,
             generic_params: [],
             functions: [

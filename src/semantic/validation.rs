@@ -1238,7 +1238,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Validate each type arg satisfies its constraints
                 for (type_arg, generic_param) in type_args.iter().zip(expected_params.iter()) {
                     for constraint in &generic_param.constraints {
-                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        let crate::ast::GenericConstraint::Trait {
+                            name: trait_ref, ..
+                        } = constraint;
                         if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(type_arg),
@@ -1322,7 +1324,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Validate each type arg satisfies constraints
                 for (type_arg, generic_param) in type_args.iter().zip(func_generics.iter()) {
                     for constraint in &generic_param.constraints {
-                        let crate::ast::GenericConstraint::Trait(trait_ref) = constraint;
+                        let crate::ast::GenericConstraint::Trait {
+                            name: trait_ref, ..
+                        } = constraint;
                         if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(type_arg),
@@ -3513,7 +3517,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     continue;
                 }
                 for constraint in &gp.constraints {
-                    let GenericConstraint::Trait(trait_ref) = constraint;
+                    let GenericConstraint::Trait {
+                        name: trait_ref, ..
+                    } = constraint;
                     if let Some(info) = self.symbols.get_trait(&trait_ref.name) {
                         for sig in &info.methods {
                             if sig.name.name == method_name {

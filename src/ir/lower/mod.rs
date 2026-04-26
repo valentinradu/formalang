@@ -744,12 +744,19 @@ impl<'a> IrLowerer<'a> {
 
         self.generic_scopes.pop();
 
-        // Convert trait names to trait IDs
-        // Use get_all_traits_for_struct to include both inline traits and impl blocks
+        // Convert trait names to IrTraitRef. The symbol table's
+        // get_all_traits_for_struct only carries trait names today,
+        // so we always lower these as non-generic refs (empty args);
+        // the impl-block path (lower_impl) is what produces
+        // populated args via ImplDef.trait_args.
         let all_trait_names = self.symbols.get_all_traits_for_struct(name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
-            .filter_map(|trait_name| self.module.trait_id(trait_name))
+            .filter_map(|trait_name| {
+                self.module
+                    .trait_id(trait_name)
+                    .map(crate::ir::IrTraitRef::simple)
+            })
             .collect();
 
         if let Err(e) = self.module.add_struct(
@@ -962,7 +969,7 @@ impl<'a> IrLowerer<'a> {
 
         // Look up the struct's traits from the correct (nested) symbol table.
         let all_trait_names = self.get_traits_for_struct_in_module(prefix, &s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
             .filter_map(|trait_name| {
                 // The trait name from source is unqualified (e.g. "Drawable").
@@ -972,6 +979,7 @@ impl<'a> IrLowerer<'a> {
                 self.module
                     .trait_id(&qualified)
                     .or_else(|| self.module.trait_id(trait_name))
+                    .map(crate::ir::IrTraitRef::simple)
             })
             .collect();
 
@@ -1092,12 +1100,14 @@ impl<'a> IrLowerer<'a> {
 
         // Get all traits from both inline definition and impl blocks
         let all_trait_names = self.symbols.get_all_traits_for_struct(&s.name.name);
-        let traits: Vec<TraitId> = all_trait_names
+        let traits: Vec<crate::ir::IrTraitRef> = all_trait_names
             .iter()
             .filter_map(|trait_name| {
                 // Check if this is an external trait and track the import
                 self.try_track_imported_type(trait_name, ImportedKind::Trait);
-                self.module.trait_id(trait_name)
+                self.module
+                    .trait_id(trait_name)
+                    .map(crate::ir::IrTraitRef::simple)
             })
             .collect();
 
@@ -1234,10 +1244,14 @@ impl<'a> IrLowerer<'a> {
             .map(|f| self.lower_fn_def(f, enclosing_extern))
             .collect();
         self.generic_scopes.pop();
-        let trait_id = i
-            .trait_name
-            .as_ref()
-            .and_then(|t| self.module.trait_id(&t.name));
+        // Phase C: lower the trait reference together with any
+        // generic-trait args (`impl Foo<X> for Y`).
+        let trait_ref = i.trait_name.as_ref().and_then(|tname| {
+            self.module.trait_id(&tname.name).map(|trait_id| {
+                let args = i.trait_args.iter().map(|t| self.lower_type(t)).collect();
+                crate::ir::IrTraitRef { trait_id, args }
+            })
+        });
 
         // Clear the context
         self.current_impl_struct = None;
@@ -1245,7 +1259,7 @@ impl<'a> IrLowerer<'a> {
 
         if let Err(err) = self.module.add_impl(IrImpl {
             target,
-            trait_id,
+            trait_ref,
             is_extern: i.is_extern,
             generic_params,
             functions,
@@ -1442,18 +1456,34 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_generic_params(&self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+    fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
+        // Phase C: each constraint becomes an IrTraitRef carrying
+        // both the trait id and any generic-trait args
+        // (`<T: Container<Number>>`). Arg lowering goes through
+        // `lower_type`, which is why this method now needs `&mut self`.
         params
             .iter()
-            .map(|p| IrGenericParam {
-                name: p.name.name.clone(),
-                constraints: p
+            .map(|p| {
+                let constraints: Vec<crate::ir::IrTraitRef> = p
                     .constraints
                     .iter()
                     .filter_map(|c| match c {
-                        GenericConstraint::Trait(ident) => self.module.trait_id(&ident.name),
+                        GenericConstraint::Trait { name, args } => {
+                            self.module.trait_id(&name.name).map(|trait_id| {
+                                let lowered_args: Vec<ResolvedType> =
+                                    args.iter().map(|t| self.lower_type(t)).collect();
+                                crate::ir::IrTraitRef {
+                                    trait_id,
+                                    args: lowered_args,
+                                }
+                            })
+                        }
                     })
-                    .collect(),
+                    .collect();
+                IrGenericParam {
+                    name: p.name.name.clone(),
+                    constraints,
+                }
             })
             .collect()
     }

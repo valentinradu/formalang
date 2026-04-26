@@ -72,7 +72,12 @@ fn fill_generic_params_spans(params: &mut [crate::ast::GenericParam], source: &s
         fill_span(&mut param.name.span, source);
         for constraint in &mut param.constraints {
             match constraint {
-                GenericConstraint::Trait(ident) => fill_span(&mut ident.span, source),
+                GenericConstraint::Trait { name, args } => {
+                    fill_span(&mut name.span, source);
+                    for arg in args {
+                        fill_type_span(arg, source);
+                    }
+                }
             }
         }
         fill_span(&mut param.span, source);
@@ -113,6 +118,12 @@ fn fill_struct_def_spans(s: &mut crate::ast::StructDef, source: &str) {
 
 fn fill_impl_def_spans(i: &mut crate::ast::ImplDef, source: &str) {
     fill_span(&mut i.name.span, source);
+    if let Some(t) = &mut i.trait_name {
+        fill_span(&mut t.span, source);
+    }
+    for arg in &mut i.trait_args {
+        fill_type_span(arg, source);
+    }
     fill_generic_params_spans(&mut i.generics, source);
     for func in &mut i.functions {
         fill_span(&mut func.name.span, source);

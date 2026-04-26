@@ -101,7 +101,7 @@ impl IrLowerer<'_> {
             ResolvedType::Enum(id) => Some(*id),
             ResolvedType::Generic { base, .. } => match base {
                 crate::ir::GenericBase::Enum(id) => Some(*id),
-                crate::ir::GenericBase::Struct(_) => None,
+                crate::ir::GenericBase::Struct(_) | crate::ir::GenericBase::Trait(_) => None,
             },
             ResolvedType::TypeParam(name) if name == "self" => self
                 .current_impl_struct

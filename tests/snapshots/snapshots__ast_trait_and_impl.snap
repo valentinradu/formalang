@@ -199,17 +199,18 @@ File {
                             span: Span {
                                 start: Location {
                                     offset: 122,
-                                    line: 0,
-                                    column: 0,
+                                    line: 8,
+                                    column: 14,
                                 },
                                 end: Location {
                                     offset: 126,
-                                    line: 0,
-                                    column: 0,
+                                    line: 8,
+                                    column: 18,
                                 },
                             },
                         },
                     ),
+                    trait_args: [],
                     name: Ident {
                         name: "Square",
                         span: Span {
