@@ -262,7 +262,7 @@ pub struct FnDef {
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     pub body: Option<Expr>,           // None for extern fn / extern impl methods
-    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold prefixes
+    pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold prefixes
     pub span: Span,
 }
 ```
@@ -281,7 +281,7 @@ pub struct FnSig {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold
+    pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold
     pub span: Span,
 }
 ```
@@ -344,7 +344,7 @@ pub struct FunctionDef {
     pub return_type: Option<Type>,
     pub body: Option<Expr>,           // None for `extern fn` declarations
     pub extern_abi: Option<ExternAbi>, // Some(_) for `extern fn`; None otherwise
-    pub attributes: Vec<FunctionAttribute>,  // inline / no_inline / cold
+    pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold
     pub span: Span,
 }
 ```
@@ -377,6 +377,22 @@ pub enum FunctionAttribute {
 ```
 
 Multiple prefixes can stack: `pub cold no_inline fn rare_path() { ... }`.
+
+#### AttributeAnnotation
+
+The AST stores attributes as `AttributeAnnotation`, a thin wrapper
+that pairs a `FunctionAttribute` with the source span of the keyword
+that introduced it. Diagnostics can cite the exact `inline` / `cold`
+keyword token (e.g. for duplicate-annotation errors). IR lowering
+drops the span and stores plain `FunctionAttribute`s, so `IrModule`
+JSON is unchanged.
+
+```rust
+pub struct AttributeAnnotation {
+    pub kind: FunctionAttribute,
+    pub span: Span,
+}
+```
 
 ### Enum Definitions
 

@@ -82,7 +82,8 @@
     "Serde",
     "stringly",
     "behaviour",
-    "unrecognised"
+    "unrecognised",
+    "materialise"
   ],
   "ignorePaths": [
     "node_modules",
