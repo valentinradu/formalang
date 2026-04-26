@@ -1480,7 +1480,8 @@ fn specialise_function(
     module: &mut IrModule,
     name: &str,
     args: &[ResolvedType],
-) -> Result<(String, Vec<FunctionSpec>), CompilerError> { // (mangled_name, discovered)
+) -> Result<(String, Vec<FunctionSpec>), CompilerError> {
+    // (mangled_name, discovered)
     let Some(source) = module.functions.iter().find(|f| f.name == name).cloned() else {
         return Err(CompilerError::InternalError {
             detail: format!("monomorphise: missing generic function `{name}`"),
