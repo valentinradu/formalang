@@ -652,6 +652,32 @@ fn test_multiple_attributes_preserve_order() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
+fn test_function_attribute_spans_are_filled() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::{Definition, FunctionAttribute, Statement};
+    let source = "inline fn fast(x: Number) -> Number { x + 1 }";
+    let file = formalang::parse_only(source).map_err(|e| format!("parse: {e:?}"))?;
+    let stmt = file.statements.first().ok_or("no statements")?;
+    let Statement::Definition(def) = stmt else {
+        return Err("expected definition".into());
+    };
+    let Definition::Function(f) = def.as_ref() else {
+        return Err("expected function".into());
+    };
+    let attr = f.attributes.first().ok_or("no attribute")?;
+    if attr.kind != FunctionAttribute::Inline {
+        return Err(format!("expected Inline, got {:?}", attr.kind).into());
+    }
+    if attr.span.start.line == 0 || attr.span.end.line == 0 {
+        return Err(format!("attribute span not filled: {:?}", attr.span).into());
+    }
+    let attr_text = &source[attr.span.start.offset..attr.span.end.offset];
+    if attr_text != "inline" {
+        return Err(format!("attribute span covers {attr_text:?}, expected \"inline\"").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn test_extern_fn_carries_attributes() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::FunctionAttribute;
     let source = r"

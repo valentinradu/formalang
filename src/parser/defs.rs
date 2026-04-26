@@ -4,10 +4,10 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, BlockStatement, Definition, EnumDef, EnumVariant,
-    ExternAbi, FieldDef, FnDef, FnParam, FnSig, FunctionAttribute, FunctionDef, GenericConstraint,
-    GenericParam, Ident, ImplDef, ModuleDef, ParamConvention, StructDef, StructField,
-    StructPatternField, TraitDef, Type,
+    ArrayPatternElement, AttributeAnnotation, BindingPattern, BlockStatement, Definition, EnumDef,
+    EnumVariant, ExternAbi, FieldDef, FnDef, FnParam, FnSig, FunctionAttribute, FunctionDef,
+    GenericConstraint, GenericParam, Ident, ImplDef, ModuleDef, ParamConvention, StructDef,
+    StructField, StructPatternField, TraitDef, Type,
 };
 use crate::lexer::Token;
 
@@ -189,9 +189,10 @@ where
 
 /// Parse zero or more codegen-hint attributes that may appear before
 /// the `fn` keyword (`inline`, `no_inline`, `cold`). Order is preserved
-/// so the AST faithfully mirrors source.
+/// so the AST faithfully mirrors source. Each entry carries the span of
+/// the keyword token so diagnostics can point at it.
 pub(super) fn fn_attributes_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Vec<FunctionAttribute>, extra::Err<Rich<'tokens, Token>>> + Clone
+) -> impl Parser<'tokens, I, Vec<AttributeAnnotation>, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
@@ -200,6 +201,10 @@ where
         just(Token::NoInline).to(FunctionAttribute::NoInline),
         just(Token::Cold).to(FunctionAttribute::Cold),
     ))
+    .map_with(|kind, e| AttributeAnnotation {
+        kind,
+        span: span_from_simple(e.span()),
+    })
     .repeated()
     .collect::<Vec<_>>()
 }

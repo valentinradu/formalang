@@ -253,7 +253,7 @@ impl<'a> DeadCodeEliminator<'a> {
                 self.used_enums.insert(*id);
             }
             // Placeholder types do not reference any definition.
-            ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
+            ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) | ResolvedType::Error => {}
         }
     }
 
@@ -841,7 +841,7 @@ fn remap_type(ty: &mut crate::ir::ResolvedType, remap: &IdRemap) {
                 remap_type(a, remap);
             }
         }
-        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
+        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) | ResolvedType::Error => {}
     }
 }
 

@@ -122,8 +122,9 @@ pub struct FunctionDef {
     pub extern_abi: Option<ExternAbi>,
     /// Codegen attributes parsed as keyword prefixes (`inline`,
     /// `no_inline`, `cold`). Order is the source order; duplicates are
-    /// preserved so semantic / backends can diagnose them.
-    pub attributes: Vec<FunctionAttribute>,
+    /// preserved so semantic / backends can diagnose them. Each entry
+    /// carries the span of the introducing keyword.
+    pub attributes: Vec<AttributeAnnotation>,
     /// Joined `///` doc comments preceding this definition. Audit #51.
     pub doc: Option<String>,
     pub span: Span,
@@ -163,6 +164,21 @@ pub enum FunctionAttribute {
     /// branch, error path). Backends typically place its body in a
     /// cold section and bias surrounding branches.
     Cold,
+}
+
+/// A `FunctionAttribute` together with the source span of the keyword
+/// that introduced it.
+///
+/// AST-only wrapper — the IR drops the span and stores plain
+/// `FunctionAttribute`s, since backends don't need parser locations.
+/// Spans are preserved on the AST so a future diagnostic can point at
+/// the offending `inline` / `cold` keyword (e.g. duplicate or
+/// contradictory annotations).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AttributeAnnotation {
+    pub kind: FunctionAttribute,
+    pub span: Span,
 }
 
 /// Calling convention for an extern function.
@@ -309,8 +325,9 @@ pub struct FnDef {
     /// `None` in `extern impl`; `Some(_)` in regular impl.
     pub body: Option<Expr>,
     /// Codegen attributes (`inline`, `no_inline`, `cold`) preceding the
-    /// `fn` keyword. See [`FunctionAttribute`].
-    pub attributes: Vec<FunctionAttribute>,
+    /// `fn` keyword. See [`FunctionAttribute`]. Each entry carries the
+    /// span of the introducing keyword.
+    pub attributes: Vec<AttributeAnnotation>,
     /// Joined `///` doc comments preceding this method. Audit #51.
     pub doc: Option<String>,
     pub span: Span,
@@ -331,8 +348,9 @@ pub struct FnSig {
     pub name: Ident,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
-    /// Codegen attributes on the trait method declaration.
-    pub attributes: Vec<FunctionAttribute>,
+    /// Codegen attributes on the trait method declaration. Each entry
+    /// carries the span of the introducing keyword.
+    pub attributes: Vec<AttributeAnnotation>,
     pub span: Span,
 }
 

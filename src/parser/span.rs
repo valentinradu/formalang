@@ -2,8 +2,8 @@
 // from source text after parsing (which only produces byte offsets).
 
 use crate::ast::{
-    ArrayPatternElement, BindingPattern, BlockStatement, Definition, Expr, File, GenericConstraint,
-    Pattern, Statement, Type, UseItems,
+    ArrayPatternElement, AttributeAnnotation, BindingPattern, BlockStatement, Definition, Expr,
+    File, GenericConstraint, Pattern, Statement, Type, UseItems,
 };
 use crate::location::Span as CustomSpan;
 
@@ -66,6 +66,13 @@ pub(super) fn fill_definition_span(def: &mut Definition, source: &str) {
     }
 }
 
+/// Fill spans on a list of function/method attribute annotations.
+fn fill_attributes_spans(attributes: &mut [AttributeAnnotation], source: &str) {
+    for attr in attributes {
+        fill_span(&mut attr.span, source);
+    }
+}
+
 /// Fill generic parameter spans (shared by trait, struct, impl, enum).
 fn fill_generic_params_spans(params: &mut [crate::ast::GenericParam], source: &str) {
     for param in params {
@@ -97,6 +104,7 @@ fn fill_trait_def_spans(t: &mut crate::ast::TraitDef, source: &str) {
     }
     for m in &mut t.methods {
         fill_span(&mut m.name.span, source);
+        fill_attributes_spans(&mut m.attributes, source);
         fill_span(&mut m.span, source);
     }
     fill_span(&mut t.span, source);
@@ -127,6 +135,7 @@ fn fill_impl_def_spans(i: &mut crate::ast::ImplDef, source: &str) {
     fill_generic_params_spans(&mut i.generics, source);
     for func in &mut i.functions {
         fill_span(&mut func.name.span, source);
+        fill_attributes_spans(&mut func.attributes, source);
         for p in &mut func.params {
             if let Some(label) = &mut p.external_label {
                 fill_span(&mut label.span, source);
@@ -165,6 +174,7 @@ fn fill_enum_def_spans(e: &mut crate::ast::EnumDef, source: &str) {
 
 fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, source: &str) {
     fill_span(&mut f.name.span, source);
+    fill_attributes_spans(&mut f.attributes, source);
     for p in &mut f.params {
         if let Some(label) = &mut p.external_label {
             fill_span(&mut label.span, source);

@@ -327,7 +327,8 @@ fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiation>) {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => {}
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -392,7 +393,8 @@ fn collect_external_from_type(ty: &ResolvedType, out: &mut HashSet<ExternalInsta
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => {}
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -653,7 +655,7 @@ fn externalise_imported_refs(ty: &mut ResolvedType, imported: &IrModule, module_
                 externalise_imported_refs(a, imported, module_path);
             }
         }
-        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
+        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) | ResolvedType::Error => {}
     }
 }
 
@@ -718,7 +720,8 @@ fn rewrite_external_type(
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => {}
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -1061,6 +1064,9 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
             out.push_str("TP_");
             out.push_str(name);
         }
+        ResolvedType::Error => {
+            out.push_str("Err");
+        }
     }
 }
 
@@ -1114,7 +1120,8 @@ fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) 
         ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_) => {}
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -1237,7 +1244,8 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericB
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::TypeParam(_) => {}
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -1360,7 +1368,8 @@ fn receiver_to_base(ty: &ResolvedType) -> Option<GenericBase> {
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
         | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. } => None,
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error => None,
     }
 }
 
@@ -1661,7 +1670,8 @@ fn contains_type_param(ty: &ResolvedType) -> bool {
         ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_) => false,
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => false,
     }
 }
 
@@ -2498,7 +2508,7 @@ fn remap_type(
                 remap_type(a, struct_remap, enum_remap, trait_remap);
             }
         }
-        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) => {}
+        ResolvedType::Primitive(_) | ResolvedType::TypeParam(_) | ResolvedType::Error => {}
     }
 }
 
@@ -2725,6 +2735,10 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
             .find_map(|(_, t)| first_leftover(t))
             .or_else(|| first_leftover(return_ty)),
         ResolvedType::External { type_args, .. } => type_args.iter().find_map(first_leftover),
+        // `Error` shouldn't reach monomorphisation under normal compilation
+        // (upstream `CompilerError`s would have aborted before passes run);
+        // surface it explicitly when an externally-loaded IR contains one.
+        ResolvedType::Error => Some("ResolvedType::Error placeholder".to_string()),
         ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)

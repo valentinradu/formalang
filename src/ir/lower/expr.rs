@@ -57,7 +57,8 @@ fn substitute_typeparam_in_resolved(ty: &mut ResolvedType, subs: &HashMap<String
         ResolvedType::Primitive(_)
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_) => {}
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => {}
     }
 }
 
@@ -174,7 +175,8 @@ impl IrLowerer<'_> {
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => String::new(),
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => String::new(),
         }
     }
 
@@ -269,7 +271,7 @@ impl IrLowerer<'_> {
             // Audit2 B19: look up the function's expected parameter
             // types so a closure literal passed as an argument
             // (`fn apply(f: Number -> Number) ... apply(x -> x + 1)`)
-            // lowers with `x: Number` instead of `TypeParam("Unknown")`.
+            // lowers with `x: Number` instead of `ResolvedType::Error`.
             // Falls back to None when the function isn't in the IR yet
             // (forward reference) or the argument can't be matched by
             // name to a parameter.
@@ -490,10 +492,7 @@ impl IrLowerer<'_> {
                     .lets
                     .iter()
                     .find(|l| l.name == *name)
-                    .map_or_else(
-                        || ResolvedType::TypeParam("Unknown".to_string()),
-                        |l| l.value.ty().clone(),
-                    );
+                    .map_or_else(|| ResolvedType::Error, |l| l.value.ty().clone());
                 return IrExpr::LetRef {
                     name: name.clone(),
                     ty,
@@ -501,35 +500,38 @@ impl IrLowerer<'_> {
             }
         }
 
-        // Resolve the root of the path against the local scope (function
-        // parameters, `self`, enclosing closure bindings). For multi-
-        // segment paths, walk each subsequent segment as a field access so
-        // `u.x.y` resolves to the actual `y` field's type instead of a
-        // `TypeParam("u.x.y")` placeholder.
-        let ty = path_strs
-            .first()
-            .and_then(|n| self.lookup_local_binding(n).cloned())
-            .map_or_else(
-                || {
-                    if path_strs.len() == 1 {
-                        #[expect(
-                            clippy::indexing_slicing,
-                            reason = "len == 1 check above guarantees index 0"
-                        )]
-                        let t = ResolvedType::TypeParam(path_strs[0].clone());
-                        t
-                    } else {
-                        ResolvedType::TypeParam(path_strs.join("."))
-                    }
-                },
-                |root_ty| {
-                    let mut current = root_ty;
-                    for seg in path_strs.iter().skip(1) {
-                        current = self.resolve_field_type(&current, seg);
-                    }
-                    current
-                },
-            );
+        // Resolve the root of the path. Try, in order:
+        //   1. a local binding (function param, `self`, closure capture),
+        //   2. a module-level `let` — needed for multi-segment paths like
+        //      `sample.tags` where the single-segment LetRef branch above
+        //      doesn't apply.
+        // For multi-segment paths, walk each subsequent segment as a field
+        // access so `u.x.y` resolves to `y`'s actual field type. A root
+        // segment that resolves to nothing is a real unresolved reference;
+        // surface it as `UndefinedReference` and return `Error`.
+        let root = path_strs.first().and_then(|n| {
+            self.lookup_local_binding(n).cloned().or_else(|| {
+                self.module
+                    .lets
+                    .iter()
+                    .find(|l| l.name == *n)
+                    .map(|l| l.value.ty().clone())
+            })
+        });
+        let ty = if let Some(root_ty) = root {
+            let mut current = root_ty;
+            for seg in path_strs.iter().skip(1) {
+                current = self.resolve_field_type(&current, seg);
+            }
+            current
+        } else {
+            let span = path.first().map_or(self.current_span, |i| i.span);
+            self.errors.push(CompilerError::UndefinedReference {
+                name: path_strs.join("."),
+                span,
+            });
+            ResolvedType::Error
+        };
         IrExpr::Reference {
             path: path_strs,
             ty,
@@ -599,7 +601,6 @@ impl IrLowerer<'_> {
         body: &Expr,
     ) -> IrExpr {
         let collection_ir = self.lower_expr(collection);
-        let body_ir = self.lower_expr(body);
         let bad_collection = collection_ir.ty().clone();
         let var_ty = if let ResolvedType::Array(inner) | ResolvedType::Range(inner) =
             &bad_collection
@@ -613,6 +614,14 @@ impl IrLowerer<'_> {
                 ),
             )
         };
+        // Make the loop variable visible while lowering the body, so
+        // references to `var` inside the body resolve to the iterator
+        // element type instead of falling through to UndefinedReference.
+        let mut frame = HashMap::new();
+        frame.insert(var.name.clone(), (ParamConvention::Let, var_ty.clone()));
+        self.local_binding_scopes.push(frame);
+        let body_ir = self.lower_expr(body);
+        self.local_binding_scopes.pop();
         IrExpr::For {
             var: var.name.clone(),
             var_ty,
@@ -628,6 +637,16 @@ impl IrLowerer<'_> {
             .iter()
             .map(|arm| {
                 let bindings = self.extract_pattern_bindings(&arm.pattern, &scrutinee_ir);
+                // Pattern bindings (e.g. `urgency` from `.high(urgency)`)
+                // need to be visible to the arm body. Without this frame
+                // the body lowered with the binding as an UndefinedReference.
+                let mut frame = HashMap::new();
+                for (name, ty) in &bindings {
+                    frame.insert(name.clone(), (ParamConvention::Let, ty.clone()));
+                }
+                self.local_binding_scopes.push(frame);
+                let body = self.lower_expr(&arm.body);
+                self.local_binding_scopes.pop();
                 IrMatchArm {
                     variant: match &arm.pattern {
                         ast::Pattern::Variant { name, .. } => name.name.clone(),
@@ -635,7 +654,7 @@ impl IrLowerer<'_> {
                     },
                     is_wildcard: matches!(&arm.pattern, ast::Pattern::Wildcard),
                     bindings,
-                    body: self.lower_expr(&arm.body),
+                    body,
                 }
             })
             .collect();
@@ -763,7 +782,8 @@ impl IrLowerer<'_> {
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => None,
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => None,
         };
         let Some(target) = target else {
             return Vec::new();
@@ -825,7 +845,8 @@ impl IrLowerer<'_> {
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
             | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. } => None,
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => None,
         };
         let effective_ty = concrete.as_ref().unwrap_or(receiver_ty);
 
@@ -1028,7 +1049,32 @@ impl IrLowerer<'_> {
                 self.lower_let_tuple_destructure(elements, mutable, &ir_value)
             }
         };
+        // Make the let-introduced names visible to the body, mirroring
+        // `lower_block_expr`. Without this frame, `let x = ... in x` lowered
+        // the body with no scope to find `x` in, and the reference fell back
+        // to a stringly-typed placeholder.
+        self.local_binding_scopes.push(HashMap::new());
+        for s in &statements {
+            if let IrBlockStatement::Let {
+                name,
+                mutable,
+                ty,
+                value,
+            } = s
+            {
+                let resolved = ty.clone().unwrap_or_else(|| value.ty().clone());
+                let convention = if *mutable {
+                    ParamConvention::Mut
+                } else {
+                    ParamConvention::Let
+                };
+                if let Some(frame) = self.local_binding_scopes.last_mut() {
+                    frame.insert(name.clone(), (convention, resolved));
+                }
+            }
+        }
         let ir_body = self.lower_expr(body);
+        self.local_binding_scopes.pop();
         let ty = ir_body.ty().clone();
         IrExpr::Block {
             statements,
@@ -1221,7 +1267,7 @@ impl IrLowerer<'_> {
                 tuple_types.len(),
             ))
         } else {
-            ResolvedType::TypeParam("Unknown".to_string())
+            ResolvedType::Error
         };
         elements
             .iter()
@@ -1332,6 +1378,9 @@ impl IrLowerer<'_> {
                 });
                 ResolvedType::Primitive(PrimitiveType::Never)
             }
+            // Receiver was already an upstream error; the original
+            // `CompilerError` has been recorded — propagate without cascading.
+            ResolvedType::Error => ResolvedType::Error,
         }
     }
 
@@ -1554,7 +1603,7 @@ impl IrLowerer<'_> {
         // closure type, fall back to its param/return types for any
         // closure-literal slots the AST didn't annotate. This turns
         // `array.map(x -> x + 1)` into a closure with concrete
-        // `x: <element type>` instead of `TypeParam("Unknown")`.
+        // `x: <element type>` instead of `ResolvedType::Error`.
         let expected = self.expected_closure_type.take();
         let expected_param_tys: Vec<Option<ResolvedType>> = match expected.as_ref() {
             Some(ResolvedType::Closure { param_tys, .. }) if param_tys.len() == params.len() => {
@@ -1577,7 +1626,7 @@ impl IrLowerer<'_> {
                         expected_param_tys
                             .get(i)
                             .and_then(std::clone::Clone::clone)
-                            .unwrap_or_else(|| ResolvedType::TypeParam("Unknown".to_string()))
+                            .unwrap_or(ResolvedType::Error)
                     },
                     |t| self.lower_type(t),
                 );
@@ -1696,7 +1745,7 @@ impl IrLowerer<'_> {
                         variant_fields.len(),
                     ))
                 } else {
-                    ResolvedType::TypeParam("Unknown".to_string())
+                    ResolvedType::Error
                 };
                 bindings
                     .iter()
