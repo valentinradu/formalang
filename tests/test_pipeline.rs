@@ -188,8 +188,8 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
         ..
     } = default
     {
-        if (n - 6.0_f64).abs().total_cmp(&f64::EPSILON) != std::cmp::Ordering::Less {
-            return Err(format!("Expected folded 6.0, got {n}").into());
+        if (n.value - 6.0_f64).abs().total_cmp(&f64::EPSILON) != std::cmp::Ordering::Less {
+            return Err(format!("Expected folded 6.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal number, got {default:?}").into());

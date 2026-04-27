@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 167
 expression: module
 ---
 IrModule {
@@ -83,7 +84,10 @@ IrModule {
                             bindings: [],
                             body: Literal {
                                 value: Number(
-                                    1.0,
+                                    NumberLiteral {
+                                        value: 1.0,
+                                        suffix: None,
+                                    },
                                 ),
                                 ty: Primitive(
                                     Number,
@@ -96,7 +100,10 @@ IrModule {
                             bindings: [],
                             body: Literal {
                                 value: Number(
-                                    0.0,
+                                    NumberLiteral {
+                                        value: 0.0,
+                                        suffix: None,
+                                    },
                                 ),
                                 ty: Primitive(
                                     Number,

@@ -560,13 +560,13 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
         mutable: false,
         ty: None,
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
     };
 
     let mapped = stmt.map_exprs(|_e| IrExpr::Literal {
-        value: Literal::Number(99.0),
+        value: Literal::Number(99.0.into()),
         ty: ResolvedType::Primitive(PrimitiveType::Number),
     });
 
@@ -576,8 +576,8 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
             ..
         } = value
         {
-            if (n - 99.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 99.0, got {n}").into());
+            if (n.value - 99.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 99.0, got {}", n.value).into());
             }
         } else {
             return Err("Expected number literal after map_exprs".into());
@@ -596,11 +596,11 @@ fn ir_block_statement_map_exprs_assign() -> Result<(), Box<dyn std::error::Error
 
     let stmt = IrBlockStatement::Assign {
         target: IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
     };
@@ -668,11 +668,11 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(10.0),
+            value: Literal::Number(10.0.into()),
             ty: ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(20.0),
+            value: Literal::Number(20.0.into()),
             ty: ty.clone(),
         })),
         ty,
@@ -684,8 +684,8 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
         ..
     } = result
     {
-        if (n - 10.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 10.0, got {n}").into());
+        if (n.value - 10.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 10.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected literal 10.0, got {result:?}").into());
@@ -707,11 +707,11 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(10.0),
+            value: Literal::Number(10.0.into()),
             ty: ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(20.0),
+            value: Literal::Number(20.0.into()),
             ty: ty.clone(),
         })),
         ty,
@@ -723,8 +723,8 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
         ..
     } = result
     {
-        if (n - 20.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 20.0, got {n}").into());
+        if (n.value - 20.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 20.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected literal 20.0, got {result:?}").into());
@@ -747,7 +747,7 @@ fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn 
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ty.clone(),
         }),
         else_branch: None,
@@ -774,12 +774,12 @@ fn dce_eliminate_dead_code_expr_binary_op_passthrough() -> Result<(), Box<dyn st
 
     let expr = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
-            value: Literal::Number(3.0),
+            value: Literal::Number(3.0.into()),
             ty: ty.clone(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
-            value: Literal::Number(4.0),
+            value: Literal::Number(4.0.into()),
             ty: ty.clone(),
         }),
         ty,
@@ -821,8 +821,8 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
         ..
     } = default
     {
-        if (n - 99.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 99.0, got {n}").into());
+        if (n.value - 99.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 99.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded 99.0, got {default:?}").into());
@@ -903,8 +903,8 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
         ..
     } = expr
     {
-        if (n - 6.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 6.0, got {n}").into());
+        if (n.value - 6.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 6.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -934,8 +934,8 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
         ..
     } = expr
     {
-        if (n - 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 5.0, got {n}").into());
+        if (n.value - 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 5.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -965,8 +965,8 @@ fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> 
         ..
     } = expr
     {
-        if (n - 1.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 1.0, got {n}").into());
+        if (n.value - 1.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 1.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -1120,8 +1120,8 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n - 7.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 7.0, got {n}").into());
+        if (n.value - 7.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 7.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected 7.0, got {expr:?}").into());
@@ -1151,8 +1151,8 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
         ..
     } = expr
     {
-        if (n - 8.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 8.0, got {n}").into());
+        if (n.value - 8.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 8.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected 8.0, got {expr:?}").into());
@@ -1182,8 +1182,8 @@ fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n + 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected -5.0, got {n}").into());
+        if (n.value + 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected -5.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded -5.0, got {expr:?}").into());
@@ -1238,8 +1238,8 @@ fn fold_constants_in_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = &binding.value
     {
-        if (n - 12.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 12.0, got {n}").into());
+        if (n.value - 12.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 12.0, got {}", n.value).into());
         }
     } else {
         return Err(format!(
@@ -1468,12 +1468,12 @@ fn visitor_walk_expr_visits_sub_expressions() -> Result<(), Box<dyn std::error::
     let ty = ResolvedType::Primitive(PrimitiveType::Number);
     let expr = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ty.clone(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: ty.clone(),
         }),
         ty,
@@ -1530,7 +1530,7 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
         mutable: false,
         ty: None,
         value: IrExpr::Literal {
-            value: Literal::Number(42.0),
+            value: Literal::Number(42.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
     };
@@ -1563,11 +1563,11 @@ fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn
 
     let stmt = IrBlockStatement::Assign {
         target: IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::Number),
         },
     };
@@ -2317,8 +2317,8 @@ fn fold_constants_struct_inst_in_default() -> Result<(), Box<dyn std::error::Err
             ..
         } = x_val
         {
-            if (n - 5.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 5.0 from 2+3, got {n}").into());
+            if (n.value - 5.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 5.0 from 2+3, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded 5.0, got {x_val:?}").into());
@@ -2413,11 +2413,11 @@ fn visitor_walk_expr_visits_if_branches() -> Result<(), Box<dyn std::error::Erro
             ty: bool_ty,
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: num_ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
         })),
         ty: num_ty,
@@ -2459,18 +2459,18 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
         collection: Box::new(IrExpr::Array {
             elements: vec![
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
                 },
             ],
             ty: ResolvedType::Array(Box::new(num_ty.clone())),
         }),
         body: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         ty: ResolvedType::Array(Box::new(num_ty)),
@@ -2506,7 +2506,7 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
 
     let expr = IrExpr::Match {
         scrutinee: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: num_ty,
         }),
         arms: vec![
@@ -2565,14 +2565,14 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
             (
                 Some("a".to_string()),
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
             (
                 Some("b".to_string()),
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
@@ -2609,14 +2609,14 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
 
     let expr = IrExpr::MethodCall {
         receiver: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         method: "scale".to_string(),
         args: vec![(
             Some("factor".to_string()),
             IrExpr::Literal {
-                value: Literal::Number(2.0),
+                value: Literal::Number(2.0.into()),
                 ty: num_ty.clone(),
             },
         )],
@@ -2661,7 +2661,7 @@ fn visitor_walk_expr_visits_dict_literal_entries() -> Result<(), Box<dyn std::er
                 ty: str_ty.clone(),
             },
             IrExpr::Literal {
-                value: Literal::Number(1.0),
+                value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
             },
         )],
@@ -2746,7 +2746,7 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
         params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
         captures: Vec::new(),
         body: Box::new(IrExpr::Literal {
-            value: Literal::Number(42.0),
+            value: Literal::Number(42.0.into()),
             ty: num_ty.clone(),
         }),
         ty: ResolvedType::Closure {
@@ -2783,7 +2783,7 @@ fn visitor_walk_expr_field_access_child() -> Result<(), Box<dyn std::error::Erro
 
     let expr = IrExpr::FieldAccess {
         object: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         field: "x".to_string(),
@@ -2823,7 +2823,7 @@ fn visitor_walk_expr_unary_op_child() -> Result<(), Box<dyn std::error::Error>> 
     let expr = IrExpr::UnaryOp {
         op: UnaryOperator::Neg,
         operand: Box::new(IrExpr::Literal {
-            value: Literal::Number(5.0),
+            value: Literal::Number(5.0.into()),
             ty: num_ty.clone(),
         }),
         ty: num_ty,
@@ -2865,12 +2865,12 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
             mutable: false,
             ty: None,
             value: IrExpr::Literal {
-                value: Literal::Number(1.0),
+                value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
             },
         }],
         result: Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
         }),
         ty: num_ty,
@@ -2913,7 +2913,7 @@ fn visitor_walk_expr_enum_inst_fields() -> Result<(), Box<dyn std::error::Error>
         fields: vec![(
             "count".to_string(),
             IrExpr::Literal {
-                value: Literal::Number(3.0),
+                value: Literal::Number(3.0.into()),
                 ty: num_ty,
             },
         )],
@@ -2977,7 +2977,7 @@ fn visitor_walk_block_statement_expr_variant() -> Result<(), Box<dyn std::error:
     }
 
     let stmt = IrBlockStatement::Expr(IrExpr::Literal {
-        value: Literal::Number(1.0),
+        value: Literal::Number(1.0.into()),
         ty: ResolvedType::Primitive(PrimitiveType::Number),
     });
 
@@ -3019,14 +3019,14 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
             (
                 "x".to_string(),
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
             (
                 "y".to_string(),
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty,
                 },
             ),

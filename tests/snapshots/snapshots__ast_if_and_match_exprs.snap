@@ -436,7 +436,10 @@ File {
                     },
                     then_branch: Literal {
                         value: Number(
-                            1.0,
+                            NumberLiteral {
+                                value: 1.0,
+                                suffix: None,
+                            },
                         ),
                         span: Span {
                             start: Location {
@@ -454,7 +457,10 @@ File {
                     else_branch: Some(
                         Literal {
                             value: Number(
-                                0.0,
+                                NumberLiteral {
+                                    value: 0.0,
+                                    suffix: None,
+                                },
                             ),
                             span: Span {
                                 start: Location {

@@ -343,7 +343,7 @@ impl<'a> IrLowerer<'a> {
                     reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
                 )]
                 let index_key = IrExpr::Literal {
-                    value: Literal::Number(i as f64),
+                    value: Literal::Number((i as f64).into()),
                     ty: ResolvedType::Primitive(PrimitiveType::Number),
                 };
                 // `arr[i]` — dictionary-access is the IR node for index access

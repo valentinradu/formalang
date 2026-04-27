@@ -915,8 +915,8 @@ mod tests {
                         if k != "key" {
                             return Err(format!("expected {:?} == {:?}", k, "key").into());
                         }
-                        if (*v - 42.0_f64).abs() > f64::EPSILON {
-                            return Err(format!("expected {:?} == {:?}", *v, 42.0).into());
+                        if (v.value - 42.0_f64).abs() > f64::EPSILON {
+                            return Err(format!("expected {:?} == {:?}", v.value, 42.0).into());
                         }
                     }
                     _ => return Err("Expected string key and number value".into()),
@@ -1651,8 +1651,8 @@ mod tests {
                         value: Literal::Number(n),
                         ..
                     } => {
-                        if (n - 42.0_f64).abs() > f64::EPSILON {
-                            return Err(format!("{:?} != {:?}", n, 42.0).into());
+                        if (n.value - 42.0_f64).abs() > f64::EPSILON {
+                            return Err(format!("{:?} != {:?}", n.value, 42.0).into());
                         }
                     }
                     Expr::Literal { .. }

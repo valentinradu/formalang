@@ -484,6 +484,68 @@ pub enum PrimitiveType {
     Never,
 }
 
+/// Width-tagged suffix attached to a numeric literal at parse time.
+///
+/// Source spelling is uppercase and adjacent to the digits (e.g. `42I32`,
+/// `3.14F64`). The suffix is preserved through the AST so later passes can
+/// type the literal without re-running inference defaults.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NumericSuffix {
+    I32,
+    I64,
+    F32,
+    F64,
+}
+
+/// Parsed payload of a numeric literal: the `f64` value and an optional
+/// source-level type suffix.
+///
+/// A single field type that both `lexer::Token::Number` and `Literal::Number`
+/// wrap. Single field because logos (used by the lexer) only supports
+/// single-field token variants. Storage is `f64` for both integer and float
+/// literals — values above 2^53 with `I64` suffix lose precision; specialising
+/// the storage is tracked as a follow-up.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NumberLiteral {
+    pub value: f64,
+    pub suffix: Option<NumericSuffix>,
+}
+
+impl NumberLiteral {
+    /// Construct with no suffix (the common, unsuffixed-source case).
+    #[must_use]
+    pub const fn unsuffixed(value: f64) -> Self {
+        Self {
+            value,
+            suffix: None,
+        }
+    }
+
+    /// Construct with an explicit suffix.
+    #[must_use]
+    pub const fn suffixed(value: f64, suffix: NumericSuffix) -> Self {
+        Self {
+            value,
+            suffix: Some(suffix),
+        }
+    }
+
+    /// Construct with the suffix already wrapped in an `Option` — convenience
+    /// for parsers that compute the suffix conditionally.
+    #[must_use]
+    pub const fn suffixed_or_not(value: f64, suffix: Option<NumericSuffix>) -> Self {
+        Self { value, suffix }
+    }
+}
+
+impl From<f64> for NumberLiteral {
+    fn from(value: f64) -> Self {
+        Self::unsuffixed(value)
+    }
+}
+
 /// Expression
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -654,7 +716,8 @@ pub struct ClosureParam {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Literal {
     String(String),
-    Number(f64),
+    /// Numeric literal: see [`NumberLiteral`] for the carried payload.
+    Number(NumberLiteral),
     Boolean(bool),
     Regex { pattern: String, flags: String },
     Path(String),

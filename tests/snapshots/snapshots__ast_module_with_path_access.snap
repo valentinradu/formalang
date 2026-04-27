@@ -192,7 +192,10 @@ File {
                             ),
                             Literal {
                                 value: Number(
-                                    10.0,
+                                    NumberLiteral {
+                                        value: 10.0,
+                                        suffix: None,
+                                    },
                                 ),
                                 span: Span {
                                     start: Location {

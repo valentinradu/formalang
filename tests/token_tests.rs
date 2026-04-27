@@ -60,7 +60,7 @@ fn test_token_is_keyword_false() -> Result<(), Box<dyn std::error::Error>> {
         Token::LBrace,
         Token::RBrace,
         Token::String("test".to_string()),
-        Token::Number(42.0),
+        Token::Number(42.0.into()),
         Token::Ident("name".to_string()),
     ];
 
@@ -165,7 +165,7 @@ fn test_token_as_str_complex() -> Result<(), Box<dyn std::error::Error>> {
     // Complex tokens return "<complex token>"
     let cases = [
         Token::String("test".to_string()),
-        Token::Number(42.0),
+        Token::Number(42.0.into()),
         Token::Ident("name".to_string()),
         Token::Regex("r/test/".to_string()),
         Token::Path("usr/bin".to_string()),
@@ -187,7 +187,7 @@ fn test_token_as_str_complex() -> Result<(), Box<dyn std::error::Error>> {
 fn test_token_display_literals() -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
         (format!("{}", Token::String("test".to_string())), "string"),
-        (format!("{}", Token::Number(42.0)), "number"),
+        (format!("{}", Token::Number(42.0.into())), "number"),
         (format!("{}", Token::Regex("r/test/".to_string())), "regex"),
         (format!("{}", Token::Path("usr/bin".to_string())), "path"),
         (

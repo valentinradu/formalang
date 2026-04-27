@@ -1195,8 +1195,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 1.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 1, got {n}").into());
+            if (n.value - 1.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 1, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected literal 1, got {expr:?}").into());
@@ -1228,8 +1228,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 2.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 2, got {n}").into());
+            if (n.value - 2.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 2, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected literal 2, got {expr:?}").into());
@@ -1352,8 +1352,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 2.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 2, got {n}").into());
+            if (n.value - 2.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 2, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected literal 2, got {expr:?}").into());

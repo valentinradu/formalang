@@ -1194,7 +1194,7 @@ impl IrLowerer<'_> {
                         reason = "array indices are small positions that fit in f64 mantissa"
                     )]
                     let key = IrExpr::Literal {
-                        value: Literal::Number(i as f64),
+                        value: Literal::Number((i as f64).into()),
                         ty: ResolvedType::Primitive(PrimitiveType::Number),
                     };
                     IrBlockStatement::Let {
