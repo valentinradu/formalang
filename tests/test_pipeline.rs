@@ -851,3 +851,57 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
     }
     Ok(())
 }
+
+#[test]
+fn suffixed_numeric_literals_thread_to_ir_with_concrete_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrExpr, ResolvedType};
+
+    // One field per width-tag suffix; default value is a literal carrying the
+    // matching suffix. After IR lowering, each literal's `ty` should resolve
+    // to the suffix's PrimitiveType, not the legacy `Number` placeholder.
+    let source = r"
+        struct Sample {
+            a: I32 = 42I32,
+            b: I64 = 9_999I64,
+            c: F32 = 2.5F32,
+            d: F64 = 1.5e-3F64
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let sample = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Sample")
+        .ok_or("Sample struct missing")?;
+
+    let cases = [
+        ("a", PrimitiveType::I32),
+        ("b", PrimitiveType::I64),
+        ("c", PrimitiveType::F32),
+        ("d", PrimitiveType::F64),
+    ];
+    for (field_name, expected) in cases {
+        let field = sample
+            .fields
+            .iter()
+            .find(|f| f.name == field_name)
+            .ok_or_else(|| format!("field {field_name} missing"))?;
+        let default = field
+            .default
+            .as_ref()
+            .ok_or_else(|| format!("field {field_name}: no default"))?;
+        let IrExpr::Literal { ty, .. } = default else {
+            return Err(format!("field {field_name}: expected literal, got {default:?}").into());
+        };
+        if *ty != ResolvedType::Primitive(expected) {
+            return Err(format!(
+                "field {field_name}: expected ty {:?}, got {ty:?}",
+                ResolvedType::Primitive(expected)
+            )
+            .into());
+        }
+    }
+    Ok(())
+}

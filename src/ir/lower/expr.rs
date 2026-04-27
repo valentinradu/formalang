@@ -1307,7 +1307,7 @@ impl IrLowerer<'_> {
     pub(super) fn literal_type(lit: &Literal) -> ResolvedType {
         match lit {
             Literal::String(_) => ResolvedType::Primitive(PrimitiveType::String),
-            Literal::Number(_) => ResolvedType::Primitive(PrimitiveType::Number),
+            Literal::Number(n) => ResolvedType::Primitive(n.primitive_type()),
             Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
             Literal::Path(_) => ResolvedType::Primitive(PrimitiveType::Path),
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),

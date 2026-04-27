@@ -498,6 +498,19 @@ pub enum NumericSuffix {
     F64,
 }
 
+impl NumericSuffix {
+    /// The [`PrimitiveType`] this suffix designates.
+    #[must_use]
+    pub const fn primitive(self) -> PrimitiveType {
+        match self {
+            Self::I32 => PrimitiveType::I32,
+            Self::I64 => PrimitiveType::I64,
+            Self::F32 => PrimitiveType::F32,
+            Self::F64 => PrimitiveType::F64,
+        }
+    }
+}
+
 /// Parsed payload of a numeric literal: the `f64` value and an optional
 /// source-level type suffix.
 ///
@@ -537,6 +550,16 @@ impl NumberLiteral {
     #[must_use]
     pub const fn suffixed_or_not(value: f64, suffix: Option<NumericSuffix>) -> Self {
         Self { value, suffix }
+    }
+
+    /// The [`PrimitiveType`] this literal carries: the suffix's primitive when
+    /// present, or [`PrimitiveType::Number`] for unsuffixed literals (the
+    /// inference-default placeholder; later microcommits replace this with
+    /// `I32` / `F64` defaulting at the inference layer).
+    #[must_use]
+    pub fn primitive_type(&self) -> PrimitiveType {
+        self.suffix
+            .map_or(PrimitiveType::Number, NumericSuffix::primitive)
     }
 }
 

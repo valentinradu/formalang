@@ -25,7 +25,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         match expr {
             Expr::Literal { value: lit, .. } => match lit {
                 Literal::String(_) => SemType::Primitive(PrimitiveType::String),
-                Literal::Number(_) => SemType::Primitive(PrimitiveType::Number),
+                Literal::Number(n) => SemType::Primitive(n.primitive_type()),
                 Literal::Boolean(_) => SemType::Primitive(PrimitiveType::Boolean),
                 Literal::Regex { .. } => SemType::Primitive(PrimitiveType::Regex),
                 Literal::Path(_) => SemType::Primitive(PrimitiveType::Path),
