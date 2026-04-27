@@ -284,14 +284,8 @@ fn resolved_type_display_name_tuple() -> Result<(), Box<dyn std::error::Error>> 
 
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::Tuple(vec![
-        (
-            "x".to_string(),
-            ResolvedType::Primitive(PrimitiveType::I32),
-        ),
-        (
-            "y".to_string(),
-            ResolvedType::Primitive(PrimitiveType::I32),
-        ),
+        ("x".to_string(), ResolvedType::Primitive(PrimitiveType::I32)),
+        ("y".to_string(), ResolvedType::Primitive(PrimitiveType::I32)),
     ]);
     let name = ty.display_name(&module);
     if !name.contains("x: I32") {
@@ -420,11 +414,7 @@ fn resolved_type_display_name_closure() -> Result<(), Box<dyn std::error::Error>
     };
     let name = ty.display_name(&module);
     if name != "(I32, String) -> Boolean" {
-        return Err(format!(
-            "expected {:?}, got {:?}",
-            "(I32, String) -> Boolean", name
-        )
-        .into());
+        return Err(format!("expected {:?}, got {:?}", "(I32, String) -> Boolean", name).into());
     }
     Ok(())
 }

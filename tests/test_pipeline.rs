@@ -948,8 +948,7 @@ fn unsuffixed_float_literal_defaults_to_f64() -> Result<(), Box<dyn std::error::
         ("struct S { a: F64 = 1.5e-3 }", "decimal+exponent"),
     ];
     for (source, label) in cases {
-        let module =
-            compile_to_ir(source).map_err(|e| format!("{label} compile failed: {e:?}"))?;
+        let module = compile_to_ir(source).map_err(|e| format!("{label} compile failed: {e:?}"))?;
         let default = module
             .structs
             .first()

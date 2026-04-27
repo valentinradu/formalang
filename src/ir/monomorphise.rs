@@ -2931,9 +2931,7 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
             }
             walk_expr_types(body, visit);
         }
-        IrExpr::ClosureRef {
-            env_struct, ty, ..
-        } => {
+        IrExpr::ClosureRef { env_struct, ty, .. } => {
             visit(ty);
             walk_expr_types(env_struct, visit);
         }
@@ -3178,9 +3176,7 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
             }
             walk_expr_types_mut_inner(body, visit);
         }
-        IrExpr::ClosureRef {
-            env_struct, ty, ..
-        } => {
+        IrExpr::ClosureRef { env_struct, ty, .. } => {
             visit(ty);
             walk_expr_types_mut_inner(env_struct, visit);
         }

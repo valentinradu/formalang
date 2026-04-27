@@ -6,9 +6,7 @@
 
 #![allow(clippy::expect_used)]
 
-use formalang::ir::{
-    ClosureConversionPass, DeadCodeEliminationPass, IrExpr, MonomorphisePass,
-};
+use formalang::ir::{ClosureConversionPass, DeadCodeEliminationPass, IrExpr, MonomorphisePass};
 use formalang::{compile_to_ir, IrPass, Pipeline};
 
 /// Standard two-closure fixture used by every microcommit's snapshot
@@ -121,10 +119,7 @@ fn mc6_replaces_closure_with_closure_ref_at_sites() {
         .expect("format_tag let")
         .value;
 
-    insta::assert_debug_snapshot!(
-        "mc6_site_rewrites",
-        (make_adder_body, format_tag_value)
-    );
+    insta::assert_debug_snapshot!("mc6_site_rewrites", (make_adder_body, format_tag_value));
 }
 
 /// mc6 — sanity: after the pass, no `IrExpr::Closure` remains in the
@@ -286,7 +281,9 @@ fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
     let outer_lifted_body = converted
         .functions
         .iter()
-        .find(|f| f.name.starts_with("__closure") && matches!(f.body, Some(IrExpr::ClosureRef { .. })))
+        .find(|f| {
+            f.name.starts_with("__closure") && matches!(f.body, Some(IrExpr::ClosureRef { .. }))
+        })
         .and_then(|f| f.body.as_ref())
         .expect("outer-lifted function with ClosureRef body");
 
@@ -401,10 +398,7 @@ fn count_closure_exprs(module: &formalang::ir::IrModule) -> usize {
     count
 }
 
-fn walk_module_exprs(
-    module: &formalang::ir::IrModule,
-    visit: &mut dyn FnMut(&IrExpr),
-) {
+fn walk_module_exprs(module: &formalang::ir::IrModule, visit: &mut dyn FnMut(&IrExpr)) {
     for l in &module.lets {
         visit_all(&l.value, visit);
     }

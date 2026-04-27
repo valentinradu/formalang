@@ -1742,10 +1742,7 @@ mod tests {
         // Audit2 B17: nested array used to be misclassified because the
         // outer `contains(':')` check fired on the inner dict's colon.
         assert_eq!(strip_array_type("[[I32]]"), Some("[I32]"));
-        assert_eq!(
-            strip_array_type("[[String: I32]]"),
-            Some("[String: I32]")
-        );
+        assert_eq!(strip_array_type("[[String: I32]]"), Some("[String: I32]"));
     }
 
     #[test]

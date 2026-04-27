@@ -415,9 +415,7 @@ impl<'a> DeadCodeEliminator<'a> {
                 }
                 self.mark_used_in_expr(body);
             }
-            IrExpr::ClosureRef {
-                env_struct, ty, ..
-            } => {
+            IrExpr::ClosureRef { env_struct, ty, .. } => {
                 self.mark_used_in_type(ty);
                 self.mark_used_in_expr(env_struct);
             }
@@ -973,9 +971,7 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             }
             remap_expr(body, remap);
         }
-        IrExpr::ClosureRef {
-            env_struct, ty, ..
-        } => {
+        IrExpr::ClosureRef { env_struct, ty, .. } => {
             remap_type(ty, remap);
             remap_expr(env_struct, remap);
         }

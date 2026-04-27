@@ -1305,21 +1305,15 @@ mod tests {
                 }
                 let (_, p0) = params.first().ok_or("expected at least 1 param")?;
                 if *p0 != Type::Primitive(PrimitiveType::I32) {
-                    return Err(format!(
-                        "{:?} != {:?}",
-                        p0,
-                        Type::Primitive(PrimitiveType::I32)
-                    )
-                    .into());
+                    return Err(
+                        format!("{:?} != {:?}", p0, Type::Primitive(PrimitiveType::I32)).into(),
+                    );
                 }
                 let (_, p1) = params.get(1).ok_or("expected at least 2 params")?;
                 if *p1 != Type::Primitive(PrimitiveType::I32) {
-                    return Err(format!(
-                        "{:?} != {:?}",
-                        p1,
-                        Type::Primitive(PrimitiveType::I32)
-                    )
-                    .into());
+                    return Err(
+                        format!("{:?} != {:?}", p1, Type::Primitive(PrimitiveType::I32)).into(),
+                    );
                 }
                 match *ret {
                     Type::Ident(ident) => {

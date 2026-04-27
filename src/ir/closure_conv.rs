@@ -122,8 +122,8 @@ use std::collections::HashSet;
 use crate::ast::{ParamConvention, Visibility};
 use crate::error::CompilerError;
 use crate::ir::{
-    IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm, IrModule,
-    IrStruct, ResolvedType, StructId,
+    IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm, IrModule, IrStruct,
+    ResolvedType, StructId,
 };
 use crate::location::Span;
 use crate::pipeline::IrPass;
@@ -464,7 +464,9 @@ impl ConversionState {
         params
             .into_iter()
             .map(|mut p| {
-                p.default = p.default.map(|d| self.process(d, &CaptureCtx::module_level()));
+                p.default = p
+                    .default
+                    .map(|d| self.process(d, &CaptureCtx::module_level()));
                 p
             })
             .collect()
@@ -758,13 +760,8 @@ impl ConversionState {
         };
 
         // Synthesize the lifted top-level function.
-        let lifted_fn = build_lifted_function(
-            func_name.clone(),
-            env_id,
-            params,
-            return_ty,
-            lifted_body,
-        );
+        let lifted_fn =
+            build_lifted_function(func_name.clone(), env_id, params, return_ty, lifted_body);
         self.lifted.push(lifted_fn);
 
         // Build the env-struct constructor: each capture's value is
