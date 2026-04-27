@@ -473,6 +473,10 @@ pub struct TupleField {
 pub enum PrimitiveType {
     String,
     Number,
+    I32,
+    I64,
+    F32,
+    F64,
     Boolean,
     Path,
     Regex,

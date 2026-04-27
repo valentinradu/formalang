@@ -421,6 +421,10 @@ const fn primitive_name(p: PrimitiveType) -> &'static str {
     match p {
         PrimitiveType::String => "String",
         PrimitiveType::Number => "Number",
+        PrimitiveType::I32 => "I32",
+        PrimitiveType::I64 => "I64",
+        PrimitiveType::F32 => "F32",
+        PrimitiveType::F64 => "F64",
         PrimitiveType::Boolean => "Boolean",
         PrimitiveType::Path => "Path",
         PrimitiveType::Regex => "Regex",

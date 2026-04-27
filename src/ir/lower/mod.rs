@@ -1441,6 +1441,10 @@ impl<'a> IrLowerer<'a> {
             ast::Type::Primitive(prim) => match prim {
                 ast::PrimitiveType::String => "String".to_string(),
                 ast::PrimitiveType::Number => "Number".to_string(),
+                ast::PrimitiveType::I32 => "I32".to_string(),
+                ast::PrimitiveType::I64 => "I64".to_string(),
+                ast::PrimitiveType::F32 => "F32".to_string(),
+                ast::PrimitiveType::F64 => "F64".to_string(),
                 ast::PrimitiveType::Boolean => "Boolean".to_string(),
                 ast::PrimitiveType::Path => "Path".to_string(),
                 ast::PrimitiveType::Regex => "Regex".to_string(),
