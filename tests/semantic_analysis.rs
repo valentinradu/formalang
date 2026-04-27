@@ -27,7 +27,7 @@ fn test_struct_with_name_age_fields() -> Result<(), Box<dyn std::error::Error>> 
     let source = r"
         struct User {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| format!("Model without mount should compile: {e:?}"))?;
@@ -50,7 +50,7 @@ fn test_trait_with_header_footer_fields() -> Result<(), Box<dyn std::error::Erro
 fn test_trait_with_id_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Identifiable {
-            id: Number
+            id: I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -76,7 +76,7 @@ fn test_impl_with_string_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_impl_with_number_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            count: Number = 42
+            count: I32 = 42
         }
     ";
     compile(source).map_err(|e| format!("Impl with number literal: {e:?}"))?;
@@ -110,7 +110,7 @@ fn test_impl_with_struct_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Person {
             name: String,
-            age: Number
+            age: I32
         }
         struct Container {
             person: Person = Person(name: "John", age: 30)
@@ -195,7 +195,7 @@ fn test_string_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 fn test_number_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Math {
-            value: Number = 1 + 2 * 3 - 4 / 2
+            value: I32 = 1 + 2 * 3 - 4 / 2
         }
     ";
     compile(source).map_err(|e| format!("Number arithmetic: {e:?}"))?;
@@ -308,7 +308,7 @@ fn test_optional_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: Number
+            mut count: I32
         }
     ";
     compile(source).map_err(|e| format!("Mutable field: {e:?}"))?;
@@ -320,7 +320,7 @@ fn test_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config {
             name: String = "default",
-            count: Number = 0,
+            count: I32 = 0,
             enabled: Boolean = true
         }
     "#;
@@ -333,7 +333,7 @@ fn test_array_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct List {
             items: [String],
-            numbers: [Number]
+            numbers: [I32]
         }
     ";
     compile(source).map_err(|e| format!("Array field: {e:?}"))?;
@@ -344,7 +344,7 @@ fn test_array_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dictionary_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Cache {
-            data: [String: Number]
+            data: [String: I32]
         }
     ";
     compile(source).map_err(|e| format!("Dictionary field: {e:?}"))?;
@@ -515,7 +515,7 @@ fn test_duplicate_definition_error() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         struct Config {
-            value: Number
+            value: I32
         }
     ";
     let result = compile(source);
@@ -532,7 +532,7 @@ fn test_missing_trait_field_error() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         struct User: Named {
-            age: Number
+            age: I32
         }
     ";
     let result = compile(source);
@@ -565,7 +565,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct AllPrimitives {
             text: String,
-            number: Number,
+            number: I32,
             flag: Boolean,
             file: Path,
             pattern: Regex
@@ -594,7 +594,7 @@ fn test_never_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            callback: String -> Number
+            callback: String -> I32
         }
     ";
     compile(source).map_err(|e| format!("Closure type single param: {e:?}"))?;
@@ -682,11 +682,11 @@ fn test_multiple_trait_conformance() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         trait Aged {
-            age: Number
+            age: I32
         }
         struct Person {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| format!("Multiple trait conformance: {e:?}"))?;
@@ -701,7 +701,7 @@ fn test_multiple_trait_conformance() -> Result<(), Box<dyn std::error::Error>> {
 fn test_full_application_model() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         trait Identifiable {
-            id: Number
+            id: I32
         }
 
         trait Named {
@@ -715,7 +715,7 @@ fn test_full_application_model() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         struct User {
-            id: Number,
+            id: I32,
             name: String = "User Profile",
             role: UserRole,
             email: String?
@@ -729,7 +729,7 @@ fn test_full_application_model() -> Result<(), Box<dyn std::error::Error>> {
         mod utils {
             struct Config {
                 apiUrl: String = "https://api.example.com",
-                timeout: Number = 30
+                timeout: I32 = 30
             }
         }
     "#;

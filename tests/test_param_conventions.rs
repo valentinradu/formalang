@@ -47,20 +47,20 @@ fn first_impl_fn_params(src: &str) -> Vec<formalang::ast::FnParam> {
 
 #[test]
 fn test_default_param_convention_is_let() {
-    let params = first_fn_params("pub fn read(x: Number) -> Number { x }");
+    let params = first_fn_params("pub fn read(x: I32) -> I32 { x }");
     assert_eq!(params[0].convention, ParamConvention::Let);
 }
 
 #[test]
 fn test_mut_param_parsed() {
-    let params = first_fn_params("pub fn bump(mut x: Number) -> Number { x }");
+    let params = first_fn_params("pub fn bump(mut x: I32) -> I32 { x }");
     assert_eq!(params[0].name.name, "x");
     assert_eq!(params[0].convention, ParamConvention::Mut);
 }
 
 #[test]
 fn test_sink_param_parsed() {
-    let params = first_fn_params("pub fn consume(sink x: Number) -> Number { x }");
+    let params = first_fn_params("pub fn consume(sink x: I32) -> I32 { x }");
     assert_eq!(params[0].name.name, "x");
     assert_eq!(params[0].convention, ParamConvention::Sink);
 }
@@ -68,7 +68,7 @@ fn test_sink_param_parsed() {
 #[test]
 fn test_mixed_conventions_in_one_fn() {
     let params =
-        first_fn_params("pub fn mixed(a: Number, mut b: Number, sink c: Number) -> Number { a }");
+        first_fn_params("pub fn mixed(a: I32, mut b: I32, sink c: I32) -> I32 { a }");
     assert_eq!(params[0].convention, ParamConvention::Let);
     assert_eq!(params[1].convention, ParamConvention::Mut);
     assert_eq!(params[2].convention, ParamConvention::Sink);
@@ -77,8 +77,8 @@ fn test_mixed_conventions_in_one_fn() {
 #[test]
 fn test_mut_self_parsed() {
     let params = first_impl_fn_params(
-        "pub struct Counter { val: Number }
-         impl Counter { fn inc(mut self) -> Number { self.val } }",
+        "pub struct Counter { val: I32 }
+         impl Counter { fn inc(mut self) -> I32 { self.val } }",
     );
     assert_eq!(params[0].name.name, "self");
     assert_eq!(params[0].convention, ParamConvention::Mut);
@@ -87,8 +87,8 @@ fn test_mut_self_parsed() {
 #[test]
 fn test_sink_self_parsed() {
     let params = first_impl_fn_params(
-        "pub struct Task { id: Number }
-         impl Task { fn consume(sink self) -> Number { self.id } }",
+        "pub struct Task { id: I32 }
+         impl Task { fn consume(sink self) -> I32 { self.id } }",
     );
     assert_eq!(params[0].name.name, "self");
     assert_eq!(params[0].convention, ParamConvention::Sink);
@@ -97,7 +97,7 @@ fn test_sink_self_parsed() {
 #[test]
 fn test_labeled_mut_param_parsed() {
     // `fn foo(external_label internal_name: Type)` — labeled param with mut
-    let params = first_fn_params("pub fn foo(val x: Number) -> Number { x }");
+    let params = first_fn_params("pub fn foo(val x: I32) -> I32 { x }");
     assert_eq!(params[0].convention, ParamConvention::Let);
     assert!(params[0].external_label.is_some());
 }
@@ -112,21 +112,21 @@ fn ir_ok(src: &str) -> formalang::ir::IrModule {
 
 #[test]
 fn test_ir_mut_param_convention() {
-    let module = ir_ok("pub fn bump(mut x: Number) -> Number { x }");
+    let module = ir_ok("pub fn bump(mut x: I32) -> I32 { x }");
     let func = module.functions.first().expect("no function");
     assert_eq!(func.params[0].convention, ParamConvention::Mut);
 }
 
 #[test]
 fn test_ir_sink_param_convention() {
-    let module = ir_ok("pub fn consume(sink x: Number) -> Number { x }");
+    let module = ir_ok("pub fn consume(sink x: I32) -> I32 { x }");
     let func = module.functions.first().expect("no function");
     assert_eq!(func.params[0].convention, ParamConvention::Sink);
 }
 
 #[test]
 fn test_ir_default_param_convention_is_let() {
-    let module = ir_ok("pub fn read(x: Number) -> Number { x }");
+    let module = ir_ok("pub fn read(x: I32) -> I32 { x }");
     let func = module.functions.first().expect("no function");
     assert_eq!(func.params[0].convention, ParamConvention::Let);
 }
@@ -147,7 +147,7 @@ fn has_error<F: Fn(&CompilerError) -> bool>(src: &str, pred: F) -> bool {
 fn test_let_param_immutable_in_body() {
     // Assigning to a `let` (default) param inside the body must fail.
     assert!(has_error(
-        "pub fn bad(x: Number) -> Number {
+        "pub fn bad(x: I32) -> I32 {
             x = 5
             x
         }",
@@ -163,9 +163,9 @@ fn test_let_param_immutable_in_body() {
 fn test_mut_param_accepts_mutable_arg() {
     // let mut y — argument is mutable, should pass.
     compile(
-        "pub fn bump(mut n: Number) -> Number { n }
-         let mut y: Number = 5
-         let result: Number = bump(y)",
+        "pub fn bump(mut n: I32) -> I32 { n }
+         let mut y: I32 = 5
+         let result: I32 = bump(y)",
     )
     .expect("mutable arg to mut param should compile");
 }
@@ -174,9 +174,9 @@ fn test_mut_param_accepts_mutable_arg() {
 fn test_mut_param_rejects_immutable_arg() {
     // let y (immutable) passed to mut param → MutabilityMismatch.
     assert!(has_error(
-        "pub fn bump(mut n: Number) -> Number { n }
-         let y: Number = 5
-         let result: Number = bump(y)",
+        "pub fn bump(mut n: I32) -> I32 { n }
+         let y: I32 = 5
+         let result: I32 = bump(y)",
         |e| matches!(e, CompilerError::MutabilityMismatch { .. }),
     ));
 }
@@ -185,9 +185,9 @@ fn test_mut_param_rejects_immutable_arg() {
 fn test_let_param_accepts_any_arg() {
     // Immutable arg to a let param is fine.
     compile(
-        "pub fn read(n: Number) -> Number { n }
-         let y: Number = 5
-         let result: Number = read(y)",
+        "pub fn read(n: I32) -> I32 { n }
+         let y: I32 = 5
+         let result: I32 = read(y)",
     )
     .expect("immutable arg to let param should compile");
 }
@@ -197,9 +197,9 @@ fn test_sink_param_does_not_reject_immutable_arg() {
     // Sink transfers ownership — the caller gives the value; immutability
     // of the source binding is irrelevant (the value is moved).
     compile(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let result: Number = consume(y)",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let result: I32 = consume(y)",
     )
     .expect("sink param should accept any value");
 }
@@ -208,10 +208,10 @@ fn test_sink_param_does_not_reject_immutable_arg() {
 fn test_use_after_sink_rejected() {
     // After passing `y` to a sink param it is consumed; a second use is an error.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let _a: Number = consume(y)
-         let _b: Number = y",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let _a: I32 = consume(y)
+         let _b: I32 = y",
         |e| matches!(e, CompilerError::UseAfterSink { .. }),
     ));
 }
@@ -220,10 +220,10 @@ fn test_use_after_sink_rejected() {
 fn test_use_after_sink_second_call_rejected() {
     // Passing the same binding twice to sink params is also an error.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let _a: Number = consume(y)
-         let _b: Number = consume(y)",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let _a: I32 = consume(y)
+         let _b: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { .. }),
     ));
 }
@@ -235,12 +235,12 @@ fn test_use_after_sink_second_call_rejected() {
 #[test]
 fn test_method_mut_self_rejects_immutable_receiver() {
     assert!(has_error(
-        "pub struct Counter { count: Number }
+        "pub struct Counter { count: I32 }
          impl Counter {
-             fn bump(mut self) -> Number { self.count }
+             fn bump(mut self) -> I32 { self.count }
          }
          let c: Counter = Counter(count: 0)
-         let _r: Number = c.bump()",
+         let _r: I32 = c.bump()",
         |e| matches!(e, CompilerError::MutabilityMismatch { .. }),
     ));
 }
@@ -248,12 +248,12 @@ fn test_method_mut_self_rejects_immutable_receiver() {
 #[test]
 fn test_method_mut_self_accepts_mutable_receiver() {
     compile(
-        "pub struct Counter { count: Number }
+        "pub struct Counter { count: I32 }
          impl Counter {
-             fn bump(mut self) -> Number { self.count }
+             fn bump(mut self) -> I32 { self.count }
          }
          let mut c: Counter = Counter(count: 0)
-         let _r: Number = c.bump()",
+         let _r: I32 = c.bump()",
     )
     .expect("mutable receiver should satisfy mut self");
 }
@@ -261,13 +261,13 @@ fn test_method_mut_self_accepts_mutable_receiver() {
 #[test]
 fn test_method_sink_self_consumes_receiver() {
     assert!(has_error(
-        "pub struct Box { value: Number }
+        "pub struct Box { value: I32 }
          impl Box {
-             fn unwrap(sink self) -> Number { self.value }
+             fn unwrap(sink self) -> I32 { self.value }
          }
          let b: Box = Box(value: 1)
-         let _a: Number = b.unwrap()
-         let _again: Number = b.unwrap()",
+         let _a: I32 = b.unwrap()
+         let _again: I32 = b.unwrap()",
         |e| matches!(e, CompilerError::UseAfterSink { .. }),
     ));
 }
@@ -275,13 +275,13 @@ fn test_method_sink_self_consumes_receiver() {
 #[test]
 fn test_method_mut_param_rejects_immutable_arg() {
     assert!(has_error(
-        "pub struct Calc { base: Number }
+        "pub struct Calc { base: I32 }
          impl Calc {
-             fn add(self, mut n: Number) -> Number { self.base }
+             fn add(self, mut n: I32) -> I32 { self.base }
          }
          let c: Calc = Calc(base: 0)
-         let x: Number = 5
-         let _r: Number = c.add(x)",
+         let x: I32 = 5
+         let _r: I32 = c.add(x)",
         |e| matches!(e, CompilerError::MutabilityMismatch { .. }),
     ));
 }
@@ -296,11 +296,11 @@ fn test_sink_in_then_branch_does_not_block_else_branch() {
     // The compiler conservatively marks y consumed after the if/else union, but within
     // each branch the binding is independent.
     compile(
-        "pub fn consume(sink n: Number) -> Number { n }
-         pub fn id(n: Number) -> Number { n }
-         let y: Number = 5
+        "pub fn consume(sink n: I32) -> I32 { n }
+         pub fn id(n: I32) -> I32 { n }
+         let y: I32 = 5
          let flag: Boolean = true
-         let _r: Number = if flag { consume(y) } else { id(y) }",
+         let _r: I32 = if flag { consume(y) } else { id(y) }",
     )
     .expect("using y in each branch independently should compile");
 }
@@ -313,11 +313,11 @@ fn test_sink_in_then_branch_does_not_block_else_branch() {
 fn test_trait_method_convention_mismatch_rejected() {
     assert!(has_error(
         "pub trait Mover {
-             fn move_it(mut self) -> Number
+             fn move_it(mut self) -> I32
          }
-         pub struct Thing { val: Number }
+         pub struct Thing { val: I32 }
          impl Mover for Thing {
-             fn move_it(self) -> Number { self.val }
+             fn move_it(self) -> I32 { self.val }
          }",
         |e| matches!(e, CompilerError::TraitMethodSignatureMismatch { .. }),
     ));
@@ -327,11 +327,11 @@ fn test_trait_method_convention_mismatch_rejected() {
 fn test_trait_method_convention_match_accepted() {
     compile(
         "pub trait Mover {
-             fn move_it(mut self) -> Number
+             fn move_it(mut self) -> I32
          }
-         pub struct Thing { val: Number }
+         pub struct Thing { val: I32 }
          impl Mover for Thing {
-             fn move_it(mut self) -> Number { self.val }
+             fn move_it(mut self) -> I32 { self.val }
          }",
     )
     .expect("matching convention should satisfy trait requirement");
@@ -356,26 +356,26 @@ fn parse_closure_param_conventions(src: &str) -> Vec<formalang::ast::ParamConven
 
 #[test]
 fn test_closure_param_default_convention_is_let() {
-    let convs = parse_closure_param_conventions("let f: Number -> Number = x -> x");
+    let convs = parse_closure_param_conventions("let f: I32 -> I32 = x -> x");
     assert_eq!(convs[0], ParamConvention::Let);
 }
 
 #[test]
 fn test_closure_param_mut_parsed() {
-    let convs = parse_closure_param_conventions("let f: mut Number -> Number = mut x -> x");
+    let convs = parse_closure_param_conventions("let f: mut I32 -> I32 = mut x -> x");
     assert_eq!(convs[0], ParamConvention::Mut);
 }
 
 #[test]
 fn test_closure_param_sink_parsed() {
-    let convs = parse_closure_param_conventions("let f: sink Number -> Number = sink x -> x");
+    let convs = parse_closure_param_conventions("let f: sink I32 -> I32 = sink x -> x");
     assert_eq!(convs[0], ParamConvention::Sink);
 }
 
 #[test]
 fn test_closure_mixed_conventions_parsed() {
     let convs = parse_closure_param_conventions(
-        "let f: Number, mut Number, sink Number -> Number = |a, mut b, sink c| a",
+        "let f: I32, mut I32, sink I32 -> I32 = |a, mut b, sink c| a",
     );
     assert_eq!(convs[0], ParamConvention::Let);
     assert_eq!(convs[1], ParamConvention::Mut);
@@ -401,19 +401,19 @@ fn parse_closure_type_param_conventions(src: &str) -> Vec<formalang::ast::ParamC
 
 #[test]
 fn test_closure_type_annotation_default_let() {
-    let convs = parse_closure_type_param_conventions("let f: Number -> Number = x -> x");
+    let convs = parse_closure_type_param_conventions("let f: I32 -> I32 = x -> x");
     assert_eq!(convs[0], ParamConvention::Let);
 }
 
 #[test]
 fn test_closure_type_annotation_mut_convention() {
-    let convs = parse_closure_type_param_conventions("let f: mut Number -> Number = mut x -> x");
+    let convs = parse_closure_type_param_conventions("let f: mut I32 -> I32 = mut x -> x");
     assert_eq!(convs[0], ParamConvention::Mut);
 }
 
 #[test]
 fn test_closure_type_annotation_sink_convention() {
-    let convs = parse_closure_type_param_conventions("let f: sink Number -> Number = sink x -> x");
+    let convs = parse_closure_type_param_conventions("let f: sink I32 -> I32 = sink x -> x");
     assert_eq!(convs[0], ParamConvention::Sink);
 }
 
@@ -438,18 +438,18 @@ fn parse_first_pipe_closure(src: &str) -> formalang::ast::Expr {
 fn test_pipe_closure_return_type_parsed() {
     use formalang::ast::{Expr, PrimitiveType, Type};
     let expr =
-        parse_first_pipe_closure("let f: (Number) -> Number = |x: Number| -> Number { x + 1 }");
+        parse_first_pipe_closure("let f: (I32) -> I32 = |x: I32| -> I32 { x + 1 }");
     let Expr::ClosureExpr { return_type, .. } = expr else {
         panic!("expected ClosureExpr");
     };
     let ty = return_type.expect("expected explicit return type to be captured");
-    assert!(matches!(ty, Type::Primitive(PrimitiveType::Number)));
+    assert!(matches!(ty, Type::Primitive(PrimitiveType::I32)));
 }
 
 #[test]
 fn test_pipe_closure_without_return_type_is_none() {
     use formalang::ast::Expr;
-    let expr = parse_first_pipe_closure("let f: (Number) -> Number = |x: Number| x + 1");
+    let expr = parse_first_pipe_closure("let f: (I32) -> I32 = |x: I32| x + 1");
     let Expr::ClosureExpr { return_type, .. } = expr else {
         panic!("expected ClosureExpr");
     };
@@ -460,14 +460,14 @@ fn test_pipe_closure_without_return_type_is_none() {
 fn test_pipe_closure_return_type_mismatch_rejected() {
     // Body returns Number but the closure declares String — should fail.
     assert!(has_error(
-        "let f: (Number) -> String = |x: Number| -> String { x + 1 }",
+        "let f: (I32) -> String = |x: I32| -> String { x + 1 }",
         |e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }),
     ));
 }
 
 #[test]
 fn test_pipe_closure_return_type_match_compiles() {
-    compile("let f: (Number) -> Number = |x: Number| -> Number { x + 1 }")
+    compile("let f: (I32) -> I32 = |x: I32| -> I32 { x + 1 }")
         .expect("matching return type should compile cleanly");
 }
 
@@ -478,7 +478,7 @@ fn test_pipe_closure_return_type_mismatch_span_points_at_body() {
     // `x + 1` starts after the `{` of the closure body, so its span
     // start should be strictly greater than the start of `|x` (the
     // closure-position).
-    let source = r"let f: (Number) -> String = |x: Number| -> String { x + 1 }";
+    let source = r"let f: (I32) -> String = |x: I32| -> String { x + 1 }";
     let errors = compile(source).expect_err("expected a TypeMismatch error");
     let mut found_span = None;
     for e in &errors {
@@ -511,9 +511,9 @@ fn test_pipe_closure_return_type_mismatch_span_points_at_body() {
 #[test]
 fn test_closure_mut_param_rejects_immutable_arg() {
     assert!(has_error(
-        "let f: mut Number -> Number = mut x -> x
-         let y: Number = 5
-         let _r: Number = f(y)",
+        "let f: mut I32 -> I32 = mut x -> x
+         let y: I32 = 5
+         let _r: I32 = f(y)",
         |e| matches!(e, CompilerError::MutabilityMismatch { .. }),
     ));
 }
@@ -521,9 +521,9 @@ fn test_closure_mut_param_rejects_immutable_arg() {
 #[test]
 fn test_closure_mut_param_accepts_mutable_arg() {
     compile(
-        "let f: mut Number -> Number = mut x -> x
-         let mut y: Number = 5
-         let _r: Number = f(y)",
+        "let f: mut I32 -> I32 = mut x -> x
+         let mut y: I32 = 5
+         let _r: I32 = f(y)",
     )
     .expect("mutable arg to closure mut param should compile");
 }
@@ -531,9 +531,9 @@ fn test_closure_mut_param_accepts_mutable_arg() {
 #[test]
 fn test_closure_let_param_accepts_immutable_arg() {
     compile(
-        "let f: Number -> Number = x -> x
-         let y: Number = 5
-         let _r: Number = f(y)",
+        "let f: I32 -> I32 = x -> x
+         let y: I32 = 5
+         let _r: I32 = f(y)",
     )
     .expect("immutable arg to closure let param should compile");
 }
@@ -541,10 +541,10 @@ fn test_closure_let_param_accepts_immutable_arg() {
 #[test]
 fn test_closure_sink_param_consumes_binding() {
     assert!(has_error(
-        "let f: sink Number -> Number = sink x -> x
-         let y: Number = 5
-         let _a: Number = f(y)
-         let _b: Number = y",
+        "let f: sink I32 -> I32 = sink x -> x
+         let y: I32 = 5
+         let _a: I32 = f(y)
+         let _b: I32 = y",
         |e| matches!(e, CompilerError::UseAfterSink { .. }),
     ));
 }
@@ -561,11 +561,11 @@ fn test_closure_captures_binding_consumed_after_creation() {
     // invoking `c()` should trigger UseAfterSink because `c`'s body references
     // the consumed `y`.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let c: () -> Number = () -> y
-         let _a: Number = consume(y)
-         let _b: Number = c()",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _a: I32 = consume(y)
+         let _b: I32 = c()",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -574,9 +574,9 @@ fn test_closure_captures_binding_consumed_after_creation() {
 fn test_closure_captures_binding_not_consumed_compiles() {
     // Positive control: if `y` is never consumed, calling `c()` is fine.
     let result = compile(
-        "let y: Number = 5
-         let c: () -> Number = () -> y
-         let _b: Number = c()",
+        "let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _b: I32 = c()",
     );
     assert!(
         result.is_ok(),
@@ -590,10 +590,10 @@ fn test_closure_captures_consumed_but_not_invoked_compiles() {
     // Negative control: if the closure is never called, capturing a consumed
     // binding is not an error (the closure body is just dormant code).
     let result = compile(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let c: () -> Number = () -> y
-         let _a: Number = consume(y)",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _a: I32 = consume(y)",
     );
     assert!(
         result.is_ok(),
@@ -612,12 +612,12 @@ fn test_closure_captures_consumed_but_not_invoked_compiles() {
 fn test_closure_escape_into_struct_field_consumes_captures() {
     // Closure stored in a struct field → captures escape with the struct.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         pub struct Handler { callback: () -> Number }
-         let y: Number = 5
-         let c: () -> Number = () -> y
+        "pub fn consume(sink n: I32) -> I32 { n }
+         pub struct Handler { callback: () -> I32 }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
          let _h: Handler = Handler(callback: c)
-         let _gone: Number = consume(y)",
+         let _gone: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -626,12 +626,12 @@ fn test_closure_escape_into_struct_field_consumes_captures() {
 fn test_closure_sink_pass_consumes_captures() {
     // Closure sink-passed to a function → captures escape.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         pub fn store(sink cb: () -> Number) -> Number { cb() }
-         let y: Number = 5
-         let c: () -> Number = () -> y
-         let _r: Number = store(c)
-         let _gone: Number = consume(y)",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         pub fn store(sink cb: () -> I32) -> I32 { cb() }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _r: I32 = store(c)
+         let _gone: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -642,11 +642,11 @@ fn test_closure_let_pass_does_not_consume_captures() {
     // remains live after a let-pass of `c`, even when the host function calls
     // the closure parameter inside its body.
     let result = compile(
-        "pub fn run(cb: () -> Number) -> Number { cb() }
-         let y: Number = 5
-         let c: () -> Number = () -> y
-         let _r: Number = run(c)
-         let _still_live: Number = y",
+        "pub fn run(cb: () -> I32) -> I32 { cb() }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _r: I32 = run(c)
+         let _still_live: I32 = y",
     );
     assert!(
         result.is_ok(),
@@ -660,13 +660,13 @@ fn test_nested_closure_escape_consumes_transitive_captures() {
     // `outer` captures `inner`; when `outer` escapes into a struct, `inner`'s
     // captures (y) are consumed transitively.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         pub struct Outer { cb: () -> Number }
-         let y: Number = 5
-         let inner: () -> Number = () -> y
-         let outer: () -> Number = () -> inner()
+        "pub fn consume(sink n: I32) -> I32 { n }
+         pub struct Outer { cb: () -> I32 }
+         let y: I32 = 5
+         let inner: () -> I32 = () -> y
+         let outer: () -> I32 = () -> inner()
          let _o: Outer = Outer(cb: outer)
-         let _gone: Number = consume(y)",
+         let _gone: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -675,11 +675,11 @@ fn test_nested_closure_escape_consumes_transitive_captures() {
 fn test_closure_in_array_consumes_captures() {
     // Closure stored as an array element → captures escape with the array.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         let y: Number = 5
-         let c: () -> Number = () -> y
-         let _arr: [() -> Number] = [c]
-         let _gone: Number = consume(y)",
+        "pub fn consume(sink n: I32) -> I32 { n }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
+         let _arr: [() -> I32] = [c]
+         let _gone: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -689,19 +689,19 @@ fn test_closure_conditional_escape_consumes_captures() {
     // Closure escapes in one branch but not the other: branch union means
     // the capture is conservatively considered consumed after the merge.
     assert!(has_error(
-        "pub fn consume(sink n: Number) -> Number { n }
-         pub struct Handler { cb: () -> Number }
-         pub fn run(cb: () -> Number) -> Number { 0 }
-         let y: Number = 5
-         let c: () -> Number = () -> y
+        "pub fn consume(sink n: I32) -> I32 { n }
+         pub struct Handler { cb: () -> I32 }
+         pub fn run(cb: () -> I32) -> I32 { 0 }
+         let y: I32 = 5
+         let c: () -> I32 = () -> y
          let flag: Boolean = true
-         let _r: Number = if flag {
+         let _r: I32 = if flag {
              run(c)
          } else {
              let _h: Handler = Handler(cb: c)
              0
          }
-         let _gone: Number = consume(y)",
+         let _gone: I32 = consume(y)",
         |e| matches!(e, CompilerError::UseAfterSink { name, .. } if name == "y"),
     ));
 }
@@ -713,8 +713,8 @@ fn test_closure_conditional_escape_consumes_captures() {
 #[test]
 fn test_closure_typed_param_callable() {
     compile(
-        "pub fn run(cb: () -> Number) -> Number { cb() }
-         let r: Number = run(cb: () -> 5)",
+        "pub fn run(cb: () -> I32) -> I32 { cb() }
+         let r: I32 = run(cb: () -> 5)",
     )
     .expect("closure-typed param should be invokable");
 }
@@ -722,8 +722,8 @@ fn test_closure_typed_param_callable() {
 #[test]
 fn test_closure_typed_param_with_args_callable() {
     compile(
-        "pub fn apply(f: Number -> Number, v: Number) -> Number { f(v) }
-         let r: Number = apply(f: |n: Number| n + 1, v: 5)",
+        "pub fn apply(f: I32 -> I32, v: I32) -> I32 { f(v) }
+         let r: I32 = apply(f: |n: I32| n + 1, v: 5)",
     )
     .expect("closure param with arg should be invokable");
 }
@@ -736,7 +736,7 @@ fn test_closure_typed_param_with_args_callable() {
 fn test_fn_returns_closure_capturing_let_param_rejected() {
     // Let param is a view — can't escape.
     assert!(has_error(
-        "pub fn make(y: Number) -> () -> Number { () -> y }",
+        "pub fn make(y: I32) -> () -> I32 { () -> y }",
         |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
     ));
 }
@@ -744,15 +744,15 @@ fn test_fn_returns_closure_capturing_let_param_rejected() {
 #[test]
 fn test_fn_returns_closure_capturing_sink_param_allowed() {
     // Sink transfers ownership into the closure.
-    compile("pub fn make(sink y: Number) -> () -> Number { () -> y }")
+    compile("pub fn make(sink y: I32) -> () -> I32 { () -> y }")
         .expect("sink param should be allowed to escape via returned closure");
 }
 
 #[test]
 fn test_fn_returns_closure_capturing_local_let_rejected() {
     assert!(has_error(
-        "pub fn make() -> () -> Number {
-             let y: Number = 5
+        "pub fn make() -> () -> I32 {
+             let y: I32 = 5
              () -> y
          }",
         |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
@@ -762,15 +762,15 @@ fn test_fn_returns_closure_capturing_local_let_rejected() {
 #[test]
 fn test_fn_returns_closure_capturing_module_let_allowed() {
     compile(
-        "let top: Number = 5
-         pub fn make() -> () -> Number { () -> top }",
+        "let top: I32 = 5
+         pub fn make() -> () -> I32 { () -> top }",
     )
     .expect("module-level let capture should outlive the function");
 }
 
 #[test]
 fn test_fn_returns_closure_no_capture_allowed() {
-    compile("pub fn make() -> () -> Number { () -> 42 }")
+    compile("pub fn make() -> () -> I32 { () -> 42 }")
         .expect("closure with no captures can always escape");
 }
 
@@ -778,9 +778,9 @@ fn test_fn_returns_closure_no_capture_allowed() {
 fn test_fn_returns_named_closure_capturing_local_let_rejected() {
     // Named closure binding returned; its captures must still be checked.
     assert!(has_error(
-        "pub fn make() -> () -> Number {
-             let y: Number = 5
-             let c: () -> Number = () -> y
+        "pub fn make() -> () -> I32 {
+             let y: I32 = 5
+             let c: () -> I32 = () -> y
              c
          }",
         |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
@@ -791,9 +791,9 @@ fn test_fn_returns_named_closure_capturing_local_let_rejected() {
 fn test_fn_returns_named_closure_capturing_module_let_allowed() {
     // Module-level capture outlives the function.
     compile(
-        "let top: Number = 5
-         pub fn make() -> () -> Number {
-             let c: () -> Number = () -> top
+        "let top: I32 = 5
+         pub fn make() -> () -> I32 {
+             let c: () -> I32 = () -> top
              c
          }",
     )
@@ -804,8 +804,8 @@ fn test_fn_returns_named_closure_capturing_module_let_allowed() {
 fn test_fn_returns_named_closure_capturing_sink_param_allowed() {
     // Sink param ownership transfers via named binding too.
     compile(
-        "pub fn make(sink y: Number) -> () -> Number {
-             let c: () -> Number = () -> y
+        "pub fn make(sink y: I32) -> () -> I32 {
+             let c: () -> I32 = () -> y
              c
          }",
     )

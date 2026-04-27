@@ -15,7 +15,7 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 #[test]
 fn test_expr_span_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Container { p: Point = Point(x: 1, y: 2) }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -45,7 +45,7 @@ fn test_expr_span_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_span_tuple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { t: (first: String, second: Number) = (first: "a", second: 1) }
+        struct A { t: (first: String, second: I32) = (first: "a", second: 1) }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -84,7 +84,7 @@ fn test_expr_span_closure() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_span_group() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = (1 + 2) * 3 }
+        struct A { x: I32 = (1 + 2) * 3 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -97,7 +97,7 @@ fn test_expr_span_group() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_binary_op_precedence_mul_add() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 1 + 2 * 3 }
+        struct A { x: I32 = 1 + 2 * 3 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -135,7 +135,7 @@ fn test_binary_op_all_comparison() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_binary_op_modulo() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 10 % 3 }
+        struct A { x: I32 = 10 % 3 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -342,7 +342,7 @@ fn test_match_with_bindings() -> Result<(), Box<dyn std::error::Error>> {
 fn test_complex_binary_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = (1 + 2) * (3 - 4) / (5 % 2)
+            x: I32 = (1 + 2) * (3 - 4) / (5 % 2)
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -496,7 +496,7 @@ fn test_closure_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Mapper {
-            transform: String -> Number
+            transform: String -> I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -507,7 +507,7 @@ fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Reducer {
-            reduce: Number, Number -> Number
+            reduce: I32, Number -> I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -563,7 +563,7 @@ fn test_default_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_default_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { count: Number = 42 }
+        struct Config { count: I32 = 42 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -635,7 +635,7 @@ fn test_extern_field_optional() -> Result<(), Box<dyn std::error::Error>> {
 fn test_mut_field_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: Number
+            mut count: I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -646,7 +646,7 @@ fn test_mut_field_basic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_mut_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: Number = 0
+            mut count: I32 = 0
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -661,7 +661,7 @@ fn test_mut_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
 fn test_error_duplicate_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod ui { struct A { x: String } }
-        mod ui { struct B { y: Number } }
+        mod ui { struct B { y: I32 } }
     ";
     let errors = compile(source)
         .err()
@@ -680,7 +680,7 @@ fn test_error_struct_as_composed_trait() -> Result<(), Box<dyn std::error::Error
     // Using a struct in trait composition should fail
     let source = r"
         struct NotATrait { x: String }
-        trait MyTrait: NotATrait { y: Number }
+        trait MyTrait: NotATrait { y: I32 }
     ";
     let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
@@ -697,7 +697,7 @@ fn test_error_enum_as_composed_trait() -> Result<(), Box<dyn std::error::Error>>
     // Using an enum in trait composition should fail
     let source = r"
         enum NotATrait { a, b }
-        trait MyTrait: NotATrait { y: Number }
+        trait MyTrait: NotATrait { y: I32 }
     ";
     let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
@@ -833,7 +833,7 @@ fn test_module_with_trait_and_struct() -> Result<(), Box<dyn std::error::Error>>
     let source = r#"
         mod shapes {
             pub trait Drawable { x: String }
-            pub struct Circle { x: String = "drawing circle", radius: Number }
+            pub struct Circle { x: String = "drawing circle", radius: I32 }
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1011,8 +1011,8 @@ fn test_trait_with_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_composition_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A { a: String }
-        trait B: A { b: Number }
-        struct C { a: String, b: Number }
+        trait B: A { b: I32 }
+        struct C { a: String, b: I32 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1027,7 +1027,7 @@ fn test_module_impl_with_expressions() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         mod math {
             pub struct Calculator {
-                x: Number = (let result = 1 + 2
+                x: I32 = (let result = 1 + 2
                 in result)
             }
         }
@@ -1143,7 +1143,7 @@ fn test_error_struct_wrong_generic_arity() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_error_struct_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Canvas { point: Point = Point(x: 1, y: 2, z: 3) }
     ";
     let errors = compile(source).err().ok_or("expected UnknownField error")?;
@@ -1159,7 +1159,7 @@ fn test_error_struct_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_error_struct_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Canvas { point: Point = Point(x: 1) }
     ";
     let errors = compile(source).err().ok_or("expected MissingField error")?;
@@ -1189,7 +1189,7 @@ fn test_enum_instantiation_simple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        enum Message { text(content: String), error(code: Number) }
+        enum Message { text(content: String), error(code: I32) }
         struct Logger { msg: Message = Message.text(content: "hello") }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1204,7 +1204,7 @@ fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>>
 fn test_impl_field_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let name: String = "test"
-        struct Person { age: Number, display: String = name }
+        struct Person { age: I32, display: String = name }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1292,7 +1292,7 @@ fn test_nested_for_loops_separate_vars() -> Result<(), Box<dyn std::error::Error
 fn test_let_in_impl_scope() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calc {
-            result: Number = (let doubled = 2
+            result: I32 = (let doubled = 2
             in doubled)
         }
     ";
@@ -1303,9 +1303,9 @@ fn test_let_in_impl_scope() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_let_reference_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let base: Number = 1
+        let base: I32 = 1
         struct Config {
-            result: Number = (let x = base
+            result: I32 = (let x = base
             in x)
         }
     ";
@@ -1331,7 +1331,7 @@ fn test_field_access_chain() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_nested_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Inner { x: Number }
+        struct Inner { x: I32 }
         struct Outer { inner: Inner = Inner(x: 42) }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1384,7 +1384,7 @@ fn test_error_enum_variant_requires_data() -> Result<(), Box<dyn std::error::Err
 fn test_error_enum_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     // Missing a required field in enum variant
     let source = r#"
-        enum User { profile(name: String, age: Number) }
+        enum User { profile(name: String, age: I32) }
         struct App { user: User = User.profile(name: "Bob") }
     "#;
     let errors = compile(source).err().ok_or("expected MissingField error")?;
@@ -1459,7 +1459,7 @@ fn test_error_undefined_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Nameable { name: String }
-        struct Person { age: Number }
+        struct Person { age: I32 }
         impl Nameable for Person {}
     ";
     let errors = compile(source)
@@ -1477,7 +1477,7 @@ fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Identifiable { id: Number }
+        trait Identifiable { id: I32 }
         struct Item { id: String }
         impl Identifiable for Item {}
     ";
@@ -1519,7 +1519,7 @@ fn test_error_circular_type_dependency() -> Result<(), Box<dyn std::error::Error
 fn test_error_circular_trait_dependency() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A: B { x: String }
-        trait B: A { y: Number }
+        trait B: A { y: I32 }
     ";
     let errors = compile(source)
         .err()
@@ -1553,7 +1553,7 @@ fn test_valid_indirect_dependency() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Items { list: [String] }
-        struct Bag { list: [Number] }
+        struct Bag { list: [I32] }
         impl Items for Bag {}
     ";
     let errors = compile(source)
@@ -1572,7 +1572,7 @@ fn test_type_mismatch_array() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_mismatch_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait MaybeValue { value: String? }
-        struct MaybeBox { value: Number? }
+        struct MaybeBox { value: I32? }
         impl MaybeValue for MaybeBox {}
     ";
     let errors = compile(source)
@@ -1610,7 +1610,7 @@ fn test_type_mismatch_generic() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Pair { coords: (x: Number, y: Number) }
+        trait Pair { coords: (x: I32, y: I32) }
         struct Point { coords: (a: String, b: String) }
         impl Pair for Point {}
     ";
@@ -1629,8 +1629,8 @@ fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_type_mismatch_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Handler { callback: String -> Number }
-        struct MyHandler { callback: Number -> String }
+        trait Handler { callback: String -> I32 }
+        struct MyHandler { callback: I32 -> String }
         impl Handler for MyHandler {}
     ";
     let errors = compile(source)
@@ -1652,7 +1652,7 @@ fn test_type_mismatch_closure() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_dict_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { data: [String: Number] }
+        struct Config { data: [String: I32] }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1675,7 +1675,7 @@ fn test_dict_literal_simple() -> Result<(), Box<dyn std::error::Error>> {
 fn test_generic_with_multiple_constraints() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A { a: String }
-        trait B { b: Number }
+        trait B { b: I32 }
         struct Container<T: A> { item: T }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1799,7 +1799,7 @@ fn test_inferred_enum_in_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_multiple_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { reducer: Number, Number -> Number }
+        struct A { reducer: I32, Number -> I32 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1916,7 +1916,7 @@ fn test_question_mark_operator() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_deeply_nested_binary_ops() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = ((1 + 2) * 3 - 4) / 5 % 6 }
+        struct A { x: I32 = ((1 + 2) * 3 - 4) / 5 % 6 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())

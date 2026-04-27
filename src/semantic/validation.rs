@@ -2753,13 +2753,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // from the retired WGSL backend and is gone — backends needing
         // arithmetic over backend-specific scalar/vector types should
         // implement their own type-compat rules in their codegen pass.
+        // Numeric primitives accepted for arithmetic / comparison / range.
+        // Both operands must agree (no implicit promotion across widths);
+        // Number is retained as a transitional default and accepted alongside
+        // the width-tagged variants until microcommit 8 removes it.
+        let is_numeric = |s: &str| matches!(s, "Number" | "I32" | "I64" | "F32" | "F64");
         let valid = match op {
-            // Add: Number + Number or String + String (concatenation)
-            BinaryOperator::Add => matches!(
-                (&left_type[..], &right_type[..]),
-                ("Number", "Number") | ("String", "String")
-            ),
-            // Arithmetic, comparison, and range operators: Number + Number
+            // Add: matched-numeric pair, or String + String (concatenation)
+            BinaryOperator::Add => {
+                (is_numeric(&left_type) && left_type == right_type)
+                    || (left_type == "String" && right_type == "String")
+            }
+            // Arithmetic, comparison, and range operators: matched-numeric pair
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
@@ -2768,9 +2773,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | BinaryOperator::Gt
             | BinaryOperator::Le
             | BinaryOperator::Ge
-            | BinaryOperator::Range => {
-                matches!((&left_type[..], &right_type[..]), ("Number", "Number"))
-            }
+            | BinaryOperator::Range => is_numeric(&left_type) && left_type == right_type,
             // Equality operators: same types
             BinaryOperator::Eq | BinaryOperator::Ne => left_type == right_type,
             // Logical operators: Boolean + Boolean

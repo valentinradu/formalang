@@ -299,8 +299,9 @@ impl ConstantFolder {
                 // operand's suffix. Mismatched-suffix mixing isn't yet
                 // type-checked by semantic — that lands with literal-defaulting
                 // and IR concrete-typing in later microcommits.
-                let combine =
-                    |v: f64| Literal::Number(crate::ast::NumberLiteral::suffixed_or_not(v, l.suffix));
+                let combine = |v: f64| {
+                    Literal::Number(crate::ast::NumberLiteral::from_lex(v, l.suffix, l.kind))
+                };
                 let lv = l.value;
                 let rv = r.value;
                 let result = match op {
@@ -401,8 +402,8 @@ impl ConstantFolder {
             Literal::Number(n) => {
                 if op == UnaryOperator::Neg {
                     Some(IrExpr::Literal {
-                        value: Literal::Number(crate::ast::NumberLiteral::suffixed_or_not(
-                            -n.value, n.suffix,
+                        value: Literal::Number(crate::ast::NumberLiteral::from_lex(
+                            -n.value, n.suffix, n.kind,
                         )),
                         ty: ty.clone(),
                     })
@@ -508,7 +509,7 @@ mod tests {
     #[test]
     fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { scale: Number = 1 + 2 }
+            struct Config { scale: I32 = 1 + 2 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -541,7 +542,7 @@ mod tests {
     #[test]
     fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { scale: Number = 2 * 3 }
+            struct Config { scale: I32 = 2 * 3 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -573,7 +574,7 @@ mod tests {
     #[test]
     fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { value: Number = 2 + 3 * 4 }
+            struct Config { value: I32 = 2 + 3 * 4 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -702,7 +703,7 @@ mod tests {
     #[test]
     fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { value: Number = if true { 1 } else { 2 } }
+            struct Config { value: I32 = if true { 1 } else { 2 } }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -735,8 +736,8 @@ mod tests {
     fn test_no_fold_non_constant() -> Result<(), Box<dyn std::error::Error>> {
         // Use a let binding that references another let binding
         let source = r"
-            let x: Number = 1
-            let y: Number = x + 1
+            let x: I32 = 1
+            let y: I32 = x + 1
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);

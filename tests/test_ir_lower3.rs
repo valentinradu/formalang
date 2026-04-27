@@ -49,9 +49,9 @@ fn test_lower_let_array_wildcard() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_block_let_tuple_pattern() -> Result<(), Box<dyn std::error::Error>> {
     // Tuple destructuring in a block statement using BindingPattern::Tuple
     let source = r"
-        struct Config { val: Number = {
-            let a: Number = 1
-            let b: Number = 2
+        struct Config { val: I32 = {
+            let a: I32 = 1
+            let b: I32 = 2
             a + b
         }}
     ";
@@ -99,10 +99,10 @@ fn test_lower_field_access_on_undefined_type_errors() -> Result<(), Box<dyn std:
 fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Field access on a known struct variable (exercises resolve_field_type struct branch)
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> Number { self.x }
-            fn get_y() -> Number { self.y }
+            fn get_x() -> I32 { self.x }
+            fn get_y() -> I32 { self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -133,10 +133,10 @@ fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>>
 fn test_lower_block_let_with_struct_field_access() -> Result<(), Box<dyn std::error::Error>> {
     // Block with multiple let statements
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
-        fn compute() -> Number {
-            let a: Number = 1
-            let b: Number = 2
+        struct Point { x: I32 = 0, y: I32 = 0 }
+        fn compute() -> I32 {
+            let a: I32 = 1
+            let b: I32 = 2
             a + b
         }
     ";
@@ -313,7 +313,7 @@ fn test_lower_closure_type_in_struct() -> Result<(), Box<dyn std::error::Error>>
     // A closure type in a struct field exercises lower_type for Closure variant
     let source = r"
         struct Config {
-            handler: (Number) -> Number = |x: Number| 42
+            handler: (I32) -> I32 = |x: I32| 42
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -349,9 +349,9 @@ fn test_lower_closure_type_in_struct() -> Result<(), Box<dyn std::error::Error>>
 fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::Error>> {
     // Test that field type is resolved properly from a struct field access
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn sum() -> Number { self.x + self.y }
+            fn sum() -> I32 { self.x + self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -385,7 +385,7 @@ fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::E
 fn test_lower_module_with_function() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod utils {
-            fn helper() -> Number { 42 }
+            fn helper() -> I32 { 42 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -445,7 +445,7 @@ fn test_lower_generic_param_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_optional_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct User { name: String, age: Number? }
+        struct User { name: String, age: I32? }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let age_field = module
@@ -470,8 +470,8 @@ fn test_lower_optional_type_in_field() -> Result<(), Box<dyn std::error::Error>>
 fn test_lower_unknown_function_call() -> Result<(), Box<dyn std::error::Error>> {
     // Struct that calls a defined function in its default value
     let source = r"
-        fn scale() -> Number { 2 }
-        struct Config { val: Number = scale() }
+        fn scale() -> I32 { 2 }
+        struct Config { val: I32 = scale() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let expr = module
@@ -501,7 +501,7 @@ fn test_lower_unknown_function_call() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_lower_dictionary_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct Cache { data: [String: Number] = ["x": 1] }
+        struct Cache { data: [String: I32] = ["x": 1] }
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let field = module
@@ -524,8 +524,8 @@ fn test_lower_dictionary_type_in_field() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_lower_trait_with_composition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Base { x: Number }
-        trait Extended: Base { y: Number }
+        trait Base { x: I32 }
+        trait Extended: Base { y: I32 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let extended = module
@@ -571,9 +571,9 @@ fn test_lower_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_builtin_math_functions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern fn sin(x: Number) -> Number
-        extern fn cos(x: Number) -> Number
-        fn compute() -> Number {
+        extern fn sin(x: I32) -> I32
+        extern fn cos(x: I32) -> I32
+        fn compute() -> I32 {
             sin(x: 1) + cos(x: 1)
         }
     ";
@@ -618,8 +618,8 @@ fn test_lower_named_function_call_in_body() -> Result<(), Box<dyn std::error::Er
     // function from inside a fn body lowers to `IrExpr::FunctionCall`
     // with the callee's name in the path.
     let source = r"
-        fn sum(a: Number, b: Number, c: Number) -> Number { a + b + c }
-        fn make_result() -> Number { sum(1, 2, 3) }
+        fn sum(a: I32, b: I32, c: I32) -> I32 { a + b + c }
+        fn make_result() -> I32 { sum(1, 2, 3) }
     ";
     let module =
         compile_to_ir(source).map_err(|e| format!("function call source should compile: {e:?}"))?;
@@ -653,7 +653,7 @@ fn test_lower_struct_field_numeric_default() -> Result<(), Box<dyn std::error::E
     // has no u32 / unsigned int suffix; this only verified that a struct
     // field with a numeric default lowers to `IrExpr::Literal`.
     let source = r"
-        struct Config { count: Number = 42 }
+        struct Config { count: I32 = 42 }
     ";
     let module = compile_to_ir(source)
         .map_err(|e| format!("struct with numeric default should compile: {e:?}"))?;
@@ -685,7 +685,7 @@ fn test_dce_mark_used_generic_struct_field() -> Result<(), Box<dyn std::error::E
 
     let source = r"
         struct Box<T> { value: T }
-        struct Config { wrapped: Box<Number> = Box<Number>(value: 42) }
+        struct Config { wrapped: Box<I32> = Box<I32>(value: 42) }
         impl Config {}
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -713,7 +713,7 @@ fn test_dce_mark_used_optional_struct_field() -> Result<(), Box<dyn std::error::
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct Inner { val: Number = 0 }
+        struct Inner { val: I32 = 0 }
         struct Config { item: Inner? }
         impl Config {}
     ";
@@ -736,7 +736,7 @@ fn test_dce_mark_used_dict_struct_field() -> Result<(), Box<dyn std::error::Erro
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct ValType { n: Number = 0 }
+        struct ValType { n: I32 = 0 }
         struct Config { map: [String: ValType] }
         impl Config {}
     ";
@@ -759,8 +759,8 @@ fn test_dce_mark_used_tuple_struct_field() -> Result<(), Box<dyn std::error::Err
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct Component { x: Number = 0 }
-        struct Config { pair: (a: Component, b: Number) }
+        struct Component { x: I32 = 0 }
+        struct Config { pair: (a: Component, b: I32) }
         impl Config {}
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -786,10 +786,10 @@ fn test_dce_keeps_method_chain_with_self_call() -> Result<(), Box<dyn std::error
     use formalang::ir::eliminate_dead_code;
 
     let source = r"
-        struct Calc { val: Number = 0 }
+        struct Calc { val: I32 = 0 }
         impl Calc {
-            fn square() -> Number { self.val * self.val }
-            fn double() -> Number { self.square() }
+            fn square() -> I32 { self.val * self.val }
+            fn double() -> I32 { self.square() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -819,10 +819,10 @@ fn test_dce_mark_used_in_field_access() -> Result<(), Box<dyn std::error::Error>
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct Inner { val: Number = 0 }
+        struct Inner { val: I32 = 0 }
         struct Outer { inner: Inner }
         impl Outer {
-            fn get_val() -> Number { self.inner.val }
+            fn get_val() -> I32 { self.inner.val }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;

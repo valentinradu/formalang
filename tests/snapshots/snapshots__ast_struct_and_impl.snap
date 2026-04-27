@@ -45,7 +45,7 @@ File {
                                 },
                             },
                             ty: Primitive(
-                                Number,
+                                I32,
                             ),
                             optional: false,
                             default: None,
@@ -57,9 +57,9 @@ File {
                                     column: 24,
                                 },
                                 end: Location {
-                                    offset: 33,
+                                    offset: 30,
                                     line: 2,
-                                    column: 33,
+                                    column: 30,
                                 },
                             },
                         },
@@ -69,33 +69,33 @@ File {
                                 name: "y",
                                 span: Span {
                                     start: Location {
-                                        offset: 35,
+                                        offset: 32,
                                         line: 2,
-                                        column: 35,
+                                        column: 32,
                                     },
                                     end: Location {
-                                        offset: 36,
+                                        offset: 33,
                                         line: 2,
-                                        column: 36,
+                                        column: 33,
                                     },
                                 },
                             },
                             ty: Primitive(
-                                Number,
+                                I32,
                             ),
                             optional: false,
                             default: None,
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 35,
+                                    offset: 32,
                                     line: 2,
-                                    column: 35,
+                                    column: 32,
                                 },
                                 end: Location {
-                                    offset: 44,
+                                    offset: 38,
                                     line: 2,
-                                    column: 44,
+                                    column: 38,
                                 },
                             },
                         },
@@ -108,9 +108,9 @@ File {
                             column: 9,
                         },
                         end: Location {
-                            offset: 46,
+                            offset: 40,
                             line: 2,
-                            column: 46,
+                            column: 40,
                         },
                     },
                 },
@@ -125,12 +125,12 @@ File {
                         name: "Point",
                         span: Span {
                             start: Location {
-                                offset: 61,
+                                offset: 55,
                                 line: 4,
                                 column: 14,
                             },
                             end: Location {
-                                offset: 66,
+                                offset: 60,
                                 line: 4,
                                 column: 19,
                             },
@@ -143,12 +143,12 @@ File {
                                 name: "magnitude",
                                 span: Span {
                                     start: Location {
-                                        offset: 84,
+                                        offset: 78,
                                         line: 5,
                                         column: 16,
                                     },
                                     end: Location {
-                                        offset: 93,
+                                        offset: 87,
                                         line: 5,
                                         column: 25,
                                     },
@@ -162,12 +162,12 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 94,
+                                                offset: 88,
                                                 line: 5,
                                                 column: 26,
                                             },
                                             end: Location {
-                                                offset: 98,
+                                                offset: 92,
                                                 line: 5,
                                                 column: 30,
                                             },
@@ -177,12 +177,12 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 94,
+                                            offset: 88,
                                             line: 5,
                                             column: 26,
                                         },
                                         end: Location {
-                                            offset: 98,
+                                            offset: 92,
                                             line: 5,
                                             column: 30,
                                         },
@@ -191,7 +191,7 @@ File {
                             ],
                             return_type: Some(
                                 Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             ),
                             body: Some(
@@ -202,12 +202,12 @@ File {
                                                 name: "self",
                                                 span: Span {
                                                     start: Location {
-                                                        offset: 128,
+                                                        offset: 119,
                                                         line: 6,
                                                         column: 17,
                                                     },
                                                     end: Location {
-                                                        offset: 132,
+                                                        offset: 123,
                                                         line: 6,
                                                         column: 21,
                                                     },
@@ -217,12 +217,12 @@ File {
                                                 name: "x",
                                                 span: Span {
                                                     start: Location {
-                                                        offset: 133,
+                                                        offset: 124,
                                                         line: 6,
                                                         column: 22,
                                                     },
                                                     end: Location {
-                                                        offset: 134,
+                                                        offset: 125,
                                                         line: 6,
                                                         column: 23,
                                                     },
@@ -231,12 +231,12 @@ File {
                                         ],
                                         span: Span {
                                             start: Location {
-                                                offset: 128,
+                                                offset: 119,
                                                 line: 6,
                                                 column: 17,
                                             },
                                             end: Location {
-                                                offset: 134,
+                                                offset: 125,
                                                 line: 6,
                                                 column: 23,
                                             },
@@ -249,12 +249,12 @@ File {
                                                 name: "self",
                                                 span: Span {
                                                     start: Location {
-                                                        offset: 137,
+                                                        offset: 128,
                                                         line: 6,
                                                         column: 26,
                                                     },
                                                     end: Location {
-                                                        offset: 141,
+                                                        offset: 132,
                                                         line: 6,
                                                         column: 30,
                                                     },
@@ -264,12 +264,12 @@ File {
                                                 name: "y",
                                                 span: Span {
                                                     start: Location {
-                                                        offset: 142,
+                                                        offset: 133,
                                                         line: 6,
                                                         column: 31,
                                                     },
                                                     end: Location {
-                                                        offset: 143,
+                                                        offset: 134,
                                                         line: 6,
                                                         column: 32,
                                                     },
@@ -278,12 +278,12 @@ File {
                                         ],
                                         span: Span {
                                             start: Location {
-                                                offset: 137,
+                                                offset: 128,
                                                 line: 6,
                                                 column: 26,
                                             },
                                             end: Location {
-                                                offset: 143,
+                                                offset: 134,
                                                 line: 6,
                                                 column: 32,
                                             },
@@ -291,12 +291,12 @@ File {
                                     },
                                     span: Span {
                                         start: Location {
-                                            offset: 128,
+                                            offset: 119,
                                             line: 6,
                                             column: 17,
                                         },
                                         end: Location {
-                                            offset: 143,
+                                            offset: 134,
                                             line: 6,
                                             column: 32,
                                         },
@@ -307,12 +307,12 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 81,
+                                    offset: 75,
                                     line: 5,
                                     column: 13,
                                 },
                                 end: Location {
-                                    offset: 157,
+                                    offset: 148,
                                     line: 7,
                                     column: 14,
                                 },
@@ -323,12 +323,12 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 56,
+                            offset: 50,
                             line: 4,
                             column: 9,
                         },
                         end: Location {
-                            offset: 167,
+                            offset: 158,
                             line: 8,
                             column: 10,
                         },
@@ -344,7 +344,7 @@ File {
             column: 0,
         },
         end: Location {
-            offset: 167,
+            offset: 158,
             line: 0,
             column: 0,
         },

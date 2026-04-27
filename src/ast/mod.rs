@@ -484,6 +484,19 @@ pub enum PrimitiveType {
     Never,
 }
 
+/// Whether a numeric literal was written with integer or float syntax.
+///
+/// The lexer sets this based on the presence of `.` or `e` in the digit
+/// slice — `42` is integer, `42.0` and `1e5` are float. Used to pick the
+/// inference default for unsuffixed literals (`I32` for integer, `F64`
+/// for float).
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NumberSourceKind {
+    Integer,
+    Float,
+}
+
 /// Width-tagged suffix attached to a numeric literal at parse time.
 ///
 /// Source spelling is uppercase and adjacent to the digits (e.g. `42I32`,
@@ -511,8 +524,8 @@ impl NumericSuffix {
     }
 }
 
-/// Parsed payload of a numeric literal: the `f64` value and an optional
-/// source-level type suffix.
+/// Parsed payload of a numeric literal: the `f64` value, an optional
+/// source-level type suffix, and the integer-vs-float source-syntax kind.
 ///
 /// A single field type that both `lexer::Token::Number` and `Literal::Number`
 /// wrap. Single field because logos (used by the lexer) only supports
@@ -524,48 +537,100 @@ impl NumericSuffix {
 pub struct NumberLiteral {
     pub value: f64,
     pub suffix: Option<NumericSuffix>,
+    pub kind: NumberSourceKind,
 }
 
 impl NumberLiteral {
-    /// Construct with no suffix (the common, unsuffixed-source case).
+    /// Construct an integer-syntax literal with no suffix.
     #[must_use]
     pub const fn unsuffixed(value: f64) -> Self {
         Self {
             value,
             suffix: None,
+            kind: NumberSourceKind::Integer,
         }
     }
 
-    /// Construct with an explicit suffix.
+    /// Construct a float-syntax literal with no suffix.
+    #[must_use]
+    pub const fn unsuffixed_float(value: f64) -> Self {
+        Self {
+            value,
+            suffix: None,
+            kind: NumberSourceKind::Float,
+        }
+    }
+
+    /// Construct with an explicit suffix. The source kind is inferred from
+    /// the suffix's family (`I32`/`I64` → Integer, `F32`/`F64` → Float).
     #[must_use]
     pub const fn suffixed(value: f64, suffix: NumericSuffix) -> Self {
+        let kind = match suffix {
+            NumericSuffix::I32 | NumericSuffix::I64 => NumberSourceKind::Integer,
+            NumericSuffix::F32 | NumericSuffix::F64 => NumberSourceKind::Float,
+        };
         Self {
             value,
             suffix: Some(suffix),
+            kind,
         }
     }
 
-    /// Construct with the suffix already wrapped in an `Option` — convenience
-    /// for parsers that compute the suffix conditionally.
+    /// Construct with the suffix already wrapped in an `Option` and an
+    /// explicit source kind — convenience for the lexer, which determines
+    /// both fields independently from the literal slice.
     #[must_use]
-    pub const fn suffixed_or_not(value: f64, suffix: Option<NumericSuffix>) -> Self {
-        Self { value, suffix }
+    pub const fn from_lex(
+        value: f64,
+        suffix: Option<NumericSuffix>,
+        kind: NumberSourceKind,
+    ) -> Self {
+        Self {
+            value,
+            suffix,
+            kind,
+        }
     }
 
-    /// The [`PrimitiveType`] this literal carries: the suffix's primitive when
-    /// present, or [`PrimitiveType::Number`] for unsuffixed literals (the
-    /// inference-default placeholder; later microcommits replace this with
-    /// `I32` / `F64` defaulting at the inference layer).
+    /// The [`PrimitiveType`] this literal carries.
+    ///
+    /// When a suffix is present, that wins. Otherwise the source kind picks
+    /// the default: `Integer` → [`PrimitiveType::I32`],
+    /// `Float` → [`PrimitiveType::F64`].
     #[must_use]
     pub fn primitive_type(&self) -> PrimitiveType {
         self.suffix
-            .map_or(PrimitiveType::Number, NumericSuffix::primitive)
+            .map_or_else(|| self.kind.default_primitive(), NumericSuffix::primitive)
+    }
+}
+
+impl NumberSourceKind {
+    /// Default [`PrimitiveType`] for an unsuffixed literal of this kind.
+    #[must_use]
+    pub const fn default_primitive(self) -> PrimitiveType {
+        match self {
+            Self::Integer => PrimitiveType::I32,
+            Self::Float => PrimitiveType::F64,
+        }
     }
 }
 
 impl From<f64> for NumberLiteral {
+    /// Default conversion infers the source kind from whether `value` has a
+    /// fractional part — finite whole-number values get `Integer`, anything
+    /// else (including `NaN` / infinities) gets `Float`. Convenient for tests
+    /// and IR-internal construction; suffix is always `None`.
     fn from(value: f64) -> Self {
-        Self::unsuffixed(value)
+        let kind = if value.is_finite() && value.fract() == 0.0 {
+            NumberSourceKind::Integer
+        } else {
+            NumberSourceKind::Float
+        };
+        Self {
+            value,
+            suffix: None,
+            kind,
+        }
     }
 }
 

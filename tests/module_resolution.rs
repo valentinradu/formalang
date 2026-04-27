@@ -538,7 +538,7 @@ pub struct Helper {
     name: String
 }
 pub struct Utils {
-    value: Number
+    value: I32
 }
 ",
     );
@@ -640,7 +640,7 @@ fn test_semantic_multiple_use_statements() -> Result<(), Box<dyn std::error::Err
     );
     resolver.add_module(
         vec!["types".to_string()],
-        "pub struct Value { amount: Number }",
+        "pub struct Value { amount: I32 }",
     );
     let source = r"
 use utils::Helper
@@ -663,7 +663,7 @@ pub struct Helper {
     name: String
 }
 pub struct Utils {
-    value: Number
+    value: I32
 }
 ",
     );
@@ -692,7 +692,7 @@ pub struct Helper {
     name: String
 }
 pub struct Utils {
-    value: Number
+    value: I32
 }
 pub enum Status {
     Active,
@@ -810,7 +810,7 @@ pub struct Helper {
         vec!["types".to_string()],
         r"
 pub struct Value {
-    amount: Number
+    amount: I32
 }
 pub struct Item {
     id: String
@@ -881,14 +881,14 @@ fn test_semantic_use_glob_with_let_bindings() -> Result<(), Box<dyn std::error::
     resolver.add_module(
         vec!["constants".to_string()],
         r#"
-pub let MAX_SIZE: Number = 100
+pub let MAX_SIZE: I32 = 100
 pub let DEFAULT_NAME: String = "unnamed"
 "#,
     );
     let source = r"
 use constants::*
 struct Config {
-    size: Number
+    size: I32
 }
 ";
     analyze_with_mock(source, resolver).map_err(|e| format!("{e:?}"))?;
@@ -906,7 +906,7 @@ pub struct ParentStruct {
 }
 pub mod child {
     pub struct ChildStruct {
-        value: Number
+        value: I32
     }
 }
 ",
@@ -1055,7 +1055,7 @@ struct Main { h: Helper<Number> }
 
     let mut module = lower_to_ir(&file, analyzer.symbols()).map_err(|e| format!("{e:?}"))?;
 
-    // Sanity: pre-monomorphise, Main.h is an External with type_args=[Number].
+    // Sanity: pre-monomorphise, Main.h is an External with type_args=[I32].
     let main_struct = module
         .structs
         .iter()
@@ -1194,7 +1194,7 @@ fn test_filesystem_resolver_loads_nested_module() -> Result<(), Box<dyn std::err
     std::fs::create_dir(&utils_dir)?;
     std::fs::write(
         utils_dir.join("helpers.fv"),
-        "pub struct Point { x: Number, y: Number }\n",
+        "pub struct Point { x: I32, y: I32 }\n",
     )?;
     std::fs::write(
         tmp.path().join("main.fv"),
@@ -1219,11 +1219,11 @@ fn test_filesystem_resolver_detects_circular_import() -> Result<(), Box<dyn std:
     // Root imports b::A, b re-exports A from a, a re-exports A from b.
     std::fs::write(
         tmp.path().join("a.fv"),
-        "pub use b::A\npub struct LocalA { x: Number }\n",
+        "pub use b::A\npub struct LocalA { x: I32 }\n",
     )?;
     std::fs::write(
         tmp.path().join("b.fv"),
-        "pub use a::A\npub struct LocalB { y: Number }\n",
+        "pub use a::A\npub struct LocalB { y: I32 }\n",
     )?;
     std::fs::write(tmp.path().join("main.fv"), "use b::A\n")?;
 

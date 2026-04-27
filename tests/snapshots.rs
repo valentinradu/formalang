@@ -29,10 +29,10 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 #[test]
 fn ast_struct_and_impl() {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
 
         impl Point {
-            fn magnitude(self) -> Number {
+            fn magnitude(self) -> I32 {
                 self.x + self.y
             }
         }
@@ -44,9 +44,9 @@ fn ast_struct_and_impl() {
 #[test]
 fn ast_enum_and_match() {
     let source = r"
-        enum Status { active, inactive, pending(since: Number) }
+        enum Status { active, inactive, pending(since: I32) }
 
-        pub fn label(s: Status) -> Number {
+        pub fn label(s: Status) -> I32 {
             match s {
                 .active: 1,
                 .inactive: 0,
@@ -62,13 +62,13 @@ fn ast_enum_and_match() {
 fn ast_trait_and_impl() {
     let source = r"
         trait Area {
-            fn area(self) -> Number
+            fn area(self) -> I32
         }
 
-        struct Square { side: Number }
+        struct Square { side: I32 }
 
         impl Area for Square {
-            fn area(self) -> Number {
+            fn area(self) -> I32 {
                 self.side * self.side
             }
         }
@@ -80,7 +80,7 @@ fn ast_trait_and_impl() {
 #[test]
 fn ast_closure_with_mut_and_sink() {
     let source = r"
-        let bump: mut Number -> Number = mut n -> n
+        let bump: mut I32 -> I32 = mut n -> n
         let consume: sink String -> String = sink s -> s
     ";
     let file = compile(source).expect("should compile");
@@ -106,7 +106,7 @@ fn ast_generic_struct_with_impl() {
 fn ast_module_with_path_access() {
     let source = r"
         pub mod shapes {
-            pub struct Circle { radius: Number }
+            pub struct Circle { radius: I32 }
         }
 
         let c = shapes::Circle(radius: 10)
@@ -125,7 +125,7 @@ fn ast_if_and_match_exprs() {
             .yes: "y",
             .no: "n"
         }
-        let flag: Number = if true { 1 } else { 0 }
+        let flag: I32 = if true { 1 } else { 0 }
     "#;
     let file = compile(source).expect("should compile");
     insta::assert_debug_snapshot!("ast_if_and_match_exprs", file);
@@ -138,10 +138,10 @@ fn ast_if_and_match_exprs() {
 #[test]
 fn ir_struct_and_impl() {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
 
         impl Point {
-            fn magnitude(self) -> Number {
+            fn magnitude(self) -> I32 {
                 self.x + self.y
             }
         }
@@ -153,9 +153,9 @@ fn ir_struct_and_impl() {
 #[test]
 fn ir_enum_and_match() {
     let source = r"
-        enum Status { active, inactive, pending(since: Number) }
+        enum Status { active, inactive, pending(since: I32) }
 
-        pub fn label(s: Status) -> Number {
+        pub fn label(s: Status) -> I32 {
             match s {
                 .active: 1,
                 .inactive: 0,
@@ -171,13 +171,13 @@ fn ir_enum_and_match() {
 fn ir_trait_and_impl() {
     let source = r"
         trait Area {
-            fn area(self) -> Number
+            fn area(self) -> I32
         }
 
-        struct Square { side: Number }
+        struct Square { side: I32 }
 
         impl Area for Square {
-            fn area(self) -> Number {
+            fn area(self) -> I32 {
                 self.side * self.side
             }
         }

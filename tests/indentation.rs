@@ -581,7 +581,7 @@ fn test_extern_keyword() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_definition() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct User { name: String, age: Number }";
+    let source = "struct User { name: String, age: I32 }";
     let tokens = Lexer::tokenize_all(source);
     if tokens.len() < 8 {
         return Err(format!("Expected multiple tokens, got {}", tokens.len()).into());

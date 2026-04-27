@@ -51,7 +51,7 @@ fn test_error_report_undefined_type() -> Result<(), Box<dyn std::error::Error>> 
 fn test_error_report_duplicate_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config { name: String }
-        struct Config { value: Number }
+        struct Config { value: I32 }
     ";
     let result = compile_and_report(source, "test.fv");
     if result.is_ok() {
@@ -380,7 +380,7 @@ fn test_error_report_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Type mismatch in trait field implementation
     let source = r"
         trait Countable {
-            count: Number
+            count: I32
         }
         struct Test: Countable {
             count: String
@@ -694,7 +694,7 @@ fn test_valid_complex_source() -> Result<(), Box<dyn std::error::Error>> {
 
         struct User {
             name: String = "default user",
-            age: Number
+            age: I32
         }
 
         enum Status {
@@ -720,7 +720,7 @@ fn test_report_error_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
         found: "String".to_string(),
         span: Span::default(),
     };
-    let source = "struct Test { value: Number }";
+    let source = "struct Test { value: I32 }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("Type mismatch") || report.contains("E004")) {
         return Err(
@@ -785,7 +785,7 @@ fn test_report_error_missing_trait_field() -> Result<(), Box<dyn std::error::Err
         trait_name: "Named".to_string(),
         span: Span::default(),
     };
-    let source = "struct User: Named { age: Number }";
+    let source = "struct User: Named { age: I32 }";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("name") || report.contains("E008")) {
         return Err(format!("expected report to contain 'name' or 'E008', got: {report}").into());
@@ -952,7 +952,7 @@ fn test_report_error_regular_fn_without_body() -> Result<(), Box<dyn std::error:
         function: "compute".to_string(),
         span: Span::default(),
     };
-    let source = "fn compute() -> Number";
+    let source = "fn compute() -> I32";
     let report = report_error(&error, source, "test.fv");
     if !(report.contains("compute") || report.contains("E999")) {
         return Err(

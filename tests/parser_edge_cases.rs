@@ -79,7 +79,7 @@ fn test_array_literal_single() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_array_literal_many() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { items: [Number] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
+        struct A { items: [I32] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     ";
     compile(source).map_err(|e| format!("Many items array: {e:?}"))?;
     Ok(())
@@ -88,7 +88,7 @@ fn test_array_literal_many() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_negative_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = -42 }
+        struct A { x: I32 = -42 }
     ";
     compile(source).map_err(|e| format!("Negative number: {e:?}"))?;
     Ok(())
@@ -97,7 +97,7 @@ fn test_negative_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_decimal_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 3.14159 }
+        struct A { x: F64 = 3.14159 }
     ";
     compile(source).map_err(|e| format!("Decimal number: {e:?}"))?;
     Ok(())
@@ -106,7 +106,7 @@ fn test_decimal_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_negative_decimal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = -0.5 }
+        struct A { x: F64 = -0.5 }
     ";
     compile(source).map_err(|e| format!("Negative decimal: {e:?}"))?;
     Ok(())
@@ -137,7 +137,7 @@ fn test_string_with_quotes() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_arithmetic_precedence() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 1 + 2 * 3 }
+        struct A { x: I32 = 1 + 2 * 3 }
     ";
     compile(source).map_err(|e| format!("Arithmetic precedence: {e:?}"))?;
     Ok(())
@@ -164,7 +164,7 @@ fn test_logical_precedence() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_parenthesized_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = (1 + 2) * 3 }
+        struct A { x: I32 = (1 + 2) * 3 }
     ";
     compile(source).map_err(|e| format!("Parenthesized: {e:?}"))?;
     Ok(())
@@ -173,7 +173,7 @@ fn test_parenthesized_expression() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_nested_parentheses() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = ((1 + 2) * (3 + 4)) }
+        struct A { x: I32 = ((1 + 2) * (3 + 4)) }
     ";
     compile(source).map_err(|e| format!("Nested parentheses: {e:?}"))?;
     Ok(())
@@ -218,7 +218,7 @@ fn test_for_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = (let a = 1
+            x: I32 = (let a = 1
             in let b = 2
             in let c = 3
             in a)
@@ -235,7 +235,7 @@ fn test_let_expr_requires_in_separator() -> Result<(), Box<dyn std::error::Error
     // ambiguous and shouldn't fall back to greedy parsing.
     let source = r"
         struct A {
-            x: Number = (let a = 1
+            x: I32 = (let a = 1
             a)
         }
     ";
@@ -276,9 +276,9 @@ fn test_field_access_on_parameter_parses() -> Result<(), Box<dyn std::error::Err
     // This tests that lowercase.identifier parses correctly (not as enum instantiation)
     // We use parse_only to test just parsing, not semantic analysis
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         impl Point {
-            fn get_x(p: Point) -> Number { p.x }
+            fn get_x(p: Point) -> I32 { p.x }
         }
     ";
     parse_only(source).map_err(|e| format!("{e:?}"))?;
@@ -301,10 +301,10 @@ fn test_enum_instantiation_requires_uppercase() -> Result<(), Box<dyn std::error
 #[test]
 fn test_field_access_chain_on_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Inner { value: Number }
+        struct Inner { value: I32 }
         struct Outer { inner: Inner }
         impl Outer {
-            fn get_value(o: Outer) -> Number { o.inner.value }
+            fn get_value(o: Outer) -> I32 { o.inner.value }
         }
     ";
     parse_only(source).map_err(|e| format!("{e:?}"))?;
@@ -401,7 +401,7 @@ fn test_trait_many_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Many {
             a: String,
-            b: Number,
+            b: I32,
             c: Boolean,
             d: [String],
             e: String?
@@ -422,8 +422,8 @@ fn test_trait_with_generics() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Base { base: String }
-        trait Derived { derived: Number }
-        struct Impl { base: String, derived: Number }
+        trait Derived { derived: I32 }
+        struct Impl { base: String, derived: I32 }
     ";
     compile(source).map_err(|e| format!("Trait inheritance: {e:?}"))?;
     Ok(())
@@ -445,11 +445,11 @@ fn test_struct_many_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Many {
             a: String,
-            b: Number,
+            b: I32,
             c: Boolean,
             d: [String],
             e: String?,
-            f: [String: Number]
+            f: [String: I32]
         }
     ";
     compile(source).map_err(|e| format!("Struct many fields: {e:?}"))?;
@@ -460,10 +460,10 @@ fn test_struct_many_fields() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_with_modifiers() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Full {
-            mut count: Number,
+            mut count: I32,
             content: String,
             optional: String?,
-            default: Number = 0
+            default: I32 = 0
         }
     ";
     compile(source).map_err(|e| format!("Struct with modifiers: {e:?}"))?;
@@ -507,7 +507,7 @@ fn test_struct_with_default_expression() -> Result<(), Box<dyn std::error::Error
     let source = r#"
         struct Config {
             name: String = "default config",
-            value: Number
+            value: I32
         }
     "#;
     compile(source).map_err(|e| format!("Struct with default expression: {e:?}"))?;
@@ -527,21 +527,21 @@ fn test_deeply_nested_array() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_complex_dictionary() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { map: [String: [Number]] }";
+    let source = "struct A { map: [String: [I32]] }";
     compile(source).map_err(|e| format!("Complex dictionary: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_optional_dictionary() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { map: [String: Number]? }";
+    let source = "struct A { map: [String: I32]? }";
     compile(source).map_err(|e| format!("Optional dictionary: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_closure_chain() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> Number -> Boolean }";
+    let source = "struct A { callback: String -> I32 -> Boolean }";
     compile(source).map_err(|e| format!("Closure chain: {e:?}"))?;
     Ok(())
 }
@@ -600,14 +600,14 @@ fn test_let_expression() -> Result<(), Box<dyn std::error::Error>> {
 fn test_full_file() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         // Traits
-        trait Identifiable { id: Number }
+        trait Identifiable { id: I32 }
 
         // Enums
         enum Status { active, inactive }
 
         // Structs
         struct User {
-            id: Number,
+            id: I32,
             name: String,
             status: Status
         }
@@ -670,12 +670,12 @@ fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_in_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Rect {
-            width: Number,
-            height: Number
+            width: I32,
+            height: I32
         }
 
         impl Rect {
-            fn area(self) -> Number {
+            fn area(self) -> I32 {
                 self.width
             }
         }
@@ -688,8 +688,8 @@ fn test_fn_in_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_in_impl_with_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
 
         impl Point {
@@ -706,7 +706,7 @@ fn test_fn_in_impl_with_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_in_impl_no_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            count: Number
+            count: I32
         }
 
         impl Counter {
@@ -724,16 +724,16 @@ fn test_fn_in_impl_with_struct_defaults() -> Result<(), Box<dyn std::error::Erro
     // Impl blocks now only contain functions; defaults go in struct
     let source = r"
         struct Rect {
-            width: Number = 100,
-            height: Number = 50
+            width: I32 = 100,
+            height: I32 = 50
         }
 
         impl Rect {
-            fn area(self) -> Number {
+            fn area(self) -> I32 {
                 self.width
             }
 
-            fn perimeter(self) -> Number {
+            fn perimeter(self) -> I32 {
                 self.width
             }
         }
@@ -747,12 +747,12 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
     // No commas between functions in impl blocks
     let source = r"
         struct Vec2 {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
 
         impl Vec2 {
-            fn length(self) -> Number {
+            fn length(self) -> I32 {
                 self.x
             }
 
@@ -760,7 +760,7 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
                 Vec2(x: self.x, y: self.y)
             }
 
-            fn dot(self, other: Vec2) -> Number {
+            fn dot(self, other: Vec2) -> I32 {
                 self.x
             }
         }
@@ -776,8 +776,8 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(angle: Number) -> Number { angle }
-        struct A { x: Number = compute(angle: 1.0) }
+        fn compute(angle: I32) -> I32 { angle }
+        struct A { x: I32 = compute(angle: 1.0) }
     ";
     compile(source).map_err(|e| format!("Function call single arg: {e:?}"))?;
     Ok(())
@@ -786,8 +786,8 @@ fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn clamp(val: Number, lo: Number) -> Number { val }
-        struct A { x: Number = clamp(val: 1.0, lo: 2.0) }
+        fn clamp(val: I32, lo: I32) -> I32 { val }
+        struct A { x: I32 = clamp(val: 1.0, lo: 2.0) }
     ";
     compile(source).map_err(|e| format!("Function call multiple args: {e:?}"))?;
     Ok(())
@@ -797,9 +797,9 @@ fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> 
 fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod math {
-            pub fn compute(angle: Number) -> Number { angle }
+            pub fn compute(angle: I32) -> I32 { angle }
         }
-        fn call_compute() -> Number { math::compute(angle: 1.0) }
+        fn call_compute() -> I32 { math::compute(angle: 1.0) }
     ";
     compile(source).map_err(|e| format!("Function call qualified path: {e:?}"))?;
     Ok(())
@@ -808,8 +808,8 @@ fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn double(x: Number) -> Number { x }
-        struct A { x: Number = double(x: double(x: 1.0)) }
+        fn double(x: I32) -> I32 { x }
+        struct A { x: I32 = double(x: double(x: 1.0)) }
     ";
     compile(source).map_err(|e| format!("Nested function calls: {e:?}"))?;
     Ok(())
@@ -819,14 +819,14 @@ fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
 fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
     // Method calls on structs with extern impl are allowed
     let source = r"
-        struct Canvas { width: Number, height: Number }
+        struct Canvas { width: I32, height: I32 }
         extern impl Canvas {
-            fn area(self) -> Number
+            fn area(self) -> I32
         }
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
         impl A {
-            fn get_area() -> Number { self.x.area() }
+            fn get_area() -> I32 { self.x.area() }
         }
     ";
     compile(source).map_err(|e| format!("Method call: {e:?}"))?;
@@ -836,9 +836,9 @@ fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Canvas { width: Number, height: Number }
+        struct Canvas { width: I32, height: I32 }
         extern impl Canvas {
-            fn scale(self, factor: Number) -> Canvas
+            fn scale(self, factor: I32) -> Canvas
         }
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
@@ -853,15 +853,15 @@ fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Canvas { width: Number, height: Number }
+        struct Canvas { width: I32, height: I32 }
         extern impl Canvas {
             fn flip(self) -> Canvas
-            fn area(self) -> Number
+            fn area(self) -> I32
         }
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
         impl A {
-            fn get_area() -> Number { self.x.flip().area() }
+            fn get_area() -> I32 { self.x.flip().area() }
         }
     ";
     compile(source).map_err(|e| format!("Chained method calls: {e:?}"))?;
@@ -871,10 +871,10 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_function_and_method_mixed() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn process(val: Number) -> Number { val }
-        struct A { x: Number }
+        fn process(val: I32) -> I32 { val }
+        struct A { x: I32 }
         impl A {
-            fn compute() -> Number { process(val: self.x) }
+            fn compute() -> I32 { process(val: self.x) }
         }
     ";
     compile(source).map_err(|e| format!("Mixed function and method calls: {e:?}"))?;
@@ -889,10 +889,10 @@ fn test_function_and_method_mixed() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_param_with_default() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            value: Number
+            value: I32
         }
         impl Counter {
-            fn add(self, amount: Number = 1) -> Number {
+            fn add(self, amount: I32 = 1) -> I32 {
                 self.value
             }
         }
@@ -905,10 +905,10 @@ fn test_fn_param_with_default() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_param_multiple_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            value: Number
+            value: I32
         }
         impl Config {
-            fn configure(self, timeout: Number = 30, retries: Number = 3) -> Number {
+            fn configure(self, timeout: I32 = 30, retries: I32 = 3) -> I32 {
                 self.value
             }
         }
@@ -921,10 +921,10 @@ fn test_fn_param_multiple_defaults() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fn_param_mixed_with_and_without_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            value: Number
+            value: I32
         }
         impl Calculator {
-            fn compute(self, x: Number, scale: Number = 1.0, offset: Number = 0.0) -> Number {
+            fn compute(self, x: I32, scale: I32 = 1.0, offset: I32 = 0.0) -> I32 {
                 self.value
             }
         }
@@ -937,10 +937,10 @@ fn test_fn_param_mixed_with_and_without_defaults() -> Result<(), Box<dyn std::er
 fn test_fn_param_default_with_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Math {
-            base: Number
+            base: I32
         }
         impl Math {
-            fn calculate(self, factor: Number = 2 * 3 + 1) -> Number {
+            fn calculate(self, factor: I32 = 2 * 3 + 1) -> I32 {
                 self.base
             }
         }
@@ -995,7 +995,7 @@ fn test_parse_reports_errors_on_malformed_input() -> Result<(), Box<dyn std::err
     // second garbage run — so both surface.
     let source = r"
 @@@
-struct Good { y: Number }
+struct Good { y: I32 }
 ###
 ";
     let errors = parse_only(source).err().ok_or("expected parse errors")?;
@@ -1014,16 +1014,16 @@ fn test_block_expr_recovery_within_fn_body() -> Result<(), Box<dyn std::error::E
     // Audit #40: a malformed let inside an inner block expression must not
     // hide the parse error in a sibling fn body. Both should surface.
     let source = r"
-pub fn first() -> Number {
-    let _result: Number = {
-        let x: Number = + +
+pub fn first() -> I32 {
+    let _result: I32 = {
+        let x: I32 = + +
         1
     }
     2
 }
 
-pub fn second() -> Number {
-    let y: Number = + +
+pub fn second() -> I32 {
+    let y: I32 = + +
     2
 }
 ";
@@ -1048,13 +1048,13 @@ fn test_fn_body_recovery_surfaces_multiple_errors() -> Result<(), Box<dyn std::e
     // diagnostics for subsequent function bodies. Each broken `let` value
     // should surface its own ParseError.
     let source = r"
-pub fn first() -> Number {
-    let x: Number = + +
+pub fn first() -> I32 {
+    let x: I32 = + +
     1
 }
 
-pub fn second() -> Number {
-    let y: Number = + +
+pub fn second() -> I32 {
+    let y: I32 = + +
     2
 }
 ";
@@ -1126,7 +1126,7 @@ struct User {
     name: String,
     /// Account age in days. Multi-line
     /// docs join with newlines.
-    age: Number
+    age: I32
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -1157,7 +1157,7 @@ fn test_trait_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn std::err
     let source = r"
 trait Shape {
     /// Total surface area, in square units.
-    area: Number
+    area: I32
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -1179,8 +1179,8 @@ fn test_enum_variant_field_doc_comments_threaded_to_ir() -> Result<(), Box<dyn s
     let source = r"
 enum Event {
     Click(/// X coordinate of the click.
-        x: Number, /// Y coordinate of the click.
-        y: Number)
+        x: I32, /// Y coordinate of the click.
+        y: I32)
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;

@@ -64,7 +64,7 @@ fn test_array_destructuring_first_and_last() -> Result<(), Box<dyn std::error::E
 fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
     // Basic struct destructuring: let {name, age} = user
     let source = r#"
-        struct User { name: String, age: Number }
+        struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name, age} = user
     "#;
@@ -76,7 +76,7 @@ fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> 
 fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Error>> {
     // Rename during destructuring: let {name as username} = user
     let source = r#"
-        struct User { name: String, age: Number }
+        struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name as username} = user
     "#;
@@ -88,7 +88,7 @@ fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Err
 fn test_struct_destructuring_partial() -> Result<(), Box<dyn std::error::Error>> {
     // Partial destructuring: let {name} = user (only extract some fields)
     let source = r#"
-        struct User { name: String, age: Number }
+        struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name} = user
     "#;
@@ -148,7 +148,7 @@ fn test_error_duplicate_binding_in_array() -> Result<(), Box<dyn std::error::Err
 fn test_error_duplicate_binding_in_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Can't have duplicate bindings in struct destructuring
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         pub let p = Point(x: 1, y: 2)
         pub let {x, x} = p
     ";

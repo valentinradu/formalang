@@ -77,11 +77,11 @@ struct Doc: Printable {
 #[test]
 fn test_struct_multi_trait_conformance_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-trait A { x: Number }
-trait B { y: Number }
+trait A { x: I32 }
+trait B { y: I32 }
 struct Foo: A + B {
-    x: Number,
-    y: Number
+    x: I32,
+    y: I32
 }
 ";
     let result = parse_only(source);
@@ -99,10 +99,10 @@ struct Foo: A + B {
 fn test_trait_inheritance_still_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 trait Base {
-    x: Number
+    x: I32
 }
 trait Extended: Base {
-    y: Number
+    y: I32
 }
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -206,7 +206,7 @@ struct Transform {
 #[test]
 fn test_unsigned_int_literal_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-let x: Number = 42u
+let x: I32 = 42u
 ";
     let result = parse_only(source);
     if result.is_ok() {
@@ -218,7 +218,7 @@ let x: Number = 42u
 #[test]
 fn test_signed_int_literal_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-let x: Number = -3i
+let x: I32 = -3i
 ";
     let result = parse_only(source);
     if result.is_ok() {
@@ -235,8 +235,8 @@ let x: Number = -3i
 fn test_plain_struct_still_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 pub struct Point {
-    x: Number,
-    y: Number
+    x: I32,
+    y: I32
 }
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -247,7 +247,7 @@ pub struct Point {
 fn test_plain_trait_still_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 pub trait Shape {
-    area: Number
+    area: I32
 }
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;

@@ -12,7 +12,7 @@ use formalang::parse_only;
 fn test_file_has_format_version() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 struct Foo {
-    x: Number
+    x: I32
 }
 ";
     let file = parse_only(source).map_err(|e| format!("{e:?}"))?;
@@ -39,11 +39,11 @@ fn test_empty_file_has_format_version() -> Result<(), Box<dyn std::error::Error>
 fn test_file_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 pub struct Point {
-    x: Number,
-    y: Number
+    x: I32,
+    y: I32
 }
 impl Point {
-    fn length(self) -> Number {
+    fn length(self) -> I32 {
         self.x + self.y
     }
 }
@@ -105,7 +105,7 @@ pub enum Status {
 #[test]
 fn test_extern_fn_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern fn create() -> Canvas
 ";
     let original = parse_only(source).map_err(|e| format!("{e:?}"))?;
@@ -142,7 +142,7 @@ fn test_ir_module_roundtrip_json() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 
 pub enum Status { active, inactive }
@@ -191,8 +191,8 @@ impl User {
 fn test_ir_closure_captures_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     // Closures include a `captures` field in the IR; verify it survives a round-trip.
     let source = r"
-pub fn make_counter(sink n: Number) -> (Number) -> Number {
-    |x: Number| x + n
+pub fn make_counter(sink n: I32) -> (I32) -> I32 {
+    |x: I32| x + n
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -222,7 +222,7 @@ pub trait Named {
 
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 
 impl User {
@@ -234,10 +234,10 @@ impl User {
 pub enum Status {
     active,
     banned(reason: String),
-    pending(since: Number, note: String)
+    pending(since: I32, note: String)
 }
 
-pub let default_age: Number = 0
+pub let default_age: I32 = 0
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let json = serde_json::to_string(&module).map_err(|e| format!("serialize: {e}"))?;

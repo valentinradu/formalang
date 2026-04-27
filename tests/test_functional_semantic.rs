@@ -34,7 +34,7 @@ fn test_circular_import_public_api_a_imports_b_imports_a() -> Result<(), Box<dyn
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct Foo { value: Number }
+pub struct Foo { value: I32 }
 pub use b::Bar
 ",
     );

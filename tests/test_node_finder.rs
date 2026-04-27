@@ -228,8 +228,8 @@ fn test_find_trait_generic_param() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Base { x: Number }
-        trait Extended: Base { y: Number }
+        trait Base { x: I32 }
+        trait Extended: Base { y: I32 }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     // Find "Base" in trait composition (second occurrence)
@@ -267,7 +267,7 @@ fn test_find_struct_name_identifier() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_find_struct_field_default_expr() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { count: Number = 42 }";
+    let source = r"struct A { count: I32 = 42 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "42")?;
     let ctx = find_node_at_offset(&file, off);
@@ -432,8 +432,8 @@ fn test_find_enum_generic_param() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_impl_struct_name() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Val { x: Number = 0 }
-        impl Val { fn get() -> Number { self.x } }
+        struct Val { x: I32 = 0 }
+        impl Val { fn get() -> I32 { self.x } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let usages: Vec<_> = source.match_indices("Val").collect();
@@ -455,8 +455,8 @@ fn test_find_impl_struct_name() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_impl_fn_name() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Val { x: Number = 0 }
-        impl Val { fn compute() -> Number { self.x } }
+        struct Val { x: I32 = 0 }
+        impl Val { fn compute() -> I32 { self.x } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "compute")?;
@@ -470,8 +470,8 @@ fn test_find_impl_fn_name() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_impl_fn_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Val { x: Number = 0 }
-        impl Val { fn add(n: Number) -> Number { self.x + n } }
+        struct Val { x: I32 = 0 }
+        impl Val { fn add(n: I32) -> I32 { self.x + n } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "n:")?;
@@ -492,8 +492,8 @@ fn test_find_impl_fn_param() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_impl_fn_body_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Val { x: Number = 5 }
-        impl Val { fn get() -> Number { self.x } }
+        struct Val { x: I32 = 5 }
+        impl Val { fn get() -> I32 { self.x } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "self.x")?;
@@ -531,7 +531,7 @@ fn test_find_impl_trait_name() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_impl_def_fallback() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Val { x: Number = 0 }
+        struct Val { x: I32 = 0 }
         impl Val { }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
@@ -604,7 +604,7 @@ fn test_find_module_def_fallback() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_function_def_name() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"fn myfunction() -> Number { 42 }";
+    let source = r"fn myfunction() -> I32 { 42 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "myfunction")?;
     let ctx = find_node_at_offset(&file, off);
@@ -616,7 +616,7 @@ fn test_find_function_def_name() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_function_def_param_name() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"fn add(x: Number, y: Number) -> Number { x + y }";
+    let source = r"fn add(x: I32, y: I32) -> I32 { x + y }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "x:")?;
     let ctx = find_node_at_offset(&file, off);
@@ -651,7 +651,7 @@ fn test_find_function_def_return_type() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_find_function_def_body() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"fn double(n: Number) -> Number { n * 2 }";
+    let source = r"fn double(n: I32) -> I32 { n * 2 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "n *")?;
     let ctx = find_node_at_offset(&file, off);
@@ -673,7 +673,7 @@ fn test_find_function_def_body() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_function_def_fallback() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"fn nothing() -> Number { 0 }";
+    let source = r"fn nothing() -> I32 { 0 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     // The `0` literal has no span so expr_span returns None for it
     // Place at start of the function
@@ -761,7 +761,7 @@ fn test_find_type_dictionary() -> Result<(), Box<dyn std::error::Error>> {
     // on a known span), Type (when a higher-level Type node covers the
     // range), StructField, or StructDef (the enclosing definition).
     // Reaching any of those proves we didn't fall off the AST.
-    let source = r"struct A { map: [String: Number] }";
+    let source = r"struct A { map: [String: I32] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "String")?;
     let ctx = find_node_at_offset(&file, off);
@@ -784,7 +784,7 @@ fn test_find_type_dictionary() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_for_var() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: [Number] = for item in [1, 2] { item } }";
+    let source = r"struct A { x: [I32] = for item in [1, 2] { item } }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "item in")?;
     let ctx = find_node_at_offset(&file, off);
@@ -804,7 +804,7 @@ fn test_find_expr_for_var() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_for_collection() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: [Number] = for i in items { i } }";
+    let source = r"struct A { x: [I32] = for i in items { i } }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "items")?;
     let ctx = find_node_at_offset(&file, off);
@@ -824,7 +824,7 @@ fn test_find_expr_for_collection() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_if_condition() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number = if flag { 1 } else { 0 } }";
+    let source = r"struct A { x: I32 = if flag { 1 } else { 0 } }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "flag")?;
     let ctx = find_node_at_offset(&file, off);
@@ -844,7 +844,7 @@ fn test_find_expr_if_condition() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_if_else_branch() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number = if true { 1 } else { fallback } }";
+    let source = r"struct A { x: I32 = if true { 1 } else { fallback } }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "fallback")?;
     let ctx = find_node_at_offset(&file, off);
@@ -921,7 +921,7 @@ fn test_find_expr_match_arm_body() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_array_elements() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: [Number] = [alpha, beta] }";
+    let source = r"struct A { x: [I32] = [alpha, beta] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "alpha")?;
     let ctx = find_node_at_offset(&file, off);
@@ -941,7 +941,7 @@ fn test_find_expr_array_elements() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_tuple_field_name() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { t: (first: Number, second: Number) = (first: 1, second: 2) }";
+    let source = r"struct A { t: (first: I32, second: I32) = (first: 1, second: 2) }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     // Find "first" inside the tuple expression (second occurrence)
     let usages: Vec<_> = source.match_indices("first").collect();
@@ -988,7 +988,7 @@ fn test_find_expr_binary_op_right() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_expr_group() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number = (inner_expr) }";
+    let source = r"struct A { x: I32 = (inner_expr) }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "inner_expr")?;
     let ctx = find_node_at_offset(&file, off);
@@ -1008,7 +1008,7 @@ fn test_find_expr_group() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_enclosing_definition_trait() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait T { x: Number }";
+    let source = "trait T { x: I32 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "x")?;
     let ctx = find_node_at_offset(&file, off);
@@ -1039,8 +1039,8 @@ fn test_enclosing_definition_enum() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_enclosing_definition_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct V { x: Number = 0 }
-        impl V { fn get() -> Number { self.x } }
+        struct V { x: I32 = 0 }
+        impl V { fn get() -> I32 { self.x } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "get")?;
@@ -1056,7 +1056,7 @@ fn test_enclosing_definition_impl() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_enclosing_definition_function_def() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"fn myfn(param: Number) -> Number { param }";
+    let source = r"fn myfn(param: I32) -> I32 { param }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let off = offset_of(source, "param:")?;
     let ctx = find_node_at_offset(&file, off);
@@ -1183,7 +1183,7 @@ fn test_find_binding_pattern_tuple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_fn_def_param_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { x: Number = 0 }
+        struct S { x: I32 = 0 }
         impl S { fn process(val: String) -> String { val } }
     ";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
@@ -1555,7 +1555,7 @@ fn test_query_provider_hover_struct_with_generics() -> Result<(), Box<dyn std::e
 #[test]
 fn test_query_provider_hover_struct_private() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Internal { x: Number }
+        struct Internal { x: I32 }
     ";
     let (_, analyzer) =
         compile_with_analyzer(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -1650,7 +1650,7 @@ fn test_query_provider_hover_let_binding_pub() -> Result<(), Box<dyn std::error:
 
 #[test]
 fn test_query_provider_hover_not_found() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number }";
+    let source = r"struct A { x: I32 }";
     let (_, analyzer) =
         compile_with_analyzer(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
@@ -1708,7 +1708,7 @@ fn test_query_provider_find_definition_let() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn test_query_provider_find_definition_not_found() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number }";
+    let source = r"struct A { x: I32 }";
     let (_, analyzer) =
         compile_with_analyzer(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
@@ -1781,7 +1781,7 @@ fn test_query_provider_type_completions_includes_enum() -> Result<(), Box<dyn st
 
 #[test]
 fn test_query_provider_type_completions_includes_trait() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"trait Sortable { key: Number }";
+    let source = r"trait Sortable { key: I32 }";
     let (_, analyzer) =
         compile_with_analyzer(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
@@ -1868,9 +1868,9 @@ fn test_enclosing_definition_none_at_top_level() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn test_position_context_offset_preserved() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { x: Number }";
+    let source = "struct A { x: I32 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    let target = offset_of(source, "Number")?;
+    let target = offset_of(source, "I32")?;
     let ctx = find_node_at_offset(&file, target);
     if ctx.offset != target {
         return Err(format!(
@@ -2264,9 +2264,9 @@ fn test_find_binary_op_right() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_tuple_type_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { pair: (x: Number, y: String) }";
+    let source = r"struct A { pair: (x: I32, y: String) }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    let offset = offset_of(source, "x: Number")?;
+    let offset = offset_of(source, "x: I32")?;
     let ctx = find_node_at_offset(&file, offset);
     if !matches!(
         ctx.node,
@@ -2290,10 +2290,10 @@ fn test_find_tuple_type_field() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_closure_type_param() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { cb: (Number) -> String }";
+    let source = r"struct A { cb: (I32) -> String }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    // First Number in closure type param
-    let offset = offset_of(source, "Number")?;
+    // First I32 in closure type param
+    let offset = offset_of(source, "I32")?;
     let ctx = find_node_at_offset(&file, offset);
     if !matches!(
         ctx.node,
@@ -2360,9 +2360,9 @@ fn test_position_context_is_in_expression() -> Result<(), Box<dyn std::error::Er
 
 #[test]
 fn test_position_context_is_in_type_position() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number }";
+    let source = r"struct A { x: I32 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    let offset = offset_of(source, "Number")?;
+    let offset = offset_of(source, "I32")?;
     let ctx = find_node_at_offset(&file, offset);
     // Number is a primitive type with no span tracking; the finder returns StructDef or StructField
     // is_in_type_position() only returns true for Type nodes (not Primitive types)
@@ -2514,7 +2514,7 @@ fn test_find_block_expr_content() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_closure_expr() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"let f = |x: Number| x";
+    let source = r"let f = |x: I32| x";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let offset = offset_of(source, "|x:")?;
     let ctx = find_node_at_offset(&file, offset);
@@ -2535,7 +2535,7 @@ fn test_find_closure_expr() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_let_expr_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct A { x: Number = 1 }";
+    let source = r"struct A { x: I32 = 1 }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let offset = offset_of(source, "1")?;
     let ctx = find_node_at_offset(&file, offset);
@@ -2612,7 +2612,7 @@ fn test_find_position_outside_all_nodes() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_find_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Cache { data: [String: Number] }";
+    let source = r"struct Cache { data: [String: I32] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     // The key type "String" in the dict type
     let usages: Vec<_> = source.match_indices("String").collect();

@@ -29,12 +29,12 @@ fn test_dce_analyze_struct_in_impl_function_body() -> Result<(), Box<dyn std::er
     // (Outer is kept alive here by a standalone function signature — DCE no
     // longer treats a bare impl block as a use of its target.)
     let source = r"
-        struct Inner { value: Number = 0 }
+        struct Inner { value: I32 = 0 }
         struct Outer { items: [Inner] }
         impl Outer {
             fn make() -> Inner { Inner(value: 1) }
         }
-        pub fn entry(o: Outer) -> Number { 0 }
+        pub fn entry(o: Outer) -> I32 { 0 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
@@ -54,7 +54,7 @@ fn test_dce_analyze_struct_in_impl_function_body() -> Result<(), Box<dyn std::er
 #[test]
 fn test_dce_analyze_struct_in_let_binding() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         let origin: Point = Point(x: 0, y: 0)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -71,7 +71,7 @@ fn test_dce_analyze_struct_in_let_binding() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_dce_analyze_struct_not_used() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Used { value: Number = 1 }
+        struct Used { value: I32 = 1 }
         struct NotUsed { data: String }
         impl Used {}
     ";
@@ -89,7 +89,7 @@ fn test_dce_analyze_struct_not_used() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_dce_analyze_used_structs_set() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 0 }
+        struct A { x: I32 = 0 }
         struct B { a: A = A(x: 1) }
         impl B {}
     ";
@@ -113,7 +113,7 @@ fn test_dce_analyze_used_structs_set() -> Result<(), Box<dyn std::error::Error>>
 fn test_dce_struct_referenced_in_struct_field_type() -> Result<(), Box<dyn std::error::Error>> {
     // Inner is referenced in the type of an Outer field - should be marked used
     let source = r"
-        struct Inner { x: Number = 0 }
+        struct Inner { x: I32 = 0 }
         struct Outer { inner: Inner }
         impl Outer {}
     ";
@@ -135,7 +135,7 @@ fn test_dce_struct_referenced_in_struct_field_type() -> Result<(), Box<dyn std::
 #[test]
 fn test_dce_expr_binary_op_both_sides() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = if true { 1 + 2 } else { 3 * 4 } }
+        struct Config { value: I32 = if true { 1 + 2 } else { 3 * 4 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -190,7 +190,7 @@ fn test_dce_expr_unary_op_passthrough() -> Result<(), Box<dyn std::error::Error>
 fn test_dce_expr_array_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            items: [Number] = [if true { 1 } else { 2 }, if false { 3 } else { 4 }]
+            items: [I32] = [if true { 1 } else { 2 }, if false { 3 } else { 4 }]
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -229,7 +229,7 @@ fn test_dce_expr_array_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_expr_tuple_with_dead_code() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            pair: (x: Number, y: Number) = (x: if true { 1 } else { 99 }, y: if false { 2 } else { 3 })
+            pair: (x: I32, y: I32) = (x: if true { 1 } else { 99 }, y: if false { 2 } else { 3 })
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -256,8 +256,8 @@ fn test_dce_expr_tuple_with_dead_code() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_dce_expr_for_loop() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let doubled: [Number] = for x in items { if true { x } else { 0 } }
+        let items: [I32] = [1, 2, 3]
+        let doubled: [I32] = for x in items { if true { x } else { 0 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -315,8 +315,8 @@ fn test_dce_expr_match_arms() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_dce_expr_function_call_with_dead_code_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(x: Number) -> Number { x }
-        struct Config { val: Number = compute(x: if true { 1 } else { 2 }) }
+        fn compute(x: I32) -> I32 { x }
+        struct Config { val: I32 = compute(x: if true { 1 } else { 2 }) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -358,9 +358,9 @@ fn test_dce_preserves_struct_and_its_impl_methods() -> Result<(), Box<dyn std::e
     // the whole impl block attached so its methods remain callable
     // through the surviving struct.
     let source = r"
-        struct Container { items: [Number] }
+        struct Container { items: [I32] }
         impl Container {
-            fn count() -> Number { 1 }
+            fn count() -> I32 { 1 }
         }
         struct Config {
             box: Container = Container(items: [1, 2])
@@ -387,7 +387,7 @@ fn test_dce_preserves_struct_and_its_impl_methods() -> Result<(), Box<dyn std::e
 #[test]
 fn test_dce_expr_struct_inst_with_dead_code() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         struct Config {
             p: Point = Point(x: if true { 1 } else { 2 }, y: if false { 3 } else { 4 })
         }
@@ -457,7 +457,7 @@ fn test_dce_expr_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_expr_dict_literal_with_dead_code() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config {
-            data: [String: Number] = [
+            data: [String: I32] = [
                 "a": if true { 1 } else { 2 }
             ]
         }
@@ -496,8 +496,8 @@ fn test_dce_expr_dict_literal_with_dead_code() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_dce_expr_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let lookup: [String: Number] = ["key": 42]
-        let val: Number = lookup["key"]
+        let lookup: [String: I32] = ["key": 42]
+        let val: I32 = lookup["key"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -512,8 +512,8 @@ fn test_dce_expr_dict_access() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_dce_expr_block_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = {
-            let x: Number = if true { 1 } else { 2 }
+        struct Config { value: I32 = {
+            let x: I32 = if true { 1 } else { 2 }
             x
         }}
     ";
@@ -554,8 +554,8 @@ fn test_dce_expr_block_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_block_assign_statement() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: Number = {
-                let mut x: Number = if true { 0 } else { 99 }
+            mut count: I32 = {
+                let mut x: I32 = if true { 0 } else { 99 }
                 x = if false { 5 } else { 10 }
                 x
             }
@@ -598,11 +598,11 @@ fn test_dce_block_assign_statement() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_block_expr_statement() -> Result<(), Box<dyn std::error::Error>> {
     // Block with an expression statement (side effect)
     let source = r"
-        struct Config { value: Number = {
+        struct Config { value: I32 = {
             compute(x: if true { 1 } else { 2 })
             42
         }}
-        fn compute(x: Number) -> Number { x }
+        fn compute(x: I32) -> I32 { x }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -642,10 +642,10 @@ fn test_dce_block_expr_statement() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_dce_eliminate_with_remove_unused_structs() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Used { value: Number = 1 }
+        struct Used { value: I32 = 1 }
         struct Unused { data: String }
-        impl Used { fn get(self) -> Number { self.value } }
-        pub fn entry(u: Used) -> Number { u.get() }
+        impl Used { fn get(self) -> I32 { self.value } }
+        pub fn entry(u: Used) -> I32 { u.get() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, true);
@@ -670,8 +670,8 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     // Keep Config alive via a standalone function parameter so the default
     // pass (which now removes unused types) does not drop it.
     let source = r"
-        struct Config { value: Number = if true { 1 } else { 2 } }
-        pub fn use_config(c: Config) -> Number { c.value }
+        struct Config { value: I32 = if true { 1 } else { 2 } }
+        pub fn use_config(c: Config) -> I32 { c.value }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut pass = DeadCodeEliminationPass::new();
@@ -772,16 +772,16 @@ impl IrVisitor for CountingVisitor {
 #[test]
 fn test_visitor_walk_full_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub trait Shape { area: Number }
+        pub trait Shape { area: I32 }
         pub struct Circle {
-            area: Number,
-            radius: Number
+            area: I32,
+            radius: I32
         }
         pub enum Color { red, green, blue }
         impl Circle {
-            fn scale(factor: Number) -> Number { self.radius }
+            fn scale(factor: I32) -> I32 { self.radius }
         }
-        pub let pi: Number = 3
+        pub let pi: I32 = 3
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = CountingVisitor::new();
@@ -846,7 +846,7 @@ fn test_visitor_walks_imports() -> Result<(), Box<dyn std::error::Error>> {
     // Audit2 A3: imports recorded on the IrModule must be visited by
     // walk_module_children so backends can emit per-module import statements.
     let mut resolver = MemResolver::new();
-    resolver.add(vec!["a".to_string()], "pub struct Foo { value: Number }");
+    resolver.add(vec!["a".to_string()], "pub struct Foo { value: I32 }");
     resolver.add(vec!["b".to_string()], "pub struct Bar { tag: String }");
 
     let source = r"
@@ -931,7 +931,7 @@ impl IrVisitor for ExprCollector {
 #[test]
 fn test_visitor_walk_if_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = if true { 1 } else { 2 } }
+        struct Config { value: I32 = if true { 1 } else { 2 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -951,8 +951,8 @@ fn test_visitor_walk_if_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_for_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let doubled: [Number] = for x in items { x }
+        let items: [I32] = [1, 2, 3]
+        let doubled: [I32] = for x in items { x }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -991,8 +991,8 @@ fn test_visitor_walk_match_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_function_call() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(x: Number) -> Number { x }
-        struct Config { val: Number = compute(x: 5) }
+        fn compute(x: I32) -> I32 { x }
+        struct Config { val: I32 = compute(x: 5) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1011,10 +1011,10 @@ fn test_visitor_walk_function_call() -> Result<(), Box<dyn std::error::Error>> {
 fn test_visitor_walk_method_call() -> Result<(), Box<dyn std::error::Error>> {
     // Use a struct impl with a method call in a function body
     let source = r"
-        struct Rect { width: Number, height: Number }
+        struct Rect { width: I32, height: I32 }
         impl Rect {
-            fn area() -> Number { self.width }
-            fn compute() -> Number { self.area() }
+            fn area() -> I32 { self.width }
+            fn compute() -> I32 { self.area() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1033,7 +1033,7 @@ fn test_visitor_walk_method_call() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct Config { data: [String: Number] = ["key": 42] }
+        struct Config { data: [String: I32] = ["key": 42] }
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1051,8 +1051,8 @@ fn test_visitor_walk_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let lookup: [String: Number] = ["x": 1]
-        let val: Number = lookup["x"]
+        let lookup: [String: I32] = ["x": 1]
+        let val: I32 = lookup["x"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1070,7 +1070,7 @@ fn test_visitor_walk_dict_access() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_binary_op() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = 1 + 2 }
+        struct Config { value: I32 = 1 + 2 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1102,7 +1102,7 @@ fn test_visitor_walk_unary_op() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_array_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { items: [Number] = [1, 2, 3] }
+        struct Config { items: [I32] = [1, 2, 3] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1116,7 +1116,7 @@ fn test_visitor_walk_array_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_tuple_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { pair: (x: Number, y: Number) = (x: 1, y: 2) }
+        struct Config { pair: (x: I32, y: I32) = (x: 1, y: 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1130,7 +1130,7 @@ fn test_visitor_walk_tuple_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_struct_inst() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         struct Config { p: Point = Point(x: 1, y: 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1168,9 +1168,9 @@ fn test_visitor_walk_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_field_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> Number { self.x }
+            fn get_x() -> I32 { self.x }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1192,8 +1192,8 @@ fn test_visitor_walk_field_access() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_block_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = {
-            let x: Number = 5
+        struct Config { value: I32 = {
+            let x: I32 = 5
             x
         }}
     ";
@@ -1209,8 +1209,8 @@ fn test_visitor_walk_block_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walk_let_ref() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let base: Number = 10
-        let doubled: Number = base + base
+        let base: I32 = 10
+        let doubled: I32 = base + base
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1252,7 +1252,7 @@ impl IrVisitor for SelectiveVisitor {
 #[test]
 fn test_visitor_custom_visit_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub struct A { x: Number }
+        pub struct A { x: I32 }
         pub struct B { y: String }
         pub enum E { v1, v2 }
     ";
@@ -1272,8 +1272,8 @@ fn test_visitor_custom_visit_module() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_walk_block_statement_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = {
-            let x: Number = 42
+        struct Config { value: I32 = {
+            let x: I32 = 42
             x
         }}
     ";
@@ -1309,8 +1309,8 @@ fn test_walk_block_statement_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_walk_block_statement_assign() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { mut count: Number = {
-            let mut x: Number = 0
+        struct Counter { mut count: I32 = {
+            let mut x: I32 = 0
             x = 5
             x
         }}
@@ -1347,11 +1347,11 @@ fn test_walk_block_statement_assign() -> Result<(), Box<dyn std::error::Error>> 
 fn test_walk_block_statement_expr() -> Result<(), Box<dyn std::error::Error>> {
     // Expression statements inside blocks
     let source = r"
-        struct Config { value: Number = {
+        struct Config { value: I32 = {
             compute(x: 1)
             42
         }}
-        fn compute(x: Number) -> Number { x }
+        fn compute(x: I32) -> I32 { x }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let default = module
@@ -1388,9 +1388,9 @@ fn test_walk_block_statement_expr() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_dce_analyze_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Inner { x: Number = 0 }
+        struct Inner { x: I32 = 0 }
         struct Config {
-            val: Number = if true { 1 }
+            val: I32 = if true { 1 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1407,7 +1407,7 @@ fn test_dce_analyze_if_without_else() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_dce_if_constant_true_no_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = if true { 5 } }
+        struct Config { value: I32 = if true { 5 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -1435,9 +1435,9 @@ fn test_dce_if_constant_true_no_else() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_dce_analyze_struct_in_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0 }
+        struct Point { x: I32 = 0 }
         struct Config {
-            callback: (Number) -> Number = |n: Number| n
+            callback: (I32) -> I32 = |n: I32| n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1461,8 +1461,8 @@ fn test_visitor_walk_multiple_fields() -> Result<(), Box<dyn std::error::Error>>
     // Structs with multiple fields - visitor should visit all field defaults
     let source = r"
         pub struct Box {
-            width: Number,
-            child: Number = 0
+            width: I32,
+            child: I32 = 0
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1548,13 +1548,13 @@ fn test_dce_preserves_trait_used_via_virtual_dispatch() -> Result<(), Box<dyn st
     // trait, dispatch is virtual; the trait must stay live.
     let source = r"
         pub trait Area {
-            fn area(self) -> Number
+            fn area(self) -> I32
         }
 
         pub struct Sum<T: Area> { item: T }
 
         impl Sum<T> {
-            fn total(self) -> Number {
+            fn total(self) -> I32 {
                 self.item.area()
             }
         }
@@ -1594,12 +1594,12 @@ fn test_dce_marks_composed_parent_trait_as_used() -> Result<(), Box<dyn std::err
         pub trait Named { name: String }
         pub trait Tracked: Named {
             name: String,
-            when: Number
+            when: I32
         }
 
         pub struct Task {
             name: String,
-            when: Number
+            when: I32
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;

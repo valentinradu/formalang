@@ -25,7 +25,7 @@ IrModule {
                         IrField {
                             name: "since",
                             ty: Primitive(
-                                Number,
+                                I32,
                             ),
                             mutable: false,
                             optional: false,
@@ -62,7 +62,7 @@ IrModule {
             ],
             return_type: Some(
                 Primitive(
-                    Number,
+                    I32,
                 ),
             ),
             body: Some(
@@ -87,10 +87,11 @@ IrModule {
                                     NumberLiteral {
                                         value: 1.0,
                                         suffix: None,
+                                        kind: Integer,
                                     },
                                 ),
                                 ty: Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             },
                         },
@@ -103,10 +104,11 @@ IrModule {
                                     NumberLiteral {
                                         value: 0.0,
                                         suffix: None,
+                                        kind: Integer,
                                     },
                                 ),
                                 ty: Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             },
                         },
@@ -117,7 +119,7 @@ IrModule {
                                 (
                                     "since",
                                     Primitive(
-                                        Number,
+                                        I32,
                                     ),
                                 ),
                             ],
@@ -126,13 +128,13 @@ IrModule {
                                     "since",
                                 ],
                                 ty: Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             },
                         },
                     ],
                     ty: Primitive(
-                        Number,
+                        I32,
                     ),
                 },
             ),

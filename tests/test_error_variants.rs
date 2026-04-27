@@ -27,7 +27,7 @@ fn expression_depth_exceeded_triggers_on_deeply_nested_expr(
     // generous stack so the parser does not itself stack-overflow before the
     // validator can detect the depth.
     let depth: usize = 600;
-    let mut src = String::from("struct A { x: Number = ");
+    let mut src = String::from("struct A { x: I32 = ");
     for _ in 0..depth {
         src.push('(');
     }
@@ -87,7 +87,7 @@ fn duplicate_match_arm_triggers() -> Result<(), Box<dyn std::error::Error>> {
 fn variant_arity_mismatch_too_few_bindings_in_match() -> Result<(), Box<dyn std::error::Error>> {
     // `.high(urgency)` binds one field, but `.high` has zero bindings here.
     let source = r#"
-        enum Priority { low, high(urgency: Number) }
+        enum Priority { low, high(urgency: I32) }
 
         pub fn describe(p: Priority) -> String {
             match p {
@@ -113,7 +113,7 @@ fn variant_arity_mismatch_too_few_bindings_in_match() -> Result<(), Box<dyn std:
 #[test]
 fn primitive_redefinition_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Number { x: Number }
+        struct Number { x: I32 }
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
     let has_redef = errors.iter().any(
@@ -158,7 +158,7 @@ fn primitive_redefinition_trait() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn primitive_redefinition_function() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub fn Never() -> Number { 0 }
+        pub fn Never() -> I32 { 0 }
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
     let has_redef = errors
@@ -173,7 +173,7 @@ fn primitive_redefinition_function() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn primitive_redefinition_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let Path: Number = 5
+        let Path: I32 = 5
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
     let has_redef = errors
@@ -189,7 +189,7 @@ fn primitive_redefinition_let() -> Result<(), Box<dyn std::error::Error>> {
 fn primitive_name_still_works_at_type_position() -> Result<(), Box<dyn std::error::Error>> {
     // Verify normal use of primitive names at type position still compiles.
     let source = r#"
-        let x: Number = 5
+        let x: I32 = 5
         let s: String = "hi"
         let b: Boolean = true
     "#;
@@ -208,7 +208,7 @@ fn primitive_name_still_works_at_type_position() -> Result<(), Box<dyn std::erro
 fn invalid_if_condition_number_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = if 42 { 1 } else { 0 }
+            x: I32 = if 42 { 1 } else { 0 }
         }
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;

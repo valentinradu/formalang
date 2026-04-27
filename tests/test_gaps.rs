@@ -17,8 +17,8 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 fn test_assignment_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Assigning a String to a Number binding should produce TypeMismatch
     let source = r#"
-        fn f() -> Number {
-            let mut n: Number = 1
+        fn f() -> I32 {
+            let mut n: I32 = 1
             n = "text"
             n
         }
@@ -38,8 +38,8 @@ fn test_assignment_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 fn test_assignment_type_match_ok() -> Result<(), Box<dyn std::error::Error>> {
     // Assigning Number to a Number binding should succeed
     let source = r"
-        fn f() -> Number {
-            let mut n: Number = 1
+        fn f() -> I32 {
+            let mut n: I32 = 1
             n = 2
             n
         }
@@ -56,7 +56,7 @@ fn test_assignment_type_match_ok() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_default_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Providing a String default for a Number field should produce TypeMismatch
     let source = r#"
-        struct S { x: Number = "text" }
+        struct S { x: I32 = "text" }
     "#;
     let result = compile(source);
     let errors = result.err().ok_or("expected TypeMismatch error")?;
@@ -73,7 +73,7 @@ fn test_struct_default_type_mismatch() -> Result<(), Box<dyn std::error::Error>>
 fn test_struct_default_type_ok() -> Result<(), Box<dyn std::error::Error>> {
     // A Number default for a Number field should succeed
     let source = r"
-        struct S { x: Number = 0 }
+        struct S { x: I32 = 0 }
     ";
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -89,7 +89,7 @@ fn test_generic_struct_constraint_violation() -> Result<(), Box<dyn std::error::
     let source = r"
         trait Named { name: String }
         struct Container<T: Named> { value: T }
-        struct Plain { x: Number }
+        struct Plain { x: I32 }
         let c = Container<Plain>(value: Plain(x: 1))
     ";
     let result = compile(source);
@@ -128,7 +128,7 @@ fn test_private_item_from_outside_module() -> Result<(), Box<dyn std::error::Err
     // Accessing a private struct from outside its module should give VisibilityViolation
     let source = r"
         mod shapes {
-            struct Circle { radius: Number }
+            struct Circle { radius: I32 }
         }
         let c = shapes::Circle(radius: 5)
     ";
@@ -148,7 +148,7 @@ fn test_pub_item_from_outside_module() -> Result<(), Box<dyn std::error::Error>>
     // Accessing a pub struct from outside its module should succeed
     let source = r"
         mod shapes {
-            pub struct Circle { radius: Number }
+            pub struct Circle { radius: I32 }
         }
         let c = shapes::Circle(radius: 5)
     ";
@@ -164,8 +164,8 @@ fn test_pub_item_from_outside_module() -> Result<(), Box<dyn std::error::Error>>
 fn test_overload_mode_b_number() -> Result<(), Box<dyn std::error::Error>> {
     // Two overloads differing only in first param type; call with Number should resolve
     let source = r#"
-        fn process(n: Number) -> String { "number" }
-        fn process(label: String, n: Number) -> String { "string" }
+        fn process(n: I32) -> String { "number" }
+        fn process(label: String, n: I32) -> String { "string" }
         let r = process(42)
     "#;
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
@@ -176,7 +176,7 @@ fn test_overload_mode_b_number() -> Result<(), Box<dyn std::error::Error>> {
 fn test_overload_mode_b_string() -> Result<(), Box<dyn std::error::Error>> {
     // Two overloads differing only in first param type; call with String should resolve
     let source = r#"
-        fn process(n: Number) -> String { "number" }
+        fn process(n: I32) -> String { "number" }
         fn process(s: String) -> String { s }
         let r = process("hello")
     "#;
@@ -251,9 +251,9 @@ fn test_ir_generic_param_constraints_preserved() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn test_dict_literal_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
-    // The inferred type [String: Number] should match the declared type
+    // The inferred type [String: I32] should match the declared type
     let source = r#"
-        fn get_map() -> [String: Number] { ["a": 1] }
+        fn get_map() -> [String: I32] { ["a": 1] }
     "#;
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -268,7 +268,7 @@ fn test_match_arm_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Match arms returning different non-Unknown types should produce TypeMismatch
     let source = r#"
         enum Color { red, blue }
-        fn describe(c: Color) -> Number {
+        fn describe(c: Color) -> I32 {
             match c {
                 red: 1,
                 blue: "text"
@@ -291,7 +291,7 @@ fn test_match_arm_type_ok() -> Result<(), Box<dyn std::error::Error>> {
     // Match arms all returning Number should succeed
     let source = r"
         enum Color { red, blue }
-        fn describe(c: Color) -> Number {
+        fn describe(c: Color) -> I32 {
             match c {
                 red: 1,
                 blue: 2
@@ -310,7 +310,7 @@ fn test_match_arm_type_ok() -> Result<(), Box<dyn std::error::Error>> {
 fn test_if_branch_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // If branches returning Number and String should produce TypeMismatch
     let source = r#"
-        fn f(b: Boolean) -> Number {
+        fn f(b: Boolean) -> I32 {
             if b { 1 } else { "text" }
         }
     "#;
@@ -329,7 +329,7 @@ fn test_if_branch_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 fn test_if_branch_type_ok() -> Result<(), Box<dyn std::error::Error>> {
     // Both branches returning Number should succeed
     let source = r"
-        fn f(b: Boolean) -> Number {
+        fn f(b: Boolean) -> I32 {
             if b { 1 } else { 2 }
         }
     ";
@@ -343,10 +343,10 @@ fn test_if_branch_type_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
-    // Closure x -> x with declared type Number -> Number should compile
-    // The inferred type "Number -> Number" now matches the annotation
+    // Closure x -> x with declared type Number -> I32 should compile
+    // The inferred type "Number -> I32" now matches the annotation
     let source = r"
-        let f: Number -> Number = x -> x
+        let f: I32 -> I32 = x -> x
     ";
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -360,16 +360,16 @@ fn test_closure_body_mismatched_return_type_rejected() -> Result<(), Box<dyn std
     // annotation seeds the param's type and the body is type-checked
     // against the declared return type.
     let source = r"
-        let f: Number -> Boolean = x -> x + 1
+        let f: I32 -> Boolean = x -> x + 1
     ";
     let err = compile(source)
         .err()
-        .ok_or("expected TypeMismatch for body returning Number, declared Boolean")?;
+        .ok_or("expected TypeMismatch for body returning I32, declared Boolean")?;
     let has = err
         .iter()
-        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { expected, found, .. } if expected == "Boolean" && found == "Number"));
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { expected, found, .. } if expected == "Boolean" && found == "I32"));
     if !has {
-        return Err(format!("expected TypeMismatch(Boolean, Number), got {err:?}").into());
+        return Err(format!("expected TypeMismatch(Boolean, I32), got {err:?}").into());
     }
     Ok(())
 }
@@ -379,7 +379,7 @@ fn test_closure_body_correct_return_type_accepted() -> Result<(), Box<dyn std::e
     // Audit2 B9 positive case: an untyped-param closure whose body
     // returns the declared type still compiles.
     let source = r"
-        let f: Number -> Number = x -> x + 1
+        let f: I32 -> I32 = x -> x + 1
     ";
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
@@ -437,7 +437,7 @@ fn test_let_general_type_mismatch_rejected() -> Result<(), Box<dyn std::error::E
     // case was checked, so `let f: m::Foo = "wrong"` compiled silently.
     let source = r#"
         mod m {
-            pub struct Foo { x: Number = 0 }
+            pub struct Foo { x: I32 = 0 }
         }
         let f: m::Foo = "wrong"
     "#;
@@ -456,7 +456,7 @@ fn test_let_general_type_match_accepted() -> Result<(), Box<dyn std::error::Erro
     // Audit2 B12 positive case.
     let source = r"
         mod m {
-            pub struct Foo { x: Number = 0 }
+            pub struct Foo { x: I32 = 0 }
         }
         let f: m::Foo = m::Foo()
     ";
@@ -475,10 +475,10 @@ fn test_closure_arg_to_function_picks_up_expected_param_types(
     use formalang::ast::PrimitiveType;
     use formalang::ir::ResolvedType;
     let source = r"
-        fn apply(f: Number -> Number, x: Number) -> Number {
+        fn apply(f: I32 -> I32, x: I32) -> I32 {
             x
         }
-        let result: Number = apply(x -> x, 1)
+        let result: I32 = apply(x -> x, 1)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     // Find the `result` let; its value is the FunctionCall to apply.
@@ -495,8 +495,8 @@ fn test_closure_arg_to_function_picks_up_expected_param_types(
         return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
     };
     let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
-    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
-        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("expected closure param to lower as I32, got {param_ty:?}").into());
     }
     Ok(())
 }
@@ -510,14 +510,14 @@ fn test_closure_arg_to_method_picks_up_expected_param_types(
     use formalang::ast::PrimitiveType;
     use formalang::ir::ResolvedType;
     let source = r"
-        struct Engine { rpm: Number = 0 }
+        struct Engine { rpm: I32 = 0 }
         impl Engine {
-            fn run(self, f: Number -> Number) -> Number {
+            fn run(self, f: I32 -> I32) -> I32 {
                 self.rpm
             }
         }
         let e: Engine = Engine()
-        let result: Number = e.run(x -> x)
+        let result: I32 = e.run(x -> x)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let result_let = module
@@ -533,8 +533,8 @@ fn test_closure_arg_to_method_picks_up_expected_param_types(
         return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
     };
     let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
-    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::Number)) {
-        return Err(format!("expected closure param to lower as Number, got {param_ty:?}").into());
+    if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("expected closure param to lower as I32, got {param_ty:?}").into());
     }
     Ok(())
 }
@@ -546,13 +546,13 @@ fn test_method_dispatch_on_qualified_receiver() -> Result<(), Box<dyn std::error
     // `method_exists_on_type` only matched bare receiver names.
     let source = r"
         mod m {
-            pub struct Foo { x: Number = 0 }
+            pub struct Foo { x: I32 = 0 }
             impl Foo {
-                fn double(self) -> Number { self.x + self.x }
+                fn double(self) -> I32 { self.x + self.x }
             }
         }
         let f: m::Foo = m::Foo()
-        let v: Number = f.double()
+        let v: I32 = f.double()
     ";
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
@@ -615,7 +615,7 @@ fn test_in_scope_generic_param_still_lowers_as_typeparam() -> Result<(), Box<dyn
 fn test_inline_attribute_round_trips() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::FunctionAttribute;
     let source = r"
-        pub inline fn fast(x: Number) -> Number { x + 1 }
+        pub inline fn fast(x: I32) -> I32 { x + 1 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
     let f = module
@@ -633,7 +633,7 @@ fn test_inline_attribute_round_trips() -> Result<(), Box<dyn std::error::Error>>
 fn test_multiple_attributes_preserve_order() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::FunctionAttribute;
     let source = r"
-        cold no_inline fn rare() -> Number { 0 }
+        cold no_inline fn rare() -> I32 { 0 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
     let f = module
@@ -654,7 +654,7 @@ fn test_multiple_attributes_preserve_order() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_function_attribute_spans_are_filled() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::{Definition, FunctionAttribute, Statement};
-    let source = "inline fn fast(x: Number) -> Number { x + 1 }";
+    let source = "inline fn fast(x: I32) -> I32 { x + 1 }";
     let file = formalang::parse_only(source).map_err(|e| format!("parse: {e:?}"))?;
     let stmt = file.statements.first().ok_or("no statements")?;
     let Statement::Definition(def) = stmt else {
@@ -723,7 +723,7 @@ fn test_extern_fn_default_abi_is_c() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_extern_fn_explicit_c_abi() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::ExternAbi;
-    let module = compile_to_ir(r#"extern "C" fn read(fd: Number) -> Number"#)
+    let module = compile_to_ir(r#"extern "C" fn read(fd: I32) -> I32"#)
         .map_err(|e| format!("expected success: {e:?}"))?;
     let f = module
         .functions
@@ -739,7 +739,7 @@ fn test_extern_fn_explicit_c_abi() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_extern_fn_system_abi() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::ExternAbi;
-    let module = compile_to_ir(r#"extern "system" fn GetTickCount() -> Number"#)
+    let module = compile_to_ir(r#"extern "system" fn GetTickCount() -> I32"#)
         .map_err(|e| format!("expected success: {e:?}"))?;
     let f = module
         .functions
@@ -754,7 +754,7 @@ fn test_extern_fn_system_abi() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_extern_fn_unknown_abi_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    let result = compile_to_ir(r#"extern "rustcall" fn weird() -> Number"#);
+    let result = compile_to_ir(r#"extern "rustcall" fn weird() -> I32"#);
     if result.is_ok() {
         return Err("expected unknown ABI to be rejected at parse time".into());
     }
@@ -763,7 +763,7 @@ fn test_extern_fn_unknown_abi_rejected() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_regular_fn_has_no_extern_abi() -> Result<(), Box<dyn std::error::Error>> {
-    let module = compile_to_ir("pub fn double(n: Number) -> Number { n + n }")
+    let module = compile_to_ir("pub fn double(n: I32) -> I32 { n + n }")
         .map_err(|e| format!("expected success: {e:?}"))?;
     let f = module
         .functions
@@ -786,7 +786,7 @@ fn test_regular_fn_has_no_extern_abi() -> Result<(), Box<dyn std::error::Error>>
 fn test_module_tree_records_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod shapes {
-            pub struct Circle { radius: Number }
+            pub struct Circle { radius: I32 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
@@ -813,7 +813,7 @@ fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::err
     let source = r"
         mod outer {
             mod inner {
-                pub struct Deep { x: Number }
+                pub struct Deep { x: I32 }
             }
         }
     ";
@@ -844,9 +844,9 @@ fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::err
 fn test_struct_returned_with_closure_capturing_local_rejected(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Box { callback: () -> Number }
+        struct Box { callback: () -> I32 }
         fn make() -> Box {
-            let local: Number = 1
+            let local: I32 = 1
             Box(callback: () -> local)
         }
     ";
@@ -871,8 +871,8 @@ fn test_struct_returned_with_closure_capturing_local_rejected(
 fn test_struct_returned_with_closure_capturing_module_let_ok(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let factor: Number = 2
-        struct Box { callback: () -> Number }
+        let factor: I32 = 2
+        struct Box { callback: () -> I32 }
         fn make() -> Box {
             Box(callback: () -> factor)
         }
@@ -885,10 +885,10 @@ fn test_struct_returned_with_closure_capturing_module_let_ok(
 fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn outer() -> Number {
-            let mut f: () -> Number = () -> 0
+        fn outer() -> I32 {
+            let mut f: () -> I32 = () -> 0
             {
-                let local: Number = 5
+                let local: I32 = 5
                 f = () -> local
             }
             f()
@@ -915,8 +915,8 @@ fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
 fn test_tuple_returned_with_closure_capturing_local_rejected(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn make() -> (n: Number, f: () -> Number) {
-            let local: Number = 7
+        fn make() -> (n: I32, f: () -> I32) {
+            let local: I32 = 7
             (n: 0, f: () -> local)
         }
     ";
@@ -947,8 +947,8 @@ fn test_tuple_returned_with_closure_capturing_local_rejected(
 #[test]
 fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { fn draw(self) -> Number }
-        fn render(d: Drawable) -> Number { 0 }
+        trait Drawable { fn draw(self) -> I32 }
+        fn render(d: Drawable) -> I32 { 0 }
     ";
     let errors = compile(source)
         .err()
@@ -967,9 +967,9 @@ fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error
 #[test]
 fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { fn draw(self) -> Number }
-        struct Circle { r: Number }
-        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        trait Drawable { fn draw(self) -> I32 }
+        struct Circle { r: I32 }
+        impl Drawable for Circle { fn draw(self) -> I32 { 0 } }
         let d: Drawable = Circle(r: 1)
     ";
     let errors = compile(source)
@@ -989,7 +989,7 @@ fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_trait_as_struct_field_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { fn draw(self) -> Number }
+        trait Drawable { fn draw(self) -> I32 }
         struct Container { d: Drawable }
     ";
     let errors = compile(source)
@@ -1011,10 +1011,10 @@ fn test_trait_as_generic_constraint_ok() -> Result<(), Box<dyn std::error::Error
     // `<T: Drawable>` is the canonical legal form — Drawable here is a
     // *constraint*, not a value type. Should compile.
     let source = r"
-        trait Drawable { fn draw(self) -> Number }
-        struct Circle { r: Number }
-        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
-        fn render<T: Drawable>(d: T) -> Number { 0 }
+        trait Drawable { fn draw(self) -> I32 }
+        struct Circle { r: I32 }
+        impl Drawable for Circle { fn draw(self) -> I32 { 0 } }
+        fn render<T: Drawable>(d: T) -> I32 { 0 }
     ";
     compile(source).map_err(|e| format!("expected success: {e:?}"))?;
     Ok(())
@@ -1025,9 +1025,9 @@ fn test_trait_as_impl_target_ok() -> Result<(), Box<dyn std::error::Error>> {
     // `impl Trait for Foo` is the canonical legal form — Drawable is
     // an *impl target*, not a value type.
     let source = r"
-        trait Drawable { fn draw(self) -> Number }
-        struct Circle { r: Number }
-        impl Drawable for Circle { fn draw(self) -> Number { 0 } }
+        trait Drawable { fn draw(self) -> I32 }
+        struct Circle { r: I32 }
+        impl Drawable for Circle { fn draw(self) -> I32 { 0 } }
     ";
     compile(source).map_err(|e| format!("expected success: {e:?}"))?;
     Ok(())
@@ -1074,15 +1074,15 @@ fn walk_for_dispatch(
 fn test_monomorphise_devirtualises_trait_bounded_call() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
-        trait Drawable { fn area(self) -> Number }
-        struct Circle { r: Number }
+        trait Drawable { fn area(self) -> I32 }
+        struct Circle { r: I32 }
         impl Drawable for Circle {
-            fn area(self) -> Number { self.r }
+            fn area(self) -> I32 { self.r }
         }
-        pub fn paint<T: Drawable>(shape: T) -> Number {
+        pub fn paint<T: Drawable>(shape: T) -> I32 {
             shape.area()
         }
-        pub let p: Number = paint(Circle(r: 1))
+        pub let p: I32 = paint(Circle(r: 1))
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
@@ -1118,7 +1118,7 @@ fn test_monomorphise_specialises_generic_function() -> Result<(), Box<dyn std::e
     // Simpler check focused on Phase 2e alone (no trait dispatch).
     let source = r#"
         pub fn identity<T>(x: T) -> T { x }
-        pub let n: Number = identity(1)
+        pub let n: I32 = identity(1)
         pub let s: String = identity("hi")
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -1154,7 +1154,7 @@ fn test_generic_trait_specialises() -> Result<(), Box<dyn std::error::Error>> {
         pub trait Eq<T> {
             fn eq(self, other: T) -> Boolean
         }
-        pub struct Number2 { value: Number }
+        pub struct Number2 { value: I32 }
         impl Eq<Number2> for Number2 {
             fn eq(self, other: Number2) -> Boolean { true }
         }
@@ -1209,11 +1209,11 @@ fn test_generic_trait_constraint_specialises() -> Result<(), Box<dyn std::error:
     // should also drive specialisation of Container.
     let source = r"
         pub trait Container<T> {
-            fn get(self) -> Number
+            fn get(self) -> I32
         }
-        pub struct Box { value: Number }
+        pub struct Box { value: I32 }
         impl Container<Number> for Box {
-            fn get(self) -> Number { self.value }
+            fn get(self) -> I32 { self.value }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1235,7 +1235,7 @@ fn test_generic_trait_constraint_specialises() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Top { x: Number }
+        struct Top { x: I32 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
     if !module.modules.is_empty() {
@@ -1252,9 +1252,9 @@ fn test_top_level_definitions_not_in_module_tree() -> Result<(), Box<dyn std::er
 fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ast::FunctionAttribute;
     let source = r"
-        pub struct Counter { n: Number = 0 }
+        pub struct Counter { n: I32 = 0 }
         impl Counter {
-            inline fn next(self) -> Number { self.n + 1 }
+            inline fn next(self) -> I32 { self.n + 1 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;

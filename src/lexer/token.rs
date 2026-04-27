@@ -311,14 +311,21 @@ fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
 /// `None` on parse failure so logos emits an error that the lexer converts
 /// into [`crate::error::CompilerError::InvalidNumber`].
 fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
-    use crate::ast::NumberLiteral;
+    use crate::ast::{NumberLiteral, NumberSourceKind};
 
     let (digits, suffix) = strip_numeric_suffix(s);
+    // The source kind is determined syntactically: a `.` or `e`/`E` in the
+    // digit slice means float syntax (`3.14`, `1e5`); otherwise integer.
+    let kind = if digits.bytes().any(|b| b == b'.' || b == b'e' || b == b'E') {
+        NumberSourceKind::Float
+    } else {
+        NumberSourceKind::Integer
+    };
     let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
     cleaned
         .parse::<f64>()
         .ok()
-        .map(|value| NumberLiteral::suffixed_or_not(value, suffix))
+        .map(|value| NumberLiteral::from_lex(value, suffix, kind))
 }
 
 /// Strip a trailing width-tag suffix (`I32`, `I64`, `F32`, `F64`) from a
