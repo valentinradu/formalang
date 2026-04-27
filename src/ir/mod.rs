@@ -24,6 +24,7 @@
 //! assert_eq!(module.structs[0].name, "User");
 //! ```
 
+mod closure_conv;
 mod dce;
 mod expr;
 mod fold;
@@ -32,6 +33,7 @@ mod monomorphise;
 mod types;
 mod visitor;
 
+pub use closure_conv::ClosureConversionPass;
 pub use dce::{
     eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
 };

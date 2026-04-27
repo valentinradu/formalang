@@ -105,7 +105,11 @@ fn tokenize_number_with_width_tag_suffix() -> Result<(), Box<dyn std::error::Err
 
     let cases = [
         ("42I32", 42.0, NumericSuffix::I32),
-        ("9_223_372_036_854_775I64", 9_223_372_036_854_775.0, NumericSuffix::I64),
+        (
+            "9_223_372_036_854_775I64",
+            9_223_372_036_854_775.0,
+            NumericSuffix::I64,
+        ),
         ("2.5F32", 2.5, NumericSuffix::F32),
         ("1.5e-3F64", 0.0015, NumericSuffix::F64),
     ];

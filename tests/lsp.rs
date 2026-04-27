@@ -636,10 +636,7 @@ fn test_query_provider_hover_documentation_function() -> Result<(), Box<dyn std:
     let hover = provider
         .get_hover_for_symbol("add")
         .ok_or("expected hover for add")?;
-    if !hover
-        .signature
-        .contains("fn add(a: I32, b: I32) -> I32")
-    {
+    if !hover.signature.contains("fn add(a: I32, b: I32) -> I32") {
         return Err(format!("unexpected signature: {}", hover.signature).into());
     }
     if hover.documentation.as_deref() != Some("Compute the sum of two numbers.") {

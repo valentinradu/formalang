@@ -845,8 +845,8 @@ fn test_match_enum_with_data_variant_binding() -> Result<(), Box<dyn std::error:
 // =============================================================================
 
 #[test]
-fn test_function_return_type_f64_float_literal_compatible(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn test_function_return_type_f64_float_literal_compatible() -> Result<(), Box<dyn std::error::Error>>
+{
     // Float-syntax literals (with `.`) infer as F64 and match an F64 return type.
     let source = r"
         fn compute() -> F64 { 42.0 }

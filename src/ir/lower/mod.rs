@@ -281,7 +281,21 @@ impl<'a> IrLowerer<'a> {
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type =
             let_binding.type_annotation.as_ref().map(Self::type_name);
+        // Audit2 B19 follow-up: when the let's type annotation is a
+        // closure type, thread it through `expected_closure_type` so
+        // closure-literal values with un-annotated params (e.g.
+        // `let f: I32 -> I32 = mut n -> n`) pick up the param types
+        // from the annotation instead of falling back to
+        // `ResolvedType::Error`. Mirrors the existing handling in
+        // struct-field arg lowering and function-call arg lowering.
+        let saved_closure = self.expected_closure_type.take();
+        self.expected_closure_type = let_binding
+            .type_annotation
+            .as_ref()
+            .map(|t| self.lower_type(t))
+            .filter(|t| matches!(t, ResolvedType::Closure { .. }));
         let mut value = self.lower_expr(&let_binding.value);
+        self.expected_closure_type = saved_closure;
         self.current_function_return_type = saved_return_type;
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
@@ -601,6 +615,7 @@ impl<'a> IrLowerer<'a> {
                     optional: matches!(f.ty, ast::Type::Optional(_)),
                     mutable: false,
                     doc: f.doc.clone(),
+                    convention: ast::ParamConvention::default(),
                 })
                 .collect();
             let methods: Vec<IrFunctionSig> = trait_info
@@ -690,6 +705,7 @@ impl<'a> IrLowerer<'a> {
                                 optional: matches!(f.ty, ast::Type::Optional(_)),
                                 mutable: false,
                                 doc: f.doc.clone(),
+                                convention: ast::ParamConvention::default(),
                             })
                             .collect()
                     })
@@ -737,6 +753,7 @@ impl<'a> IrLowerer<'a> {
                     optional,
                     default: None,
                     doc: f.doc.clone(),
+                    convention: ast::ParamConvention::default(),
                 }
             })
             .collect();
@@ -1034,6 +1051,7 @@ impl<'a> IrLowerer<'a> {
                         optional: false,
                         mutable: false,
                         doc: f.doc.clone(),
+                        convention: ast::ParamConvention::default(),
                     })
                     .collect(),
             })
@@ -1499,6 +1517,7 @@ impl<'a> IrLowerer<'a> {
             optional,
             default: None,
             doc: f.doc.clone(),
+            convention: ast::ParamConvention::default(),
         }
     }
 
@@ -1517,6 +1536,7 @@ impl<'a> IrLowerer<'a> {
             optional: f.optional,
             default,
             doc: f.doc.clone(),
+            convention: ast::ParamConvention::default(),
         }
     }
 

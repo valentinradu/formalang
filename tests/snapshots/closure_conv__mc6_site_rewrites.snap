@@ -1,0 +1,82 @@
+---
+source: tests/closure_conv.rs
+expression: "(make_adder_body, format_tag_value)"
+---
+(
+    ClosureRef {
+        funcref: [
+            "__closure1",
+        ],
+        env_struct: StructInst {
+            struct_id: Some(
+                StructId(
+                    1,
+                ),
+            ),
+            type_args: [],
+            fields: [
+                (
+                    "n",
+                    Reference {
+                        path: [
+                            "n",
+                        ],
+                        ty: Primitive(
+                            I32,
+                        ),
+                    },
+                ),
+            ],
+            ty: Struct(
+                StructId(
+                    1,
+                ),
+            ),
+        },
+        ty: Closure {
+            param_tys: [
+                (
+                    Let,
+                    Primitive(
+                        I32,
+                    ),
+                ),
+            ],
+            return_ty: Primitive(
+                I32,
+            ),
+        },
+    },
+    ClosureRef {
+        funcref: [
+            "__closure0",
+        ],
+        env_struct: StructInst {
+            struct_id: Some(
+                StructId(
+                    0,
+                ),
+            ),
+            type_args: [],
+            fields: [],
+            ty: Struct(
+                StructId(
+                    0,
+                ),
+            ),
+        },
+        ty: Closure {
+            param_tys: [
+                (
+                    Let,
+                    Primitive(
+                        String,
+                    ),
+                ),
+            ],
+            return_ty: Primitive(
+                String,
+            ),
+        },
+    },
+)

@@ -67,8 +67,7 @@ fn test_sink_param_parsed() {
 
 #[test]
 fn test_mixed_conventions_in_one_fn() {
-    let params =
-        first_fn_params("pub fn mixed(a: I32, mut b: I32, sink c: I32) -> I32 { a }");
+    let params = first_fn_params("pub fn mixed(a: I32, mut b: I32, sink c: I32) -> I32 { a }");
     assert_eq!(params[0].convention, ParamConvention::Let);
     assert_eq!(params[1].convention, ParamConvention::Mut);
     assert_eq!(params[2].convention, ParamConvention::Sink);
@@ -437,8 +436,7 @@ fn parse_first_pipe_closure(src: &str) -> formalang::ast::Expr {
 #[test]
 fn test_pipe_closure_return_type_parsed() {
     use formalang::ast::{Expr, PrimitiveType, Type};
-    let expr =
-        parse_first_pipe_closure("let f: (I32) -> I32 = |x: I32| -> I32 { x + 1 }");
+    let expr = parse_first_pipe_closure("let f: (I32) -> I32 = |x: I32| -> I32 { x + 1 }");
     let Expr::ClosureExpr { return_type, .. } = expr else {
         panic!("expected ClosureExpr");
     };

@@ -665,10 +665,7 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
     let ResolvedType::Array(inner) = ty else {
         return Err(format!("expected Array type, got {ty:?}").into());
     };
-    if !matches!(
-        inner.as_ref(),
-        ResolvedType::Primitive(PrimitiveType::I32)
-    ) {
+    if !matches!(inner.as_ref(), ResolvedType::Primitive(PrimitiveType::I32)) {
         return Err(format!("expected Array(I32), got Array({inner:?})").into());
     }
     Ok(())

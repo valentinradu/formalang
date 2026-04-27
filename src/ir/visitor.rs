@@ -289,6 +289,10 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             walk_expr(visitor, body);
         }
 
+        IrExpr::ClosureRef { env_struct, .. } => {
+            walk_expr(visitor, env_struct);
+        }
+
         IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }

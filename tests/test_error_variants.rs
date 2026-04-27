@@ -116,9 +116,9 @@ fn primitive_redefinition_struct() -> Result<(), Box<dyn std::error::Error>> {
         struct I32 { x: I32 }
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
-    let has_redef = errors.iter().any(
-        |e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "I32"),
-    );
+    let has_redef = errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "I32"));
     if !has_redef {
         return Err(format!("expected PrimitiveRedefinition for 'I32', got {errors:?}").into());
     }

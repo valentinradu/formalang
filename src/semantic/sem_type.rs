@@ -671,10 +671,7 @@ mod tests {
     #[test]
     fn strip_optional_unwraps_one_layer() {
         let t = SemType::optional_of(SemType::Primitive(PrimitiveType::I32));
-        assert_eq!(
-            t.strip_optional(),
-            SemType::Primitive(PrimitiveType::I32)
-        );
+        assert_eq!(t.strip_optional(), SemType::Primitive(PrimitiveType::I32));
         let bare = SemType::Primitive(PrimitiveType::I32);
         assert_eq!(bare.strip_optional(), bare);
     }

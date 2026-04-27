@@ -922,6 +922,7 @@ impl IrVisitor for ExprCollector {
             IrExpr::DictAccess { .. } => "DictAccess",
             IrExpr::Block { .. } => "Block",
             IrExpr::Closure { .. } => "Closure",
+            IrExpr::ClosureRef { .. } => "ClosureRef",
         };
         self.expr_kinds.push(kind.to_string());
         walk_expr_children(self, e);

@@ -1,0 +1,123 @@
+---
+source: tests/closure_conv.rs
+expression: "(make_curried_body, outer_lifted_body)"
+---
+(
+    ClosureRef {
+        funcref: [
+            "__closure0",
+        ],
+        env_struct: StructInst {
+            struct_id: Some(
+                StructId(
+                    0,
+                ),
+            ),
+            type_args: [],
+            fields: [
+                (
+                    "n",
+                    Reference {
+                        path: [
+                            "n",
+                        ],
+                        ty: Primitive(
+                            I32,
+                        ),
+                    },
+                ),
+            ],
+            ty: Struct(
+                StructId(
+                    0,
+                ),
+            ),
+        },
+        ty: Closure {
+            param_tys: [
+                (
+                    Let,
+                    Primitive(
+                        I32,
+                    ),
+                ),
+            ],
+            return_ty: Closure {
+                param_tys: [
+                    (
+                        Let,
+                        Primitive(
+                            I32,
+                        ),
+                    ),
+                ],
+                return_ty: Primitive(
+                    I32,
+                ),
+            },
+        },
+    },
+    ClosureRef {
+        funcref: [
+            "__closure1",
+        ],
+        env_struct: StructInst {
+            struct_id: Some(
+                StructId(
+                    1,
+                ),
+            ),
+            type_args: [],
+            fields: [
+                (
+                    "x",
+                    Reference {
+                        path: [
+                            "x",
+                        ],
+                        ty: Primitive(
+                            I32,
+                        ),
+                    },
+                ),
+                (
+                    "n",
+                    FieldAccess {
+                        object: Reference {
+                            path: [
+                                "__env",
+                            ],
+                            ty: Struct(
+                                StructId(
+                                    0,
+                                ),
+                            ),
+                        },
+                        field: "n",
+                        ty: Primitive(
+                            I32,
+                        ),
+                    },
+                ),
+            ],
+            ty: Struct(
+                StructId(
+                    1,
+                ),
+            ),
+        },
+        ty: Closure {
+            param_tys: [
+                (
+                    Let,
+                    Primitive(
+                        I32,
+                    ),
+                ),
+            ],
+            return_ty: Primitive(
+                I32,
+            ),
+        },
+    },
+)

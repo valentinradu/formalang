@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 186
 expression: module
 ---
 IrModule {
@@ -26,6 +25,7 @@ IrModule {
                     optional: false,
                     default: None,
                     doc: None,
+                    convention: Let,
                 },
             ],
             generic_params: [],

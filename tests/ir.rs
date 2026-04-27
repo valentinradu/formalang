@@ -2448,7 +2448,8 @@ impl IrVisitor for ExprCounter {
             | IrExpr::UnaryOp { .. }
             | IrExpr::Block { .. }
             | IrExpr::FieldAccess { .. }
-            | IrExpr::Closure { .. } => {}
+            | IrExpr::Closure { .. }
+            | IrExpr::ClosureRef { .. } => {}
         }
         // Walk children
         formalang::ir::walk_expr_children(self, e);
