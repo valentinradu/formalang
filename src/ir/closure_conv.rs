@@ -79,6 +79,39 @@
 //! the pass itself (a missed walk site or recursion path), not user
 //! input.
 //!
+//! # Numbering — iteration-order contract
+//!
+//! Synthesized names (`__ClosureEnv<N>`, `__closure<N>`) are
+//! allocated by a single sequential counter as the recursive walk
+//! encounters [`IrExpr::Closure`] nodes. The walk visits sites in
+//! this fixed order:
+//!
+//! 1. Module-level `let` bindings (in declaration order).
+//! 2. Standalone function bodies, then their parameter defaults
+//!    (functions in declaration order).
+//! 3. Impl-block method bodies, then their parameter defaults
+//!    (impls in declaration order, methods in declaration order
+//!    within each impl).
+//! 4. Struct field defaults (structs in declaration order, fields
+//!    in declaration order within each struct).
+//! 5. Enum-variant field defaults (enums in declaration order,
+//!    variants then fields in declaration order).
+//!
+//! Within each expression, sub-expressions are visited in a
+//! left-to-right depth-first order; a nested closure inside a
+//! parent closure's body is allocated *immediately after* the
+//! parent (the recursion processes the parent's body before
+//! returning to the parent's site).
+//!
+//! Backends that consume the synthesized names should treat them as
+//! opaque — relying on a particular `<N>` value couples the backend
+//! to this iteration order, and any change here will silently shift
+//! the numbers. The
+//! `numbering_follows_documented_walk_order` regression test in
+//! `tests/closure_conv.rs` pins the order in place: if the test
+//! breaks, either fix the regression or update both this section
+//! and the test together.
+//!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
 //! [`IrFunction`]: crate::ir::IrFunction

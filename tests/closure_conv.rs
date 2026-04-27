@@ -139,6 +139,107 @@ fn mc6_no_residual_closure_nodes() {
     assert_module_closure_free(&converted);
 }
 
+/// Pin the documented iteration order in `closure_conv.rs`'s module
+/// docs. If this test breaks because env / func numbers shifted,
+/// either restore the order or update both the test AND the
+/// "Numbering — iteration-order contract" section together.
+///
+/// Order under test: module-level `let`s (in decl order), then
+/// function bodies (in decl order), then impl methods (in decl
+/// order). Struct/enum field defaults aren't in the fixture because
+/// formalang's surface syntax doesn't permit closures inside struct
+/// field defaults today.
+#[test]
+#[expect(clippy::panic, reason = "test-only assertion helpers")]
+fn numbering_follows_documented_walk_order() {
+    let source = r"
+        // Two module-level let-closures: become ClosureEnv0 / ClosureEnv1.
+        let let_a: I32 -> I32 = |x: I32| x
+        let let_b: String -> String = |s: String| s
+
+        // Function-body closure: ClosureEnv2.
+        pub fn fn_c() -> (I32) -> I32 {
+            |x: I32| x
+        }
+
+        // Impl-method closure: ClosureEnv3.
+        struct Holder { value: I32 = 0 }
+        impl Holder {
+            fn impl_d(self) -> (I32) -> I32 {
+                |x: I32| x
+            }
+        }
+    ";
+    let module = compile_to_ir(source).expect("fixture should compile");
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("conversion succeeds");
+
+    // Map each surviving closure-typed binding / body back to its
+    // ClosureRef.funcref so we can assert which `__closure<N>` it
+    // points to.
+    let funcref_of = |e: &IrExpr| {
+        if let IrExpr::ClosureRef { funcref, .. } = e {
+            Some(funcref.clone())
+        } else {
+            None
+        }
+    };
+    let funcref_for_let = |name: &str| -> Vec<String> {
+        converted
+            .lets
+            .iter()
+            .find(|l| l.name == name)
+            .and_then(|l| funcref_of(&l.value))
+            .unwrap_or_else(|| panic!("let `{name}` should hold a ClosureRef"))
+    };
+    let funcref_for_fn = |name: &str| -> Vec<String> {
+        converted
+            .functions
+            .iter()
+            .find(|f| f.name == name)
+            .and_then(|f| f.body.as_ref())
+            .and_then(funcref_of)
+            .unwrap_or_else(|| panic!("function `{name}` should have a ClosureRef body"))
+    };
+    let funcref_for_impl_method = |name: &str| -> Vec<String> {
+        converted
+            .impls
+            .iter()
+            .flat_map(|i| i.functions.iter())
+            .find(|f| f.name == name)
+            .and_then(|f| f.body.as_ref())
+            .and_then(funcref_of)
+            .unwrap_or_else(|| panic!("impl method `{name}` should have a ClosureRef body"))
+    };
+
+    assert_eq!(funcref_for_let("let_a"), vec!["__closure0".to_string()]);
+    assert_eq!(funcref_for_let("let_b"), vec!["__closure1".to_string()]);
+    assert_eq!(funcref_for_fn("fn_c"), vec!["__closure2".to_string()]);
+    assert_eq!(
+        funcref_for_impl_method("impl_d"),
+        vec!["__closure3".to_string()]
+    );
+
+    // The corresponding env structs must follow the same numbering.
+    let env_names: Vec<&str> = converted
+        .structs
+        .iter()
+        .map(|s| s.name.as_str())
+        .filter(|n| n.starts_with("__ClosureEnv"))
+        .collect();
+    assert_eq!(
+        env_names,
+        vec![
+            "__ClosureEnv0",
+            "__ClosureEnv1",
+            "__ClosureEnv2",
+            "__ClosureEnv3"
+        ]
+    );
+}
+
 /// Nested closures: an outer closure returns an inner closure that
 /// captures both an outer-scope variable AND an outer-closure
 /// parameter. Verifies the recursive `lift_closure` path:
