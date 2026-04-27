@@ -377,6 +377,22 @@ pub struct IrField {
 
     /// Joined `///` doc comments preceding this field. Audit2 B2.
     pub doc: Option<String>,
+
+    /// Capture / passing convention for this field.
+    ///
+    /// Always [`ParamConvention::Let`] for fields written in source
+    /// (struct, trait, enum-variant fields). Set to a non-default
+    /// value by [`ClosureConversionPass`](crate::ir::ClosureConversionPass)
+    /// on synthesized env-struct fields so backends targeting linear-
+    /// memory representations can choose between copy / move /
+    /// reference semantics per capture without re-walking the
+    /// original closure expression.
+    ///
+    /// `#[serde(default)]` keeps round-tripped IR documents
+    /// produced before this field landed deserialisable as
+    /// [`ParamConvention::Let`] (the existing implicit behaviour).
+    #[serde(default)]
+    pub convention: crate::ast::ParamConvention,
 }
 
 /// A generic type parameter.

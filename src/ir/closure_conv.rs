@@ -836,23 +836,26 @@ fn parse_suffix_index(name: &str, prefix: &str) -> Option<usize> {
 
 /// Build the capture-environment struct for a closure with the given
 /// captures. Each capture becomes a private field carrying the
-/// captured value's type. The capture's [`ParamConvention`] is not
-/// materialised on the field today; later microcommits (mc9) will
-/// revisit how `Mut` captures preserve borrow semantics through the
-/// env.
+/// captured value's type and the capture's [`ParamConvention`]. The
+/// convention drives `mutable` (`true` for `Mut`, otherwise `false`)
+/// so backends without convention awareness still get the right
+/// mutability hint, while convention-aware backends can read
+/// `field.convention` directly to distinguish `Let` (copy / borrow),
+/// `Mut` (caller-frame reference), and `Sink` (move ownership).
 fn synthesize_env_struct(
     name: String,
     captures: &[(String, ParamConvention, ResolvedType)],
 ) -> IrStruct {
     let fields = captures
         .iter()
-        .map(|(field_name, _convention, ty)| IrField {
+        .map(|(field_name, convention, ty)| IrField {
             name: field_name.clone(),
             ty: ty.clone(),
-            mutable: false,
+            mutable: matches!(convention, ParamConvention::Mut),
             optional: false,
             default: None,
             doc: None,
+            convention: *convention,
         })
         .collect();
 

@@ -268,6 +268,42 @@ fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::i
     }
 }
 
+/// mc9 — capture conventions are preserved on env-struct fields.
+///
+/// `Sink` captures (a closure returned from a `sink` parameter
+/// scope) land with `convention: Sink`; `Mut` captures (a closure
+/// over a module-level `let mut` binding) land with
+/// `convention: Mut` *and* `mutable: true`, so convention-blind
+/// backends still get the borrow hint.
+///
+/// (Module-level `let mut` is the canonical source of `Mut`
+/// captures — capturing a `mut` *parameter* is rejected by semantic
+/// analysis because the closure would outlive the local frame.)
+#[test]
+fn mc9_env_field_convention_preserves_sink_and_mut() {
+    let source = r"
+        pub fn make_sink_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
+        }
+
+        let mut counter: I32 = 0
+        let bump: () -> I32 = () -> counter
+    ";
+    let module = compile_to_ir(source).expect("should compile to IR");
+    let original_struct_count = module.structs.len();
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    let env_structs: Vec<_> = converted
+        .structs
+        .iter()
+        .skip(original_struct_count)
+        .collect();
+    insta::assert_debug_snapshot!("mc9_env_field_conventions", env_structs);
+}
+
 /// mc5 — `let` shadowing: an inner `let` binding with the same name
 /// as a capture must mask the env access for references *after* the
 /// `let`.

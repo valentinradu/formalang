@@ -601,6 +601,7 @@ impl<'a> IrLowerer<'a> {
                     optional: matches!(f.ty, ast::Type::Optional(_)),
                     mutable: false,
                     doc: f.doc.clone(),
+                    convention: ast::ParamConvention::default(),
                 })
                 .collect();
             let methods: Vec<IrFunctionSig> = trait_info
@@ -690,6 +691,7 @@ impl<'a> IrLowerer<'a> {
                                 optional: matches!(f.ty, ast::Type::Optional(_)),
                                 mutable: false,
                                 doc: f.doc.clone(),
+                                convention: ast::ParamConvention::default(),
                             })
                             .collect()
                     })
@@ -737,6 +739,7 @@ impl<'a> IrLowerer<'a> {
                     optional,
                     default: None,
                     doc: f.doc.clone(),
+                    convention: ast::ParamConvention::default(),
                 }
             })
             .collect();
@@ -1034,6 +1037,7 @@ impl<'a> IrLowerer<'a> {
                         optional: false,
                         mutable: false,
                         doc: f.doc.clone(),
+                        convention: ast::ParamConvention::default(),
                     })
                     .collect(),
             })
@@ -1499,6 +1503,7 @@ impl<'a> IrLowerer<'a> {
             optional,
             default: None,
             doc: f.doc.clone(),
+            convention: ast::ParamConvention::default(),
         }
     }
 
@@ -1517,6 +1522,7 @@ impl<'a> IrLowerer<'a> {
             optional: f.optional,
             default,
             doc: f.doc.clone(),
+            convention: ast::ParamConvention::default(),
         }
     }
 

@@ -1,13 +1,25 @@
 ---
 source: tests/closure_conv.rs
-expression: new_structs
+expression: env_structs
 ---
 [
     IrStruct {
         name: "__ClosureEnv0",
         visibility: Private,
         traits: [],
-        fields: [],
+        fields: [
+            IrField {
+                name: "counter",
+                ty: Primitive(
+                    I32,
+                ),
+                mutable: true,
+                optional: false,
+                default: None,
+                doc: None,
+                convention: Mut,
+            },
+        ],
         generic_params: [],
         doc: Some(
             "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`.",
