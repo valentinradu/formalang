@@ -267,6 +267,36 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
+    /// Reference to a lifted closure: a top-level function paired with
+    /// a runtime environment value carrying its captures.
+    ///
+    /// Produced by `ClosureConversionPass`. After that pass runs, every
+    /// [`IrExpr::Closure`] in the module has been replaced by a
+    /// `ClosureRef` whose `funcref` names the lifted top-level
+    /// `IrFunction` (its first parameter is the env struct, followed by
+    /// the original closure parameters) and whose `env_struct` is an
+    /// expression that constructs the corresponding capture-environment
+    /// `IrStruct`.
+    ///
+    /// Backends targeting closure-supporting languages can render a
+    /// `ClosureRef` as a function-pointer / environment pair (the
+    /// classic representation behind `funcref` + `call_indirect` in
+    /// `WebAssembly`, for example).
+    ClosureRef {
+        /// Path to the lifted top-level function (e.g.,
+        /// `["__closure_make_adder_0"]`). Lookup follows the same
+        /// convention as [`Self::FunctionCall::path`].
+        funcref: Vec<String>,
+        /// Expression constructing the runtime capture environment —
+        /// typically an [`Self::StructInst`] whose fields hold the
+        /// captured values. May be a unit / empty struct when the
+        /// original closure captured nothing.
+        env_struct: Box<Self>,
+        /// Resolved type: same closure type carried by the original
+        /// [`Self::Closure`] node (`Closure { param_tys, return_ty }`).
+        ty: ResolvedType,
+    },
+
     /// Dictionary literal: `["key": value, "key2": value2]`
     DictLiteral {
         /// Key-value entries
@@ -401,6 +431,7 @@ impl IrExpr {
             | Self::FunctionCall { ty, .. }
             | Self::MethodCall { ty, .. }
             | Self::Closure { ty, .. }
+            | Self::ClosureRef { ty, .. }
             | Self::DictLiteral { ty, .. }
             | Self::DictAccess { ty, .. }
             | Self::Block { ty, .. } => ty,
@@ -427,6 +458,7 @@ impl IrExpr {
             | Self::FunctionCall { ty, .. }
             | Self::MethodCall { ty, .. }
             | Self::Closure { ty, .. }
+            | Self::ClosureRef { ty, .. }
             | Self::DictLiteral { ty, .. }
             | Self::DictAccess { ty, .. }
             | Self::Block { ty, .. } => ty,
@@ -462,6 +494,7 @@ impl IrExpr {
             | Self::FunctionCall { .. }
             | Self::MethodCall { .. }
             | Self::Closure { .. }
+            | Self::ClosureRef { .. }
             | Self::DictAccess { .. }
             | Self::Block { .. } => false,
         }

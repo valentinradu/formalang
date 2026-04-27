@@ -2075,6 +2075,7 @@ fn iter_expr_children_mut(expr: &mut IrExpr) -> Vec<&mut IrExpr> {
             }
         }
         IrExpr::Closure { body, .. } => out.push(body.as_mut()),
+        IrExpr::ClosureRef { env_struct, .. } => out.push(env_struct.as_mut()),
     }
     out
 }
@@ -2700,6 +2701,7 @@ fn walk_expr(expr: &IrExpr, visit: &mut impl FnMut(&IrExpr)) {
             }
         }
         IrExpr::Closure { body, .. } => walk_expr(body, visit),
+        IrExpr::ClosureRef { env_struct, .. } => walk_expr(env_struct, visit),
     }
 }
 
@@ -2928,6 +2930,12 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
                 visit(ty);
             }
             walk_expr_types(body, visit);
+        }
+        IrExpr::ClosureRef {
+            env_struct, ty, ..
+        } => {
+            visit(ty);
+            walk_expr_types(env_struct, visit);
         }
         IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
@@ -3169,6 +3177,12 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
                 visit(ty);
             }
             walk_expr_types_mut_inner(body, visit);
+        }
+        IrExpr::ClosureRef {
+            env_struct, ty, ..
+        } => {
+            visit(ty);
+            walk_expr_types_mut_inner(env_struct, visit);
         }
     }
 }

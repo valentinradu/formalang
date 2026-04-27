@@ -415,6 +415,12 @@ impl<'a> DeadCodeEliminator<'a> {
                 }
                 self.mark_used_in_expr(body);
             }
+            IrExpr::ClosureRef {
+                env_struct, ty, ..
+            } => {
+                self.mark_used_in_type(ty);
+                self.mark_used_in_expr(env_struct);
+            }
         }
     }
 
@@ -604,7 +610,8 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         | IrExpr::FieldAccess { .. }
         | IrExpr::LetRef { .. }
         | IrExpr::UnaryOp { .. }
-        | IrExpr::Closure { .. }) => e,
+        | IrExpr::Closure { .. }
+        | IrExpr::ClosureRef { .. }) => e,
     }
 }
 
@@ -965,6 +972,12 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
                 remap_type(t, remap);
             }
             remap_expr(body, remap);
+        }
+        IrExpr::ClosureRef {
+            env_struct, ty, ..
+        } => {
+            remap_type(ty, remap);
+            remap_expr(env_struct, remap);
         }
         IrExpr::DictLiteral { entries, .. } => {
             for (k, v) in entries {

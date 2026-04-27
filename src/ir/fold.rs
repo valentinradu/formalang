@@ -205,6 +205,15 @@ impl ConstantFolder {
                 body: Box::new(self.fold_expr(*body)),
                 ty,
             },
+            IrExpr::ClosureRef {
+                funcref,
+                env_struct,
+                ty,
+            } => IrExpr::ClosureRef {
+                funcref,
+                env_struct: Box::new(self.fold_expr(*env_struct)),
+                ty,
+            },
         }
     }
 
@@ -769,6 +778,7 @@ mod tests {
             | IrExpr::FunctionCall { .. }
             | IrExpr::MethodCall { .. }
             | IrExpr::Closure { .. }
+            | IrExpr::ClosureRef { .. }
             | IrExpr::DictLiteral { .. }
             | IrExpr::DictAccess { .. }
             | IrExpr::Block { .. } => {

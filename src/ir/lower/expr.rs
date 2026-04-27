@@ -1907,5 +1907,12 @@ fn collect_free_refs(
             }
             collect_free_refs(result, &inner, out, seen);
         }
+        IrExpr::ClosureRef { env_struct, .. } => {
+            // `ClosureRef` is produced by `ClosureConversionPass`, which
+            // runs after lowering — this helper shouldn't see one in
+            // practice. Recurse into the env-struct expression so the
+            // walk stays structurally sound if pass ordering ever shifts.
+            collect_free_refs(env_struct, bound, out, seen);
+        }
     }
 }
