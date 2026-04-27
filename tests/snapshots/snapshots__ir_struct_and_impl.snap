@@ -13,7 +13,7 @@ IrModule {
                 IrField {
                     name: "x",
                     ty: Primitive(
-                        Number,
+                        I32,
                     ),
                     mutable: false,
                     optional: false,
@@ -23,7 +23,7 @@ IrModule {
                 IrField {
                     name: "y",
                     ty: Primitive(
-                        Number,
+                        I32,
                     ),
                     mutable: false,
                     optional: false,
@@ -62,7 +62,7 @@ IrModule {
                     ],
                     return_type: Some(
                         Primitive(
-                            Number,
+                            I32,
                         ),
                     ),
                     body: Some(
@@ -70,18 +70,18 @@ IrModule {
                             left: SelfFieldRef {
                                 field: "x",
                                 ty: Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             },
                             op: Add,
                             right: SelfFieldRef {
                                 field: "y",
                                 ty: Primitive(
-                                    Number,
+                                    I32,
                                 ),
                             },
                             ty: Primitive(
-                                Number,
+                                I32,
                             ),
                         },
                     ),

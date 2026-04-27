@@ -9,12 +9,12 @@
 pub enum Priority {
     low,
     medium,
-    high(urgency: Number)
+    high(urgency: I32)
 }
 
 pub enum Status {
     pending,
-    done(score: Number)
+    done(score: I32)
 }
 
 // =============================================================================
@@ -27,7 +27,7 @@ pub trait Labeled {
 
 pub trait Tracked: Labeled {
     label: String,
-    created_at: Number
+    created_at: I32
 }
 
 // =============================================================================
@@ -43,18 +43,18 @@ extern fn get_logger() -> Logger
 // =============================================================================
 
 pub struct Task {
-    id: Number,
+    id: I32,
     label: String,
-    created_at: Number,
+    created_at: I32,
     priority: Priority,
     status: Status,
     tags: [String],
     notes: String? = "none",
-    mut retry_count: Number = 0
+    mut retry_count: I32 = 0
 }
 
 pub struct Config {
-    max_retries: Number = 3,
+    max_retries: I32 = 3,
     debug: Boolean = false
 }
 
@@ -70,7 +70,7 @@ impl Task {
         }
     }
 
-    fn priority_score(self) -> Number {
+    fn priority_score(self) -> I32 {
         match self.priority {
             .low: 1,
             .medium: 5,
@@ -86,7 +86,7 @@ impl Task {
         }
     }
 
-    fn next_retry(self) -> Number {
+    fn next_retry(self) -> I32 {
         self.retry_count + 1
     }
 }
@@ -95,7 +95,7 @@ impl Task {
 // Standalone functions — params, return type, block body
 // =============================================================================
 
-pub fn clamp(value: Number, min: Number, max: Number) -> Number {
+pub fn clamp(value: I32, min: I32, max: I32) -> I32 {
     if value < min {
         min
     } else {
@@ -103,7 +103,7 @@ pub fn clamp(value: Number, min: Number, max: Number) -> Number {
     }
 }
 
-pub fn score_label(score: Number) -> String {
+pub fn score_label(score: I32) -> String {
     if score > 7 { "high" } else { if score > 3 { "medium" } else { "low" } }
 }
 
@@ -111,7 +111,7 @@ pub fn score_label(score: Number) -> String {
 // Parameter conventions — let (default), mut, sink
 // =============================================================================
 
-pub fn apply_bonus(mut score: Number, bonus: Number) -> Number {
+pub fn apply_bonus(mut score: I32, bonus: I32) -> I32 {
     score
 }
 
@@ -131,8 +131,8 @@ pub fn describe_priority(priority: Priority) -> String {
 // Module-level let bindings — typed, untyped, mutable, pub
 // =============================================================================
 
-pub let max_retries: Number = 3
-pub let mut task_count: Number = 0
+pub let max_retries: I32 = 3
+pub let mut task_count: I32 = 0
 let default_label: String = "untitled"
 
 // =============================================================================
@@ -166,7 +166,7 @@ let { label, id } = sample
 // Tuple expression and tuple destructuring
 // =============================================================================
 
-let coords: (x: Number, y: Number) = (x: 10, y: 20)
+let coords: (x: I32, y: I32) = (x: 10, y: 20)
 let (x, y) = coords
 
 // =============================================================================
@@ -180,8 +180,8 @@ let version: String = metadata["version"]
 // Binary operators — arithmetic, comparison, logical
 // =============================================================================
 
-let raw_score: Number = sample.priority_score()
-let clamped: Number = clamp(raw_score, 0, 10)
+let raw_score: I32 = sample.priority_score()
+let clamped: I32 = clamp(raw_score, 0, 10)
 let is_urgent: Boolean = raw_score > 7
 let is_valid: Boolean = clamped >= 0 && clamped <= 10
 
@@ -221,7 +221,7 @@ let format_tag: String -> String = |t: String| "[" + t + "]"
 let make_label: () -> String = () -> default_label
 
 // mut convention: callee receives an exclusive mutable view
-let bump_score: mut Number -> Number = mut n -> n
+let bump_score: mut I32 -> I32 = mut n -> n
 
 // sink convention: callee takes ownership; caller cannot use arg after
 let consume_label: sink String -> String = sink s -> s
@@ -230,8 +230,8 @@ let consume_label: sink String -> String = sink s -> s
 // Block expression with local lets (parenthesised)
 // =============================================================================
 
-let final_score: Number = (
-    let base: Number = sample.priority_score()
-    in let bonus: Number = if is_urgent { 5 } else { 0 }
+let final_score: I32 = (
+    let base: I32 = sample.priority_score()
+    in let bonus: I32 = if is_urgent { 5 } else { 0 }
     in base + bonus
 )

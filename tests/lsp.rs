@@ -394,7 +394,7 @@ fn test_query_provider_completions_struct() -> Result<(), Box<dyn std::error::Er
     let source = r"
         struct User {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     let result = compile_with_analyzer(source);
@@ -455,7 +455,7 @@ fn test_query_provider_completions_enum() -> Result<(), Box<dyn std::error::Erro
 fn test_query_provider_completions_multiple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: String }
-        struct B { y: Number }
+        struct B { y: I32 }
         trait C { z: Boolean }
         enum D { one, two }
     ";
@@ -487,16 +487,16 @@ fn test_query_provider_completions_builtin_types() -> Result<(), Box<dyn std::er
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_type_completions();
 
-    // Should include builtin types like String, Number, Boolean
+    // Should include builtin types like String, I32, Boolean
     let has_string = completions.iter().any(|c| c.label == "String");
-    let has_number = completions.iter().any(|c| c.label == "Number");
+    let has_i32 = completions.iter().any(|c| c.label == "I32");
     let has_boolean = completions.iter().any(|c| c.label == "Boolean");
 
     if !(has_string) {
         return Err("Should have String completion".into());
     }
-    if !(has_number) {
-        return Err("Should have Number completion".into());
+    if !(has_i32) {
+        return Err("Should have I32 completion".into());
     }
     if !(has_boolean) {
         return Err("Should have Boolean completion".into());
@@ -629,7 +629,7 @@ fn test_query_provider_hover_documentation_function() -> Result<(), Box<dyn std:
     // on a function name now returns its signature and doc-comment.
     let source = r"
         /// Compute the sum of two numbers.
-        fn add(a: Number, b: Number) -> Number { a + b }
+        fn add(a: I32, b: I32) -> I32 { a + b }
     ";
     let (_, analyzer) = compile_with_analyzer(source).map_err(|e| format!("{e:?}"))?;
     let provider = QueryProvider::new(analyzer.symbols());
@@ -638,7 +638,7 @@ fn test_query_provider_hover_documentation_function() -> Result<(), Box<dyn std:
         .ok_or("expected hover for add")?;
     if !hover
         .signature
-        .contains("fn add(a: Number, b: Number) -> Number")
+        .contains("fn add(a: I32, b: I32) -> I32")
     {
         return Err(format!("unexpected signature: {}", hover.signature).into());
     }
@@ -924,7 +924,7 @@ fn test_find_node_at_offset_out_of_bounds() -> Result<(), Box<dyn std::error::Er
 fn test_find_node_at_offset_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Inner {
-            id: Number
+            id: I32
         }
         struct Outer {
             inner: Inner
@@ -1069,7 +1069,7 @@ fn test_lsp_workflow_position_to_completion() -> Result<(), Box<dyn std::error::
 
 #[test]
 fn test_lsp_workflow_multiline_navigation() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A {\n    x: String\n}\nstruct B {\n    y: Number\n}";
+    let source = "struct A {\n    x: String\n}\nstruct B {\n    y: I32\n}";
 
     let result = compile_with_analyzer(source);
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
@@ -1095,7 +1095,7 @@ fn test_lsp_workflow_multiline_navigation() -> Result<(), Box<dyn std::error::Er
 
 #[test]
 fn test_lsp_position_line_content() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct First { a: String }\nstruct Second { b: Number }";
+    let source = "struct First { a: String }\nstruct Second { b: I32 }";
 
     let pos1 = LspPosition::new(0, 0);
     let pos2 = LspPosition::new(1, 0);
@@ -1110,10 +1110,10 @@ fn test_lsp_position_line_content() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
-    if line2 != "struct Second { b: Number }" {
+    if line2 != "struct Second { b: I32 }" {
         return Err(format!(
             "expected {:?} but got {:?}",
-            "struct Second { b: Number }", line2
+            "struct Second { b: I32 }", line2
         )
         .into());
     }
@@ -1330,8 +1330,8 @@ fn test_query_provider_find_definition_let() -> Result<(), Box<dyn std::error::E
 fn test_query_provider_find_definition_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
     ";
     let result = compile_with_analyzer(source);
@@ -1399,7 +1399,7 @@ fn test_find_node_enclosing_definition() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_find_node_is_in_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Result { value: Number = 42 }
+        struct Result { value: I32 = 42 }
     ";
     let result = compile_with_analyzer(source);
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
@@ -1509,7 +1509,7 @@ fn test_find_node_at_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_node_in_impl_with_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Container { point: Point = Point(x: 1, y: 2) }
     ";
     let result = compile_with_analyzer(source);
@@ -1579,7 +1579,7 @@ fn test_find_node_in_if_expression() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_node_in_binary_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Math { result: Number = 1 + 2 }
+        struct Math { result: I32 = 1 + 2 }
     ";
     let result = compile_with_analyzer(source);
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;
@@ -1604,7 +1604,7 @@ fn test_find_node_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     let result = compile_with_analyzer(source);

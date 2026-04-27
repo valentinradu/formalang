@@ -221,7 +221,7 @@ fn test_number_literal_integer() -> Result<(), Box<dyn std::error::Error>> {
     let tokens = Lexer::tokenize_all(source);
     let has_number = tokens.iter().any(|(t, _)| matches!(t, Token::Number(_)));
     if !has_number {
-        return Err("Expected Number token".into());
+        return Err("Expected I32 token".into());
     }
     Ok(())
 }
@@ -232,7 +232,7 @@ fn test_number_literal_float() -> Result<(), Box<dyn std::error::Error>> {
     let tokens = Lexer::tokenize_all(source);
     let has_number = tokens.iter().any(|(t, _)| matches!(t, Token::Number(_)));
     if !has_number {
-        return Err("Expected Number token for float".into());
+        return Err("Expected I32 token for float".into());
     }
     Ok(())
 }
@@ -581,7 +581,7 @@ fn test_extern_keyword() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_definition() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct User { name: String, age: Number }";
+    let source = "struct User { name: String, age: I32 }";
     let tokens = Lexer::tokenize_all(source);
     if tokens.len() < 8 {
         return Err(format!("Expected multiple tokens, got {}", tokens.len()).into());

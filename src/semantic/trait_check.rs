@@ -39,10 +39,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Generic-traits PR: when the impl is `impl Foo<X, Y> for Z`, the
     /// `trait_args` slot carries the concrete arg types and the
     /// trait's required-method signatures get their generic params
-    /// substituted before comparison. Without this, `impl Eq<Number>
+    /// substituted before comparison. Without this, `impl Eq<I32>
     /// for Foo` would always report a `TraitMethodSignatureMismatch`
     /// because the trait declares `fn eq(self, other: T)` and the
-    /// impl declares `fn eq(self, other: Number)`.
+    /// impl declares `fn eq(self, other: I32)`.
     fn validate_impl_trait_methods(
         &mut self,
         impl_functions: &[FnDef],
@@ -333,7 +333,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         match ty {
             Type::Primitive(prim) => match prim {
                 PrimitiveType::String => "String".to_string(),
-                PrimitiveType::Number => "Number".to_string(),
+                PrimitiveType::I32 => "I32".to_string(),
+                PrimitiveType::I64 => "I64".to_string(),
+                PrimitiveType::F32 => "F32".to_string(),
+                PrimitiveType::F64 => "F64".to_string(),
                 PrimitiveType::Boolean => "Boolean".to_string(),
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),

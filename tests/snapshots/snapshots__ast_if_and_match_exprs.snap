@@ -413,7 +413,7 @@ File {
                 ),
                 type_annotation: Some(
                     Primitive(
-                        Number,
+                        I32,
                     ),
                 ),
                 value: IfExpr {
@@ -423,63 +423,71 @@ File {
                         ),
                         span: Span {
                             start: Location {
-                                offset: 197,
+                                offset: 194,
                                 line: 9,
-                                column: 31,
+                                column: 28,
                             },
                             end: Location {
-                                offset: 201,
+                                offset: 198,
                                 line: 9,
-                                column: 35,
+                                column: 32,
                             },
                         },
                     },
                     then_branch: Literal {
                         value: Number(
-                            1.0,
+                            NumberLiteral {
+                                value: 1.0,
+                                suffix: None,
+                                kind: Integer,
+                            },
                         ),
                         span: Span {
                             start: Location {
-                                offset: 204,
+                                offset: 201,
                                 line: 9,
-                                column: 38,
+                                column: 35,
                             },
                             end: Location {
-                                offset: 205,
+                                offset: 202,
                                 line: 9,
-                                column: 39,
+                                column: 36,
                             },
                         },
                     },
                     else_branch: Some(
                         Literal {
                             value: Number(
-                                0.0,
+                                NumberLiteral {
+                                    value: 0.0,
+                                    suffix: None,
+                                    kind: Integer,
+                                },
                             ),
                             span: Span {
                                 start: Location {
-                                    offset: 215,
+                                    offset: 212,
                                     line: 9,
-                                    column: 49,
+                                    column: 46,
                                 },
                                 end: Location {
-                                    offset: 216,
+                                    offset: 213,
                                     line: 9,
-                                    column: 50,
+                                    column: 47,
                                 },
                             },
                         },
                     ),
                     span: Span {
                         start: Location {
-                            offset: 194,
+                            offset: 191,
                             line: 9,
-                            column: 28,
+                            column: 25,
                         },
                         end: Location {
-                            offset: 218,
+                            offset: 215,
                             line: 9,
-                            column: 52,
+                            column: 49,
                         },
                     },
                 },
@@ -491,9 +499,9 @@ File {
                         column: 9,
                     },
                     end: Location {
-                        offset: 218,
+                        offset: 215,
                         line: 9,
-                        column: 52,
+                        column: 49,
                     },
                 },
             },
@@ -506,7 +514,7 @@ File {
             column: 0,
         },
         end: Location {
-            offset: 218,
+            offset: 215,
             line: 0,
             column: 0,
         },

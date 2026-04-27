@@ -130,7 +130,7 @@ fn test_array_of_generic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_tuple_with_optionals() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Data {
-            point: (x: Number, y: Number?)
+            point: (x: I32, y: I32?)
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -219,8 +219,8 @@ fn test_struct_instantiation_with_type_args() -> Result<(), Box<dyn std::error::
 fn test_struct_instantiation_shorthand() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
         struct Line {
             start: Point = Point(x: 0, y: 0),
@@ -264,7 +264,7 @@ fn test_impl_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Item {
-            id: Number
+            id: I32
         }
         struct Collection {
             items: [Item] = for i in [1, 2, 3] { Item(id: i) }
@@ -314,7 +314,7 @@ fn test_struct_with_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dictionary_field_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Cache {
-            data: [String: Number] = ["a": 1, "b": 2]
+            data: [String: I32] = ["a": 1, "b": 2]
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

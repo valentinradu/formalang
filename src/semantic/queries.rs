@@ -161,7 +161,10 @@ impl<'a> QueryProvider<'a> {
     pub fn get_type_completions(&self) -> Vec<CompletionCandidate> {
         let mut completions = vec![
             CompletionCandidate::new("String", CompletionKind::PrimitiveType),
-            CompletionCandidate::new("Number", CompletionKind::PrimitiveType),
+            CompletionCandidate::new("I32", CompletionKind::PrimitiveType),
+            CompletionCandidate::new("I64", CompletionKind::PrimitiveType),
+            CompletionCandidate::new("F32", CompletionKind::PrimitiveType),
+            CompletionCandidate::new("F64", CompletionKind::PrimitiveType),
             CompletionCandidate::new("Boolean", CompletionKind::PrimitiveType),
             CompletionCandidate::new("Path", CompletionKind::PrimitiveType),
             CompletionCandidate::new("Regex", CompletionKind::PrimitiveType),
@@ -512,7 +515,10 @@ fn format_type_brief(ty: &crate::ast::Type) -> String {
     match ty {
         Type::Primitive(p) => match p {
             PrimitiveType::String => "String".to_string(),
-            PrimitiveType::Number => "Number".to_string(),
+            PrimitiveType::I32 => "I32".to_string(),
+            PrimitiveType::I64 => "I64".to_string(),
+            PrimitiveType::F32 => "F32".to_string(),
+            PrimitiveType::F64 => "F64".to_string(),
             PrimitiveType::Boolean => "Boolean".to_string(),
             PrimitiveType::Path => "Path".to_string(),
             PrimitiveType::Regex => "Regex".to_string(),

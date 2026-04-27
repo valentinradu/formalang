@@ -1215,7 +1215,7 @@ mod tests {
         let source = r"
             struct User {
                 name: String,
-                age: Number
+                age: I32
             }
         ";
         let file = parse(source).map_err(|e| format!("parse failed: {e:?}"))?;

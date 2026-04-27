@@ -36,7 +36,7 @@
 //! use formalang::{compile_to_ir, Pipeline};
 //! use formalang::ir::MonomorphisePass;
 //!
-//! let source = "pub struct Box<T> { value: T }\npub let b: Box<Number> = Box(value: 1)";
+//! let source = "pub struct Box<T> { value: T }\npub let b: Box<I32> = Box(value: 1)";
 //! let module = compile_to_ir(source).unwrap();
 //! let result = Pipeline::new().pass(MonomorphisePass::default()).run(module);
 //! assert!(result.is_ok());
@@ -981,7 +981,10 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
     match ty {
         ResolvedType::Primitive(p) => out.push_str(match p {
             PrimitiveType::String => "String",
-            PrimitiveType::Number => "Number",
+            PrimitiveType::I32 => "I32",
+            PrimitiveType::I64 => "I64",
+            PrimitiveType::F32 => "F32",
+            PrimitiveType::F64 => "F64",
             PrimitiveType::Boolean => "Boolean",
             PrimitiveType::Path => "Path",
             PrimitiveType::Regex => "Regex",
@@ -1869,7 +1872,7 @@ fn rewrite_call_paths_expr(
             }
             // Rewrite the call's stored return type by substituting
             // each generic param with the inferred concrete arg.
-            // Without this, `let n: Number = identity(1)` keeps the
+            // Without this, `let n: I32 = identity(1)` keeps the
             // call's `ty: TypeParam(T)` and the leftover scanner
             // flags it.
             let subs: HashMap<String, ResolvedType> = callee
@@ -2281,7 +2284,7 @@ fn apply_remaps(
         // Drop traits entries that point at dropped generic traits.
         // The symbol-table-driven `s.traits` index only ever held the
         // unqualified trait id (no args), so a generic-trait impl
-        // (`impl Eq<Number> for Foo`) used to register both Eq AND
+        // (`impl Eq<I32> for Foo`) used to register both Eq AND
         // the relevant args at the impl level — but the index slot
         // can't tell them apart and ends up listing the generic id.
         // After rewrite_trait_refs, the impl's trait_ref points at

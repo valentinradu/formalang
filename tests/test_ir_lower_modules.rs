@@ -16,7 +16,7 @@ fn module_trait_lowers_without_error() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
 pub mod geometry {
     pub trait Shape {
-        area: Number
+        area: I32
     }
 }
 ";
@@ -41,7 +41,7 @@ pub mod shapes {
     }
     pub struct Circle {
         visible: Boolean,
-        radius: Number
+        radius: I32
     }
 }
 ";
@@ -76,7 +76,7 @@ pub mod shapes {
 
 #[test]
 fn irmodule_struct_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct Alpha { x: Number }";
+    let source = "pub struct Alpha { x: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let id = module.struct_id("Alpha").ok_or("Alpha should be found")?;
@@ -89,7 +89,7 @@ fn irmodule_struct_id_returns_correct_id() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn irmodule_struct_id_returns_none_for_unknown() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct Alpha { x: Number }";
+    let source = "pub struct Alpha { x: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     if module.struct_id("NonExistent").is_some() {
@@ -100,7 +100,7 @@ fn irmodule_struct_id_returns_none_for_unknown() -> Result<(), Box<dyn std::erro
 
 #[test]
 fn irmodule_trait_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub trait Sized2 { width: Number }";
+    let source = "pub trait Sized2 { width: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let id = module
@@ -132,7 +132,7 @@ fn irmodule_enum_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error
 fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::FunctionId;
 
-    let source = "pub fn add(a: Number, b: Number) -> Number { a + b }";
+    let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let id = module
@@ -159,7 +159,7 @@ fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn irmodule_get_let_and_has_let() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "let maxCount: Number = 42";
+    let source = "let maxCount: I32 = 42";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     if !(module.has_let("maxCount")) {
@@ -189,7 +189,7 @@ fn irmodule_get_let_and_has_let() -> Result<(), Box<dyn std::error::Error>> {
 fn resolved_type_display_name_struct() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ResolvedType;
 
-    let source = "pub struct Rect { w: Number, h: Number }";
+    let source = "pub struct Rect { w: I32, h: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let id = module.struct_id("Rect").ok_or("Rect should be found")?;
@@ -253,11 +253,11 @@ fn resolved_type_display_name_array() -> Result<(), Box<dyn std::error::Error>> 
     use formalang::ResolvedType;
 
     let module = formalang::ir::IrModule::new();
-    let inner = ResolvedType::Primitive(PrimitiveType::Number);
+    let inner = ResolvedType::Primitive(PrimitiveType::I32);
     let ty = ResolvedType::Array(Box::new(inner));
     let name = ty.display_name(&module);
-    if name != "[Number]" {
-        return Err(format!("expected {:?}, got {:?}", "[Number]", name).into());
+    if name != "[I32]" {
+        return Err(format!("expected {:?}, got {:?}", "[I32]", name).into());
     }
     Ok(())
 }
@@ -286,19 +286,19 @@ fn resolved_type_display_name_tuple() -> Result<(), Box<dyn std::error::Error>> 
     let ty = ResolvedType::Tuple(vec![
         (
             "x".to_string(),
-            ResolvedType::Primitive(PrimitiveType::Number),
+            ResolvedType::Primitive(PrimitiveType::I32),
         ),
         (
             "y".to_string(),
-            ResolvedType::Primitive(PrimitiveType::Number),
+            ResolvedType::Primitive(PrimitiveType::I32),
         ),
     ]);
     let name = ty.display_name(&module);
-    if !name.contains("x: Number") {
-        return Err(format!("expected 'x: Number' in {name}").into());
+    if !name.contains("x: I32") {
+        return Err(format!("expected 'x: I32' in {name}").into());
     }
-    if !name.contains("y: Number") {
-        return Err(format!("expected 'y: Number' in {name}").into());
+    if !name.contains("y: I32") {
+        return Err(format!("expected 'y: I32' in {name}").into());
     }
     Ok(())
 }
@@ -311,7 +311,10 @@ fn resolved_type_display_name_primitive_variants() -> Result<(), Box<dyn std::er
     let module = formalang::ir::IrModule::new();
     let cases = [
         (PrimitiveType::String, "String"),
-        (PrimitiveType::Number, "Number"),
+        (PrimitiveType::I32, "I32"),
+        (PrimitiveType::I64, "I64"),
+        (PrimitiveType::F32, "F32"),
+        (PrimitiveType::F64, "F64"),
         (PrimitiveType::Boolean, "Boolean"),
         (PrimitiveType::Path, "Path"),
         (PrimitiveType::Regex, "Regex"),
@@ -387,11 +390,11 @@ fn resolved_type_display_name_dictionary() -> Result<(), Box<dyn std::error::Err
     let module = formalang::ir::IrModule::new();
     let ty = ResolvedType::Dictionary {
         key_ty: Box::new(ResolvedType::Primitive(PrimitiveType::String)),
-        value_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Number)),
+        value_ty: Box::new(ResolvedType::Primitive(PrimitiveType::I32)),
     };
     let name = ty.display_name(&module);
-    if name != "[String: Number]" {
-        return Err(format!("expected {:?}, got {:?}", "[String: Number]", name).into());
+    if name != "[String: I32]" {
+        return Err(format!("expected {:?}, got {:?}", "[String: I32]", name).into());
     }
     Ok(())
 }
@@ -406,7 +409,7 @@ fn resolved_type_display_name_closure() -> Result<(), Box<dyn std::error::Error>
         param_tys: vec![
             (
                 ParamConvention::Let,
-                ResolvedType::Primitive(PrimitiveType::Number),
+                ResolvedType::Primitive(PrimitiveType::I32),
             ),
             (
                 ParamConvention::Let,
@@ -416,10 +419,10 @@ fn resolved_type_display_name_closure() -> Result<(), Box<dyn std::error::Error>
         return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
     };
     let name = ty.display_name(&module);
-    if name != "(Number, String) -> Boolean" {
+    if name != "(I32, String) -> Boolean" {
         return Err(format!(
             "expected {:?}, got {:?}",
-            "(Number, String) -> Boolean", name
+            "(I32, String) -> Boolean", name
         )
         .into());
     }
@@ -475,8 +478,8 @@ fn irmodule_rebuild_indices_after_struct_filter() -> Result<(), Box<dyn std::err
     }
 
     let source = r"
-        pub struct Keep { x: Number }
-        pub struct Drop { y: Number }
+        pub struct Keep { x: I32 }
+        pub struct Drop { y: I32 }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = FilterPass
@@ -504,17 +507,17 @@ fn irexpr_ty_returns_type_from_literal() -> Result<(), Box<dyn std::error::Error
     use formalang::ast::PrimitiveType;
     use formalang::ResolvedType;
 
-    let source = "struct A { x: Number = 42 }";
+    let source = "struct A { x: I32 = 42 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let s = module.structs.first().ok_or("no structs")?;
     let field = s.fields.first().ok_or("no fields")?;
     let expr = field.default.as_ref().ok_or("should have default")?;
     let ty = expr.ty();
-    if ty != &ResolvedType::Primitive(PrimitiveType::Number) {
+    if ty != &ResolvedType::Primitive(PrimitiveType::I32) {
         return Err(format!(
             "expected {:?} but got {:?}",
-            &ResolvedType::Primitive(PrimitiveType::Number),
+            &ResolvedType::Primitive(PrimitiveType::I32),
             ty
         )
         .into());
@@ -560,14 +563,14 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
         mutable: false,
         ty: None,
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(1.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
     };
 
     let mapped = stmt.map_exprs(|_e| IrExpr::Literal {
-        value: Literal::Number(99.0),
-        ty: ResolvedType::Primitive(PrimitiveType::Number),
+        value: Literal::Number(99.0.into()),
+        ty: ResolvedType::Primitive(PrimitiveType::I32),
     });
 
     if let IrBlockStatement::Let { value, .. } = mapped {
@@ -576,8 +579,8 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
             ..
         } = value
         {
-            if (n - 99.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 99.0, got {n}").into());
+            if (n.value - 99.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 99.0, got {}", n.value).into());
             }
         } else {
             return Err("Expected number literal after map_exprs".into());
@@ -596,12 +599,12 @@ fn ir_block_statement_map_exprs_assign() -> Result<(), Box<dyn std::error::Error
 
     let stmt = IrBlockStatement::Assign {
         target: IrExpr::Literal {
-            value: Literal::Number(0.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(0.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(1.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
     };
 
@@ -660,7 +663,7 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
     use formalang::ir::{eliminate_dead_code_expr, IrExpr};
     use formalang::ResolvedType;
 
-    let ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::If {
         condition: Box::new(IrExpr::Literal {
@@ -668,11 +671,11 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(10.0),
+            value: Literal::Number(10.0.into()),
             ty: ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(20.0),
+            value: Literal::Number(20.0.into()),
             ty: ty.clone(),
         })),
         ty,
@@ -684,8 +687,8 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
         ..
     } = result
     {
-        if (n - 10.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 10.0, got {n}").into());
+        if (n.value - 10.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 10.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected literal 10.0, got {result:?}").into());
@@ -699,7 +702,7 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
     use formalang::ir::{eliminate_dead_code_expr, IrExpr};
     use formalang::ResolvedType;
 
-    let ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::If {
         condition: Box::new(IrExpr::Literal {
@@ -707,11 +710,11 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(10.0),
+            value: Literal::Number(10.0.into()),
             ty: ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(20.0),
+            value: Literal::Number(20.0.into()),
             ty: ty.clone(),
         })),
         ty,
@@ -723,8 +726,8 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
         ..
     } = result
     {
-        if (n - 20.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 20.0, got {n}").into());
+        if (n.value - 20.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 20.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected literal 20.0, got {result:?}").into());
@@ -739,7 +742,7 @@ fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn 
     use formalang::ir::{eliminate_dead_code_expr, IrExpr};
     use formalang::ResolvedType;
 
-    let ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::If {
         condition: Box::new(IrExpr::Literal {
@@ -747,7 +750,7 @@ fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn 
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ty.clone(),
         }),
         else_branch: None,
@@ -770,16 +773,16 @@ fn dce_eliminate_dead_code_expr_binary_op_passthrough() -> Result<(), Box<dyn st
     use formalang::ir::{eliminate_dead_code_expr, IrExpr};
     use formalang::ResolvedType;
 
-    let ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
-            value: Literal::Number(3.0),
+            value: Literal::Number(3.0.into()),
             ty: ty.clone(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
-            value: Literal::Number(4.0),
+            value: Literal::Number(4.0.into()),
             ty: ty.clone(),
         }),
         ty,
@@ -801,7 +804,7 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
 
     let source = r"
         struct Cfg {
-            value: Number = if true { 99 } else { 0 }
+            value: I32 = if true { 99 } else { 0 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -821,8 +824,8 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
         ..
     } = default
     {
-        if (n - 99.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 99.0, got {n}").into());
+        if (n.value - 99.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 99.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded 99.0, got {default:?}").into());
@@ -837,7 +840,7 @@ fn dce_eliminator_analyze_finds_used_structs_via_field_types(
 
     // Container references Inner through its field type — Inner should be marked used
     let source = r"
-        struct Inner { x: Number }
+        struct Inner { x: I32 }
         struct Container { inner: Inner }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -862,8 +865,8 @@ fn dce_eliminator_unused_struct_not_marked() -> Result<(), Box<dyn std::error::E
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct Unused { x: Number }
-        struct Other { y: Number }
+        struct Unused { x: I32 }
+        struct Other { y: I32 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -885,7 +888,7 @@ fn dce_eliminator_unused_struct_not_marked() -> Result<(), Box<dyn std::error::E
 fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = 10 - 4 }";
+    let source = "struct A { x: I32 = 10 - 4 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -903,8 +906,8 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
         ..
     } = expr
     {
-        if (n - 6.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 6.0, got {n}").into());
+        if (n.value - 6.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 6.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -916,7 +919,7 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
 fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = 10 / 2 }";
+    let source = "struct A { x: I32 = 10 / 2 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -934,8 +937,8 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
         ..
     } = expr
     {
-        if (n - 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 5.0, got {n}").into());
+        if (n.value - 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 5.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -947,7 +950,7 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
 fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = 10 % 3 }";
+    let source = "struct A { x: I32 = 10 % 3 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -965,8 +968,8 @@ fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> 
         ..
     } = expr
     {
-        if (n - 1.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 1.0, got {n}").into());
+        if (n.value - 1.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 1.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -1102,7 +1105,7 @@ fn fold_constants_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
 fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = if true { 7 } else { 8 } }";
+    let source = "struct A { x: I32 = if true { 7 } else { 8 } }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -1120,8 +1123,8 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n - 7.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 7.0, got {n}").into());
+        if (n.value - 7.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 7.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected 7.0, got {expr:?}").into());
@@ -1133,7 +1136,7 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
 fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = if false { 7 } else { 8 } }";
+    let source = "struct A { x: I32 = if false { 7 } else { 8 } }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -1151,8 +1154,8 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
         ..
     } = expr
     {
-        if (n - 8.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 8.0, got {n}").into());
+        if (n.value - 8.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 8.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected 8.0, got {expr:?}").into());
@@ -1164,7 +1167,7 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
 fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { x: Number = -5 }";
+    let source = "struct A { x: I32 = -5 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -1182,8 +1185,8 @@ fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n + 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected -5.0, got {n}").into());
+        if (n.value + 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected -5.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded -5.0, got {expr:?}").into());
@@ -1226,7 +1229,7 @@ fn fold_constants_unary_not() -> Result<(), Box<dyn std::error::Error>> {
 fn fold_constants_in_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "let scale: Number = 3 * 4";
+    let source = "let scale: I32 = 3 * 4";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -1238,8 +1241,8 @@ fn fold_constants_in_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = &binding.value
     {
-        if (n - 12.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 12.0, got {n}").into());
+        if (n.value - 12.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 12.0, got {}", n.value).into());
         }
     } else {
         return Err(format!(
@@ -1329,7 +1332,7 @@ fn visitor_walk_module_visits_all_structs() -> Result<(), Box<dyn std::error::Er
     }
 
     let source = r"
-        struct A { x: Number }
+        struct A { x: I32 }
         struct B { y: String }
         struct C { z: Boolean }
     ";
@@ -1374,7 +1377,7 @@ fn visitor_walk_module_visits_fields() -> Result<(), Box<dyn std::error::Error>>
         }
     }
 
-    let source = "struct Point { x: Number, y: Number, z: Number }";
+    let source = "struct Point { x: I32, y: I32, z: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut collector = FieldNameCollector(Vec::new());
     walk_module(&mut collector, &module);
@@ -1402,10 +1405,10 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
     }
 
     let source = r"
-        struct Vec2 { x: Number, y: Number }
+        struct Vec2 { x: I32, y: I32 }
         impl Vec2 {
-            fn length(self) -> Number { self.x + self.y }
-            fn scale(self, factor: Number) -> Number { self.x * factor }
+            fn length(self) -> I32 { self.x + self.y }
+            fn scale(self, factor: I32) -> I32 { self.x * factor }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -1435,8 +1438,8 @@ fn visitor_walk_module_visits_let_bindings() -> Result<(), Box<dyn std::error::E
     }
 
     let source = r"
-        let a: Number = 1
-        let b: Number = 2
+        let a: I32 = 1
+        let b: I32 = 2
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut counter = LetCounter(0);
@@ -1465,15 +1468,15 @@ fn visitor_walk_expr_visits_sub_expressions() -> Result<(), Box<dyn std::error::
     use formalang::ast::{BinaryOperator, Literal, PrimitiveType};
     use formalang::ResolvedType;
 
-    let ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let ty = ResolvedType::Primitive(PrimitiveType::I32);
     let expr = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: ty.clone(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: ty.clone(),
         }),
         ty,
@@ -1502,7 +1505,7 @@ fn visitor_custom_visit_module_override_skips_children() -> Result<(), Box<dyn s
         }
     }
 
-    let source = "struct A { x: Number }";
+    let source = "struct A { x: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut visitor = NoOpVisitor(0);
     walk_module(&mut visitor, &module);
@@ -1530,8 +1533,8 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
         mutable: false,
         ty: None,
         value: IrExpr::Literal {
-            value: Literal::Number(42.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(42.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
     };
 
@@ -1563,12 +1566,12 @@ fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn
 
     let stmt = IrBlockStatement::Assign {
         target: IrExpr::Literal {
-            value: Literal::Number(0.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(0.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
         value: IrExpr::Literal {
-            value: Literal::Number(1.0),
-            ty: ResolvedType::Primitive(PrimitiveType::Number),
+            value: Literal::Number(1.0.into()),
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
         },
     };
 
@@ -1647,7 +1650,7 @@ fn compiler_error_display_messages() -> Result<(), Box<dyn std::error::Error>> {
             span: Span::default(),
         },
         CompilerError::TypeMismatch {
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             found: "String".to_string(),
             span: Span::default(),
         },
@@ -1743,7 +1746,7 @@ fn compiler_error_trait_errors_display() -> Result<(), Box<dyn std::error::Error
         CompilerError::TraitFieldTypeMismatch {
             field: "x".to_string(),
             trait_name: "T".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
@@ -1767,7 +1770,7 @@ fn compiler_error_trait_errors_display() -> Result<(), Box<dyn std::error::Error
         CompilerError::TraitMethodSignatureMismatch {
             method: "draw".to_string(),
             trait_name: "T".to_string(),
-            expected: "fn draw(self) -> Number".to_string(),
+            expected: "fn draw(self) -> I32".to_string(),
             actual: "fn draw(self) -> String".to_string(),
             span: Span::default(),
         },
@@ -1796,15 +1799,15 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         CompilerError::InvalidBinaryOp {
             op: "+".to_string(),
             left_type: "Boolean".to_string(),
-            right_type: "Number".to_string(),
+            right_type: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::ForLoopNotArray {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::InvalidIfCondition {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::MatchNotEnum {
@@ -1895,16 +1898,16 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         },
         CompilerError::FunctionReturnTypeMismatch {
             function: "foo".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
         CompilerError::ArrayDestructuringNotArray {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::StructDestructuringNotStruct {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::UnexpectedEof {
@@ -1920,7 +1923,7 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         },
         CompilerError::FunctionReturnTypeMismatch {
             function: "foo".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
@@ -1928,7 +1931,7 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             span: Span::default(),
         },
         CompilerError::PrimitiveRedefinition {
-            name: "Number".to_string(),
+            name: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::NotATrait {
@@ -1981,7 +1984,7 @@ fn dce_via_pipeline_enum_inst_in_default() -> Result<(), Box<dyn std::error::Err
     use formalang::ir::eliminate_dead_code;
 
     let source = r"
-        enum Color { red, green(r: Number) }
+        enum Color { red, green(r: I32) }
         struct A { c: Color = Color.green(r: 1) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -1998,7 +2001,7 @@ fn dce_via_pipeline_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>>
 
     // Use a struct default with for loop to exercise For branch in DCE
     let source = r"
-        struct A { items: [Number] = for x in [1, 2, 3] { x } }
+        struct A { items: [I32] = for x in [1, 2, 3] { x } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
@@ -2013,7 +2016,7 @@ fn dce_via_pipeline_tuple_in_default() -> Result<(), Box<dyn std::error::Error>>
     use formalang::ir::eliminate_dead_code;
 
     let source = r"
-        struct A { t: (x: Number, y: Number) = (x: 1, y: 2) }
+        struct A { t: (x: I32, y: I32) = (x: 1, y: 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
@@ -2029,7 +2032,7 @@ fn dce_via_pipeline_block_expression_in_default() -> Result<(), Box<dyn std::err
 
     let source = r"
         struct A {
-            x: Number = (
+            x: I32 = (
                 let a = 1
                 in let b = 2
                 in a + b
@@ -2049,7 +2052,7 @@ fn dce_via_pipeline_array_in_let() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::eliminate_dead_code;
 
     let source = r"
-        let nums: [Number] = [1, 2, 3]
+        let nums: [I32] = [1, 2, 3]
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
@@ -2066,9 +2069,9 @@ fn dce_analyzes_used_structs_via_impl_blocks() -> Result<(), Box<dyn std::error:
     // A bare impl block no longer marks its target as used — the struct must
     // be referenced from somewhere "functional" (here, a standalone function).
     let source = r"
-        struct Config { value: Number }
+        struct Config { value: I32 }
         impl Config {}
-        pub fn load(c: Config) -> Number { c.value }
+        pub fn load(c: Config) -> I32 { c.value }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut elim = DeadCodeEliminator::new(&module);
@@ -2086,7 +2089,7 @@ fn dce_analyzes_used_structs_in_struct_inst_expr() -> Result<(), Box<dyn std::er
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        struct Inner { x: Number }
+        struct Inner { x: I32 }
         let val: Inner = Inner(x: 42)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -2228,7 +2231,7 @@ fn fold_constants_boolean_ne() -> Result<(), Box<dyn std::error::Error>> {
 fn fold_constants_array_with_constant_elements() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "let arr: [Number] = [1 + 1, 2 * 2]";
+    let source = "let arr: [I32] = [1 + 1, 2 * 2]";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -2252,7 +2255,7 @@ fn fold_constants_array_with_constant_elements() -> Result<(), Box<dyn std::erro
 fn fold_constants_tuple_with_constant_elements() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::fold_constants;
 
-    let source = "struct A { t: (x: Number, y: Number) = (x: 1 + 1, y: 2 + 2) }";
+    let source = "struct A { t: (x: I32, y: I32) = (x: 1 + 1, y: 2 + 2) }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
@@ -2297,7 +2300,7 @@ fn fold_constants_struct_inst_in_default() -> Result<(), Box<dyn std::error::Err
     use formalang::ir::fold_constants;
 
     let source = r"
-        struct Inner { x: Number }
+        struct Inner { x: I32 }
         struct Outer { i: Inner = Inner(x: 2 + 3) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -2317,8 +2320,8 @@ fn fold_constants_struct_inst_in_default() -> Result<(), Box<dyn std::error::Err
             ..
         } = x_val
         {
-            if (n - 5.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 5.0 from 2+3, got {n}").into());
+            if (n.value - 5.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 5.0 from 2+3, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded 5.0, got {x_val:?}").into());
@@ -2334,9 +2337,9 @@ fn fold_constants_method_call_in_impl() -> Result<(), Box<dyn std::error::Error>
     use formalang::ir::fold_constants;
 
     let source = r"
-        struct Vec2 { x: Number, y: Number }
+        struct Vec2 { x: I32, y: I32 }
         impl Vec2 {
-            fn len(self) -> Number { self.x + self.y }
+            fn len(self) -> I32 { self.x + self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -2353,7 +2356,7 @@ fn fold_constants_block_expression_in_default() -> Result<(), Box<dyn std::error
 
     let source = r"
         struct A {
-            x: Number = (
+            x: I32 = (
                 let a = 2 + 3
                 in let b = 4 * 2
                 in a + b
@@ -2374,7 +2377,7 @@ fn fold_constants_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use struct field default to exercise For fold path without the return-type complexity
     let source = r"
-        struct A { items: [Number] = for x in [1, 2] { x } }
+        struct A { items: [I32] = for x in [1, 2] { x } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
@@ -2405,7 +2408,7 @@ fn visitor_walk_expr_visits_if_branches() -> Result<(), Box<dyn std::error::Erro
     }
 
     let bool_ty = ResolvedType::Primitive(PrimitiveType::Boolean);
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::If {
         condition: Box::new(IrExpr::Literal {
@@ -2413,11 +2416,11 @@ fn visitor_walk_expr_visits_if_branches() -> Result<(), Box<dyn std::error::Erro
             ty: bool_ty,
         }),
         then_branch: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: num_ty.clone(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
         })),
         ty: num_ty,
@@ -2451,7 +2454,7 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::For {
         var: "x".to_string(),
@@ -2459,18 +2462,18 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
         collection: Box::new(IrExpr::Array {
             elements: vec![
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
                 },
             ],
             ty: ResolvedType::Array(Box::new(num_ty.clone())),
         }),
         body: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         ty: ResolvedType::Array(Box::new(num_ty)),
@@ -2501,12 +2504,12 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
     let str_ty = ResolvedType::Primitive(PrimitiveType::String);
 
     let expr = IrExpr::Match {
         scrutinee: Box::new(IrExpr::Literal {
-            value: Literal::Number(1.0),
+            value: Literal::Number(1.0.into()),
             ty: num_ty,
         }),
         arms: vec![
@@ -2557,7 +2560,7 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::FunctionCall {
         path: vec!["math".to_string(), "add".to_string()],
@@ -2565,14 +2568,14 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
             (
                 Some("a".to_string()),
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
             (
                 Some("b".to_string()),
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
@@ -2605,18 +2608,18 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::MethodCall {
         receiver: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         method: "scale".to_string(),
         args: vec![(
             Some("factor".to_string()),
             IrExpr::Literal {
-                value: Literal::Number(2.0),
+                value: Literal::Number(2.0.into()),
                 ty: num_ty.clone(),
             },
         )],
@@ -2652,7 +2655,7 @@ fn visitor_walk_expr_visits_dict_literal_entries() -> Result<(), Box<dyn std::er
     }
 
     let str_ty = ResolvedType::Primitive(PrimitiveType::String);
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::DictLiteral {
         entries: vec![(
@@ -2661,7 +2664,7 @@ fn visitor_walk_expr_visits_dict_literal_entries() -> Result<(), Box<dyn std::er
                 ty: str_ty.clone(),
             },
             IrExpr::Literal {
-                value: Literal::Number(1.0),
+                value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
             },
         )],
@@ -2696,7 +2699,7 @@ fn visitor_walk_expr_visits_dict_access() -> Result<(), Box<dyn std::error::Erro
     }
 
     let str_ty = ResolvedType::Primitive(PrimitiveType::String);
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let dict_expr = IrExpr::DictLiteral {
         entries: vec![],
@@ -2740,13 +2743,13 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::Closure {
         params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
         captures: Vec::new(),
         body: Box::new(IrExpr::Literal {
-            value: Literal::Number(42.0),
+            value: Literal::Number(42.0.into()),
             ty: num_ty.clone(),
         }),
         ty: ResolvedType::Closure {
@@ -2779,11 +2782,11 @@ fn visitor_walk_expr_field_access_child() -> Result<(), Box<dyn std::error::Erro
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::FieldAccess {
         object: Box::new(IrExpr::Literal {
-            value: Literal::Number(0.0),
+            value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
         }),
         field: "x".to_string(),
@@ -2818,12 +2821,12 @@ fn visitor_walk_expr_unary_op_child() -> Result<(), Box<dyn std::error::Error>> 
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::UnaryOp {
         op: UnaryOperator::Neg,
         operand: Box::new(IrExpr::Literal {
-            value: Literal::Number(5.0),
+            value: Literal::Number(5.0.into()),
             ty: num_ty.clone(),
         }),
         ty: num_ty,
@@ -2857,7 +2860,7 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::Block {
         statements: vec![IrBlockStatement::Let {
@@ -2865,12 +2868,12 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
             mutable: false,
             ty: None,
             value: IrExpr::Literal {
-                value: Literal::Number(1.0),
+                value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
             },
         }],
         result: Box::new(IrExpr::Literal {
-            value: Literal::Number(2.0),
+            value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
         }),
         ty: num_ty,
@@ -2905,7 +2908,7 @@ fn visitor_walk_expr_enum_inst_fields() -> Result<(), Box<dyn std::error::Error>
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::EnumInst {
         enum_id: None,
@@ -2913,7 +2916,7 @@ fn visitor_walk_expr_enum_inst_fields() -> Result<(), Box<dyn std::error::Error>
         fields: vec![(
             "count".to_string(),
             IrExpr::Literal {
-                value: Literal::Number(3.0),
+                value: Literal::Number(3.0.into()),
                 ty: num_ty,
             },
         )],
@@ -2940,7 +2943,7 @@ fn visitor_walk_module_visits_struct_field_defaults() -> Result<(), Box<dyn std:
         }
     }
 
-    let source = "struct A { x: Number = 1 + 2 }";
+    let source = "struct A { x: I32 = 1 + 2 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut counter = ExprCounter(0);
     walk_module(&mut counter, &module);
@@ -2977,8 +2980,8 @@ fn visitor_walk_block_statement_expr_variant() -> Result<(), Box<dyn std::error:
     }
 
     let stmt = IrBlockStatement::Expr(IrExpr::Literal {
-        value: Literal::Number(1.0),
-        ty: ResolvedType::Primitive(PrimitiveType::Number),
+        value: Literal::Number(1.0.into()),
+        ty: ResolvedType::Primitive(PrimitiveType::I32),
     });
 
     let mut counter = ExprCounter(0);
@@ -3010,7 +3013,7 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let num_ty = ResolvedType::Primitive(PrimitiveType::Number);
+    let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::StructInst {
         struct_id: None,
@@ -3019,14 +3022,14 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
             (
                 "x".to_string(),
                 IrExpr::Literal {
-                    value: Literal::Number(1.0),
+                    value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
                 },
             ),
             (
                 "y".to_string(),
                 IrExpr::Literal {
-                    value: Literal::Number(2.0),
+                    value: Literal::Number(2.0.into()),
                     ty: num_ty,
                 },
             ),
@@ -3068,7 +3071,7 @@ fn dce_eliminator_generic_type_marks_base_struct() -> Result<(), Box<dyn std::er
     // We do this by compiling a source that has a generic field type
     let source = r"
         struct Box<T> { value: T }
-        struct Container { inner: Box<Number> }
+        struct Container { inner: Box<I32> }
     ";
     let module = compile_to_ir(source)
         .map_err(|e| format!("generic struct fields should compile: {e:?}"))?;
@@ -3089,7 +3092,7 @@ fn dce_eliminator_array_type_marks_inner_struct() -> Result<(), Box<dyn std::err
 
     // Array type field: Container has [Item] — marks Item as used
     let source = r"
-        struct Item { x: Number }
+        struct Item { x: I32 }
         struct Container { items: [Item] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -3109,7 +3112,7 @@ fn dce_eliminator_optional_type_marks_inner_struct() -> Result<(), Box<dyn std::
 
     // Optional field: Container has Item? — marks Item as used
     let source = r"
-        struct Item { x: Number }
+        struct Item { x: I32 }
         struct Container { item: Item? }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -3129,8 +3132,8 @@ fn dce_eliminator_tuple_field_types_marks_structs() -> Result<(), Box<dyn std::e
 
     // Tuple field containing a struct type
     let source = r"
-        struct Inner { x: Number }
-        struct Outer { pair: (a: Inner, b: Number) }
+        struct Inner { x: I32 }
+        struct Outer { pair: (a: Inner, b: I32) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut elim = DeadCodeEliminator::new(&module);
@@ -3149,7 +3152,7 @@ fn dce_eliminator_dict_field_type_marks_struct() -> Result<(), Box<dyn std::erro
 
     // Dictionary field type: Container has [String: Item] — marks Item as used via value_ty
     let source = r"
-        struct Item { x: Number }
+        struct Item { x: I32 }
         struct Container { lookup: [String: Item] }
     ";
     let module =
@@ -3172,11 +3175,11 @@ fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std
     // Exercise the impl-block processing path in eliminate_dead_code. V2 is
     // kept alive by a standalone function that takes it as a parameter.
     let source = r"
-        struct V2 { x: Number, y: Number }
+        struct V2 { x: I32, y: I32 }
         impl V2 {
-            fn len(self) -> Number { self.x + self.y }
+            fn len(self) -> I32 { self.x + self.y }
         }
-        pub fn length(v: V2) -> Number { v.len() }
+        pub fn length(v: V2) -> I32 { v.len() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, true);
@@ -3208,7 +3211,7 @@ fn dce_pass_name_and_default() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn irexpr_ty_covers_all_variants_via_ir() -> Result<(), Box<dyn std::error::Error>> {
     // Array
-    let source = "let arr: [Number] = [1, 2, 3]";
+    let source = "let arr: [I32] = [1, 2, 3]";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let binding = module.get_let("arr").ok_or("arr")?;
     let ty = binding.value.ty();
@@ -3217,7 +3220,7 @@ fn irexpr_ty_covers_all_variants_via_ir() -> Result<(), Box<dyn std::error::Erro
     }
 
     // Tuple
-    let source2 = "struct A { t: (x: Number, y: Number) = (x: 1, y: 2) }";
+    let source2 = "struct A { t: (x: I32, y: I32) = (x: 1, y: 2) }";
     let module2 = compile_to_ir(source2).map_err(|e| format!("should compile: {e:?}"))?;
     let s2 = module2.structs.first().ok_or("no structs")?;
     let field = s2.fields.first().ok_or("no fields")?;

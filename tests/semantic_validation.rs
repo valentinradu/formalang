@@ -65,7 +65,7 @@ fn test_resolve_tuple_with_generics() -> Result<(), Box<dyn std::error::Error>> 
             second: B
         }
         struct Data {
-            pair: Pair<String, Number>
+            pair: Pair<String, I32>
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -80,7 +80,7 @@ fn test_resolve_tuple_with_generics() -> Result<(), Box<dyn std::error::Error>> 
 fn test_trait_field_type_validation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Typed { value: String }
-        struct Impl { value: Number }
+        struct Impl { value: I32 }
         impl Typed for Impl { }
     ";
     let result = compile(source);
@@ -100,11 +100,11 @@ fn test_trait_multiple_conformance() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         trait Aged {
-            age: Number
+            age: I32
         }
         struct Person {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -143,13 +143,13 @@ fn test_trait_with_array_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_trait_inheritance() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Base {
-            id: Number
+            id: I32
         }
         trait Extended: Base {
             name: String
         }
         struct Entity {
-            id: Number,
+            id: I32,
             name: String
         }
     ";
@@ -187,7 +187,7 @@ fn test_for_expression_with_literal() -> Result<(), Box<dyn std::error::Error>> 
 fn test_let_expression_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            a: Number = (let x = 10
+            a: I32 = (let x = 10
             in x)
         }
     ";
@@ -212,7 +212,7 @@ fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
 fn test_binary_operators_with_literals() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Math {
-            a: Number = 1 + 2
+            a: I32 = 1 + 2
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -223,7 +223,7 @@ fn test_binary_operators_with_literals() -> Result<(), Box<dyn std::error::Error
 fn test_comparison_operators_with_literals() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Compare {
-            a: Number = if 1 < 2 { 1 } else { 0 }
+            a: I32 = if 1 < 2 { 1 } else { 0 }
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -248,9 +248,9 @@ fn test_logical_operators_with_literals() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_invalid_if_condition_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test { value: Number }
+        struct Test { value: I32 }
         impl Test {
-            fn compute(self) -> Number {
+            fn compute(self) -> I32 {
                 if self.value { 1 } else { 0 }
             }
         }
@@ -290,9 +290,9 @@ fn test_invalid_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_undefined_variable_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test { value: Number }
+        struct Test { value: I32 }
         impl Test {
-            fn compute(self) -> Number {
+            fn compute(self) -> I32 {
                 undefinedVariable + 1
             }
         }
@@ -307,9 +307,9 @@ fn test_undefined_variable_reference() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_field_access_on_primitive() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test { value: Number }
+        struct Test { value: I32 }
         impl Test {
-            fn compute(self) -> Number {
+            fn compute(self) -> I32 {
                 self.nonexistent
             }
         }
@@ -345,7 +345,7 @@ fn test_invalid_arithmetic_on_boolean() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_invalid_comparison_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test { text: String, num: Number }
+        struct Test { text: String, num: I32 }
         impl Test {
             fn compute(self) -> Boolean {
                 self.text < self.num
@@ -430,7 +430,7 @@ fn test_struct_with_all_field_modifiers() -> Result<(), Box<dyn std::error::Erro
     let source = r"
         struct Complex {
             required: String,
-            optional: Number?,
+            optional: I32?,
             mut mutable: Boolean,
             content: String
         }
@@ -456,7 +456,7 @@ fn test_struct_with_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct WithDefaults {
             name: String = "default",
-            count: Number = 0,
+            count: I32 = 0,
             active: Boolean = true
         }
     "#;
@@ -532,7 +532,7 @@ fn test_dictionary_with_struct_value() -> Result<(), Box<dyn std::error::Error>>
 fn test_dictionary_literal_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Config {
-            data: [String: Number] = ["a": 1, "b": 2, "c": 3]
+            data: [String: I32] = ["a": 1, "b": 2, "c": 3]
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -547,7 +547,7 @@ fn test_dictionary_literal_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_in_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            process: String -> Number
+            process: String -> I32
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -558,7 +558,7 @@ fn test_closure_in_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            operation: Number -> Number
+            operation: I32 -> I32
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -584,7 +584,7 @@ fn test_closure_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
-            value: Number = (let x: Number = 10
+            value: I32 = (let x: I32 = 10
             in x)
         }
     ";
@@ -596,7 +596,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_mutable() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            initial: Number = (let mut count = 0
+            initial: I32 = (let mut count = 0
             in count)
         }
     ";
@@ -608,7 +608,7 @@ fn test_let_mutable() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_simple_value() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
-            value: Number = (let x = 2
+            value: I32 = (let x = 2
             in x)
         }
     ";
@@ -661,7 +661,7 @@ fn test_impl_block_defaults_applied_on_instantiation() -> Result<(), Box<dyn std
     let source = r##"
         struct MyBox {
             color: String = "#FF0000",
-            size: Number = 10
+            size: I32 = 10
         }
         struct Container {
             box: MyBox = MyBox()
@@ -676,7 +676,7 @@ fn test_impl_block_defaults_with_nested_struct() -> Result<(), Box<dyn std::erro
     // Fields with struct field defaults should be optional during instantiation
     let source = r##"
         struct Rect {
-            width: Number = 0
+            width: I32 = 0
         }
 
         struct MyBox {
@@ -697,7 +697,7 @@ fn test_impl_block_defaults_partial_override() -> Result<(), Box<dyn std::error:
     let source = r#"
         struct Config {
             name: String = "default",
-            value: Number = 0,
+            value: I32 = 0,
             enabled: Boolean = true
         }
         struct App {
@@ -735,11 +735,11 @@ fn test_impl_block_defaults_nested_instantiation() -> Result<(), Box<dyn std::er
 fn test_function_return_type_valid_f32() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Vec2 {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
         impl Vec2 {
-            fn length_squared(self) -> Number {
+            fn length_squared(self) -> I32 {
                 self.x * self.x + self.y * self.y
             }
         }
@@ -752,10 +752,10 @@ fn test_function_return_type_valid_f32() -> Result<(), Box<dyn std::error::Error
 fn test_function_return_type_valid_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            value: Number
+            value: I32
         }
         impl Calculator {
-            fn double(self) -> Number {
+            fn double(self) -> I32 {
                 self.value * 2
             }
         }
@@ -768,7 +768,7 @@ fn test_function_return_type_valid_number() -> Result<(), Box<dyn std::error::Er
 fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Data {
-            count: Number
+            count: I32
         }
         impl Data {
             fn get_count(self) -> String {
@@ -778,7 +778,7 @@ fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Function returning Number when String expected should fail".into());
+        return Err("Function returning I32 when String expected should fail".into());
     }
     let err = result.err().ok_or("expected error")?;
     if !err
@@ -794,7 +794,7 @@ fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>
 fn test_function_return_type_boolean_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Checker {
-            value: Number
+            value: I32
         }
         impl Checker {
             fn is_positive(self) -> Boolean {
@@ -811,7 +811,7 @@ fn test_function_no_return_type_valid() -> Result<(), Box<dyn std::error::Error>
     // Functions without explicit return type should accept any body type
     let source = r"
         struct Processor {
-            data: Number
+            data: I32
         }
         impl Processor {
             fn process(self) {
@@ -830,9 +830,9 @@ fn test_function_no_return_type_valid() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_assignment_to_immutable_fails() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { value: Number }
+        struct Counter { value: I32 }
         impl Counter {
-            fn get_value(self) -> Number {
+            fn get_value(self) -> I32 {
                 let x = 10
                 x = 20
                 x
@@ -856,9 +856,9 @@ fn test_assignment_to_immutable_fails() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_assignment_to_mutable_succeeds() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { value: Number }
+        struct Counter { value: I32 }
         impl Counter {
-            fn get_value(self) -> Number {
+            fn get_value(self) -> I32 {
                 let mut x = 10
                 x = 20
                 x
@@ -877,7 +877,7 @@ fn test_assignment_to_mutable_succeeds() -> Result<(), Box<dyn std::error::Error
 fn test_block_expr_with_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
-            value: Number = {
+            value: I32 = {
                 let a = 1
                 let b = 2
                 a + b
@@ -891,9 +891,9 @@ fn test_block_expr_with_let_bindings() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_block_expr_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Test { value: Number }
+        struct Test { value: I32 }
         impl Test {
-            fn compute(self) -> Number {
+            fn compute(self) -> I32 {
                 let mut sum = 0
                 sum = sum + 10
                 sum
@@ -908,7 +908,7 @@ fn test_block_expr_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
 fn test_nested_block_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
-            value: Number = {
+            value: I32 = {
                 let outer = {
                     let inner = 5
                     inner * 2
@@ -931,16 +931,16 @@ fn test_nested_block_expressions() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_field_access_inference_detects_invalid_if_condition(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // p.count has type Number; using it as the if condition must now error
+    // p.count has type I32; using it as the if condition must now error
     // (was previously accepted because field-access inference returned Unknown).
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         let c = Counter(count: 3)
         let _ = if c.count { 1 } else { 0 }
     ";
     let result = compile(source);
     match result {
-        Ok(_) => Err("expected InvalidIfCondition for Number-typed field as condition".into()),
+        Ok(_) => Err("expected InvalidIfCondition for I32-typed field as condition".into()),
         Err(errors) => {
             if errors
                 .iter()
@@ -960,7 +960,7 @@ fn test_block_scope_does_not_leak() -> Result<(), Box<dyn std::error::Error>> {
     // `inner` is declared in a block; referencing it outside must error.
     let source = r"
         struct Test {
-            value: Number = {
+            value: I32 = {
                 let inner = 5
                 inner
             }
@@ -990,7 +990,7 @@ fn test_nested_private_module_access_errors() -> Result<(), Box<dyn std::error::
     let source = r"
         pub mod outer {
             mod hidden {
-                pub struct Secret { x: Number }
+                pub struct Secret { x: I32 }
             }
         }
         let _ = outer::hidden::Secret(x: 1)
@@ -1015,7 +1015,7 @@ fn test_nested_private_module_access_errors() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_if_expr_widens_to_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let x: Number? = if true { 1 } else { nil }
+        let x: I32? = if true { 1 } else { nil }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -1041,7 +1041,7 @@ fn test_array_heterogeneous_elements_rejected() -> Result<(), Box<dyn std::error
 #[test]
 fn test_array_homogeneous_elements_compile() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let nums: [Number] = [1, 2, 3]
+        let nums: [I32] = [1, 2, 3]
         let strs: [String] = ["a", "b"]
     "#;
     compile(source).map_err(|e| format!("Homogeneous array literals should compile: {e:?}"))?;

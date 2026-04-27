@@ -113,7 +113,7 @@ fn pipeline_new_creates_empty_pipeline() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn pipeline_default_is_same_as_new() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct Foo { x: Number }";
+    let source = "pub struct Foo { x: I32 }";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let mut p = Pipeline::default();
@@ -133,8 +133,8 @@ fn pipeline_default_is_same_as_new() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub struct Visible { x: Number }
-        struct Hidden { y: Number }
+        pub struct Visible { x: I32 }
+        struct Hidden { y: I32 }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -158,8 +158,8 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
     // Keep Config alive through a standalone function parameter, so
     // DeadCodeEliminationPass (which now removes unused types) does not drop it.
     let source = r"
-        pub struct Config { scale: Number = 2 * 3 }
-        pub fn use_config(c: Config) -> Number { c.scale }
+        pub struct Config { scale: I32 = 2 * 3 }
+        pub fn use_config(c: Config) -> I32 { c.scale }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -188,8 +188,8 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
         ..
     } = default
     {
-        if (n - 6.0_f64).abs().total_cmp(&f64::EPSILON) != std::cmp::Ordering::Less {
-            return Err(format!("Expected folded 6.0, got {n}").into());
+        if (n.value - 6.0_f64).abs().total_cmp(&f64::EPSILON) != std::cmp::Ordering::Less {
+            return Err(format!("Expected folded 6.0, got {}", n.value).into());
         }
     } else {
         return Err(format!("Expected folded literal number, got {default:?}").into());
@@ -199,7 +199,7 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
 
 #[test]
 fn pipeline_run_fails_when_pass_fails() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct A { x: Number }";
+    let source = "pub struct A { x: I32 }";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let mut pipeline = Pipeline::new().pass(FailingPass);
@@ -223,7 +223,7 @@ fn pipeline_run_fails_when_pass_fails() -> Result<(), Box<dyn std::error::Error>
 fn pipeline_emit_runs_passes_then_backend() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub struct Public { name: String }
-        struct Private { x: Number }
+        struct Private { x: I32 }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -258,7 +258,7 @@ fn pipeline_emit_with_no_passes_goes_straight_to_backend() -> Result<(), Box<dyn
 #[test]
 fn pipeline_emit_wraps_pass_errors_as_pipeline_pass_errors(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct A { x: Number }";
+    let source = "pub struct A { x: I32 }";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let result = Pipeline::new()
@@ -279,7 +279,7 @@ fn pipeline_emit_wraps_pass_errors_as_pipeline_pass_errors(
 #[test]
 fn pipeline_emit_wraps_backend_errors_as_pipeline_backend_error(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct A { x: Number }";
+    let source = "pub struct A { x: I32 }";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
     let result = Pipeline::new().emit(ir, &FailingBackend);
@@ -409,7 +409,7 @@ fn irpass_fold_name() -> Result<(), Box<dyn std::error::Error>> {
 fn pipeline_pass_chaining_returns_self() -> Result<(), Box<dyn std::error::Error>> {
     // Verify pass() builder pattern works correctly with multiple passes
     let source = r"
-        pub struct A { x: Number = 1 + 1 }
+        pub struct A { x: I32 = 1 + 1 }
         pub struct B { y: Boolean = true && false }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -429,8 +429,8 @@ fn pipeline_pass_chaining_returns_self() -> Result<(), Box<dyn std::error::Error
 fn irpass_rebuild_indices_keeps_lookups_consistent() -> Result<(), Box<dyn std::error::Error>> {
     // After filtering structs, rebuild_indices should keep name lookups correct
     let source = r"
-        pub struct Keep { x: Number }
-        struct Drop { y: Number }
+        pub struct Keep { x: I32 }
+        struct Drop { y: I32 }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -474,7 +474,7 @@ fn backend_generate_called_with_correct_module() -> Result<(), Box<dyn std::erro
     }
 
     let source = r"
-        struct A { x: Number, y: Number }
+        struct A { x: I32, y: I32 }
         struct B { z: String }
     ";
     let ir = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -593,13 +593,13 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
     use formalang::ir::MonomorphisePass;
     let source = r"
         pub struct Box<T> { value: T }
-        pub let b: Box<Number> = Box<Number>(value: 1)
+        pub let b: Box<I32> = Box<I32>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Box<I32>, got: {e:?}"))?;
     // The original `Box<T>` generic definition should be gone.
     if result.structs.iter().any(|s| s.name == "Box") {
         return Err(
@@ -626,14 +626,14 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     use formalang::ir::MonomorphisePass;
     // A generic impl block on Box<T> must be cloned for each specialisation,
     // with TypeParam("T") substituted to the concrete type arg. Without the
-    // Phase 2b specialisation step, Box__Number would end up with zero
+    // Phase 2b specialisation step, Box__I32 would end up with zero
     // methods after compaction.
     let source = r"
         pub struct Box<T> { value: T }
         impl Box {
             fn get(self) -> T { self.value }
         }
-        pub let b: Box<Number> = Box<Number>(value: 1)
+        pub let b: Box<I32> = Box<I32>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     // Sanity: the source produces at least one impl block before
@@ -645,9 +645,9 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Box<Number> impl, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Box<I32> impl, got: {e:?}"))?;
 
-    // Locate the specialised Box__Number struct.
+    // Locate the specialised Box__I32 struct.
     let spec_struct = result
         .structs
         .iter()
@@ -736,8 +736,8 @@ fn test_monomorphise_rewrites_dispatch_impl_ids() -> Result<(), Box<dyn std::err
         impl Box {
             fn get(self) -> T { self.value }
         }
-        pub fn use_box() -> Number {
-            let b: Box<Number> = Box<Number>(value: 1)
+        pub fn use_box() -> I32 {
+            let b: Box<I32> = Box<I32>(value: 1)
             b.get()
         }
     ";
@@ -781,7 +781,7 @@ fn test_monomorphise_rewrites_dispatch_impl_ids() -> Result<(), Box<dyn std::err
 fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
-        pub struct User { name: String, age: Number }
+        pub struct User { name: String, age: I32 }
         pub fn greet(user: User) -> String { user.name }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -795,7 +795,7 @@ fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
-    // Exercise a generic enum used as a field type. `Option<Number>` is
+    // Exercise a generic enum used as a field type. `Option<I32>` is
     // what the lowering layer turns into a `ResolvedType::Generic` with a
     // `GenericBase::Enum` base.
     let source = r"
@@ -804,14 +804,14 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
             none
         }
         pub struct Container {
-            maybe: Option<Number>
+            maybe: Option<I32>
         }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Option<I32>, got: {e:?}"))?;
     // The original `Option<T>` generic definition should be gone.
     if result.enums.iter().any(|e| e.name == "Option") {
         return Err(
@@ -848,6 +848,150 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
             maybe_field.ty
         )
         .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn suffixed_numeric_literals_thread_to_ir_with_concrete_types(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrExpr, ResolvedType};
+
+    // One field per width-tag suffix; default value is a literal carrying the
+    // matching suffix. After IR lowering, each literal's `ty` should resolve
+    // to the suffix's PrimitiveType, not the legacy `I32` placeholder.
+    let source = r"
+        struct Sample {
+            a: I32 = 42I32,
+            b: I64 = 9_999I64,
+            c: F32 = 2.5F32,
+            d: F64 = 1.5e-3F64
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let sample = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Sample")
+        .ok_or("Sample struct missing")?;
+
+    let cases = [
+        ("a", PrimitiveType::I32),
+        ("b", PrimitiveType::I64),
+        ("c", PrimitiveType::F32),
+        ("d", PrimitiveType::F64),
+    ];
+    for (field_name, expected) in cases {
+        let field = sample
+            .fields
+            .iter()
+            .find(|f| f.name == field_name)
+            .ok_or_else(|| format!("field {field_name} missing"))?;
+        let default = field
+            .default
+            .as_ref()
+            .ok_or_else(|| format!("field {field_name}: no default"))?;
+        let IrExpr::Literal { ty, .. } = default else {
+            return Err(format!("field {field_name}: expected literal, got {default:?}").into());
+        };
+        if *ty != ResolvedType::Primitive(expected) {
+            return Err(format!(
+                "field {field_name}: expected ty {:?}, got {ty:?}",
+                ResolvedType::Primitive(expected)
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsuffixed_integer_literal_defaults_to_i32() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrExpr, ResolvedType};
+
+    // Bare integer literal (no suffix, no decimal point or exponent) infers
+    // as I32 — the new post-numeric-specialization default.
+    let source = r"
+        struct Sample { a: I32 = 42 }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let default = module
+        .structs
+        .first()
+        .ok_or("Sample missing")?
+        .fields
+        .first()
+        .ok_or("field missing")?
+        .default
+        .as_ref()
+        .ok_or("default missing")?;
+    let IrExpr::Literal { ty, .. } = default else {
+        return Err(format!("expected literal, got {default:?}").into());
+    };
+    if *ty != ResolvedType::Primitive(PrimitiveType::I32) {
+        return Err(format!("expected I32, got {ty:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn unsuffixed_float_literal_defaults_to_f64() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrExpr, ResolvedType};
+
+    // Bare float-syntax literals (containing `.` or `e`) infer as F64.
+    let cases = [
+        ("struct S { a: F64 = 3.14 }", "decimal"),
+        ("struct S { a: F64 = 1e5 }", "exponent"),
+        ("struct S { a: F64 = 1.5e-3 }", "decimal+exponent"),
+    ];
+    for (source, label) in cases {
+        let module =
+            compile_to_ir(source).map_err(|e| format!("{label} compile failed: {e:?}"))?;
+        let default = module
+            .structs
+            .first()
+            .ok_or("struct missing")?
+            .fields
+            .first()
+            .ok_or("field missing")?
+            .default
+            .as_ref()
+            .ok_or("default missing")?;
+        let IrExpr::Literal { ty, .. } = default else {
+            return Err(format!("{label}: expected literal, got {default:?}").into());
+        };
+        if *ty != ResolvedType::Primitive(PrimitiveType::F64) {
+            return Err(format!("{label}: expected F64, got {ty:?}").into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn integer_literal_default_rejects_f64_annotation() -> Result<(), Box<dyn std::error::Error>> {
+    // Bare integer literal `42` defaults to I32, so assigning to an F64 field
+    // is rejected (no implicit numeric promotion).
+    let source = r"
+        struct S { a: F64 = 42 }
+    ";
+    if compile_to_ir(source).is_ok() {
+        return Err("expected TypeMismatch (I32 → F64 should not coerce)".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn float_literal_default_rejects_i32_annotation() -> Result<(), Box<dyn std::error::Error>> {
+    // Bare float literal `3.14` defaults to F64, so assigning to an I32 field
+    // is rejected (no implicit numeric truncation).
+    let source = r"
+        struct S { a: I32 = 3.14 }
+    ";
+    if compile_to_ir(source).is_ok() {
+        return Err("expected TypeMismatch (F64 → I32 should not coerce)".into());
     }
     Ok(())
 }

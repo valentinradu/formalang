@@ -11,12 +11,16 @@ use super::span_from_simple;
 
 /// Map a single-segment type identifier to its primitive type, if any.
 ///
-/// Returns `Some(primitive)` for the six primitive names (`String`, `Number`,
-/// `Boolean`, `Path`, `Regex`, `Never`) and `None` for any other identifier.
+/// Returns `Some(primitive)` for the primitive type names (`String`, `I32`,
+/// `I64`, `F32`, `F64`, `Boolean`, `Path`, `Regex`, `Never`) and `None` for
+/// any other identifier.
 fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
     match name {
         "String" => Some(PrimitiveType::String),
-        "Number" => Some(PrimitiveType::Number),
+        "I32" => Some(PrimitiveType::I32),
+        "I64" => Some(PrimitiveType::I64),
+        "F32" => Some(PrimitiveType::F32),
+        "F64" => Some(PrimitiveType::F64),
         "Boolean" => Some(PrimitiveType::Boolean),
         "Path" => Some(PrimitiveType::Path),
         "Regex" => Some(PrimitiveType::Regex),
@@ -38,11 +42,11 @@ where
     recursive(|type_ref| {
         // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments.
         //
-        // Primitive type names (`String`, `Number`, `Boolean`, `Path`, `Regex`, `Never`)
-        // are recognized here by string-matching a single-segment identifier, and are
-        // mapped to `Type::Primitive`. This lets struct/enum/trait/fn definitions with
-        // those names parse successfully so the semantic pass can emit
-        // `PrimitiveRedefinition` for them.
+        // Primitive type names (`String`, `I32`, `I64`, `F32`, `F64`, `Boolean`,
+        // `Path`, `Regex`, `Never`) are recognized here by string-matching a
+        // single-segment identifier, and are mapped to `Type::Primitive`. This lets
+        // struct/enum/trait/fn definitions with those names parse successfully so the
+        // semantic pass can emit `PrimitiveRedefinition` for them.
         let ident_or_generic = ident_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
@@ -60,7 +64,7 @@ where
             )
             .map_with(|(path, args), e| {
                 // Map single-segment primitive names to `Type::Primitive` (only when no
-                // generic args are supplied — `Number<T>` etc. are not primitives).
+                // generic args are supplied — `I32<T>` etc. are not primitives).
                 if args.is_none() && path.len() == 1 {
                     if let Some(first) = path.first() {
                         if let Some(prim) = primitive_from_name(first.name.as_str()) {

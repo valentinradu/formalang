@@ -1,8 +1,8 @@
 //! Lexer and parser correctness tests for Phase 2 fixes.
 //!
 //! Covers:
-//! - Number literals with underscores (`1_000_000`).
-//! - Number literals with scientific notation (`1.5e-3`).
+//! - I32 literals with underscores (`1_000_000`).
+//! - I32 literals with scientific notation (`1.5e-3`).
 //! - Unterminated strings producing `UnterminatedString`.
 //! - Invalid characters producing `InvalidCharacter`.
 //! - Multiline strings with raw newlines.
@@ -15,7 +15,7 @@ use formalang::lexer::{Lexer, Token};
 use formalang::CompilerError;
 
 // ============================================================================
-// Number literals
+// I32 literals
 // ============================================================================
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {
@@ -31,7 +31,7 @@ fn tokenize_number_with_underscores() -> Result<(), Box<dyn std::error::Error>> 
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(*n),
+            Token::Number(n) => Some(n.value),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -50,7 +50,7 @@ fn tokenize_number_scientific_notation() -> Result<(), Box<dyn std::error::Error
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(*n),
+            Token::Number(n) => Some(n.value),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -70,7 +70,7 @@ fn tokenize_number_scientific_notation_positive_exponent() -> Result<(), Box<dyn
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(*n),
+            Token::Number(n) => Some(n.value),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -89,12 +89,71 @@ fn tokenize_number_mixed_underscore_and_decimal() -> Result<(), Box<dyn std::err
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(*n),
+            Token::Number(n) => Some(n.value),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
     if (got - 1000.5005_f64).abs() > f64::EPSILON {
         return Err(format!("expected 1000.5005, got {got}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn tokenize_number_with_width_tag_suffix() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ast::NumericSuffix;
+
+    let cases = [
+        ("42I32", 42.0, NumericSuffix::I32),
+        ("9_223_372_036_854_775I64", 9_223_372_036_854_775.0, NumericSuffix::I64),
+        ("2.5F32", 2.5, NumericSuffix::F32),
+        ("1.5e-3F64", 0.0015, NumericSuffix::F64),
+    ];
+    for (source, expected_value, expected_suffix) in cases {
+        let (tokens, errors) = Lexer::tokenize_all_with_errors(source);
+        if !errors.is_empty() {
+            return Err(format!("{source}: expected no errors, got {errors:?}").into());
+        }
+        let lit = tokens
+            .iter()
+            .find_map(|(t, _)| match t {
+                Token::Number(n) => Some(*n),
+                _ => None,
+            })
+            .ok_or_else(|| format!("{source}: expected Token::Number"))?;
+        if (lit.value - expected_value).abs() > 1e-9 {
+            return Err(format!(
+                "{source}: expected value {expected_value}, got {}",
+                lit.value
+            )
+            .into());
+        }
+        if lit.suffix != Some(expected_suffix) {
+            return Err(format!(
+                "{source}: expected suffix {expected_suffix:?}, got {:?}",
+                lit.suffix
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn tokenize_unsuffixed_number_has_no_suffix() -> Result<(), Box<dyn std::error::Error>> {
+    let (tokens, errors) = Lexer::tokenize_all_with_errors("42");
+    if !errors.is_empty() {
+        return Err(format!("expected no errors, got {errors:?}").into());
+    }
+    let lit = tokens
+        .iter()
+        .find_map(|(t, _)| match t {
+            Token::Number(n) => Some(*n),
+            _ => None,
+        })
+        .ok_or("expected Token::Number")?;
+    if lit.suffix.is_some() {
+        return Err(format!("expected no suffix, got {:?}", lit.suffix).into());
     }
     Ok(())
 }

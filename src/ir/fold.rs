@@ -295,16 +295,29 @@ impl ConstantFolder {
         match (left, right) {
             // Numeric operations
             (Literal::Number(l), Literal::Number(r)) => {
+                // Suffix preservation: arithmetic results carry the left
+                // operand's suffix. Mismatched-suffix mixing isn't yet
+                // type-checked by semantic — that lands with literal-defaulting
+                // and IR concrete-typing in later microcommits.
+                let combine = |v: f64| {
+                    Literal::Number(crate::ast::NumberLiteral::from_lex(v, l.suffix, l.kind))
+                };
+                let lv = l.value;
+                let rv = r.value;
                 let result = match op {
-                    BinaryOperator::Add => Some(Literal::Number(l + r)),
-                    BinaryOperator::Sub => Some(Literal::Number(l - r)),
-                    BinaryOperator::Mul => Some(Literal::Number(l * r)),
-                    BinaryOperator::Div if *r != 0.0 => Some(Literal::Number(l / r)),
-                    BinaryOperator::Mod if *r != 0.0 => Some(Literal::Number(l % r)),
-                    BinaryOperator::Lt => Some(Literal::Boolean(l < r)),
-                    BinaryOperator::Le => Some(Literal::Boolean(l <= r)),
-                    BinaryOperator::Gt => Some(Literal::Boolean(l > r)),
-                    BinaryOperator::Ge => Some(Literal::Boolean(l >= r)),
+                    BinaryOperator::Add => Some(combine(lv + rv)),
+                    BinaryOperator::Sub => Some(combine(lv - rv)),
+                    BinaryOperator::Mul => Some(combine(lv * rv)),
+                    BinaryOperator::Div if rv != 0.0 => Some(combine(lv / rv)),
+                    #[expect(
+                        clippy::modulo_arithmetic,
+                        reason = "f64 modulo with rv != 0 guard mirrors BinaryOp::Mod runtime semantics"
+                    )]
+                    BinaryOperator::Mod if rv != 0.0 => Some(combine(lv % rv)),
+                    BinaryOperator::Lt => Some(Literal::Boolean(lv < rv)),
+                    BinaryOperator::Le => Some(Literal::Boolean(lv <= rv)),
+                    BinaryOperator::Gt => Some(Literal::Boolean(lv > rv)),
+                    BinaryOperator::Ge => Some(Literal::Boolean(lv >= rv)),
                     // Use IEEE 754 semantics for equality: NaN != NaN and
                     // +0.0 == -0.0, matching `f64::eq` and the ordering ops
                     // above. A bit-level comparison would disagree with the
@@ -313,12 +326,12 @@ impl ConstantFolder {
                         clippy::float_cmp,
                         reason = "IEEE 754 equality is intentional for constant folding"
                     )]
-                    BinaryOperator::Eq => Some(Literal::Boolean(*l == *r)),
+                    BinaryOperator::Eq => Some(Literal::Boolean(lv == rv)),
                     #[expect(
                         clippy::float_cmp,
                         reason = "IEEE 754 inequality is intentional for constant folding"
                     )]
-                    BinaryOperator::Ne => Some(Literal::Boolean(*l != *r)),
+                    BinaryOperator::Ne => Some(Literal::Boolean(lv != rv)),
                     BinaryOperator::Div
                     | BinaryOperator::Mod
                     | BinaryOperator::And
@@ -389,7 +402,9 @@ impl ConstantFolder {
             Literal::Number(n) => {
                 if op == UnaryOperator::Neg {
                     Some(IrExpr::Literal {
-                        value: Literal::Number(-n),
+                        value: Literal::Number(crate::ast::NumberLiteral::from_lex(
+                            -n.value, n.suffix, n.kind,
+                        )),
                         ty: ty.clone(),
                     })
                 } else {
@@ -494,7 +509,7 @@ mod tests {
     #[test]
     fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { scale: Number = 1 + 2 }
+            struct Config { scale: I32 = 1 + 2 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -515,8 +530,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 3.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 3, got {n}").into());
+            if (n.value - 3.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 3, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -527,7 +542,7 @@ mod tests {
     #[test]
     fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { scale: Number = 2 * 3 }
+            struct Config { scale: I32 = 2 * 3 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -547,8 +562,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 6.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 6, got {n}").into());
+            if (n.value - 6.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 6, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -559,7 +574,7 @@ mod tests {
     #[test]
     fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { value: Number = 2 + 3 * 4 }
+            struct Config { value: I32 = 2 + 3 * 4 }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -580,8 +595,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 14.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 14, got {n}").into());
+            if (n.value - 14.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 14, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -688,7 +703,7 @@ mod tests {
     #[test]
     fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
         let source = r"
-            struct Config { value: Number = if true { 1 } else { 2 } }
+            struct Config { value: I32 = if true { 1 } else { 2 } }
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -708,8 +723,8 @@ mod tests {
             ..
         } = expr
         {
-            if (*n - 1.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 1, got {n}").into());
+            if (n.value - 1.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 1, got {}", n.value).into());
             }
         } else {
             return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -721,8 +736,8 @@ mod tests {
     fn test_no_fold_non_constant() -> Result<(), Box<dyn std::error::Error>> {
         // Use a let binding that references another let binding
         let source = r"
-            let x: Number = 1
-            let y: Number = x + 1
+            let x: I32 = 1
+            let y: I32 = x + 1
         ";
         let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
         let folded = fold_constants(&module);
@@ -801,15 +816,15 @@ mod tests {
         let ir_module = IrModule::new();
         let _ = &ir_module;
         let folder = ConstantFolder::new();
-        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {
-                value: Literal::Number(0.0),
+                value: Literal::Number(0.0.into()),
                 ty: number_ty.clone(),
             }),
             op: BinaryOperator::Eq,
             right: Box::new(IrExpr::Literal {
-                value: Literal::Number(-0.0),
+                value: Literal::Number((-0.0_f64).into()),
                 ty: number_ty,
             }),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
@@ -832,15 +847,15 @@ mod tests {
         let ir_module = IrModule::new();
         let _ = &ir_module;
         let folder = ConstantFolder::new();
-        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {
-                value: Literal::Number(f64::NAN),
+                value: Literal::Number(f64::NAN.into()),
                 ty: number_ty.clone(),
             }),
             op: BinaryOperator::Eq,
             right: Box::new(IrExpr::Literal {
-                value: Literal::Number(f64::NAN),
+                value: Literal::Number(f64::NAN.into()),
                 ty: number_ty,
             }),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),

@@ -16,7 +16,7 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 #[test]
 fn test_extern_fn_no_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern fn create_canvas() -> Canvas
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -26,8 +26,8 @@ extern fn create_canvas() -> Canvas
 #[test]
 fn test_extern_fn_with_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
-extern fn render(canvas: Canvas, width: Number, height: Number) -> Boolean
+struct Canvas { width: I32, height: I32 }
+extern fn render(canvas: Canvas, width: I32, height: I32) -> Boolean
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -36,7 +36,7 @@ extern fn render(canvas: Canvas, width: Number, height: Number) -> Boolean
 #[test]
 fn test_extern_fn_no_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern fn flush(canvas: Canvas)
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -50,11 +50,11 @@ extern fn flush(canvas: Canvas)
 #[test]
 fn test_extern_impl_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern impl Canvas {
-    fn draw(self, x: Number, y: Number)
-    fn get_width(self) -> Number
-    fn get_height(self) -> Number
+    fn draw(self, x: I32, y: I32)
+    fn get_width(self) -> I32
+    fn get_height(self) -> I32
 }
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -64,9 +64,9 @@ extern impl Canvas {
 #[test]
 fn test_extern_impl_with_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Handle { raw: Number }
+struct Handle { raw: I32 }
 extern impl Handle {
-    fn id(self) -> Number
+    fn id(self) -> I32
     fn is_valid(self) -> Boolean
 }
 ";
@@ -99,7 +99,7 @@ impl Socket {
 #[test]
 fn test_extern_fn_with_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-extern fn compute() -> Number {
+extern fn compute() -> I32 {
     42
 }
 ";
@@ -117,7 +117,7 @@ extern fn compute() -> Number {
 #[test]
 fn test_regular_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-fn compute() -> Number
+fn compute() -> I32
 ";
     let result = parse_only(source);
     if result.is_ok() {
@@ -151,7 +151,7 @@ fn test_extern_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::erro
 fn test_regular_fn_is_extern_flag_threads_to_ir() -> Result<(), Box<dyn std::error::Error>> {
     // Audit #28: function_def_parser sets `is_extern: false`; verify
     // the IR mirrors that for ordinary fn definitions.
-    let module = formalang::compile_to_ir("pub fn add(a: Number, b: Number) -> Number { a + b }")
+    let module = formalang::compile_to_ir("pub fn add(a: I32, b: I32) -> I32 { a + b }")
         .map_err(|e| format!("{e:?}"))?;
     let f = module
         .functions
@@ -175,9 +175,9 @@ fn test_extern_impl_methods_inherit_is_extern_in_ir() -> Result<(), Box<dyn std:
     // `body: None`.
     let module = formalang::compile_to_ir(
         r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern impl Canvas {
-    fn draw(self, x: Number, y: Number)
+    fn draw(self, x: I32, y: I32)
     fn flush(self) -> Boolean
 }
 ",
@@ -208,12 +208,12 @@ fn test_regular_impl_methods_inherit_is_extern_in_ir() -> Result<(), Box<dyn std
     // `is_extern: false` with a `body: Some(_)` in the IR.
     let module = formalang::compile_to_ir(
         r"
-struct Counter { value: Number }
+struct Counter { value: I32 }
 impl Counter {
-    fn get(self) -> Number {
+    fn get(self) -> I32 {
         self.value
     }
-    fn double(self) -> Number {
+    fn double(self) -> I32 {
         self.value + self.value
     }
 }
@@ -244,7 +244,7 @@ fn test_impl_fn_without_body_rejected() -> Result<(), Box<dyn std::error::Error>
     let source = r"
 struct Foo {}
 impl Foo {
-    fn bar(self) -> Number
+    fn bar(self) -> I32
 }
 ";
     let errors = compile(source)
@@ -266,7 +266,7 @@ impl Foo {
 #[test]
 fn test_extern_impl_fn_with_body_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 extern impl Canvas {
     fn draw(self) {
         42
@@ -308,9 +308,9 @@ extern type Foo
 #[test]
 fn test_struct_with_extern_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Canvas { width: Number, height: Number }
-extern impl Canvas { fn draw(self, x: Number, y: Number) }
-extern fn create_canvas(width: Number, height: Number) -> Canvas
+struct Canvas { width: I32, height: I32 }
+extern impl Canvas { fn draw(self, x: I32, y: I32) }
+extern fn create_canvas(width: I32, height: I32) -> Canvas
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -328,7 +328,7 @@ fn test_extern_fn_ast_body_is_none() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let source = r"
-extern fn compute() -> Number
+extern fn compute() -> I32
 ";
     let file = parse_only(source).map_err(|e| format!("{e:?}"))?;
     let def = file
@@ -358,7 +358,7 @@ fn test_regular_fn_ast_body_is_some() -> Result<(), Box<dyn std::error::Error>> 
     };
 
     let source = r"
-fn compute() -> Number {
+fn compute() -> I32 {
     42
 }
 ";

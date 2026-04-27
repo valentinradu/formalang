@@ -14,7 +14,7 @@ use formalang::pipeline::IrPass;
 
 #[test]
 fn test_fold_numeric_subtraction() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 10 - 4 }";
+    let source = r"struct Config { val: I32 = 10 - 4 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -34,15 +34,15 @@ fn test_fold_numeric_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n - 6.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 6, got {n}").into());
+    if ((n.value - 6.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 6, got {}", n.value).into());
     }
     Ok(())
 }
 
 #[test]
 fn test_fold_numeric_division() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 12 / 4 }";
+    let source = r"struct Config { val: I32 = 12 / 4 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -62,15 +62,15 @@ fn test_fold_numeric_division() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {n}").into());
+    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value).into());
     }
     Ok(())
 }
 
 #[test]
 fn test_fold_numeric_modulo() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 10 % 3 }";
+    let source = r"struct Config { val: I32 = 10 % 3 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -90,8 +90,8 @@ fn test_fold_numeric_modulo() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n - 1.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 1, got {n}").into());
+    if ((n.value - 1.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 1, got {}", n.value).into());
     }
     Ok(())
 }
@@ -302,7 +302,7 @@ fn test_fold_boolean_ne() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_fold_numeric_negation() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = -5 }";
+    let source = r"struct Config { val: I32 = -5 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -322,8 +322,8 @@ fn test_fold_numeric_negation() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n + 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected -5, got {n}").into());
+    if ((n.value + 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected -5, got {}", n.value).into());
     }
     Ok(())
 }
@@ -363,7 +363,7 @@ fn test_fold_boolean_not_false() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_fold_if_constant_false_no_else() -> Result<(), Box<dyn std::error::Error>> {
     // `if false { 5 }` -> condition is false, no else branch -> stays as If
-    let source = r"struct Config { val: Number = if false { 5 } }";
+    let source = r"struct Config { val: I32 = if false { 5 } }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -392,9 +392,9 @@ fn test_fold_if_constant_false_no_else() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_fold_constants_in_impl_function_body() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { val: Number = 0 }
+        struct Counter { val: I32 = 0 }
         impl Counter {
-            fn doubled() -> Number { 2 * 3 }
+            fn doubled() -> I32 { 2 * 3 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -422,8 +422,8 @@ fn test_fold_constants_in_impl_function_body() -> Result<(), Box<dyn std::error:
         )
         .into());
     };
-    if ((n - 6.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 6, got {n}").into());
+    if ((n.value - 6.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 6, got {}", n.value).into());
     }
     Ok(())
 }
@@ -435,7 +435,7 @@ fn test_fold_constants_in_impl_function_body() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct Config { data: [String: Number] = ["key": 1 + 2] }
+        struct Config { data: [String: I32] = ["key": 1 + 2] }
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
@@ -466,8 +466,8 @@ fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {n}").into());
+    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value).into());
     }
     Ok(())
 }
@@ -483,8 +483,8 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
     // runs without error" check. Now assert the actual fold outcome:
     // `if true { 1 + 2 } else { 0 }` must collapse to a literal `3`.
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let doubled: [Number] = for x in items { if true { 1 + 2 } else { 0 } }
+        let items: [I32] = [1, 2, 3]
+        let doubled: [I32] = for x in items { if true { 1 + 2 } else { 0 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
@@ -501,10 +501,10 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
         ..
     } = body.as_ref()
     else {
-        return Err(format!("expected for-body to fold to a Number literal, got {body:?}").into());
+        return Err(format!("expected for-body to fold to a I32 literal, got {body:?}").into());
     };
-    if (n - 3.0_f64).abs() > f64::EPSILON {
-        return Err(format!("expected folded value 3, got {n}").into());
+    if (n.value - 3.0_f64).abs() > f64::EPSILON {
+        return Err(format!("expected folded value 3, got {}", n.value).into());
     }
     Ok(())
 }
@@ -518,7 +518,7 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Color { red, green }
         struct Config {
-            val: Number = match Color.red {
+            val: I32 = match Color.red {
                 .red: 2 + 3,
                 _: 0
             }
@@ -550,8 +550,8 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n - 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 5 in arm, got {n}").into());
+    if ((n.value - 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 5 in arm, got {}", n.value).into());
     }
     Ok(())
 }
@@ -596,10 +596,10 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
     }
 
     let source = r"
-        struct Vec2 { x: Number, y: Number }
+        struct Vec2 { x: I32, y: I32 }
         impl Vec2 {
-            fn scale(factor: Number) -> Number { self.x }
-            fn compute() -> Number { self.scale(factor: 2 + 3) }
+            fn scale(factor: I32) -> I32 { self.x }
+            fn compute() -> I32 { self.scale(factor: 2 + 3) }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -628,7 +628,7 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
 fn test_fold_closure_body() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            callback: (Number) -> Number = |n: Number| 2 + 3
+            callback: (I32) -> I32 = |n: I32| 2 + 3
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -653,8 +653,8 @@ fn test_fold_closure_body() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded closure body, got {body:?}").into());
     };
-    if ((n - 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 5, got {n}").into());
+    if ((n.value - 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 5, got {}", n.value).into());
     }
     Ok(())
 }
@@ -666,8 +666,8 @@ fn test_fold_closure_body() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_fold_block_let_statement() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { val: Number = {
-            let x: Number = 1 + 2
+        struct Config { val: I32 = {
+            let x: I32 = 1 + 2
             x
         }}
     ";
@@ -705,8 +705,8 @@ fn test_fold_block_let_statement() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded let value, got {value:?}").into());
     };
-    if ((n - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3 in block let, got {n}").into());
+    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3 in block let, got {}", n.value).into());
     }
     // Result expression should be a reference to x (LetRef/Reference) or a Literal
     if !(matches!(
@@ -729,9 +729,9 @@ fn test_fold_block_let_statement() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fold_field_access_object() -> Result<(), Box<dyn std::error::Error>> {
     // Field access on a computed object - fold verifies the object gets folded
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get() -> Number { self.x }
+            fn get() -> I32 { self.x }
         }
         struct Config {
             p: Point = Point(x: 1 + 2, y: 0)
@@ -763,8 +763,8 @@ fn test_fold_field_access_object() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {n}").into());
+    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value).into());
     }
     Ok(())
 }
@@ -779,7 +779,7 @@ fn test_constant_folding_pass_via_pipeline() -> Result<(), Box<dyn std::error::E
     use formalang::pipeline::IrPass;
 
     let source = r"
-        struct Config { value: Number = 3 * 7 }
+        struct Config { value: I32 = 3 * 7 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let mut pass = ConstantFoldingPass::new();
@@ -802,8 +802,8 @@ fn test_constant_folding_pass_via_pipeline() -> Result<(), Box<dyn std::error::E
     else {
         return Err(format!("Expected 21 after folding pass, got {expr:?}").into());
     };
-    if ((n - 21.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 21, got {n}").into());
+    if ((n.value - 21.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 21, got {}", n.value).into());
     }
     Ok(())
 }
@@ -827,7 +827,7 @@ fn test_constant_folding_pass_default() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_fold_no_divide_by_zero() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 10 / 0 }";
+    let source = r"struct Config { val: I32 = 10 / 0 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -855,8 +855,8 @@ fn test_fold_no_divide_by_zero() -> Result<(), Box<dyn std::error::Error>> {
 fn test_fold_range_not_folded() -> Result<(), Box<dyn std::error::Error>> {
     // Range is used in for loops
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let x: [Number] = for n in items { n }
+        let items: [I32] = [1, 2, 3]
+        let x: [I32] = for n in items { n }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
@@ -872,7 +872,7 @@ fn test_fold_range_not_folded() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_fold_no_modulo_by_zero() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 10 % 0 }";
+    let source = r"struct Config { val: I32 = 10 % 0 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -900,7 +900,7 @@ fn test_fold_no_modulo_by_zero() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = -0 }";
+    let source = r"struct Config { val: I32 = -0 }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -920,8 +920,8 @@ fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal for -0, got {expr:?}").into());
     };
-    if *n != 0.0 {
-        return Err(format!("Expected 0 (any sign), got {n}").into());
+    if n.value != 0.0 {
+        return Err(format!("Expected 0 (any sign), got {}", n.value).into());
     }
     Ok(())
 }
@@ -932,7 +932,7 @@ fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_fold_chain_with_divide_by_zero() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = (2 + 3) * (1 / 0) }";
+    let source = r"struct Config { val: I32 = (2 + 3) * (1 / 0) }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
@@ -975,7 +975,7 @@ fn struct_default_expr(
 
 #[test]
 fn test_is_constant_literal() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { val: Number = 42 }";
+    let source = r"struct Config { val: I32 = 42 }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
     let expr = struct_default_expr(&folded)?;
@@ -988,7 +988,7 @@ fn test_is_constant_literal() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_is_constant_array_of_literals_after_fold() -> Result<(), Box<dyn std::error::Error>> {
     // `[1+1, 2*2]` folds children to `[2, 4]`, which is a constant aggregate.
-    let source = r"struct Config { vals: [Number] = [1 + 1, 2 * 2] }";
+    let source = r"struct Config { vals: [I32] = [1 + 1, 2 * 2] }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
     let expr = struct_default_expr(&folded)?;
@@ -1000,7 +1000,7 @@ fn test_is_constant_array_of_literals_after_fold() -> Result<(), Box<dyn std::er
 
 #[test]
 fn test_is_constant_nested_array() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"struct Config { grid: [[Number]] = [[1, 2], [3, 4]] }";
+    let source = r"struct Config { grid: [[I32]] = [[1, 2], [3, 4]] }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
     let expr = struct_default_expr(&folded)?;
@@ -1012,7 +1012,7 @@ fn test_is_constant_nested_array() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_is_constant_tuple() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"struct Config { pair: (n: Number, s: String) = (n: 1, s: "x") }"#;
+    let source = r#"struct Config { pair: (n: I32, s: String) = (n: 1, s: "x") }"#;
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
     let expr = struct_default_expr(&folded)?;
@@ -1025,7 +1025,7 @@ fn test_is_constant_tuple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_is_constant_struct_inst() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Config { origin: Point = Point(x: 0, y: 0) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -1077,7 +1077,7 @@ fn test_is_constant_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_is_constant_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r#"struct Config { data: [String: Number] = ["a": 1, "b": 2] }"#;
+    let source = r#"struct Config { data: [String: I32] = ["a": 1, "b": 2] }"#;
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
     let expr = struct_default_expr(&folded)?;
@@ -1093,8 +1093,8 @@ fn test_is_constant_rejects_let_ref() -> Result<(), Box<dyn std::error::Error>> 
     // the binding itself was a literal — backends can't emit a relocation
     // through a name lookup.
     let source = r"
-        let factor: Number = 2
-        struct Config { vals: [Number] = [factor, 1] }
+        let factor: I32 = 2
+        struct Config { vals: [I32] = [factor, 1] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);
@@ -1124,10 +1124,10 @@ fn test_is_constant_rejects_method_call_inside_aggregate() -> Result<(), Box<dyn
 {
     // A method call inside an aggregate is not statically known.
     let source = r"
-        struct Counter { n: Number = 0 }
-        impl Counter { fn next(self) -> Number { self.n + 1 } }
+        struct Counter { n: I32 = 0 }
+        impl Counter { fn next(self) -> I32 { self.n + 1 } }
         let c: Counter = Counter()
-        struct Config { vals: [Number] = [c.next(), 1] }
+        struct Config { vals: [I32] = [c.next(), 1] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let folded = fold_constants(&module);

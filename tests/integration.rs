@@ -46,7 +46,7 @@ fn test_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct User {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -80,7 +80,7 @@ fn test_struct_with_optional_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_with_default_value() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            timeout: Number = 30,
+            timeout: I32 = 30,
             enabled: Boolean = true
         }
     ";
@@ -108,7 +108,7 @@ fn test_struct_implementing_trait() -> Result<(), Box<dyn std::error::Error>> {
 
         struct User {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -123,12 +123,12 @@ fn test_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         trait Aged {
-            age: Number
+            age: I32
         }
 
         struct Person {
             name: String,
-            age: Number
+            age: I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -153,7 +153,7 @@ fn test_enum_with_associated_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Result {
             success(value: String),
-            error(message: String, code: Number)
+            error(message: String, code: I32)
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -192,7 +192,7 @@ fn test_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_generic_struct_with_constraint() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container {
-            size: Number
+            size: I32
         }
 
         struct Wrapper<T: Container> {
@@ -224,7 +224,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct AllTypes {
             s: String,
-            n: Number,
+            n: I32,
             b: Boolean,
             p: Path,
             r: Regex
@@ -260,7 +260,7 @@ fn test_array_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Matrix {
-            rows: [[Number]]
+            rows: [[I32]]
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -271,7 +271,7 @@ fn test_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point {
-            coords: (x: Number, y: Number)
+            coords: (x: I32, y: I32)
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -286,7 +286,7 @@ fn test_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Cache {
-            data: [String: Number]
+            data: [String: I32]
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -308,7 +308,7 @@ fn test_optional_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_nested_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct NestedCache {
-            data: [String: [String: Number]]
+            data: [String: [String: I32]]
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -334,7 +334,7 @@ fn test_closure_type_no_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Transformer {
-            transform: String -> Number
+            transform: String -> I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -345,7 +345,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            compute: Number, Number -> Number
+            compute: I32, I32 -> I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -382,7 +382,7 @@ fn test_impl_block_with_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_impl_block_with_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Inner {
-            value: Number
+            value: I32
         }
 
         struct Outer {
@@ -628,7 +628,7 @@ fn test_closure_with_type_annotation() -> Result<(), Box<dyn std::error::Error>>
 fn test_let_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
-            value: Number = (let x = 10
+            value: I32 = (let x = 10
             in x)
         }
     ";
@@ -640,7 +640,7 @@ fn test_let_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Result {
-            value: Number = (let x: Number = 10
+            value: I32 = (let x: I32 = 10
             in x)
         }
     ";
@@ -652,7 +652,7 @@ fn test_let_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_mut() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            value: Number = (let mut count = 0
+            value: I32 = (let mut count = 0
             in count)
         }
     ";
@@ -664,7 +664,7 @@ fn test_let_mut() -> Result<(), Box<dyn std::error::Error>> {
 fn test_nested_let_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Computation {
-            result: Number = (let a = 1
+            result: I32 = (let a = 1
             in let b = 2
             in let c = 3
             in a)
@@ -749,7 +749,7 @@ fn test_error_duplicate_definition() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         struct User {
-            age: Number
+            age: I32
         }
     ";
     let result = compile(source);
@@ -767,7 +767,7 @@ fn test_error_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         struct User: Named {
-            age: Number
+            age: I32
         }
     ";
     let result = compile(source);
@@ -804,7 +804,7 @@ fn test_complex_ui_component() -> Result<(), Box<dyn std::error::Error>> {
 
         struct Theme {
             primaryColor: String,
-            fontSize: Number
+            fontSize: I32
         }
 
         struct Button {
@@ -838,7 +838,7 @@ fn test_generic_data_structures() -> Result<(), Box<dyn std::error::Error>> {
 
         struct Container<T> {
             items: [T],
-            count: Number
+            count: I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -919,7 +919,7 @@ fn test_block_comment_terminates_inside_token_stream() -> Result<(), Box<dyn std
     // of surrounding code, even when nested.
     let source = r"
         struct A /* /* nested */ */ {
-            x: Number /* trailing */
+            x: I32 /* trailing */
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -1035,7 +1035,7 @@ fn test_struct_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> 
 fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut value: Number
+            mut value: I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -1085,7 +1085,7 @@ fn test_enum_variant_reference() -> Result<(), Box<dyn std::error::Error>> {
 fn test_inferred_enum_in_struct_instantiation_args() -> Result<(), Box<dyn std::error::Error>> {
     // Regression test: inferred enum variants inside struct instantiation arguments
     let source = r"
-        enum SizeMode { auto, fixed(value: Number) }
+        enum SizeMode { auto, fixed(value: I32) }
         enum RepeatMode { none, horizontal, vertical, both }
 
         struct Size {

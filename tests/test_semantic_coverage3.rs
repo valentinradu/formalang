@@ -40,7 +40,7 @@ fn test_pub_use_single_symbol_reexport() -> Result<(), Box<dyn std::error::Error
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct Foo { value: Number }
+pub struct Foo { value: I32 }
 ",
     );
     resolver.add(
@@ -65,8 +65,8 @@ fn test_pub_use_glob_reexport() -> Result<(), Box<dyn std::error::Error>> {
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct Bar { count: Number }
-pub trait Trackable { count: Number }
+pub struct Bar { count: I32 }
+pub trait Trackable { count: I32 }
 ",
     );
     resolver.add(
@@ -91,7 +91,7 @@ fn test_pub_use_multiple_symbols_reexport() -> Result<(), Box<dyn std::error::Er
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct Foo { x: Number }
+pub struct Foo { x: I32 }
 pub struct Bar { y: String }
 ",
     );
@@ -140,8 +140,8 @@ fn test_module_with_duplicate_struct_in_loading() -> Result<(), Box<dyn std::err
     resolver.add(
         vec!["shapes".to_string()],
         r"
-pub struct Circle { radius: Number }
-pub struct Circle { r: Number }
+pub struct Circle { radius: I32 }
+pub struct Circle { r: I32 }
 ",
     );
 
@@ -163,8 +163,8 @@ fn test_module_with_duplicate_trait_in_loading() -> Result<(), Box<dyn std::erro
     resolver.add(
         vec!["traits".to_string()],
         r"
-pub trait Shaped { area: Number }
-pub trait Shaped { perimeter: Number }
+pub trait Shaped { area: I32 }
+pub trait Shaped { perimeter: I32 }
 ",
     );
 
@@ -209,8 +209,8 @@ fn test_module_with_duplicate_function_in_loading() -> Result<(), Box<dyn std::e
     resolver.add(
         vec!["funcs".to_string()],
         r"
-pub fn compute(x: Number) -> Number { x }
-pub fn compute(x: Number) -> Number { x + 1 }
+pub fn compute(x: I32) -> I32 { x }
+pub fn compute(x: I32) -> I32 { x + 1 }
 ",
     );
 
@@ -232,8 +232,8 @@ fn test_module_with_duplicate_let_in_loading() -> Result<(), Box<dyn std::error:
     resolver.add(
         vec!["consts".to_string()],
         r"
-pub let MAX: Number = 100
-pub let MAX: Number = 200
+pub let MAX: I32 = 100
+pub let MAX: I32 = 200
 ",
     );
 
@@ -258,10 +258,10 @@ struct Config {}
 fn test_let_dep_via_field_access() -> Result<(), Box<dyn std::error::Error>> {
     // p.x references let p — this exercises extract_let_references for FieldAccess
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         let p: Point = Point(x: 1, y: 2)
-        let x_coord: Number = p.x
-        let y_coord: Number = p.y
+        let x_coord: I32 = p.x
+        let y_coord: I32 = p.y
     ";
     compile(source).map_err(|e| format!("Field access in let dep: {e:?}"))?;
     Ok(())
@@ -275,8 +275,8 @@ fn test_let_dep_via_field_access() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_dep_via_let_expr() -> Result<(), Box<dyn std::error::Error>> {
     // A let binding whose value is a let-expression
     let source = r"
-        let base: Number = 10
-        let computed: Number = (let tmp: Number = base
+        let base: I32 = 10
+        let computed: I32 = (let tmp: I32 = base
         in tmp + 1)
     ";
     compile(source).map_err(|e| format!("Let expr as dependency: {e:?}"))?;
@@ -291,9 +291,9 @@ fn test_let_dep_via_let_expr() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_dep_via_block_expression() -> Result<(), Box<dyn std::error::Error>> {
     // A file-level let binding whose value is a block expression
     let source = r"
-        let a: Number = 5
-        let result: Number = {
-            let x: Number = a
+        let a: I32 = 5
+        let result: I32 = {
+            let x: I32 = a
             x + 1
         }
     ";
@@ -305,9 +305,9 @@ fn test_let_dep_via_block_expression() -> Result<(), Box<dyn std::error::Error>>
 fn test_let_dep_via_block_with_assign() -> Result<(), Box<dyn std::error::Error>> {
     // Block with assignment inside let binding value
     let source = r"
-        let a: Number = 5
-        let result: Number = {
-            let mut x: Number = a
+        let a: I32 = 5
+        let result: I32 = {
+            let mut x: I32 = a
             x = 10
             x
         }
@@ -320,8 +320,8 @@ fn test_let_dep_via_block_with_assign() -> Result<(), Box<dyn std::error::Error>
 fn test_let_dep_via_block_with_expr_statement() -> Result<(), Box<dyn std::error::Error>> {
     // Block where one statement is just an expression (not let/assign)
     let source = r"
-        let a: Number = 5
-        let result: Number = {
+        let a: I32 = 5
+        let result: I32 = {
             a
         }
     ";
@@ -339,9 +339,9 @@ fn test_mutable_struct_instantiation_with_mutable_let() -> Result<(), Box<dyn st
     // struct has a mut field; we pass a mutable let binding — should succeed
     let source = r"
         struct Config {
-            mut value: Number = 0
+            mut value: I32 = 0
         }
-        let mut x: Number = 42
+        let mut x: I32 = 42
         let cfg: Config = Config(value: x)
     ";
     let result = compile(source);
@@ -356,9 +356,9 @@ fn test_mutable_struct_instantiation_with_immutable_let() -> Result<(), Box<dyn 
     // struct has a mut field; we pass an immutable let binding — should fail
     let source = r"
         struct Config {
-            mut value: Number = 0
+            mut value: I32 = 0
         }
-        let x: Number = 42
+        let x: I32 = 42
         let cfg: Config = Config(value: x)
     ";
     let result = compile(source);
@@ -374,7 +374,7 @@ fn test_mutable_field_path_chain() -> Result<(), Box<dyn std::error::Error>> {
     // Tests that is_field_chain_mutable, get_let_type, is_struct_field_mutable, get_field_type
     // are all exercised via a mut field chain assignment
     let source = r"
-        struct Inner { mut val: Number = 0 }
+        struct Inner { mut val: I32 = 0 }
         struct Outer { mut inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
         let mut inner2: Inner = Inner(val: 0)
@@ -399,10 +399,10 @@ fn test_mutable_field_path_chain() -> Result<(), Box<dyn std::error::Error>> {
 fn test_immutable_root_field_path_assignment() -> Result<(), Box<dyn std::error::Error>> {
     // root is not mutable, so path assignment should fail or succeed depending on validation
     let source = r"
-        struct Inner { val: Number }
+        struct Inner { val: I32 }
         struct Outer { inner: Inner }
         let outer: Outer = Outer(inner: Inner(val: 0))
-        let val2: Number = outer.inner.val
+        let val2: I32 = outer.inner.val
     ";
     // Field access on immutable let — exercises is_let_mutable returning false
     compile(source).map_err(|e| format!("immutable field path read should compile: {e:?}"))?;
@@ -418,11 +418,11 @@ fn test_assignment_to_struct_field_in_block() -> Result<(), Box<dyn std::error::
     // We try to assign to self.field inside impl block to exercise is_expr_mutable
     let source = r"
         struct Counter {
-            mut count: Number = 0
+            mut count: I32 = 0
         }
         impl Counter {
-            fn reset() -> Number {
-                let mut n: Number = 5
+            fn reset() -> I32 {
+                let mut n: I32 = 5
                 n = 0
                 n
             }
@@ -437,8 +437,8 @@ fn test_assignment_checks_group_expr_mutability() -> Result<(), Box<dyn std::err
     // assignment target is a grouped expression containing a mutable reference
     let source = r"
         struct Cfg {
-            mut count: Number = {
-                let mut x: Number = 0
+            mut count: I32 = {
+                let mut x: I32 = 0
                 x = 5
                 x
             }
@@ -459,10 +459,10 @@ fn test_impl_trait_for_struct_in_module_loading() -> Result<(), Box<dyn std::err
     resolver.add(
         vec!["shapes".to_string()],
         r"
-pub trait Drawable { area: Number }
-pub struct Circle { area: Number }
+pub trait Drawable { area: I32 }
+pub struct Circle { area: I32 }
 impl Circle {
-    fn compute() -> Number { self.area }
+    fn compute() -> I32 { self.area }
 }
 ",
     );
@@ -486,7 +486,7 @@ fn test_nested_module_inside_loaded_module() -> Result<(), Box<dyn std::error::E
         vec!["outer".to_string()],
         r"
 pub mod inner {
-    pub struct Widget { width: Number }
+    pub struct Widget { width: I32 }
 }
 ",
     );
@@ -533,7 +533,7 @@ fn test_invalid_module_path_format() -> Result<(), Box<dyn std::error::Error>> {
     // Ident containing :: with only 1 part isn't reachable from parser - skip.
     let source = r"
         pub mod shapes {
-            pub struct Circle { radius: Number }
+            pub struct Circle { radius: I32 }
         }
         struct Config { item: shapes::Circle }
     ";
@@ -652,9 +652,9 @@ fn test_impl_fn_with_type_param_return() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_function_with_dict_return_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Since Gap 8, dict literal type inference returns "[String: Number]" matching declaration.
+    // Since Gap 8, dict literal type inference returns "[String: I32]" matching declaration.
     let source = r#"
-        fn make_dict() -> [String: Number] { ["key": 42] }
+        fn make_dict() -> [String: I32] { ["key": 42] }
     "#;
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -667,7 +667,7 @@ fn test_function_with_dict_return_type() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_function_with_closure_no_params_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn make_fn() -> () -> Number { 42 }
+        fn make_fn() -> () -> I32 { 42 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -685,16 +685,16 @@ fn test_function_with_closure_no_params_return_type() -> Result<(), Box<dyn std:
 }
 
 // =============================================================================
-// Lines 3222-3232: type_strings_compatible for Number/f32/i32/u32 and bool/Boolean
+// Lines 3222-3232: type_strings_compatible for I32/f32/i32/u32 and bool/Boolean
 // =============================================================================
 
 #[test]
 fn test_function_return_number_f32_compatible() -> Result<(), Box<dyn std::error::Error>> {
-    // f32 literal (or Number) compatible with Number return type
+    // f32 literal (or I32) compatible with I32 return type
     let source = r"
-        fn compute() -> Number { 42 }
+        fn compute() -> I32 { 42 }
     ";
-    compile(source).map_err(|e| format!("Number return: {e:?}"))?;
+    compile(source).map_err(|e| format!("I32 return: {e:?}"))?;
     Ok(())
 }
 
@@ -742,8 +742,8 @@ fn test_circular_let_dependency_with_match() -> Result<(), Box<dyn std::error::E
     // let x depends on let y which depends on x via match
     let source = r"
         enum Flag { on, off }
-        let x: Number = y + 1
-        let y: Number = x + 1
+        let x: I32 = y + 1
+        let y: I32 = x + 1
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -760,7 +760,7 @@ fn test_circular_let_dependency_with_match() -> Result<(), Box<dyn std::error::E
 fn test_let_binding_with_no_refs() -> Result<(), Box<dyn std::error::Error>> {
     // Simple literal - no dependencies
     let source = r#"
-        let a: Number = 42
+        let a: I32 = 42
         let b: String = "hello"
         let c: Boolean = true
     "#;
@@ -776,8 +776,8 @@ fn test_let_binding_with_no_refs() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_dep_via_enum_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     // let binding whose value is an enum instantiation with data
     let source = r"
-        enum Shape { circle(radius: Number), point }
-        let r: Number = 5
+        enum Shape { circle(radius: I32), point }
+        let r: I32 = 5
         let s: Shape = Shape.circle(radius: r)
     ";
     compile(source).map_err(|e| format!("Let dep via enum instantiation: {e:?}"))?;
@@ -803,8 +803,8 @@ fn test_let_dep_via_inferred_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_infer_type_of_user_function_call() -> Result<(), Box<dyn std::error::Error>> {
     // Calling a user-defined function and using its result as a let binding value
     let source = r"
-        fn compute(x: Number) -> Number { x + 1 }
-        let result: Number = compute(x: 5)
+        fn compute(x: I32) -> I32 { x + 1 }
+        let result: I32 = compute(x: 5)
     ";
     compile(source).map_err(|e| format!("User function call type inference: {e:?}"))?;
     Ok(())
@@ -818,8 +818,8 @@ fn test_infer_type_of_user_function_call() -> Result<(), Box<dyn std::error::Err
 fn test_infer_type_of_builtin_function_with_args() -> Result<(), Box<dyn std::error::Error>> {
     // abs() is not a built-in function in FormaLang; should produce an undefined reference error
     let source = r"
-        let x: Number = 5
-        let result: Number = abs(x)
+        let x: I32 = 5
+        let result: I32 = abs(x)
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -837,10 +837,10 @@ fn test_infer_type_of_self_mount_field_in_impl() -> Result<(), Box<dyn std::erro
     // Self.mountField where field is a mount field (not regular field)
     let source = r"
         struct Widget {
-            [content: Number]
+            [content: I32]
         }
         impl Widget {
-            fn get_content() -> Number { self.content }
+            fn get_content() -> I32 { self.content }
         }
     ";
     let result = compile(source);
@@ -866,9 +866,9 @@ fn test_infer_type_of_self_mount_field_in_impl() -> Result<(), Box<dyn std::erro
 fn test_infer_type_struct_field_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     // Inside an impl block, referencing a struct field by name
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         impl Counter {
-            fn get() -> Number { count }
+            fn get() -> I32 { count }
         }
     ";
     compile(source).map_err(|e| format!("struct field reference in impl should compile: {e:?}"))?;
@@ -881,9 +881,9 @@ fn test_infer_type_struct_field_in_impl() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_infer_dict_literal_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Since Gap 8, dict literal type inference returns "[String: Number]" matching declaration.
+    // Since Gap 8, dict literal type inference returns "[String: I32]" matching declaration.
     let source = r#"
-        fn get_dict() -> [String: Number] { ["key": 42] }
+        fn get_dict() -> [String: I32] { ["key": 42] }
     "#;
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -893,8 +893,8 @@ fn test_infer_dict_literal_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_infer_closure_type() -> Result<(), Box<dyn std::error::Error>> {
     // Closure expression as a struct field value exercises infer_type for ClosureExpr
     let source = r"
-        struct Handler { callback: (Number) -> Number }
-        let h: Handler = Handler(callback: (x: Number) -> Number { x })
+        struct Handler { callback: (I32) -> I32 }
+        let h: Handler = Handler(callback: (x: I32) -> I32 { x })
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -916,8 +916,8 @@ fn test_local_let_binding_mutability_in_block() -> Result<(), Box<dyn std::error
     // A local let binding inside a block - exercises is_let_mutable for local bindings
     let source = r"
         struct Cfg {
-            mut val: Number = {
-                let mut x: Number = 5
+            mut val: I32 = {
+                let mut x: I32 = 5
                 x = 10
                 x
             }
@@ -935,10 +935,10 @@ fn test_local_let_binding_mutability_in_block() -> Result<(), Box<dyn std::error
 fn test_immutable_root_multi_field_path() -> Result<(), Box<dyn std::error::Error>> {
     // Root let is immutable, field path access — is_expr_mutable returns false early
     let source = r"
-        struct Inner { mut val: Number = 0 }
+        struct Inner { mut val: I32 = 0 }
         struct Outer { mut inner: Inner = Inner(val: 0) }
         let outer: Outer = Outer(inner: Inner(val: 0))
-        struct Config { mut result: Number = 0 }
+        struct Config { mut result: I32 = 0 }
         let cfg: Config = Config(result: outer.inner.val)
     ";
     let result = compile(source);
@@ -964,7 +964,7 @@ fn test_immutable_root_multi_field_path() -> Result<(), Box<dyn std::error::Erro
 fn test_is_expr_mutable_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     // ForExpr result is not mutable — assigning it to a mut field should fail
     let source = r"
-        struct Config { mut items: [Number] = [1, 2, 3] }
+        struct Config { mut items: [I32] = [1, 2, 3] }
         let c: Config = Config(items: for x in [1, 2, 3] { x })
     ";
     let result = compile(source);
@@ -990,8 +990,8 @@ fn test_is_expr_mutable_for_expression() -> Result<(), Box<dyn std::error::Error
 fn test_is_expr_mutable_group_expr() -> Result<(), Box<dyn std::error::Error>> {
     // A grouped expression containing a mutable let — should propagate mutability
     let source = r"
-        struct Config { mut val: Number = 0 }
-        let mut x: Number = 5
+        struct Config { mut val: I32 = 0 }
+        let mut x: I32 = 5
         let cfg: Config = Config(val: (x))
     ";
     compile(source).map_err(|e| format!("group expr with mutable let should compile: {e:?}"))?;
@@ -1006,7 +1006,7 @@ fn test_is_expr_mutable_group_expr() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dict_literal_not_mutable() -> Result<(), Box<dyn std::error::Error>> {
     // Dict literal is never mutable
     let source = r#"
-        struct Config { mut data: [String: Number] = ["key": 42] }
+        struct Config { mut data: [String: I32] = ["key": 42] }
         let cfg: Config = Config(data: ["new": 1])
     "#;
     let result = compile(source);
@@ -1032,10 +1032,10 @@ fn test_dict_literal_not_mutable() -> Result<(), Box<dyn std::error::Error>> {
 fn test_field_access_mutability_check() -> Result<(), Box<dyn std::error::Error>> {
     // Field access on a mutable struct — exercises FieldAccess branch of is_expr_mutable
     let source = r"
-        struct Inner { val: Number }
+        struct Inner { val: I32 }
         struct Outer { mut inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
-        struct Cfg { mut result: Number = 0 }
+        struct Cfg { mut result: I32 = 0 }
         let cfg: Cfg = Cfg(result: outer.inner.val)
     ";
     let result = compile(source);
@@ -1061,8 +1061,8 @@ fn test_field_access_mutability_check() -> Result<(), Box<dyn std::error::Error>
 fn test_let_expr_mutability() -> Result<(), Box<dyn std::error::Error>> {
     // LetExpr — mutability delegates to its body
     let source = r"
-        struct Config { mut val: Number = 0 }
-        let cfg: Config = Config(val: (let x: Number = 5
+        struct Config { mut val: I32 = 0 }
+        let cfg: Config = Config(val: (let x: I32 = 5
         in x))
     ";
     let result = compile(source);
@@ -1088,8 +1088,8 @@ fn test_let_expr_mutability() -> Result<(), Box<dyn std::error::Error>> {
 fn test_mutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
     // File-level mutable let binding — exercises is_let_mutable
     let source = r"
-        let mut x: Number = 10
-        struct Config { mut val: Number = 0 }
+        let mut x: I32 = 10
+        struct Config { mut val: I32 = 0 }
         let cfg: Config = Config(val: x)
     ";
     compile(source)
@@ -1101,8 +1101,8 @@ fn test_mutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
 fn test_immutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
     // File-level immutable let binding
     let source = r"
-        let x: Number = 10
-        struct Config { val: Number }
+        let x: I32 = 10
+        struct Config { val: I32 }
         let cfg: Config = Config(val: x)
     ";
     compile(source).map_err(|e| format!("Immutable let in struct: {e:?}"))?;
@@ -1117,7 +1117,7 @@ fn test_immutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
 fn test_field_chain_mutable_full_chain() -> Result<(), Box<dyn std::error::Error>> {
     // Full mutable chain: mut root -> mut field -> mut subfield
     let source = r"
-        struct Inner { mut val: Number = 0 }
+        struct Inner { mut val: I32 = 0 }
         struct Outer { mut inner: Inner = Inner(val: 5) }
         let mut outer: Outer = Outer(inner: Inner(val: 5))
     ";
@@ -1141,10 +1141,10 @@ fn test_field_chain_mutable_full_chain() -> Result<(), Box<dyn std::error::Error
 fn test_field_chain_immutable_field_in_chain() -> Result<(), Box<dyn std::error::Error>> {
     // Chain where middle field is immutable
     let source = r"
-        struct Inner { val: Number }
+        struct Inner { val: I32 }
         struct Outer { mut inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
-        struct Config { mut result: Number = 0 }
+        struct Config { mut result: I32 = 0 }
         let cfg: Config = Config(result: outer.inner.val)
     ";
     let result = compile(source);
@@ -1191,7 +1191,7 @@ fn test_deeply_nested_module_path_access() -> Result<(), Box<dyn std::error::Err
         pub mod a {
             pub mod b {
                 pub mod c {
-                    pub struct Deep { val: Number }
+                    pub struct Deep { val: I32 }
                 }
             }
         }
@@ -1205,7 +1205,7 @@ fn test_deeply_nested_module_path_access() -> Result<(), Box<dyn std::error::Err
 fn test_nested_module_intermediate_not_found() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub mod outer {
-            pub struct Widget { val: Number }
+            pub struct Widget { val: I32 }
         }
         struct Config { item: outer::missing::Widget }
     ";
@@ -1226,7 +1226,7 @@ fn test_constraint_satisfied_via_impl_trait_for_struct() -> Result<(), Box<dyn s
     let source = r#"
         trait Drawable { render: String }
         struct Box<T: Drawable> { item: T }
-        struct Circle { radius: Number }
+        struct Circle { radius: I32 }
         impl Drawable for Circle {
             render: "circle"
         }
@@ -1253,7 +1253,7 @@ fn test_constraint_not_satisfied_returns_error() -> Result<(), Box<dyn std::erro
     let source = r"
         trait Serializable { data: String }
         struct Container<T: Serializable> { item: T }
-        struct Plain { x: Number }
+        struct Plain { x: I32 }
         struct Config { c: Container<Plain> }
     ";
     let result = compile(source);
@@ -1269,7 +1269,7 @@ fn test_array_type_doesnt_satisfy_constraint() -> Result<(), Box<dyn std::error:
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { item: T }
-        struct Config { b: Box<[Number]> }
+        struct Config { b: Box<[I32]> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1283,7 +1283,7 @@ fn test_optional_type_doesnt_satisfy_constraint() -> Result<(), Box<dyn std::err
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { item: T }
-        struct Config { b: Box<Number?> }
+        struct Config { b: Box<I32?> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1300,8 +1300,8 @@ fn test_optional_type_doesnt_satisfy_constraint() -> Result<(), Box<dyn std::err
 fn test_imported_ir_modules_returns_empty() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = FileSystemResolver::new(PathBuf::from("."));
     let mut analyzer = SemanticAnalyzer::new(resolver);
-    let tokens = formalang::lexer::Lexer::tokenize_all("struct Foo { x: Number }");
-    let file = formalang::parse_file_with_source(&tokens, "struct Foo { x: Number }")
+    let tokens = formalang::lexer::Lexer::tokenize_all("struct Foo { x: I32 }");
+    let file = formalang::parse_file_with_source(&tokens, "struct Foo { x: I32 }")
         .map_err(|e| format!("parse: {e:?}"))?;
     analyzer
         .analyze(&file)

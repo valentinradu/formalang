@@ -270,8 +270,8 @@ impl IrLowerer<'_> {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
             // Audit2 B19: look up the function's expected parameter
             // types so a closure literal passed as an argument
-            // (`fn apply(f: Number -> Number) ... apply(x -> x + 1)`)
-            // lowers with `x: Number` instead of `ResolvedType::Error`.
+            // (`fn apply(f: I32 -> I32) ... apply(x -> x + 1)`)
+            // lowers with `x: I32` instead of `ResolvedType::Error`.
             // Falls back to None when the function isn't in the IR yet
             // (forward reference) or the argument can't be matched by
             // name to a parameter.
@@ -1194,8 +1194,8 @@ impl IrLowerer<'_> {
                         reason = "array indices are small positions that fit in f64 mantissa"
                     )]
                     let key = IrExpr::Literal {
-                        value: Literal::Number(i as f64),
-                        ty: ResolvedType::Primitive(PrimitiveType::Number),
+                        value: Literal::Number((i as f64).into()),
+                        ty: ResolvedType::Primitive(PrimitiveType::I32),
                     };
                     IrBlockStatement::Let {
                         name,
@@ -1307,7 +1307,7 @@ impl IrLowerer<'_> {
     pub(super) fn literal_type(lit: &Literal) -> ResolvedType {
         match lit {
             Literal::String(_) => ResolvedType::Primitive(PrimitiveType::String),
-            Literal::Number(_) => ResolvedType::Primitive(PrimitiveType::Number),
+            Literal::Number(n) => ResolvedType::Primitive(n.primitive_type()),
             Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
             Literal::Path(_) => ResolvedType::Primitive(PrimitiveType::Path),
             Literal::Regex { .. } => ResolvedType::Primitive(PrimitiveType::Regex),
@@ -1435,7 +1435,7 @@ impl IrLowerer<'_> {
             return ResolvedType::Primitive(PrimitiveType::Never);
         }
 
-        // Generic receiver (`Box<Number>`): look up the impl on the
+        // Generic receiver (`Box<I32>`): look up the impl on the
         // generic base, then substitute the impl method's TypeParams
         // with the concrete type arguments.
         if let ResolvedType::Generic { base, args } = receiver_ty {

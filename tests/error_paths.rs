@@ -96,7 +96,7 @@ fn test_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
 fn test_duplicate_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A { x: String }
-        struct A { y: Number }
+        struct A { y: I32 }
     ";
     if compile(source).is_ok() {
         return Err("assertion failed".into());
@@ -108,7 +108,7 @@ fn test_duplicate_struct() -> Result<(), Box<dyn std::error::Error>> {
 fn test_duplicate_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A { x: String }
-        trait A { y: Number }
+        trait A { y: I32 }
     ";
     if compile(source).is_ok() {
         return Err("assertion failed".into());
@@ -148,7 +148,7 @@ fn test_duplicate_let() -> Result<(), Box<dyn std::error::Error>> {
 fn test_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct User { age: Number }
+        struct User { age: I32 }
         impl Named for User { }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -165,7 +165,7 @@ fn test_missing_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_wrong_trait_field_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct User { name: Number }
+        struct User { name: I32 }
         impl Named for User { }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -180,7 +180,7 @@ fn test_wrong_trait_field_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_missing_multiple_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Full { a: String, b: Number }
+        trait Full { a: String, b: I32 }
         struct Empty { }
         impl Full for Empty { }
     ";
@@ -219,7 +219,7 @@ fn test_not_a_trait() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_add_boolean_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = true + false }
+        struct A { x: I32 = true + false }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
     if !errors
@@ -234,7 +234,7 @@ fn test_add_boolean_boolean() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_subtract_string_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: Number = "a" - "b" }
+        struct A { x: I32 = "a" - "b" }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
     if !errors
@@ -249,7 +249,7 @@ fn test_subtract_string_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_multiply_string_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct A { x: Number = "a" * 2 }
+        struct A { x: I32 = "a" * 2 }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
     if !errors
@@ -264,7 +264,7 @@ fn test_multiply_string_number() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_divide_boolean_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = true / 2 }
+        struct A { x: I32 = true / 2 }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
     if !errors
@@ -314,7 +314,7 @@ fn test_or_string_string() -> Result<(), Box<dyn std::error::Error>> {
 fn test_if_condition_not_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
-            x: Number = if "string" { 1 } else { 0 }
+            x: I32 = if "string" { 1 } else { 0 }
         }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
@@ -331,7 +331,7 @@ fn test_if_condition_not_boolean() -> Result<(), Box<dyn std::error::Error>> {
 fn test_if_condition_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = if 42 { 1 } else { 0 }
+            x: I32 = if 42 { 1 } else { 0 }
         }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -365,7 +365,7 @@ fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
 fn test_for_on_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = for x in 42 { x }
+            x: I32 = for x in 42 { x }
         }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -404,7 +404,7 @@ fn test_unknown_enum_variant() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_undefined_variable_in_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 1 + undefined_var }
+        struct A { x: I32 = 1 + undefined_var }
     ";
     // Undefined variable should produce an error
     if compile(source).is_ok() {
@@ -473,7 +473,7 @@ fn test_array_of_optionals() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_dictionary_of_arrays() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { map: [String: [Number]] }";
+    let source = "struct A { map: [String: [I32]] }";
     compile(source).map_err(|e| format!("Dictionary of arrays: {e:?}"))?;
     Ok(())
 }
@@ -483,11 +483,11 @@ fn test_many_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Big {
             a: String,
-            b: Number,
+            b: I32,
             c: Boolean,
             d: String?,
             e: [String],
-            f: [String: Number]
+            f: [String: I32]
         }
     ";
     compile(source).map_err(|e| format!("Many fields: {e:?}"))?;
@@ -498,11 +498,11 @@ fn test_many_fields() -> Result<(), Box<dyn std::error::Error>> {
 fn test_multiple_traits() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait A { a: String }
-        trait B { b: Number }
+        trait B { b: I32 }
         trait C { c: Boolean }
         struct Full {
             a: String,
-            b: Number,
+            b: I32,
             c: Boolean
         }
     ";
@@ -519,7 +519,7 @@ fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> (Number -> Boolean) }";
+    let source = "struct A { callback: String -> (I32 -> Boolean) }";
     compile(source).map_err(|e| format!("Closure returning closure: {e:?}"))?;
     Ok(())
 }
@@ -541,7 +541,7 @@ fn test_generic_with_multiple_params() -> Result<(), Box<dyn std::error::Error>>
 fn test_impl_complex_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: Number = if true {
+            x: I32 = if true {
                 for i in [1, 2, 3] {
                     i
                 }
@@ -558,7 +558,7 @@ fn test_impl_complex_expression() -> Result<(), Box<dyn std::error::Error>> {
 fn test_multiple_structs_with_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A { x: String = "a value" }
-        struct B { y: Number = 42 }
+        struct B { y: I32 = 42 }
     "#;
     compile(source).map_err(|e| format!("Multiple structs with defaults: {e:?}"))?;
     Ok(())
@@ -593,7 +593,7 @@ fn test_pub_in_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod api {
             pub trait PublicTrait { x: String }
-            pub struct PublicStruct { y: Number }
+            pub struct PublicStruct { y: I32 }
             pub enum PublicEnum { a }
         }
     ";
@@ -608,10 +608,10 @@ fn test_pub_in_module() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Identifiable { id: Number }
+        trait Identifiable { id: I32 }
         trait Timestamped {
-            createdAt: Number,
-            updatedAt: Number
+            createdAt: I32,
+            updatedAt: I32
         }
 
         enum OrderStatus {
@@ -623,29 +623,29 @@ fn test_realistic_data_model() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         struct Product {
-            id: Number,
+            id: I32,
             name: String,
-            price: Number,
+            price: I32,
             description: String?,
             tags: [String]
         }
 
         struct OrderItem {
             product: Product,
-            quantity: Number
+            quantity: I32
         }
 
         struct Order {
-            id: Number,
-            createdAt: Number,
-            updatedAt: Number,
+            id: I32,
+            createdAt: I32,
+            updatedAt: I32,
             items: [OrderItem],
             status: OrderStatus,
-            total: Number
+            total: I32
         }
 
         struct Customer {
-            id: Number,
+            id: I32,
             name: String,
             email: String,
             orders: [Order]
@@ -665,7 +665,7 @@ fn test_ui_component_model() -> Result<(), Box<dyn std::error::Error>> {
         struct Text {
             value: String,
             color: String = "black",
-            size: Number = 14
+            size: I32 = 14
         }
 
         struct Button {
@@ -690,14 +690,14 @@ fn test_config_model() -> Result<(), Box<dyn std::error::Error>> {
         mod config {
             pub struct DatabaseConfig {
                 host: String = "localhost",
-                port: Number = 5432,
+                port: I32 = 5432,
                 database: String,
                 username: String,
                 password: String?
             }
 
             pub struct ServerConfig {
-                port: Number = 8080,
+                port: I32 = 8080,
                 host: String = "0.0.0.0",
                 debug: Boolean = false
             }
@@ -759,7 +759,7 @@ let n = (u).name
 fn test_unknown_field_on_fieldaccess_node() -> Result<(), Box<dyn std::error::Error>> {
     // Parentheses around the receiver produce a FieldAccess node.
     let source = r"
-struct Point { x: Number, y: Number }
+struct Point { x: I32, y: I32 }
 let p = Point(x: 1, y: 2)
 let z = (p).q
 ";
@@ -779,7 +779,7 @@ fn test_unknown_field_on_multisegment_reference() -> Result<(), Box<dyn std::err
     // walks the chain starting from `p`'s inferred type and reports
     // UnknownField at the first broken link.
     let source = r"
-struct Point { x: Number, y: Number }
+struct Point { x: I32, y: I32 }
 let p = Point(x: 1, y: 2)
 let z = p.z
 ";
@@ -797,7 +797,7 @@ let z = p.z
 fn test_unknown_field_mid_reference_chain() -> Result<(), Box<dyn std::error::Error>> {
     // The second segment resolves (`a.inner`), the third does not.
     let source = r"
-struct Inner { value: Number }
+struct Inner { value: I32 }
 struct Outer { inner: Inner }
 let a = Outer(inner: Inner(value: 1))
 let bad = a.inner.missing

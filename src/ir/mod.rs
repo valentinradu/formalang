@@ -15,7 +15,7 @@
 //! let source = r#"
 //! pub struct User {
 //!     name: String,
-//!     age: Number
+//!     age: I32
 //! }
 //! "#;
 //!
@@ -117,7 +117,7 @@ pub struct EnumId(pub u32);
 /// ```
 /// use formalang::compile_to_ir;
 ///
-/// let source = "pub fn add(a: Number, b: Number) -> Number { a + b }";
+/// let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
 /// let module = compile_to_ir(source).unwrap();
 /// let id = formalang::FunctionId(0);
 /// let func_def = &module.functions[id.0 as usize];
@@ -212,7 +212,7 @@ pub enum GenericBase {
     Struct(StructId),
     /// A generic enum base, e.g. `Option` in `Option<T>`.
     Enum(EnumId),
-    /// A generic trait base, e.g. `Container` in `Container<Number>`.
+    /// A generic trait base, e.g. `Container` in `Container<I32>`.
     /// Phase D follow-up to item E2.
     Trait(TraitId),
 }
@@ -228,7 +228,7 @@ pub enum GenericBase {
 )]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ResolvedType {
-    /// Primitive type (String, Number, Boolean, Path, Regex)
+    /// Primitive type (String, I32, I64, F32, F64, Boolean, Path, Regex, Never)
     Primitive(PrimitiveType),
 
     /// Reference to a struct definition
@@ -256,7 +256,7 @@ pub enum ResolvedType {
     /// Named tuple type: `(name1: T1, name2: T2)`
     Tuple(Vec<(String, Self)>),
 
-    /// Generic type instantiation: `Box<String>` or `Option<Number>`.
+    /// Generic type instantiation: `Box<String>` or `Option<I32>`.
     Generic {
         /// The generic struct or enum being instantiated.
         base: GenericBase,
@@ -768,7 +768,10 @@ impl ResolvedType {
         match self {
             Self::Primitive(p) => match p {
                 PrimitiveType::String => "String".to_string(),
-                PrimitiveType::Number => "Number".to_string(),
+                PrimitiveType::I32 => "I32".to_string(),
+                PrimitiveType::I64 => "I64".to_string(),
+                PrimitiveType::F32 => "F32".to_string(),
+                PrimitiveType::F64 => "F64".to_string(),
                 PrimitiveType::Boolean => "Boolean".to_string(),
                 PrimitiveType::Path => "Path".to_string(),
                 PrimitiveType::Regex => "Regex".to_string(),

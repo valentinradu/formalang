@@ -20,7 +20,7 @@ trait Named {
 }
 struct User {
     name: String,
-    age: Number
+    age: I32
 }
 impl Named for User {
     fn greet(self) -> String {
@@ -36,10 +36,10 @@ impl Named for User {
 fn test_impl_inherent_block() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 struct Counter {
-    value: Number
+    value: I32
 }
 impl Counter {
-    fn increment(self) -> Number {
+    fn increment(self) -> I32 {
         self.value + 1
     }
 }
@@ -52,11 +52,11 @@ impl Counter {
 fn test_multiple_impl_blocks_same_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 trait Named { name: String }
-trait Aged { age: Number }
+trait Aged { age: I32 }
 
 struct Person {
     name: String,
-    age: Number
+    age: I32
 }
 
 impl Named for Person {
@@ -128,7 +128,7 @@ trait Named {
     name: String
 }
 struct Broken {
-    name: Number
+    name: I32
 }
 impl Named for Broken {
     fn greet(self) -> String {

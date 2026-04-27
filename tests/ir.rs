@@ -29,7 +29,7 @@ fn test_lower_empty_source() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Point { x: Number, y: Number }";
+    let source = "struct Point { x: I32, y: I32 }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -196,7 +196,7 @@ fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn test_lower_struct_with_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Counter { mut count: Number }";
+    let source = "struct Counter { mut count: I32 }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -221,7 +221,7 @@ fn test_lower_struct_with_mutable_field() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct Public { value: Number }";
+    let source = "pub struct Public { value: I32 }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -242,7 +242,7 @@ fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_private_struct() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Private { value: Number }";
+    let source = "struct Private { value: I32 }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -298,7 +298,7 @@ fn test_lower_simple_trait() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_trait_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait Entity { id: Number, name: String, active: Boolean }";
+    let source = "trait Entity { id: I32, name: String, active: Boolean }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -476,7 +476,7 @@ fn test_lower_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_enum_mixed_variants() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum Option { none, some(value: Number) }";
+    let source = "enum Option { none, some(value: I32) }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -610,7 +610,7 @@ fn test_enum_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_get_struct_by_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct First { a: Number } struct Second { b: String }";
+    let source = "struct First { a: I32 } struct Second { b: String }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -681,8 +681,8 @@ fn test_get_enum_by_id() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let count: Number = 1
-        struct Counter { count: Number, display: Number = count }
+        let count: I32 = 1
+        struct Counter { count: I32, display: I32 = count }
         impl Counter {}
     ";
     let result = compile_to_ir(source);
@@ -732,7 +732,7 @@ fn test_lower_impl_with_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_struct_implementing_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct User { name: String, age: Number }
+        struct User { name: String, age: I32 }
     ";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
@@ -761,8 +761,8 @@ fn test_lower_struct_implementing_trait() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_struct_with_multiple_traits() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        trait Aged { age: Number }
-        struct Person { name: String, age: Number }
+        trait Aged { age: I32 }
+        struct Person { name: String, age: I32 }
     ";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
@@ -960,9 +960,9 @@ fn test_lower_multiple_generic_params() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_lower_multiple_definitions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Identifiable { id: Number }
-        struct User { id: Number, name: String }
-        struct Post { id: Number, title: String }
+        trait Identifiable { id: I32 }
+        struct User { id: I32, name: String }
+        struct Post { id: I32, title: String }
         enum Status { draft, published, archived }
     ";
     let result = compile_to_ir(source);
@@ -1042,7 +1042,7 @@ fn test_lower_struct_with_enum_field() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_lower_field_with_default_number() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Counter { count: Number = 0 }";
+    let source = "struct Counter { count: I32 = 0 }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -1111,9 +1111,9 @@ fn test_lower_field_with_default_boolean() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_lower_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait A { a: Number }
-        trait B { b: Number }
-        trait C: A + B { c: Number }
+        trait A { a: I32 }
+        trait B { b: I32 }
+        trait C: A + B { c: I32 }
     ";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
@@ -1144,7 +1144,7 @@ fn test_lower_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Matrix { rows: [[Number]] }";
+    let source = "struct Matrix { rows: [[I32]] }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -1158,7 +1158,7 @@ fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     if field.name != "rows" {
         return Err(format!("expected {:?} but got {:?}", "rows", field.name).into());
     }
-    // Should be Array(Array(Primitive(Number)))
+    // Should be Array(Array(Primitive(I32)))
     if let formalang::ir::ResolvedType::Array(inner) = &field.ty {
         if !matches!(inner.as_ref(), formalang::ir::ResolvedType::Array(_)) {
             return Err("expected inner Array type".into());
@@ -1320,7 +1320,7 @@ fn test_visitor_counts_enums() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_visitor_counts_fields() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Point { x: Number, y: Number, z: Number }";
+    let source = "struct Point { x: I32, y: I32, z: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new();
@@ -1357,8 +1357,8 @@ fn test_visitor_counts_variants() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_counts_impls() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { x: Number = 1, display: Number = 2 }
-        struct B { y: Number = 3, display: Number = 4 }
+        struct A { x: I32 = 1, display: I32 = 2 }
+        struct B { y: I32 = 3, display: I32 = 4 }
         impl A {}
         impl B {}
     ";
@@ -1377,7 +1377,7 @@ fn test_visitor_counts_impls() -> Result<(), Box<dyn std::error::Error>> {
 fn test_visitor_mixed_definitions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         trait Named { name: String }
-        struct User { name: String, age: Number, display: String = "default" }
+        struct User { name: String, age: I32, display: String = "default" }
         enum Status { active, inactive }
         impl User {}
     "#;
@@ -1435,7 +1435,7 @@ fn test_visitor_mixed_definitions() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_visitor_enum_variant_fields() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum Option { none, some(value: Number) }";
+    let source = "enum Option { none, some(value: I32) }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new();
@@ -1462,7 +1462,7 @@ fn test_visitor_enum_variant_fields() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_visitor_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait Entity { id: Number, name: String }";
+    let source = "trait Entity { id: I32, name: String }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new();
@@ -1536,7 +1536,7 @@ fn test_expr_type_literal_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { value: Number = 42 }
+        struct S { value: I32 = 42 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1550,8 +1550,8 @@ fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Number" {
-        return Err(format!("expected {:?} but got {:?}", "Number", type_name(expr.ty())).into());
+    if type_name(expr.ty()) != "I32" {
+        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty())).into());
     }
     Ok(())
 }
@@ -1587,7 +1587,7 @@ fn test_expr_type_literal_boolean() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [Number] = [1, 2, 3] }
+        struct S { items: [I32] = [1, 2, 3] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1610,7 +1610,7 @@ fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_type_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Container { p: Point = Point(x: 1, y: 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -1634,8 +1634,8 @@ fn test_expr_type_struct_instantiation() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let x: Number = 1
-        struct S { y: Number = x }
+        let x: I32 = 1
+        struct S { y: I32 = x }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1673,7 +1673,7 @@ fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { sum: Number = 1 + 2 }
+        struct S { sum: I32 = 1 + 2 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1687,9 +1687,9 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    // Arithmetic results in Number
-    if type_name(expr.ty()) != "Number" {
-        return Err(format!("expected {:?} but got {:?}", "Number", type_name(expr.ty())).into());
+    // Arithmetic results in I32
+    if type_name(expr.ty()) != "I32" {
+        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty())).into());
     }
     Ok(())
 }
@@ -1729,7 +1729,7 @@ fn test_expr_type_binary_comparison() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_resolved_type_display_primitive() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct S { n: Number, s: String, b: Boolean }";
+    let source = "struct S { n: I32, s: String, b: Boolean }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let s = &module.structs.first().ok_or("index out of bounds")?;
@@ -1738,11 +1738,11 @@ fn test_resolved_type_display_primitive() -> Result<(), Box<dyn std::error::Erro
         .ok_or("index out of bounds")?
         .ty
         .display_name(&module)
-        != "Number"
+        != "I32"
     {
         return Err(format!(
             "expected {:?} but got {:?}",
-            "Number",
+            "I32",
             s.fields
                 .first()
                 .ok_or("index out of bounds")?
@@ -1910,7 +1910,7 @@ fn test_resolved_type_display_enum_ref() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_resolved_type_display_nested_array() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct S { matrix: [[Number]] }";
+    let source = "struct S { matrix: [[I32]] }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let s = &module.structs.first().ok_or("index out of bounds")?;
@@ -1919,11 +1919,11 @@ fn test_resolved_type_display_nested_array() -> Result<(), Box<dyn std::error::E
         .ok_or("index out of bounds")?
         .ty
         .display_name(&module)
-        != "[[Number]]"
+        != "[[I32]]"
     {
         return Err(format!(
             "expected {:?} but got {:?}",
-            "[[Number]]",
+            "[[I32]]",
             s.fields
                 .first()
                 .ok_or("index out of bounds")?
@@ -1942,7 +1942,7 @@ fn test_resolved_type_display_nested_array() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_lower_if_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { value: Number = if true { 1 } else { 2 } }
+        struct S { value: I32 = if true { 1 } else { 2 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1965,7 +1965,7 @@ fn test_lower_if_expression() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { value: Number? = if true { 1 } }
+        struct S { value: I32? = if true { 1 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -1992,7 +1992,7 @@ fn test_lower_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [Number] = for x in [1, 2, 3] { x } }
+        struct S { items: [I32] = for x in [1, 2, 3] { x } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2024,7 +2024,7 @@ fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_let_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct S {
-            value: Number = (let x = 5
+            value: I32 = (let x = 5
             in x)
         }
     ";
@@ -2087,7 +2087,7 @@ fn test_lower_enum_instantiation_simple() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_lower_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        enum Option { none, some(value: Number) }
+        enum Option { none, some(value: I32) }
         struct S { opt: Option = Option.some(value: 42) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -2169,7 +2169,7 @@ fn test_lower_inferred_enum_instantiation() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_lower_tuple_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { point: (x: Number, y: Number) = (x: 1, y: 2) }
+        struct S { point: (x: I32, y: I32) = (x: 1, y: 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2219,7 +2219,7 @@ fn test_lower_tuple_expression() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_binary_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { diff: Number = 10 - 3 }
+        struct S { diff: I32 = 10 - 3 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2242,7 +2242,7 @@ fn test_lower_binary_subtraction() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_binary_multiplication() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { product: Number = 5 * 4 }
+        struct S { product: I32 = 5 * 4 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2458,7 +2458,7 @@ impl IrVisitor for ExprCounter {
 #[test]
 fn test_visitor_walks_if_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { value: Number = if true { 1 } else { 2 } }
+        struct S { value: I32 = if true { 1 } else { 2 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2486,7 +2486,7 @@ fn test_visitor_walks_if_children() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walks_for_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [Number] = for x in [1, 2] { x } }
+        struct S { items: [I32] = for x in [1, 2] { x } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2517,7 +2517,7 @@ fn test_visitor_walks_for_children() -> Result<(), Box<dyn std::error::Error>> {
 fn test_visitor_walks_nested_if() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct S {
-            value: Number = if true {
+            value: I32 = if true {
                 if false { 1 } else { 2 }
             } else {
                 3
@@ -2551,7 +2551,7 @@ fn test_visitor_walks_nested_if() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walks_binary_op_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { result: Number = 1 + 2 + 3 }
+        struct S { result: I32 = 1 + 2 + 3 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2579,7 +2579,7 @@ fn test_visitor_walks_binary_op_children() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_visitor_walks_struct_inst_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Container { p: Point = Point(x: 1 + 2, y: 3) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -2606,7 +2606,7 @@ fn test_visitor_walks_struct_inst_children() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_visitor_walks_enum_inst_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        enum Option { none, some(value: Number) }
+        enum Option { none, some(value: I32) }
         struct S { opt: Option = Option.some(value: 1 + 2) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -2641,7 +2641,7 @@ fn test_visitor_walks_enum_inst_children() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_visitor_walks_array_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [Number] = [1, 2 + 3, 4] }
+        struct S { items: [I32] = [1, 2 + 3, 4] }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -2663,7 +2663,7 @@ fn test_visitor_walks_array_children() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_visitor_walks_tuple_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { point: (x: Number, y: Number) = (x: 1 + 2, y: 3) }
+        struct S { point: (x: I32, y: I32) = (x: 1 + 2, y: 3) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
@@ -3187,7 +3187,7 @@ fn test_ir_imports_populated() -> Result<(), Box<dyn std::error::Error>> {
         vec!["utils".to_string()],
         r"
 pub struct Helper { name: String }
-pub struct Utils { value: Number }
+pub struct Utils { value: I32 }
 ",
     );
 
@@ -3380,7 +3380,7 @@ fn test_mixed_local_and_external() -> Result<(), Box<dyn std::error::Error>> {
 
     let source = r"
 use utils::External
-struct Local { value: Number }
+struct Local { value: I32 }
 struct Main {
     external: External,
     local: Local
@@ -3602,7 +3602,7 @@ fn test_safe_iteration_over_external_types() -> Result<(), Box<dyn std::error::E
 
     let source = r"
 use utils::Helper
-struct Local { value: Number }
+struct Local { value: I32 }
 struct Main {
     helper: Helper,
     local: Local,
@@ -3672,7 +3672,7 @@ fn test_all_struct_ids_are_valid() -> Result<(), Box<dyn std::error::Error>> {
 
     let source = r"
 use utils::Helper
-struct Local { value: Number }
+struct Local { value: I32 }
 struct Main {
     helper: Helper,
     local: Local
@@ -3750,7 +3750,7 @@ struct Main {
 /// incorrectly assigned `u32::MAX` must not cause panics.
 #[test]
 fn test_get_struct_returns_none_for_invalid_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Only { value: Number }";
+    let source = "struct Only { value: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     if module.structs.len() != 1 {
         return Err(format!("expected 1 struct, got {}", module.structs.len()).into());
@@ -3901,7 +3901,7 @@ struct Item { status: Status = Status.active }
 #[test]
 fn test_local_struct_instantiation_has_some_id() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-struct Point { x: Number, y: Number }
+struct Point { x: I32, y: I32 }
 struct Container { p: Point = Point(x: 1, y: 2) }
 ";
 
@@ -3968,7 +3968,7 @@ fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>
 
     // A struct that uses a method call on an extern-impl type
     let source = r"
-        struct Vec3 { x: Number, y: Number, z: Number }
+        struct Vec3 { x: I32, y: I32, z: I32 }
         extern impl Vec3 {
             fn normalize(self) -> Vec3
         }
@@ -4019,7 +4019,7 @@ fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-/// Test that method calls for `size()` return Number
+/// Test that method calls for `size()` return I32
 #[test]
 #[expect(
     clippy::items_after_statements,
@@ -4030,16 +4030,16 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        struct Canvas { width: Number, height: Number }
+        struct Canvas { width: I32, height: I32 }
         extern impl Canvas {
-            fn size(self) -> Number
+            fn size(self) -> I32
         }
         struct Renderer {
             canvas: Canvas
         }
         extern fn get_canvas() -> Canvas
         impl Renderer {
-            fn area() -> Number {
+            fn area() -> I32 {
                 self.canvas.size()
             }
         }
@@ -4073,10 +4073,10 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
     if !finder.found_length {
         return Err("Should find size method call".into());
     }
-    // Return type should be Number
-    if finder.return_type != Some(ResolvedType::Primitive(PrimitiveType::Number)) {
+    // Return type should be I32 (the post-numeric-specialization default)
+    if finder.return_type != Some(ResolvedType::Primitive(PrimitiveType::I32)) {
         return Err(format!(
-            "size on Canvas should return Number, got {:?}",
+            "size on Canvas should return I32, got {:?}",
             finder.return_type
         )
         .into());
@@ -4094,7 +4094,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r"
-        struct Handle { raw: Number }
+        struct Handle { raw: I32 }
         extern impl Handle {
             fn normalize(self) -> Handle
         }
@@ -4173,7 +4173,7 @@ fn test_dict_literal_lowering() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor, ResolvedType};
 
     let source = r#"
-        struct Config { data: [String: Number] = ["a": 1, "b": 2] }
+        struct Config { data: [String: I32] = ["a": 1, "b": 2] }
         let cfg: Config = Config()
     "#;
 
@@ -4224,8 +4224,8 @@ fn test_dict_access_lowering() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor};
 
     let source = r#"
-        let data: [String: Number] = ["a": 1]
-        struct Config { value: Number = data["a"] }
+        let data: [String: I32] = ["a": 1]
+        struct Config { value: I32 = data["a"] }
         let cfg: Config = Config()
     "#;
 
@@ -4258,7 +4258,7 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::ResolvedType;
 
     let source = r"
-        struct Container { data: [String: Number] }
+        struct Container { data: [String: I32] }
     ";
 
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
@@ -4301,11 +4301,11 @@ fn test_nested_module_impl_blocks_captured() -> Result<(), Box<dyn std::error::E
     let source = r"
 pub mod fill {
     pub struct Solid {
-        color: Number = 0
+        color: I32 = 0
     }
 
     impl Solid {
-        fn sample(self, uv: Number) -> Number {
+        fn sample(self, uv: I32) -> I32 {
             self.color + uv
         }
     }
@@ -4382,8 +4382,8 @@ fn test_inferred_enum_type_resolved_from_return_type() -> Result<(), Box<dyn std
     // to the correct enum type based on the function's return type context.
     let source = r"
 pub enum Color {
-    rgb(r: Number, g: Number, b: Number),
-    rgba(r: Number, g: Number, b: Number, a: Number)
+    rgb(r: I32, g: I32, b: I32),
+    rgba(r: I32, g: I32, b: I32, a: I32)
 }
 
 impl Color {
@@ -4519,7 +4519,7 @@ fn test_enum_impl_self_typed_as_enum() -> Result<(), Box<dyn std::error::Error>>
     let source = r#"
 pub enum Signal {
     stop,
-    go(velocity: Number)
+    go(velocity: I32)
 }
 
 impl Signal {

@@ -41,7 +41,7 @@ pub enum DispatchKind {
 ///
 /// The `ty` field is guaranteed to be correct after lowering from the AST.
 /// For example:
-/// - `Literal { value: Literal::Number(_), ty }` → `ty` is `ResolvedType::Primitive(Number)`
+/// - `Literal { value: Literal::Number(n), ty }` → `ty` is `ResolvedType::Primitive(n.primitive_type())` (the suffix's primitive when present, or `I32` / `F64` defaulted from the source kind)
 /// - `BinaryOp { op: Eq, .. }` → `ty` is `ResolvedType::Primitive(Boolean)`
 /// - `For { .. }` → `ty` is `ResolvedType::Array(body_type)`
 #[expect(

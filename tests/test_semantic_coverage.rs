@@ -14,7 +14,7 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 #[test]
 fn test_generic_arity_mismatch_too_many_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Simple { value: Number }
+        struct Simple { value: I32 }
         struct Container { item: Simple<String> }
     ";
     let result = compile(source);
@@ -40,7 +40,7 @@ fn test_generic_constraint_violation() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Plain { x: Number }
+        struct Plain { x: I32 }
         struct Container { item: Box<Plain> }
     ";
     let result = compile(source);
@@ -88,7 +88,7 @@ fn test_out_of_scope_type_parameter_explicit() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_validate_dictionary_type_with_struct_values() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Config { points: [String: Point] }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -98,7 +98,7 @@ fn test_validate_dictionary_type_with_struct_values() -> Result<(), Box<dyn std:
 #[test]
 fn test_validate_dictionary_type_nested() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { data: [String: Number] }
+        struct Config { data: [String: I32] }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -107,7 +107,7 @@ fn test_validate_dictionary_type_nested() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_validate_closure_type_with_annotations() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Handler { callback: (Number) -> String }
+        struct Handler { callback: (I32) -> String }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -144,7 +144,7 @@ fn test_array_of_invalid_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_tuple_with_invalid_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Pair { data: (x: Number, y: Phantom) }
+        struct Pair { data: (x: I32, y: Phantom) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -163,7 +163,7 @@ fn test_trait_as_value_type_rejected() -> Result<(), Box<dyn std::error::Error>>
     // dynamic dispatch in FormaLang). The fix is a generic bound:
     // `struct Container<T: Shape> { shape: T }`.
     let source = r"
-        trait Shape { area: Number }
+        trait Shape { area: I32 }
         struct Container { shape: Shape }
     ";
     let errors = compile(source)
@@ -228,7 +228,7 @@ fn test_generic_constraint_references_undefined_trait() -> Result<(), Box<dyn st
 #[test]
 fn test_trait_extending_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Extended: Undefined { value: Number }
+        trait Extended: Undefined { value: I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -240,8 +240,8 @@ fn test_trait_extending_undefined_trait() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_trait_extending_struct_not_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct NotATrait { x: Number }
-        trait Extended: NotATrait { value: Number }
+        struct NotATrait { x: I32 }
+        trait Extended: NotATrait { value: I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -254,7 +254,7 @@ fn test_trait_extending_struct_not_trait() -> Result<(), Box<dyn std::error::Err
 fn test_trait_extending_enum_not_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Color { red, green, blue }
-        trait Extended: Color { value: Number }
+        trait Extended: Color { value: I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -270,7 +270,7 @@ fn test_trait_extending_enum_not_trait() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_struct_implementing_undefined_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct MyStruct { value: Number }
+        struct MyStruct { value: I32 }
         impl UndefinedTrait for MyStruct {}
     ";
     let result = compile(source);
@@ -283,8 +283,8 @@ fn test_struct_implementing_undefined_trait() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_struct_implementing_struct_as_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct NotATrait { x: Number }
-        struct MyStruct { value: Number }
+        struct NotATrait { x: I32 }
+        struct MyStruct { value: I32 }
         impl NotATrait for MyStruct {}
     ";
     let result = compile(source);
@@ -301,8 +301,8 @@ fn test_struct_implementing_struct_as_trait() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_duplicate_struct_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number }
-        struct Point { y: Number }
+        struct Point { x: I32 }
+        struct Point { y: I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -314,8 +314,8 @@ fn test_duplicate_struct_definition() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_duplicate_trait_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Shape { area: Number }
-        trait Shape { perimeter: Number }
+        trait Shape { area: I32 }
+        trait Shape { perimeter: I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -355,7 +355,7 @@ fn test_impl_for_undefined_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_impl_trait_for_undefined_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Shape { area: Number }
+        trait Shape { area: I32 }
         impl Shape for NonExistent {}
     ";
     let result = compile(source);
@@ -368,7 +368,7 @@ fn test_impl_trait_for_undefined_type() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_impl_undefined_trait_for_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct MyStruct { value: Number }
+        struct MyStruct { value: I32 }
         impl NonExistentTrait for MyStruct {}
     ";
     let result = compile(source);
@@ -386,7 +386,7 @@ fn test_impl_undefined_trait_for_struct() -> Result<(), Box<dyn std::error::Erro
 fn test_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        struct BadImpl { name: Number }
+        struct BadImpl { name: I32 }
         impl Named for BadImpl {}
     ";
     let result = compile(source);
@@ -399,8 +399,8 @@ fn test_trait_field_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_trait_missing_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Shape { area: Number, perimeter: Number }
-        struct Circle { area: Number }
+        trait Shape { area: I32, perimeter: I32 }
+        struct Circle { area: I32 }
         impl Shape for Circle {}
     ";
     let result = compile(source);
@@ -416,13 +416,13 @@ fn test_trait_missing_required_field() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_binary_op_string_plus_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
-    // String + Number is invalid
+    // String + I32 is invalid
     let source = r#"
-        let result: Number = "hello" + 42
+        let result: I32 = "hello" + 42
     "#;
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for String + Number".into());
+        return Err("Expected type error for String + I32".into());
     }
     Ok(())
 }
@@ -432,7 +432,7 @@ fn test_binary_op_boolean_arithmetic_invalid() -> Result<(), Box<dyn std::error:
     let source = r"
         let x: Boolean = true
         let y: Boolean = false
-        let z: Number = x + y
+        let z: I32 = x + y
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -444,13 +444,13 @@ fn test_binary_op_boolean_arithmetic_invalid() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_binary_op_logical_with_numbers() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let a: Number = 1
-        let b: Number = 2
+        let a: I32 = 1
+        let b: I32 = 2
         let c: Boolean = a && b
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for Number && Number".into());
+        return Err("Expected type error for I32 && I32".into());
     }
     Ok(())
 }
@@ -477,8 +477,8 @@ fn test_binary_op_comparison_with_strings() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_for_loop_over_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let count: Number = 10
-        let result: [Number] = for x in count { x }
+        let count: I32 = 10
+        let result: [I32] = for x in count { x }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -507,7 +507,7 @@ fn test_for_loop_over_string_invalid() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_if_condition_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let x: Number = 42
+        let x: I32 = 42
         let result: String = if x { "yes" } else { "no" }
     "#;
     let result = compile(source);
@@ -537,7 +537,7 @@ fn test_if_condition_string_invalid() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_match_on_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let x: Number = 1
+        let x: I32 = 1
         let result: String = match x {
             _ => "wildcard"
         }
@@ -556,9 +556,9 @@ fn test_match_on_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_undefined_reference_in_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         impl Counter {
-            fn get_value() -> Number { undefinedVar }
+            fn get_value() -> I32 { undefinedVar }
         }
     ";
     let result = compile(source);
@@ -571,7 +571,7 @@ fn test_undefined_reference_in_impl_block() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_self_outside_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let x: Number = self.value
+        let x: I32 = self.value
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -583,9 +583,9 @@ fn test_self_outside_impl_block() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_self_field_not_found_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         impl Counter {
-            fn get() -> Number { self.nonExistent }
+            fn get() -> I32 { self.nonExistent }
         }
     ";
     let result = compile(source);
@@ -602,7 +602,7 @@ fn test_self_field_not_found_in_impl() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_struct_missing_required_field_in_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Config { location: Point = Point(x: 1) }
     ";
     let result = compile(source);
@@ -615,7 +615,7 @@ fn test_struct_missing_required_field_in_instantiation() -> Result<(), Box<dyn s
 #[test]
 fn test_struct_unknown_field_in_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Config { location: Point = Point(x: 1, y: 2, z: 3) }
     ";
     let result = compile(source);
@@ -628,7 +628,7 @@ fn test_struct_unknown_field_in_instantiation() -> Result<(), Box<dyn std::error
 #[test]
 fn test_struct_positional_arg_error() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         struct Config { location: Point = Point(1, 2) }
     ";
     let result = compile(source);
@@ -645,7 +645,7 @@ fn test_struct_positional_arg_error() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_enum_instantiation_undefined_enum() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let x: Number = UndefinedEnum.variant
+        let x: I32 = UndefinedEnum.variant
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -674,10 +674,10 @@ fn test_enum_instantiation_undefined_variant() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_assignment_to_immutable_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { mut count: Number = 0 }
+        struct Counter { mut count: I32 = 0 }
         impl Counter {
-            fn increment() -> Number {
-                let x: Number = 5
+            fn increment() -> I32 {
+                let x: I32 = 5
                 x = 10
                 x
             }
@@ -697,7 +697,7 @@ fn test_assignment_to_immutable_let() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_closure_with_invalid_param_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Handler { callback: (UndefinedType) -> Number }
+        struct Handler { callback: (UndefinedType) -> I32 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -709,7 +709,7 @@ fn test_closure_with_invalid_param_type() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_closure_with_invalid_return_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Handler { callback: (Number) -> UndefinedType }
+        struct Handler { callback: (I32) -> UndefinedType }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -722,8 +722,8 @@ fn test_closure_with_invalid_return_type() -> Result<(), Box<dyn std::error::Err
 fn test_closure_expr_in_let_binding() -> Result<(), Box<dyn std::error::Error>> {
     // Closure expression used in a let binding
     let source = r"
-        let items: [Number] = [1, 2, 3, 4, 5]
-        let doubled: [Number] = for x in items { x }
+        let items: [I32] = [1, 2, 3, 4, 5]
+        let doubled: [I32] = for x in items { x }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -736,7 +736,7 @@ fn test_closure_expr_in_let_binding() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_dict_literal_in_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let data: [String: Number] = ["key": 42]
+        let data: [String: I32] = ["key": 42]
     "#;
     compile(source).map_err(|e| format!("Dict literal in let should compile: {e:?}"))?;
     Ok(())
@@ -749,7 +749,7 @@ fn test_dict_literal_in_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_array_destructuring_of_non_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let num: Number = 42
+        let num: I32 = 42
         let [a, b] = num
     ";
     let result = compile(source);
@@ -762,7 +762,7 @@ fn test_array_destructuring_of_non_array() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_struct_destructuring_of_non_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let num: Number = 42
+        let num: I32 = 42
         let {x} = num
     ";
     let result = compile(source);
@@ -775,7 +775,7 @@ fn test_struct_destructuring_of_non_struct() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_struct_destructuring_with_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         let p: Point = Point(x: 1, y: 2)
         let {x, z} = p
     ";
@@ -794,10 +794,10 @@ fn test_struct_destructuring_with_unknown_field() -> Result<(), Box<dyn std::err
 fn test_nested_module_with_traits_and_structs() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub mod geometry {
-            pub trait Shape { area: Number }
+            pub trait Shape { area: I32 }
             pub struct Circle {
-                area: Number,
-                radius: Number
+                area: I32,
+                radius: I32
             }
             impl Shape for Circle {}
             pub enum Orientation { horizontal, vertical }
@@ -812,7 +812,7 @@ fn test_doubly_nested_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub mod outer {
             pub mod inner {
-                pub struct Widget { width: Number, height: Number }
+                pub struct Widget { width: I32, height: I32 }
             }
         }
     ";
@@ -841,10 +841,10 @@ fn test_module_nested_function_body_is_validated() -> Result<(), Box<dyn std::er
 
 #[test]
 fn test_type_only_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #23: Mode B overloading accepts `fn process(Number) -> String`
+    // Audit #23: Mode B overloading accepts `fn process(I32) -> String`
     // — a type-only param with no name. Must parse (name is synthesised).
     let source = r#"
-        fn process(Number) -> String { "number" }
+        fn process(I32) -> String { "number" }
         fn process(String) -> String { "string" }
     "#;
     compile(source).map_err(|e| format!("type-only param should parse: {e:?}"))?;
@@ -871,10 +871,10 @@ fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_division_without_spaces_tokenises_as_division() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #20: `10/2` used to lex as Number(10), Path("2"). Now it must
+    // Audit #20: `10/2` used to lex as I32(10), Path("2"). Now it must
     // produce integer division.
     let source = r"
-        pub let quotient: Number = 10/2
+        pub let quotient: I32 = 10/2
     ";
     compile(source).map_err(|e| format!("`10/2` must parse as division: {e:?}"))?;
     Ok(())
@@ -944,7 +944,7 @@ fn test_generic_fn_duplicate_param_errors() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_struct_literal_field_value_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Previously validate_struct_fields checked arity/names only. Provide a
-    // Number where the field declares String — must now type-error.
+    // I32 where the field declares String — must now type-error.
     let source = r"
         struct Thing { name: String }
         let t = Thing(name: 42)
@@ -1007,7 +1007,7 @@ fn test_let_inferred_from_array_literal() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_let_inferred_from_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         let p = Point(x: 1, y: 2)
     ";
     compile(source).map_err(|e| format!("Let binding from struct: {e:?}"))?;
@@ -1031,7 +1031,7 @@ fn test_let_boolean_inference() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_struct_self_reference_via_optional() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Node { value: Number, next: Node? }
+        struct Node { value: I32, next: Node? }
     ";
     let result = compile(source);
     // Optional self-references still trigger circular dependency detection
@@ -1052,7 +1052,7 @@ fn test_struct_self_reference_via_optional() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_standalone_function_definition() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn add(a: Number, b: Number) -> Number { a + b }
+        fn add(a: I32, b: I32) -> I32 { a + b }
     ";
     compile(source).map_err(|e| format!("Standalone function: {e:?}"))?;
     Ok(())
@@ -1061,7 +1061,7 @@ fn test_standalone_function_definition() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_standalone_function_with_invalid_param_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn process(x: Phantom) -> Number { 42 }
+        fn process(x: Phantom) -> I32 { 42 }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1073,9 +1073,9 @@ fn test_standalone_function_with_invalid_param_type() -> Result<(), Box<dyn std:
 #[test]
 fn test_function_calling_undefined_function() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         impl Counter {
-            fn go() -> Number { undefinedFunction() }
+            fn go() -> I32 { undefinedFunction() }
         }
     ";
     let result = compile(source);
@@ -1093,8 +1093,8 @@ fn test_function_calling_undefined_function() -> Result<(), Box<dyn std::error::
 fn test_method_call_on_array() -> Result<(), Box<dyn std::error::Error>> {
     // Arrays have built-in methods
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let len: Number = items.len()
+        let items: [I32] = [1, 2, 3]
+        let len: I32 = items.len()
     ";
     // len() on arrays is not a recognized method in the semantic analyser
     let result = compile(source);
@@ -1115,9 +1115,9 @@ fn test_method_call_on_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_block_with_let_and_result() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: Number = {
-            let x: Number = 5
-            let y: Number = 10
+        struct Config { value: I32 = {
+            let x: I32 = 5
+            let y: I32 = 10
             x + y
         }}
     ";
@@ -1129,8 +1129,8 @@ fn test_block_with_let_and_result() -> Result<(), Box<dyn std::error::Error>> {
 fn test_block_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: Number = {
-                let mut x: Number = 0
+            mut count: I32 = {
+                let mut x: I32 = 0
                 x = 5
                 x
             }
@@ -1148,7 +1148,7 @@ fn test_block_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Config {
-            value: Number = (let x: Number = 5
+            value: I32 = (let x: I32 = 5
             in x)
         }
     ";
@@ -1164,7 +1164,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { box: Box<Number> = Box<Number>(value: 42) }
+        struct Config { box: Box<I32> = Box<I32>(value: 42) }
     ";
     compile(source).map_err(|e| format!("Generic struct instantiation: {e:?}"))?;
     Ok(())
@@ -1175,7 +1175,7 @@ fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn
 {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { box: Box<Number> = Box(value: 42) }
+        struct Config { box: Box<I32> = Box(value: 42) }
     ";
     let result = compile(source);
     // Missing type args in invocation should be caught
@@ -1247,7 +1247,7 @@ fn test_match_duplicate_arm() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_valid_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Pair { data: (x: Number, y: String) }
+        struct Pair { data: (x: I32, y: String) }
     ";
     compile(source).map_err(|e| format!("Tuple type: {e:?}"))?;
     Ok(())
@@ -1256,7 +1256,7 @@ fn test_valid_tuple_type() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_tuple_let_destructuring() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         let p: Point = Point(x: 1, y: 2)
         let (a, b) = p
     ";
@@ -1290,7 +1290,7 @@ fn test_module_level_let_string() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_module_level_let_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let values: [Number] = [1, 2, 3, 4, 5]
+        let values: [I32] = [1, 2, 3, 4, 5]
     ";
     compile(source).map_err(|e| format!("Array let: {e:?}"))?;
     Ok(())
@@ -1318,7 +1318,7 @@ fn test_inferred_enum_instantiation_in_function() -> Result<(), Box<dyn std::err
 fn test_nested_module_type_reference() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub mod shapes {
-            pub struct Circle { radius: Number }
+            pub struct Circle { radius: I32 }
         }
         struct Canvas { shape: shapes::Circle }
     ";
@@ -1333,7 +1333,7 @@ fn test_nested_module_type_reference() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_function_call_undefined_produces_error() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { val: Number = undefinedFn(x: 1) }
+        struct Config { val: I32 = undefinedFn(x: 1) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1354,10 +1354,10 @@ fn test_function_call_undefined_produces_error() -> Result<(), Box<dyn std::erro
 fn test_struct_with_multiple_valid_traits() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        trait Sized { size: Number }
+        trait Sized { size: I32 }
         struct Widget {
             name: String,
-            size: Number
+            size: I32
         }
         impl Named for Widget {}
         impl Sized for Widget {}
@@ -1389,7 +1389,7 @@ fn test_struct_with_one_invalid_trait() -> Result<(), Box<dyn std::error::Error>
 fn test_infer_type_of_ternary_produces_result() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let flag: Boolean = true
-        let val: Number = if flag { 1 } else { 2 }
+        let val: I32 = if flag { 1 } else { 2 }
     ";
     compile(source).map_err(|e| format!("If expression in let: {e:?}"))?;
     Ok(())
@@ -1398,7 +1398,7 @@ fn test_infer_type_of_ternary_produces_result() -> Result<(), Box<dyn std::error
 #[test]
 fn test_infer_type_of_nested_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Inner { x: Number }
+        struct Inner { x: I32 }
         struct Outer { inner: Inner }
         let outer: Outer = Outer(inner: Inner(x: 42))
     ";
@@ -1414,8 +1414,8 @@ fn test_infer_type_of_nested_struct_field() -> Result<(), Box<dyn std::error::Er
 fn test_enum_variant_with_data_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number),
-            rectangle(width: Number, height: Number),
+            circle(radius: I32),
+            rectangle(width: I32, height: I32),
             point
         }
     ";
@@ -1427,7 +1427,7 @@ fn test_enum_variant_with_data_fields() -> Result<(), Box<dyn std::error::Error>
 fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number),
+            circle(radius: I32),
             point
         }
         struct Config {
@@ -1442,7 +1442,7 @@ fn test_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::Error>>
 fn test_enum_instantiation_data_required_but_missing() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number)
+            circle(radius: I32)
         }
         struct Config {
             shape: Shape = Shape.circle
@@ -1476,7 +1476,7 @@ fn test_enum_instantiation_data_not_expected() -> Result<(), Box<dyn std::error:
 fn test_enum_instantiation_unknown_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number)
+            circle(radius: I32)
         }
         struct Config {
             shape: Shape = Shape.circle(radius: 5, extra: 99)
@@ -1493,7 +1493,7 @@ fn test_enum_instantiation_unknown_field() -> Result<(), Box<dyn std::error::Err
 fn test_enum_instantiation_missing_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number, color: String)
+            circle(radius: I32, color: String)
         }
         struct Config {
             shape: Shape = Shape.circle(radius: 5)
@@ -1526,8 +1526,8 @@ fn test_circular_type_dependency() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_circular_let_dependency() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let a: Number = b + 1
-        let b: Number = a + 1
+        let a: I32 = b + 1
+        let b: I32 = a + 1
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1543,9 +1543,9 @@ fn test_circular_let_dependency() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_function_return_type_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Calculator { value: Number }
+        struct Calculator { value: I32 }
         impl Calculator {
-            fn double() -> Number { self.value + self.value }
+            fn double() -> I32 { self.value + self.value }
         }
     ";
     compile(source).map_err(|e| format!("Function with valid return type: {e:?}"))?;
@@ -1555,7 +1555,7 @@ fn test_function_return_type_valid() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_standalone_function_with_body() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn multiply(a: Number, b: Number) -> Number { a * b }
+        fn multiply(a: I32, b: I32) -> I32 { a * b }
     ";
     compile(source).map_err(|e| format!("Standalone function with params: {e:?}"))?;
     Ok(())
@@ -1577,10 +1577,10 @@ fn test_standalone_function_no_return_type() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_method_call_on_struct_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> Number { self.x }
-            fn get_y() -> Number { self.y }
+            fn get_x() -> I32 { self.x }
+            fn get_y() -> I32 { self.y }
         }
     ";
     compile(source).map_err(|e| format!("Method call in impl: {e:?}"))?;
@@ -1594,9 +1594,9 @@ fn test_simple_impl_method_with_self_field_access() -> Result<(), Box<dyn std::e
     // returns `self.x`. Nothing about it is "undefined" — the previous
     // name was inherited from a copy/paste and never updated.
     let source = r"
-        struct Point { x: Number = 0 }
+        struct Point { x: I32 = 0 }
         impl Point {
-            fn get_x() -> Number { self.x }
+            fn get_x() -> I32 { self.x }
         }
     ";
     compile(source).map_err(|e| format!("Simple impl method: {e:?}"))?;
@@ -1611,10 +1611,10 @@ fn test_simple_impl_method_with_self_field_access() -> Result<(), Box<dyn std::e
 fn test_trait_composition_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        trait Identified: Named { id: Number }
+        trait Identified: Named { id: I32 }
         struct User {
             name: String,
-            id: Number
+            id: I32
         }
         impl Identified for User {}
     ";
@@ -1626,8 +1626,8 @@ fn test_trait_composition_valid() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_must_implement_composed_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Named { name: String }
-        trait Identified: Named { id: Number }
-        struct User { id: Number }
+        trait Identified: Named { id: I32 }
+        struct User { id: I32 }
         impl Identified for User {}
     ";
     let result = compile(source);
@@ -1645,11 +1645,11 @@ fn test_struct_must_implement_composed_trait_fields() -> Result<(), Box<dyn std:
 fn test_trait_with_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container {
-            width: Number,
+            width: I32,
             content: String
         }
         struct Panel {
-            width: Number,
+            width: I32,
             content: String
         }
         impl Container for Panel {}
@@ -1662,7 +1662,7 @@ fn test_trait_with_required_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_struct_missing_trait_required_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container { content: String }
-        struct Panel { width: Number }
+        struct Panel { width: I32 }
         impl Container for Panel {}
     ";
     let result = compile(source);
@@ -1676,7 +1676,7 @@ fn test_struct_missing_trait_required_field() -> Result<(), Box<dyn std::error::
 fn test_trait_field_type_mismatch_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Container { content: String }
-        struct Panel { content: Number }
+        struct Panel { content: I32 }
         impl Container for Panel {}
     ";
     let result = compile(source);
@@ -1694,11 +1694,11 @@ fn test_trait_field_type_mismatch_in_impl() -> Result<(), Box<dyn std::error::Er
 fn test_match_arm_with_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape {
-            circle(radius: Number),
+            circle(radius: I32),
             point
         }
         struct Config {
-            result: Number = match Shape.point {
+            result: I32 = match Shape.point {
                 .circle(r): r,
                 .point: 0
             }
@@ -1716,8 +1716,8 @@ fn test_match_arm_with_bindings() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_mutable_let_binding_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let mut counter: Number = 0
-        struct Config { count: Number = counter }
+        let mut counter: I32 = 0
+        struct Config { count: I32 = counter }
     ";
     compile(source).map_err(|e| format!("Mutable let binding: {e:?}"))?;
     Ok(())
@@ -1727,8 +1727,8 @@ fn test_mutable_let_binding_in_struct_field() -> Result<(), Box<dyn std::error::
 fn test_immutable_let_binding_in_mut_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     // Immutable let binding passed to mutable struct field
     let source = r"
-        let value: Number = 42
-        struct Config { mut count: Number = value }
+        let value: I32 = 42
+        struct Config { mut count: I32 = value }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     // Immutable binding assigned to a mutable struct field — should succeed
@@ -1765,7 +1765,7 @@ fn test_array_destructuring_with_rest() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_struct_destructuring_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number, y: Number }
+        struct Point { x: I32, y: I32 }
         let p: Point = Point(x: 1, y: 2)
         let {x, y} = p
     ";
@@ -1781,12 +1781,12 @@ fn test_struct_destructuring_valid() -> Result<(), Box<dyn std::error::Error>> {
 fn test_string_multiplication_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s: String = "hello"
-        let n: Number = 5
+        let n: I32 = 5
         let result: String = s * n
     "#;
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for String * Number".into());
+        return Err("Expected type error for String * I32".into());
     }
     Ok(())
 }
@@ -1799,7 +1799,7 @@ fn test_string_multiplication_invalid() -> Result<(), Box<dyn std::error::Error>
 fn test_range_in_for_loop() -> Result<(), Box<dyn std::error::Error>> {
     // Range expressions are valid iterables in for loops
     let source = r"
-        let sum: [Number] = for i in 0..10 { i }
+        let sum: [I32] = for i in 0..10 { i }
     ";
     compile(source).map_err(|e| format!("Range for loop should compile: {e:?}"))?;
     Ok(())
@@ -1812,7 +1812,7 @@ fn test_range_in_for_loop() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_duplicate_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { count: Number }
+        struct Counter { count: I32 }
         impl Counter {}
         impl Counter {}
     ";
@@ -1831,7 +1831,7 @@ fn test_duplicate_impl_block() -> Result<(), Box<dyn std::error::Error>> {
 fn test_module_level_function_in_module_def() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub mod math {
-            pub fn add(a: Number, b: Number) -> Number { a + b }
+            pub fn add(a: I32, b: I32) -> I32 { a + b }
         }
     ";
     compile(source).map_err(|e| format!("Module-level function: {e:?}"))?;
@@ -1862,7 +1862,7 @@ fn test_struct_satisfies_generic_constraint() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Handler { callback: (Number) -> Number = |n: Number| n }
+        struct Handler { callback: (I32) -> I32 = |n: I32| n }
     ";
     compile(source).map_err(|e| format!("Closure in struct field: {e:?}"))?;
     Ok(())
@@ -1876,7 +1876,7 @@ fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>> {
     // normalize is no longer a builtin — calling it produces an undefined reference error
     let source = r"
-        struct Gpu { output: Number = normalize(1.0) }
+        struct Gpu { output: I32 = normalize(1.0) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1892,10 +1892,10 @@ fn test_method_call_normalize_on_vec3() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_infer_type_via_binary_op() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let a: Number = 10
-        let b: Number = 20
-        let sum: Number = a + b
-        let product: Number = a * b
+        let a: I32 = 10
+        let b: I32 = 20
+        let sum: I32 = a + b
+        let product: I32 = a * b
     ";
     compile(source).map_err(|e| format!("Binary op inference: {e:?}"))?;
     Ok(())
@@ -1908,9 +1908,9 @@ fn test_infer_type_via_binary_op() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_let_reference_in_various_expressions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let base: Number = 10
-        let doubled: Number = base + base
-        let items: [Number] = [base, doubled]
+        let base: I32 = 10
+        let doubled: I32 = base + base
+        let items: [I32] = [base, doubled]
         let flag: Boolean = base == doubled
     ";
     compile(source).map_err(|e| format!("Let references: {e:?}"))?;
@@ -1945,8 +1945,8 @@ fn test_match_exhaustive_all_variants() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn test_impl_trait_for_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { render: Number }
-        struct Circle { render: Number, radius: Number }
+        trait Drawable { render: I32 }
+        struct Circle { render: I32, radius: I32 }
         impl Drawable for Circle {}
     ";
     compile(source).map_err(|e| format!("Trait impl: {e:?}"))?;
@@ -1956,8 +1956,8 @@ fn test_impl_trait_for_struct() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_duplicate_trait_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { render: Number }
-        struct Circle { render: Number }
+        trait Drawable { render: I32 }
+        struct Circle { render: I32 }
         impl Drawable for Circle {}
         impl Drawable for Circle {}
     ";

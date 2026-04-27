@@ -44,12 +44,12 @@ fn test_lower_inferred_enum_in_function() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::error::Error>> {
     // Renamed from `test_lower_general_closure` (audit #53): the
     // original name said nothing about the actual scenario. The test
-    // verifies that a pipe-style closure (`|x: Number| 42`) used as a
+    // verifies that a pipe-style closure (`|x: I32| 42`) used as a
     // struct field default lowers to `IrExpr::Closure` with the
     // expected single named parameter.
     let source = r"
         struct Config {
-            transform: (Number) -> Number = |x: Number| 42
+            transform: (I32) -> I32 = |x: I32| 42
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -113,13 +113,13 @@ fn test_lower_let_array_destructuring() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_lower_two_independent_simple_lets() -> Result<(), Box<dyn std::error::Error>> {
-    // Two `let a: Number = 1` / `let b: Number = 2` should produce two
+    // Two `let a: I32 = 1` / `let b: I32 = 2` should produce two
     // separate top-level `IrLet` entries. Name was previously
     // `test_lower_let_tuple_destructuring` which was misleading — this
     // doesn't exercise tuple destructuring at all.
     let source = r"
-        let a: Number = 1
-        let b: Number = 2
+        let a: I32 = 1
+        let b: I32 = 2
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     if module.lets.len() != 2 {
@@ -132,7 +132,7 @@ fn test_lower_two_independent_simple_lets() -> Result<(), Box<dyn std::error::Er
 fn test_lower_let_struct_destructuring() -> Result<(), Box<dyn std::error::Error>> {
     // Struct let binding (not destructuring — test that struct type resolves)
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         let p: Point = Point(x: 3, y: 4)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -151,8 +151,8 @@ fn test_lower_let_struct_destructuring() -> Result<(), Box<dyn std::error::Error
 fn test_lower_block_tuple_destructuring() -> Result<(), Box<dyn std::error::Error>> {
     // Block let with tuple pattern - use positional tuple syntax
     let source = r"
-        struct Config { val: Number = {
-            let x: Number = 1
+        struct Config { val: I32 = {
+            let x: I32 = 1
             x
         }}
     ";
@@ -179,8 +179,8 @@ fn test_lower_block_tuple_destructuring() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_lower_block_struct_destructuring() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
-        struct Config { val: Number = {
+        struct Point { x: I32 = 0, y: I32 = 0 }
+        struct Config { val: I32 = {
             let p: Point = Point(x: 1, y: 2)
             p.x
         }}
@@ -208,8 +208,8 @@ fn test_lower_block_struct_destructuring() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_lower_block_array_destructuring() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { val: Number = {
-            let items: [Number] = [1, 2]
+        struct Config { val: I32 = {
+            let items: [I32] = [1, 2]
             42
         }}
     ";
@@ -241,7 +241,7 @@ fn test_lower_block_array_destructuring() -> Result<(), Box<dyn std::error::Erro
 fn test_lower_module_with_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod shapes {
-            struct Circle { radius: Number }
+            struct Circle { radius: I32 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -272,7 +272,7 @@ fn test_lower_module_with_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_module_with_trait() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod shapes {
-            trait Drawable { area: Number }
+            trait Drawable { area: I32 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -288,7 +288,7 @@ fn test_lower_nested_module() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod outer {
             mod inner {
-                struct Point { x: Number, y: Number }
+                struct Point { x: I32, y: I32 }
             }
         }
     ";
@@ -307,7 +307,7 @@ fn test_lower_nested_module() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_function_with_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn add(x: Number, y: Number) -> Number { x + y }
+        fn add(x: I32, y: I32) -> I32 { x + y }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let func = module
@@ -377,7 +377,7 @@ fn test_lower_method_call_on_enum() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_match_with_variant_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         enum Shape { circle, rect }
-        fn area(s: Shape) -> Number {
+        fn area(s: Shape) -> I32 {
             match s {
                 .circle: 1,
                 _: 0
@@ -411,9 +411,9 @@ fn test_lower_match_with_variant_bindings() -> Result<(), Box<dyn std::error::Er
 fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
     // Field access via impl block (self.x)
     let source = r"
-        struct Point { x: Number = 0, y: Number = 0 }
+        struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> Number { self.x }
+            fn get_x() -> I32 { self.x }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -441,10 +441,10 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
     // Method call within impl (self.method())
     let source = r"
-        struct Counter { count: Number = 0 }
+        struct Counter { count: I32 = 0 }
         impl Counter {
-            fn increment() -> Number { self.count + 1 }
-            fn double_increment() -> Number { self.increment() }
+            fn increment() -> I32 { self.count + 1 }
+            fn double_increment() -> I32 { self.increment() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -471,9 +471,9 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { count: Number = 0 }
+        struct Counter { count: I32 = 0 }
         impl Counter {
-            fn doubled() -> Number { self.count * 2 }
+            fn doubled() -> I32 { self.count * 2 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -499,7 +499,7 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Widget { value: Number = 0 }
+        struct Widget { value: I32 = 0 }
         impl Widget {
             fn identity() -> Widget { self }
         }
@@ -524,8 +524,8 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_let_ref() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let base: Number = 10
-        let doubled: Number = base * 2
+        let base: I32 = 10
+        let doubled: I32 = base * 2
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module
@@ -554,7 +554,7 @@ fn test_lower_let_with_string_type_annotation() -> Result<(), Box<dyn std::error
     // This exercises string_to_resolved_type for primitive types
     let source = r#"
         let name: String = "hello"
-        let count: Number = 42
+        let count: I32 = 42
         let flag: Boolean = true
         let p: Path = /home/user/file
     "#;
@@ -569,7 +569,7 @@ fn test_lower_let_with_string_type_annotation() -> Result<(), Box<dyn std::error
 fn test_lower_let_struct_type_from_string() -> Result<(), Box<dyn std::error::Error>> {
     // When a let binding uses a struct type looked up by name
     let source = r"
-        struct Config { val: Number = 0 }
+        struct Config { val: I32 = 0 }
         let c: Config = Config(val: 42)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -594,8 +594,8 @@ fn test_lower_let_type_inferred_from_expr() -> Result<(), Box<dyn std::error::Er
     let source = r"let x = 42";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module.lets.iter().find(|l| l.name == "x").ok_or("x")?;
-    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::Number)) {
-        return Err(format!("Expected Number type, got {:?}", binding.ty).into());
+    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("Expected I32 type, got {:?}", binding.ty).into());
     }
     Ok(())
 }
@@ -607,16 +607,16 @@ fn test_lower_let_type_inferred_from_expr() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_lower_dict_access_type_resolution() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let dict: [String: Number] = ["key": 1]
-        let val: Number = dict["key"]
+        let dict: [String: I32] = ["key": 1]
+        let val: I32 = dict["key"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module.lets.iter().find(|l| l.name == "val").ok_or("val")?;
     let IrExpr::DictAccess { .. } = &binding.value else {
         return Err(format!("Expected DictAccess, got {:?}", binding.value).into());
     };
-    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::Number)) {
-        return Err(format!("Expected Number value type from dict, got {:?}", binding.ty).into());
+    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("Expected I32 value type from dict, got {:?}", binding.ty).into());
     }
     Ok(())
 }
@@ -629,7 +629,7 @@ fn test_lower_dict_access_type_resolution() -> Result<(), Box<dyn std::error::Er
 fn test_lower_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { wrapped: Box<Number> = Box<Number>(value: 42) }
+        struct Config { wrapped: Box<I32> = Box<I32>(value: 42) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     if module.structs.is_empty() {
@@ -645,7 +645,7 @@ fn test_lower_generic_struct_instantiation() -> Result<(), Box<dyn std::error::E
 #[test]
 fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let items: [Number] = []
+        let items: [I32] = []
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module
@@ -661,15 +661,15 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Audit #41: an annotated empty-array let should lift the
     // annotation's element type into the IR Array node so backends see
-    // `Array(Number)`, not `Array(Never)`.
+    // `Array(I32)`, not `Array(Never)`.
     let ResolvedType::Array(inner) = ty else {
         return Err(format!("expected Array type, got {ty:?}").into());
     };
     if !matches!(
         inner.as_ref(),
-        ResolvedType::Primitive(PrimitiveType::Number)
+        ResolvedType::Primitive(PrimitiveType::I32)
     ) {
-        return Err(format!("expected Array(Number), got Array({inner:?})").into());
+        return Err(format!("expected Array(I32), got Array({inner:?})").into());
     }
     Ok(())
 }
@@ -681,7 +681,7 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_empty_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let d: [String: Number] = [:]
+        let d: [String: I32] = [:]
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let b = module
@@ -714,8 +714,8 @@ fn test_lower_empty_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_for_loop_from_dict() -> Result<(), Box<dyn std::error::Error>> {
     // For loop over a variable reference
     let source = r"
-        let items: [Number] = [1, 2, 3]
-        let mapped: [Number] = for x in items { 0 }
+        let items: [I32] = [1, 2, 3]
+        let mapped: [I32] = for x in items { 0 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module
@@ -739,7 +739,7 @@ fn test_lower_for_loop_from_dict() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_block_with_no_statements() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { val: Number = { 42 } }
+        struct Config { val: I32 = { 42 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
@@ -766,8 +766,8 @@ fn test_lower_block_with_no_statements() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn test_lower_let_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(x: Number) -> Number {
-            let y: Number = x + 1
+        fn compute(x: I32) -> I32 {
+            let y: I32 = x + 1
             y
         }
     ";
@@ -796,9 +796,9 @@ fn test_lower_let_expr() -> Result<(), Box<dyn std::error::Error>> {
 fn test_lower_module_with_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         mod geometry {
-            struct Circle { radius: Number }
+            struct Circle { radius: I32 }
             impl Circle {
-                fn area() -> Number { self.radius }
+                fn area() -> I32 { self.radius }
             }
         }
     ";
@@ -816,9 +816,9 @@ fn test_lower_module_with_impl() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Checker { val: Number = 0 }
+        struct Checker { val: I32 = 0 }
         impl Checker {
-            fn test() -> Number { if true { 1 } else { 2 } }
+            fn test() -> I32 { if true { 1 } else { 2 } }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -845,9 +845,9 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_lower_builtin_function_calls() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        extern fn sin(x: Number) -> Number
-        extern fn cos(x: Number) -> Number
-        fn builtin_test() -> Number { sin(x: 0) + cos(x: 0) }
+        extern fn sin(x: I32) -> I32
+        extern fn cos(x: I32) -> I32
+        fn builtin_test() -> I32 { sin(x: 0) + cos(x: 0) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let func = module
@@ -884,7 +884,7 @@ fn test_lower_builtin_function_calls() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_lower_group_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let val: Number = (1 + 2) * 3
+        let val: I32 = (1 + 2) * 3
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module.lets.iter().find(|l| l.name == "val").ok_or("val")?;
@@ -908,7 +908,7 @@ fn test_lower_group_expression() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_optional_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { name: String?, count: Number = 0 }
+        struct Config { name: String?, count: I32 = 0 }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let field = &module
@@ -938,10 +938,10 @@ fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Er
     use formalang::ir::DispatchKind;
 
     let source = r"
-        struct Counter { count: Number = 0 }
+        struct Counter { count: I32 = 0 }
         impl Counter {
-            fn bump() -> Number { self.count + 1 }
-            fn bump_twice() -> Number { self.bump() }
+            fn bump() -> I32 { self.count + 1 }
+            fn bump_twice() -> I32 { self.bump() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -971,11 +971,11 @@ fn test_lower_method_call_static_dispatch_on_struct_instance(
     use formalang::ir::DispatchKind;
 
     let source = r"
-        struct Counter { count: Number = 0 }
+        struct Counter { count: I32 = 0 }
         impl Counter {
-            fn bump() -> Number { self.count + 1 }
+            fn bump() -> I32 { self.count + 1 }
         }
-        pub fn entry() -> Number {
+        pub fn entry() -> I32 {
             Counter().bump()
         }
     ";
@@ -1004,8 +1004,8 @@ fn test_lower_method_call_static_dispatch_on_struct_instance(
 #[test]
 fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub fn make_adder(sink n: Number) -> (Number) -> Number {
-            |x: Number| x + n
+        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1029,8 +1029,8 @@ fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_no_captures_when_pure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        pub fn square() -> (Number) -> Number {
-            |x: Number| x * x
+        pub fn square() -> (I32) -> I32 {
+            |x: I32| x * x
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1053,8 +1053,8 @@ fn test_closure_no_captures_when_pure() -> Result<(), Box<dyn std::error::Error>
 fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::Error>> {
     // The closure's own parameters must not appear in its capture list.
     let source = r"
-        pub fn combine(sink a: Number, sink b: Number) -> (Number) -> Number {
-            |x: Number| x + a + b
+        pub fn combine(sink a: I32, sink b: I32) -> (I32) -> I32 {
+            |x: I32| x + a + b
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1082,8 +1082,8 @@ fn test_closure_captures_inherit_sink_param_convention() -> Result<(), Box<dyn s
     // Audit #32: a closure capturing a `sink` parameter records `Sink`
     // (so backends know ownership transferred to the closure).
     let source = r"
-        pub fn make_adder(sink n: Number) -> (Number) -> Number {
-            |x: Number| x + n
+        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1112,9 +1112,9 @@ fn test_closure_captures_inherit_module_let_conventions() -> Result<(), Box<dyn 
     // Audit #32: a closure declared at module level inherits its captures'
     // conventions from the enclosing `let` / `let mut` bindings.
     let source = r"
-        let immutable: Number = 1.0
-        pub let mut mutable: Number = 2.0
-        let c: () -> Number = () -> immutable + mutable
+        let immutable: I32 = 1
+        pub let mut mutable: I32 = 2
+        let c: () -> I32 = () -> immutable + mutable
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let c = module

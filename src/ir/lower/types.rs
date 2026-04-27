@@ -19,8 +19,8 @@ impl IrLowerer<'_> {
     /// table into a `ResolvedType`.
     ///
     /// Semantic stores let / inference types via `type_to_string`, which
-    /// produces full type expressions like `[Number]`, `String -> String`,
-    /// or `(x: Number, y: Number)`. This helper only handles the
+    /// produces full type expressions like `[I32]`, `String -> String`,
+    /// or `(x: I32, y: I32)`. This helper only handles the
     /// *simple* name cases (primitives, named structs/enums/traits, in-
     /// scope generic params); for anything composite it returns `None`
     /// so callers can fall back to the value's already-lowered type.
@@ -30,7 +30,10 @@ impl IrLowerer<'_> {
     pub(super) fn string_to_resolved_type(&mut self, type_str: &str) -> Option<ResolvedType> {
         match type_str {
             "String" => Some(ResolvedType::Primitive(PrimitiveType::String)),
-            "Number" => Some(ResolvedType::Primitive(PrimitiveType::Number)),
+            "I32" => Some(ResolvedType::Primitive(PrimitiveType::I32)),
+            "I64" => Some(ResolvedType::Primitive(PrimitiveType::I64)),
+            "F32" => Some(ResolvedType::Primitive(PrimitiveType::F32)),
+            "F64" => Some(ResolvedType::Primitive(PrimitiveType::F64)),
             "Boolean" => Some(ResolvedType::Primitive(PrimitiveType::Boolean)),
             "Path" => Some(ResolvedType::Primitive(PrimitiveType::Path)),
             "Regex" => Some(ResolvedType::Primitive(PrimitiveType::Regex)),

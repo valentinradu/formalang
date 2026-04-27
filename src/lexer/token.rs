@@ -135,17 +135,19 @@ pub enum Token {
     )]
     String(String),
 
-    // Number literal supporting underscores and scientific notation:
+    // Number literal supporting underscores, scientific notation, and an
+    // optional uppercase width-tag suffix:
     //   1_000_000          integer with underscores
     //   1.5                simple fractional
     //   1_000.500_5        fractional with underscores
     //   1e5, 2E+10, 1.5e-3 scientific notation (with optional sign)
-    // Underscores are stripped before parsing to f64.
+    //   42I32, 3.14F64     numeric literal with type suffix
+    // Underscores are stripped before parsing the digits to f64.
     #[regex(
-        r"[0-9][0-9_]*(\.[0-9][0-9_]*)?([eE][+-]?[0-9]+)?",
+        r"[0-9][0-9_]*(\.[0-9][0-9_]*)?([eE][+-]?[0-9]+)?(I32|I64|F32|F64)?",
         |lex| parse_number(lex.slice())
     )]
-    Number(f64),
+    Number(crate::ast::NumberLiteral),
 
     #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
     Regex(String), // Full regex string, parse later
@@ -301,13 +303,47 @@ fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
     Skip
 }
 
-/// Parse a numeric literal slice, stripping underscores before calling `f64::parse`.
+/// Parse a numeric literal slice into its `f64` value plus optional width-tag
+/// suffix.
 ///
-/// Returns `None` on parse failure so logos emits an error that the lexer converts
+/// The slice may end in one of `I32`, `I64`, `F32`, `F64`; the digits before
+/// the suffix are stripped of underscores and parsed via `f64::parse`. Returns
+/// `None` on parse failure so logos emits an error that the lexer converts
 /// into [`crate::error::CompilerError::InvalidNumber`].
-fn parse_number(s: &str) -> Option<f64> {
-    let cleaned: String = s.chars().filter(|c| *c != '_').collect();
-    cleaned.parse::<f64>().ok()
+fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
+    use crate::ast::{NumberLiteral, NumberSourceKind};
+
+    let (digits, suffix) = strip_numeric_suffix(s);
+    // The source kind is determined syntactically: a `.` or `e`/`E` in the
+    // digit slice means float syntax (`3.14`, `1e5`); otherwise integer.
+    let kind = if digits.bytes().any(|b| b == b'.' || b == b'e' || b == b'E') {
+        NumberSourceKind::Float
+    } else {
+        NumberSourceKind::Integer
+    };
+    let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+    cleaned
+        .parse::<f64>()
+        .ok()
+        .map(|value| NumberLiteral::from_lex(value, suffix, kind))
+}
+
+/// Strip a trailing width-tag suffix (`I32`, `I64`, `F32`, `F64`) from a
+/// numeric literal slice. Returns the digit prefix paired with the matched
+/// suffix (or the original slice and `None` when no suffix is present).
+fn strip_numeric_suffix(s: &str) -> (&str, Option<crate::ast::NumericSuffix>) {
+    use crate::ast::NumericSuffix as N;
+
+    const TABLE: [(&str, N); 4] = [
+        ("I32", N::I32),
+        ("I64", N::I64),
+        ("F32", N::F32),
+        ("F64", N::F64),
+    ];
+    TABLE
+        .iter()
+        .find_map(|&(text, suffix)| s.strip_suffix(text).map(|d| (d, Some(suffix))))
+        .unwrap_or((s, None))
 }
 
 fn parse_string(lex: &mut logos::Lexer<'_, Token>) -> String {

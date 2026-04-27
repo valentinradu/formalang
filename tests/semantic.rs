@@ -27,7 +27,7 @@ fn test_type_validation_primitive_string() -> Result<(), Box<dyn std::error::Err
 fn test_type_validation_primitive_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Test {
-            value: Number = 42.5
+            value: F64 = 42.5
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -60,7 +60,7 @@ fn test_type_validation_array() -> Result<(), Box<dyn std::error::Error>> {
 fn test_type_validation_nested_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Inner {
-            id: Number
+            id: I32
         }
         struct Outer {
             inner: Inner = Inner(id: 1)
@@ -94,11 +94,11 @@ fn test_trait_multiple_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         trait Entity {
             id: String,
-            createdAt: Number
+            createdAt: I32
         }
         struct Document {
             id: String,
-            createdAt: Number,
+            createdAt: I32,
             title: String
         }
     ";
@@ -409,17 +409,17 @@ fn test_field_default_type_must_match_annotation() -> Result<(), Box<dyn std::er
     // ("test_error_type_mismatch_in_field") with a passing case that
     // asserted nothing. Split into two real assertions:
     //   1. matching default → compiles cleanly
-    //   2. mismatched default (`Number = "hi"`) → TypeMismatch
+    //   2. mismatched default (`I32 = "hi"`) → TypeMismatch
     let happy = r"
         struct Wrapper {
-            count: Number = 42
+            count: I32 = 42
         }
     ";
     compile(happy).map_err(|e| format!("matching default should compile: {e:?}"))?;
 
     let mismatched = r#"
         struct Wrapper {
-            count: Number = "hi"
+            count: I32 = "hi"
         }
     "#;
     let errors = compile(mismatched)
@@ -429,7 +429,7 @@ fn test_field_default_type_must_match_annotation() -> Result<(), Box<dyn std::er
         .iter()
         .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }));
     if !saw_mismatch {
-        return Err(format!("expected TypeMismatch for `Number = \"hi\"`, got: {errors:?}").into());
+        return Err(format!("expected TypeMismatch for `I32 = \"hi\"`, got: {errors:?}").into());
     }
     Ok(())
 }
@@ -468,9 +468,9 @@ fn test_complex_form() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         struct NumberField {
-            value: Number,
-            min: Number?,
-            max: Number?,
+            value: I32,
+            min: I32?,
+            max: I32?,
             isValid: Boolean = true
         }
 
@@ -495,7 +495,7 @@ fn test_complex_state_machine() -> Result<(), Box<dyn std::error::Error>> {
 
         struct Connection {
             url: String,
-            timeout: Number = 30
+            timeout: I32 = 30
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -528,7 +528,7 @@ fn test_error_report_undefined_type() -> Result<(), Box<dyn std::error::Error>> 
 fn test_error_report_duplicate() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct User { name: String }
-        struct User { age: Number }
+        struct User { age: I32 }
     ";
     let result = compile_and_report(source, "test.fv");
     if result.is_ok() {
@@ -611,7 +611,7 @@ fn test_closure_binary() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calc {
-            result: Number = (let a = 1
+            result: I32 = (let a = 1
             in let b = 2
             in let c = 3
             in c)
@@ -625,8 +625,8 @@ fn test_let_chain() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_with_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point {
-            x: Number,
-            y: Number
+            x: I32,
+            y: I32
         }
         struct Container {
             point: Point = (let p = Point(x: 1, y: 2)

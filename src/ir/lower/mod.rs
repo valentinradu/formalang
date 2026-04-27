@@ -104,7 +104,7 @@ struct IrLowerer<'a> {
     /// expected closure type from the call/assignment context. The
     /// closure lowerer reads it to fill in any param/return types that
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
-    /// `x: Number` instead of `x: ResolvedType::Error`.
+    /// `x: I32` instead of `x: ResolvedType::Error`.
     pub(super) expected_closure_type: Option<ResolvedType>,
     /// Stack of currently-open module nodes during lowering. The
     /// outermost source module is at index 0; the deepest in-progress
@@ -343,8 +343,8 @@ impl<'a> IrLowerer<'a> {
                     reason = "array destructuring indices are small source-code positions that fit exactly in f64 mantissa"
                 )]
                 let index_key = IrExpr::Literal {
-                    value: Literal::Number(i as f64),
-                    ty: ResolvedType::Primitive(PrimitiveType::Number),
+                    value: Literal::Number((i as f64).into()),
+                    ty: ResolvedType::Primitive(PrimitiveType::I32),
                 };
                 // `arr[i]` — dictionary-access is the IR node for index access
                 let access_expr = IrExpr::DictAccess {
@@ -1440,7 +1440,10 @@ impl<'a> IrLowerer<'a> {
         match ty {
             ast::Type::Primitive(prim) => match prim {
                 ast::PrimitiveType::String => "String".to_string(),
-                ast::PrimitiveType::Number => "Number".to_string(),
+                ast::PrimitiveType::I32 => "I32".to_string(),
+                ast::PrimitiveType::I64 => "I64".to_string(),
+                ast::PrimitiveType::F32 => "F32".to_string(),
+                ast::PrimitiveType::F64 => "F64".to_string(),
                 ast::PrimitiveType::Boolean => "Boolean".to_string(),
                 ast::PrimitiveType::Path => "Path".to_string(),
                 ast::PrimitiveType::Regex => "Regex".to_string(),
@@ -1458,7 +1461,7 @@ impl<'a> IrLowerer<'a> {
     fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
         // Phase C: each constraint becomes an IrTraitRef carrying
         // both the trait id and any generic-trait args
-        // (`<T: Container<Number>>`). Arg lowering goes through
+        // (`<T: Container<I32>>`). Arg lowering goes through
         // `lower_type`, which is why this method now needs `&mut self`.
         params
             .iter()

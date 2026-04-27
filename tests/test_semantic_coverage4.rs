@@ -28,12 +28,12 @@ fn test_duplicate_impl_in_loaded_module() -> Result<(), Box<dyn std::error::Erro
     resolver.add(
         vec!["mymod".to_string()],
         r"
-pub struct Foo { x: Number }
+pub struct Foo { x: I32 }
 impl Foo {
-    fn get() -> Number { 0 }
+    fn get() -> I32 { 0 }
 }
 impl Foo {
-    fn get2() -> Number { 0 }
+    fn get2() -> I32 { 0 }
 }
 ",
     );
@@ -62,10 +62,10 @@ fn test_duplicate_module_in_loaded_module() -> Result<(), Box<dyn std::error::Er
         vec!["outer".to_string()],
         r"
 pub mod inner {
-    pub struct A { x: Number }
+    pub struct A { x: I32 }
 }
 pub mod inner {
-    pub struct B { y: Number }
+    pub struct B { y: I32 }
 }
 ",
     );
@@ -92,8 +92,8 @@ fn test_import_private_item_from_module() -> Result<(), Box<dyn std::error::Erro
     resolver.add(
         vec!["mymod".to_string()],
         r"
-struct Private { x: Number }
-pub struct Public { y: Number }
+struct Private { x: I32 }
+pub struct Public { y: I32 }
 ",
     );
 
@@ -114,7 +114,7 @@ fn test_import_nonexistent_item_from_module() -> Result<(), Box<dyn std::error::
     resolver.add(
         vec!["mymod".to_string()],
         r"
-pub struct Exists { x: Number }
+pub struct Exists { x: I32 }
 ",
     );
 
@@ -158,7 +158,7 @@ fn test_doubly_nested_module_with_enum_data_fields() -> Result<(), Box<dyn std::
         pub mod outer {
             pub mod inner {
                 pub enum Shape {
-                    circle(radius: Number),
+                    circle(radius: I32),
                     point
                 }
             }
@@ -175,7 +175,7 @@ fn test_doubly_nested_module_with_function() -> Result<(), Box<dyn std::error::E
     let source = r"
         pub mod outer {
             pub mod inner {
-                pub fn compute(x: Number) -> Number { x }
+                pub fn compute(x: I32) -> I32 { x }
             }
         }
     ";
@@ -190,7 +190,7 @@ fn test_triply_nested_module() -> Result<(), Box<dyn std::error::Error>> {
         pub mod a {
             pub mod b {
                 pub mod c {
-                    pub struct Widget { val: Number }
+                    pub struct Widget { val: I32 }
                     pub enum State { on, off }
                 }
             }
@@ -229,7 +229,7 @@ fn test_nested_module_type_path_type_not_found() -> Result<(), Box<dyn std::erro
     // module::type where module exists but type doesn't
     let source = r"
         pub mod mymod {
-            pub struct Real { x: Number }
+            pub struct Real { x: I32 }
         }
         struct Config { item: mymod::Phantom }
     ";
@@ -248,7 +248,7 @@ fn test_nested_module_type_path_type_not_found() -> Result<(), Box<dyn std::erro
 #[test]
 fn test_generic_with_undefined_base_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { item: Undefined<Number> }
+        struct Config { item: Undefined<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -261,13 +261,13 @@ fn test_generic_with_undefined_base_type() -> Result<(), Box<dyn std::error::Err
 fn test_generic_base_type_is_trait_not_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Tier-1 item E2: a trait name in a value-type position is
     // rejected with TraitUsedAsValueType — even when written as a
-    // generic application (`Container<Number>`). The recommended fix
+    // generic application (`Container<I32>`). The recommended fix
     // is `<T: Container>` once generic-trait constraints with args
     // land; for now `<T: Container>` (no args) is the closest legal
     // form.
     let source = r"
-        trait Container { val: Number }
-        struct Config { item: Container<Number> }
+        trait Container { val: I32 }
+        struct Config { item: Container<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -314,8 +314,8 @@ fn test_type_parameter_out_of_scope_in_trait() -> Result<(), Box<dyn std::error:
 fn test_struct_instantiation_with_extra_type_args() -> Result<(), Box<dyn std::error::Error>> {
     // Non-generic struct with type arguments at instantiation site
     let source = r"
-        struct Point { x: Number, y: Number }
-        struct Config { p: Point = Point<Number>(x: 1, y: 2) }
+        struct Point { x: I32, y: I32 }
+        struct Config { p: Point = Point<I32>(x: 1, y: 2) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -331,8 +331,8 @@ fn test_struct_instantiation_with_extra_type_args() -> Result<(), Box<dyn std::e
 #[test]
 fn test_function_call_with_mounts_error() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        fn compute(x: Number) -> Number { x }
-        struct Config { val: Number = compute(x: 1) [child: 42] }
+        fn compute(x: I32) -> I32 { x }
+        struct Config { val: I32 = compute(x: 1) [child: 42] }
     ";
     let result = compile(source);
     // Function call with mounts should produce a parse error
@@ -358,7 +358,7 @@ fn test_function_call_with_mounts_error() -> Result<(), Box<dyn std::error::Erro
 fn test_mount_field_mutability_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // A struct with a mutable mount field, instantiated with an immutable mount
     let source = r"
-        struct Inner { val: Number }
+        struct Inner { val: I32 }
         struct Widget {
             mut [content: Inner]
         }
@@ -390,7 +390,7 @@ fn test_mount_field_mutability_mismatch() -> Result<(), Box<dyn std::error::Erro
 fn test_match_on_non_enum_value() -> Result<(), Box<dyn std::error::Error>> {
     // Match on a number - should produce MatchNotEnum
     let source = r#"
-        let x: Number = 42
+        let x: I32 = 42
         let result: String = match x {
             _ => "wildcard"
         }
@@ -414,8 +414,8 @@ fn test_match_on_imported_enum_with_data_fields() -> Result<(), Box<dyn std::err
         vec!["shapes".to_string()],
         r"
 pub enum Shape {
-    circle(radius: Number),
-    square(side: Number),
+    circle(radius: I32),
+    square(side: I32),
     point
 }
 ",
@@ -424,7 +424,7 @@ pub enum Shape {
     let source = r"
 use shapes::Shape
 struct Config {
-    area: Number = match Shape.point {
+    area: I32 = match Shape.point {
         .circle(r): r,
         .square(s): s,
         .point: 0
@@ -483,7 +483,7 @@ fn test_function_with_regex_return_type() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_function_return_type_mismatch_number_vs_string() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        fn wrong() -> Number { "not a number" }
+        fn wrong() -> I32 { "not a number" }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
     if !errors
@@ -588,11 +588,11 @@ fn test_generic_type_satisfies_constraint() -> Result<(), Box<dyn std::error::Er
 
 #[test]
 fn test_primitive_type_does_not_satisfy_constraint() -> Result<(), Box<dyn std::error::Error>> {
-    // Primitive type (Number) can't satisfy a user-defined trait
+    // Primitive type (I32) can't satisfy a user-defined trait
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Config { b: Box<Number> }
+        struct Config { b: Box<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -606,7 +606,7 @@ fn test_tuple_type_does_not_satisfy_constraint() -> Result<(), Box<dyn std::erro
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Config { b: Box<(x: Number, y: Number)> }
+        struct Config { b: Box<(x: I32, y: I32)> }
     ";
     let result = compile(source);
     // Tuple type doesn't satisfy user trait
@@ -629,7 +629,7 @@ fn test_dict_type_does_not_satisfy_constraint() -> Result<(), Box<dyn std::error
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Config { b: Box<[String: Number]> }
+        struct Config { b: Box<[String: I32]> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -658,13 +658,13 @@ fn test_import_cycle_via_import_graph() -> Result<(), Box<dyn std::error::Error>
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct A { x: Number }
+pub struct A { x: I32 }
 ",
     );
     resolver.add(
         vec!["b".to_string()],
         r"
-pub struct B { y: Number }
+pub struct B { y: I32 }
 ",
     );
 
@@ -692,7 +692,7 @@ fn test_pub_use_item_not_found_in_reexport() -> Result<(), Box<dyn std::error::E
     resolver.add(
         vec!["a".to_string()],
         r"
-pub struct Real { x: Number }
+pub struct Real { x: I32 }
 ",
     );
     resolver.add(
@@ -728,8 +728,8 @@ fn test_pub_use_private_item_in_reexport() -> Result<(), Box<dyn std::error::Err
     resolver.add(
         vec!["a".to_string()],
         r"
-struct Private { x: Number }
-pub struct Public { y: Number }
+struct Private { x: I32 }
+pub struct Public { y: I32 }
 ",
     );
     resolver.add(
@@ -849,7 +849,7 @@ fn test_type_to_string_generic_with_no_args_in_mismatch() -> Result<(), Box<dyn 
 fn test_dict_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Dictionary type in return type exercises type_to_string for Dictionary
     let source = r#"
-        fn make_dict() -> [String: Number] { "not a dict" }
+        fn make_dict() -> [String: I32] { "not a dict" }
     "#;
     let result = compile(source);
     if result.is_ok() {
@@ -870,7 +870,7 @@ fn test_dict_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error::Er
 fn test_closure_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Closure type in return type exercises type_to_string for Closure
     let source = r#"
-        fn make_fn() -> (Number) -> String { "not a fn" }
+        fn make_fn() -> (I32) -> String { "not a fn" }
     "#;
     let result = compile(source);
     if result.is_ok() {
@@ -893,11 +893,11 @@ fn test_closure_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error:
 
 #[test]
 fn test_trait_field_type_mismatch_with_optional_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Trait requires String? field; struct has Number — exercises optional type
+    // Trait requires String? field; struct has I32 — exercises optional type
     // display in TraitFieldTypeMismatch error message.
     let source = r"
         trait Nullable { value: String? }
-        struct BadNullable { value: Number }
+        struct BadNullable { value: I32 }
         impl Nullable for BadNullable {}
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -912,11 +912,11 @@ fn test_trait_field_type_mismatch_with_optional_type() -> Result<(), Box<dyn std
 
 #[test]
 fn test_trait_field_type_mismatch_with_array_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Trait requires [String] field; struct has Number — exercises array type
+    // Trait requires [String] field; struct has I32 — exercises array type
     // display in TraitFieldTypeMismatch error message.
     let source = r"
         trait Collection { items: [String] }
-        struct BadCollection { items: Number }
+        struct BadCollection { items: I32 }
         impl Collection for BadCollection {}
     ";
     let errors = compile(source).err().ok_or("expected error")?;

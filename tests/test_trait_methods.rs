@@ -29,8 +29,8 @@ fn test_trait_with_fields_and_methods() -> Result<(), Box<dyn std::error::Error>
     let source = r"
 trait Shape {
     color: String
-    fn area(self) -> Number
-    fn perimeter(self) -> Number
+    fn area(self) -> I32
+    fn perimeter(self) -> I32
 }
 ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -45,7 +45,7 @@ trait Drawable {
     fn visible(self) -> Boolean
 }
 struct Circle {
-    radius: Number
+    radius: I32
 }
 impl Drawable for Circle {
     fn draw(self) -> Boolean {
@@ -64,14 +64,14 @@ impl Drawable for Circle {
 fn test_trait_method_with_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 trait Resizable {
-    fn resize(self, factor: Number) -> Boolean
+    fn resize(self, factor: I32) -> Boolean
 }
 struct Box {
-    width: Number,
-    height: Number
+    width: I32,
+    height: I32
 }
 impl Resizable for Box {
-    fn resize(self, factor: Number) -> Boolean {
+    fn resize(self, factor: I32) -> Boolean {
         true
     }
 }
@@ -97,9 +97,9 @@ fn test_composed_trait_only_requires_directly_declared_methods(
     // `collect_all_trait_methods` and emitting an extra
     // MissingTraitMethod for inherited methods.
     let only_extended = r#"
-        trait Base { fn id(self) -> Number }
+        trait Base { fn id(self) -> I32 }
         trait Extended: Base { fn name(self) -> String }
-        struct Item { value: Number }
+        struct Item { value: I32 }
         impl Extended for Item {
             fn name(self) -> String { "item" }
         }
@@ -111,11 +111,11 @@ fn test_composed_trait_only_requires_directly_declared_methods(
     })?;
 
     let both_impls = r#"
-        trait Base { fn id(self) -> Number }
+        trait Base { fn id(self) -> I32 }
         trait Extended: Base { fn name(self) -> String }
-        struct Item { value: Number }
+        struct Item { value: I32 }
         impl Base for Item {
-            fn id(self) -> Number { self.value }
+            fn id(self) -> I32 { self.value }
         }
         impl Extended for Item {
             fn name(self) -> String { "item" }
@@ -131,16 +131,16 @@ fn test_composed_trait_only_requires_directly_declared_methods(
 fn test_trait_inheritance_includes_methods() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
 trait Base {
-    fn id(self) -> Number
+    fn id(self) -> I32
 }
 trait Extended: Base {
     fn name(self) -> String
 }
 struct Item {
-    value: Number
+    value: I32
 }
 impl Base for Item {
-    fn id(self) -> Number {
+    fn id(self) -> I32 {
         self.value
     }
 }
@@ -166,7 +166,7 @@ trait Drawable {
     fn visible(self) -> Boolean
 }
 struct Square {
-    side: Number
+    side: I32
 }
 impl Drawable for Square {
     fn draw(self) -> Boolean {
@@ -194,7 +194,7 @@ trait Drawable {
     fn draw(self) -> Boolean
 }
 struct Square {
-    side: Number
+    side: I32
 }
 impl Drawable for Square {}
 ";
@@ -221,10 +221,10 @@ trait Drawable {
     fn draw(self) -> Boolean
 }
 struct Circle {
-    radius: Number
+    radius: I32
 }
 impl Drawable for Circle {
-    fn draw(self) -> Number {
+    fn draw(self) -> I32 {
         42
     }
 }
@@ -248,10 +248,10 @@ impl Drawable for Circle {
 fn test_trait_method_param_count_mismatch_error() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 trait Resizable {
-    fn resize(self, factor: Number) -> Boolean
+    fn resize(self, factor: I32) -> Boolean
 }
 struct Rect {
-    w: Number
+    w: I32
 }
 impl Resizable for Rect {
     fn resize(self) -> Boolean {

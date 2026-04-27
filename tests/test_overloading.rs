@@ -32,7 +32,7 @@ let b = greet(es: "Alicia")
 #[test]
 fn test_overload_by_label_set_multiple_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-fn connect(host: String, port: Number) -> Boolean {
+fn connect(host: String, port: I32) -> Boolean {
     true
 }
 fn connect(path: String) -> Boolean {
@@ -55,7 +55,7 @@ fn test_overload_by_first_arg_type() -> Result<(), Box<dyn std::error::Error>> {
 fn process(text: String) -> String {
     text
 }
-fn process(number: Number) -> Number {
+fn process(number: I32) -> I32 {
     number
 }
 let a = process("hello")
@@ -93,7 +93,7 @@ impl Formatter {
     fn format(self, text: String) -> String {
         text
     }
-    fn format(self, value: Number) -> String {
+    fn format(self, value: I32) -> String {
         "number"
     }
 }
@@ -109,13 +109,13 @@ impl Formatter {
 #[test]
 fn test_ambiguous_call_error() -> Result<(), Box<dyn std::error::Error>> {
     // Two overloads that differ only by parameter name (a vs b) but share
-    // the same first-positional-type (Number): a positional call matches
+    // the same first-positional-type (I32): a positional call matches
     // both under Mode B.
     let source = r"
-fn run(a: Number) -> Number {
+fn run(a: I32) -> I32 {
     a
 }
-fn run(b: Number) -> Number {
+fn run(b: I32) -> I32 {
     b + 1
 }
 let r = run(42)
@@ -142,7 +142,7 @@ fn test_no_matching_overload_error() -> Result<(), Box<dyn std::error::Error>> {
 fn process(text: String) -> String {
     text
 }
-fn process(number: Number) -> Number {
+fn process(number: I32) -> I32 {
     number
 }
 let r = process(true)
@@ -193,7 +193,7 @@ fn test_overloads_get_distinct_function_ids() -> Result<(), Box<dyn std::error::
 fn process(text: String) -> String {
     text
 }
-fn process(number: Number) -> Number {
+fn process(number: I32) -> I32 {
     number
 }
 ";
