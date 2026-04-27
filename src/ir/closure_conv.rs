@@ -70,6 +70,15 @@
 //!
 //! [`IrExpr::FunctionCall`]: crate::ir::IrExpr::FunctionCall
 //!
+//! # Post-pass invariant
+//!
+//! After [`ClosureConversionPass::run`] returns successfully, no
+//! [`IrExpr::Closure`] node remains anywhere in the module. The pass
+//! verifies this before returning and reports any residual via
+//! [`CompilerError::InternalError`] — a violation indicates a bug in
+//! the pass itself (a missed walk site or recursion path), not user
+//! input.
+//!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
 //! [`IrFunction`]: crate::ir::IrFunction
@@ -83,6 +92,7 @@ use crate::ir::{
     IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm, IrModule,
     IrStruct, ResolvedType, StructId,
 };
+use crate::location::Span;
 use crate::pipeline::IrPass;
 
 /// Name prefix for synthesized capture-environment structs.
@@ -212,7 +222,159 @@ impl IrPass for ClosureConversionPass {
         module.functions.extend(state.lifted);
 
         module.rebuild_indices();
+
+        // Post-pass invariant: after closure conversion, no
+        // `IrExpr::Closure` may remain anywhere in the module. A
+        // violation here is a bug in this pass (a missed walk site
+        // or a recursion that skipped a sub-expression), so report
+        // as `InternalError` with a span hint pointing at the
+        // residual node's enclosing definition where possible.
+        let residuals = find_residual_closures(&module);
+        if !residuals.is_empty() {
+            return Err(residuals
+                .into_iter()
+                .map(|location| CompilerError::InternalError {
+                    detail: format!(
+                        "closure-conversion: residual IrExpr::Closure remains in {location}"
+                    ),
+                    span: Span::default(),
+                })
+                .collect());
+        }
+
         Ok(module)
+    }
+}
+
+/// Walk the module and return a human-readable description of every
+/// site that still contains an [`IrExpr::Closure`] node. Empty when
+/// the post-pass invariant holds.
+fn find_residual_closures(module: &IrModule) -> Vec<String> {
+    let mut hits: Vec<String> = Vec::new();
+
+    for l in &module.lets {
+        if expr_has_closure(&l.value) {
+            hits.push(format!("module-level let `{}`", l.name));
+        }
+    }
+    for f in &module.functions {
+        if let Some(body) = &f.body {
+            if expr_has_closure(body) {
+                hits.push(format!("function `{}` body", f.name));
+            }
+        }
+        for p in &f.params {
+            if let Some(default) = &p.default {
+                if expr_has_closure(default) {
+                    hits.push(format!(
+                        "default of parameter `{}` on function `{}`",
+                        p.name, f.name
+                    ));
+                }
+            }
+        }
+    }
+    for i in &module.impls {
+        for f in &i.functions {
+            if let Some(body) = &f.body {
+                if expr_has_closure(body) {
+                    hits.push(format!("impl method `{}` body", f.name));
+                }
+            }
+            for p in &f.params {
+                if let Some(default) = &p.default {
+                    if expr_has_closure(default) {
+                        hits.push(format!(
+                            "default of parameter `{}` on impl method `{}`",
+                            p.name, f.name
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    for s in &module.structs {
+        for field in &s.fields {
+            if let Some(default) = &field.default {
+                if expr_has_closure(default) {
+                    hits.push(format!(
+                        "default of field `{}` on struct `{}`",
+                        field.name, s.name
+                    ));
+                }
+            }
+        }
+    }
+    for e in &module.enums {
+        for variant in &e.variants {
+            for field in &variant.fields {
+                if let Some(default) = &field.default {
+                    if expr_has_closure(default) {
+                        hits.push(format!(
+                            "default of field `{}` on enum `{}::{}`",
+                            field.name, e.name, variant.name
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    hits
+}
+
+/// Recursively scan an expression for any [`IrExpr::Closure`]
+/// node. Returns `true` on the first match found.
+fn expr_has_closure(expr: &IrExpr) -> bool {
+    match expr {
+        IrExpr::Closure { .. } => true,
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => false,
+        IrExpr::StructInst { fields, .. }
+        | IrExpr::EnumInst { fields, .. }
+        | IrExpr::Tuple { fields, .. } => fields.iter().any(|(_, v)| expr_has_closure(v)),
+        IrExpr::Array { elements, .. } => elements.iter().any(expr_has_closure),
+        IrExpr::FieldAccess { object, .. } => expr_has_closure(object),
+        IrExpr::BinaryOp { left, right, .. } => expr_has_closure(left) || expr_has_closure(right),
+        IrExpr::UnaryOp { operand, .. } => expr_has_closure(operand),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_has_closure(condition)
+                || expr_has_closure(then_branch)
+                || else_branch.as_ref().is_some_and(|e| expr_has_closure(e))
+        }
+        IrExpr::For {
+            collection, body, ..
+        } => expr_has_closure(collection) || expr_has_closure(body),
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => expr_has_closure(scrutinee) || arms.iter().any(|arm| expr_has_closure(&arm.body)),
+        IrExpr::FunctionCall { args, .. } => args.iter().any(|(_, v)| expr_has_closure(v)),
+        IrExpr::MethodCall { receiver, args, .. } => {
+            expr_has_closure(receiver) || args.iter().any(|(_, v)| expr_has_closure(v))
+        }
+        IrExpr::DictLiteral { entries, .. } => entries
+            .iter()
+            .any(|(k, v)| expr_has_closure(k) || expr_has_closure(v)),
+        IrExpr::DictAccess { dict, key, .. } => expr_has_closure(dict) || expr_has_closure(key),
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            statements.iter().any(|stmt| match stmt {
+                IrBlockStatement::Let { value, .. } => expr_has_closure(value),
+                IrBlockStatement::Assign { target, value } => {
+                    expr_has_closure(target) || expr_has_closure(value)
+                }
+                IrBlockStatement::Expr(e) => expr_has_closure(e),
+            }) || expr_has_closure(result)
+        }
+        IrExpr::ClosureRef { env_struct, .. } => expr_has_closure(env_struct),
     }
 }
 
@@ -770,5 +932,104 @@ fn env_field_access(field: String, ty: ResolvedType, env_ty: Option<&ResolvedTyp
         }),
         field,
         ty,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::{expr_has_closure, find_residual_closures};
+    use crate::ast::{Literal, PrimitiveType, Visibility};
+    use crate::ir::{IrExpr, IrFunction, IrLet, IrModule, ResolvedType};
+
+    fn unit_closure_expr() -> IrExpr {
+        IrExpr::Closure {
+            params: Vec::new(),
+            captures: Vec::new(),
+            body: Box::new(IrExpr::Literal {
+                value: Literal::Boolean(true),
+                ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+            }),
+            ty: ResolvedType::Closure {
+                param_tys: Vec::new(),
+                return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
+            },
+        }
+    }
+
+    #[test]
+    fn expr_has_closure_detects_top_level() {
+        assert!(expr_has_closure(&unit_closure_expr()));
+    }
+
+    #[test]
+    fn expr_has_closure_finds_nested_closure_in_block() {
+        let block = IrExpr::Block {
+            statements: Vec::new(),
+            result: Box::new(unit_closure_expr()),
+            ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        };
+        assert!(expr_has_closure(&block));
+    }
+
+    #[test]
+    fn expr_has_closure_returns_false_for_closure_ref() {
+        // `IrExpr::ClosureRef` is the *converted* form — it must NOT
+        // be flagged as a residual.
+        let closure_ref = IrExpr::ClosureRef {
+            funcref: vec!["__closure0".to_string()],
+            env_struct: Box::new(IrExpr::Literal {
+                value: Literal::Boolean(true),
+                ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+            }),
+            ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        };
+        assert!(!expr_has_closure(&closure_ref));
+    }
+
+    #[test]
+    fn find_residual_closures_locates_let_value() {
+        let mut module = IrModule::new();
+        module.lets.push(IrLet {
+            name: "bad".to_string(),
+            visibility: Visibility::Private,
+            mutable: false,
+            ty: ResolvedType::Closure {
+                param_tys: Vec::new(),
+                return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
+            },
+            value: unit_closure_expr(),
+            doc: None,
+        });
+        let hits = find_residual_closures(&module);
+        let first = hits.first().expect("one residual hit expected");
+        assert_eq!(hits.len(), 1);
+        assert!(first.contains("bad"), "{first}");
+    }
+
+    #[test]
+    fn find_residual_closures_locates_function_body() {
+        let mut module = IrModule::new();
+        module.functions.push(IrFunction {
+            name: "f".to_string(),
+            generic_params: Vec::new(),
+            params: Vec::new(),
+            return_type: Some(ResolvedType::Primitive(PrimitiveType::Boolean)),
+            body: Some(unit_closure_expr()),
+            extern_abi: None,
+            attributes: Vec::new(),
+            doc: None,
+        });
+        let hits = find_residual_closures(&module);
+        let first = hits.first().expect("one residual hit expected");
+        assert_eq!(hits.len(), 1);
+        assert!(first.contains("function `f`"), "{first}");
+    }
+
+    #[test]
+    fn find_residual_closures_returns_empty_on_clean_module() {
+        let module = IrModule::new();
+        assert!(find_residual_closures(&module).is_empty());
     }
 }

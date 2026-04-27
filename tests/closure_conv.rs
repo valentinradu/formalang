@@ -126,8 +126,9 @@ fn mc6_replaces_closure_with_closure_ref_at_sites() {
 }
 
 /// mc6 — sanity: after the pass, no `IrExpr::Closure` remains in the
-/// module. (mc8 will turn this into a hard invariant assertion
-/// inside the pass; for now it's a test-only check.)
+/// module. The mc8 invariant inside the pass enforces the same
+/// property; this test additionally verifies the *converted* module
+/// is closure-free as observed from outside the pass.
 #[test]
 fn mc6_no_residual_closure_nodes() {
     let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
