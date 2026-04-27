@@ -436,6 +436,10 @@ fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
     match name {
         "String" => Some(PrimitiveType::String),
         "Number" => Some(PrimitiveType::Number),
+        "I32" => Some(PrimitiveType::I32),
+        "I64" => Some(PrimitiveType::I64),
+        "F32" => Some(PrimitiveType::F32),
+        "F64" => Some(PrimitiveType::F64),
         "Boolean" => Some(PrimitiveType::Boolean),
         "Path" => Some(PrimitiveType::Path),
         "Regex" => Some(PrimitiveType::Regex),

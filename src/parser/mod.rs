@@ -525,6 +525,25 @@ mod tests {
     }
 
     #[test]
+    fn test_specialized_numeric_type_parsing() -> Result<(), Box<dyn std::error::Error>> {
+        let cases = [
+            ("I32", PrimitiveType::I32),
+            ("I64", PrimitiveType::I64),
+            ("F32", PrimitiveType::F32),
+            ("F64", PrimitiveType::F64),
+        ];
+        for (source, expected) in cases {
+            let ty = parse_type_str(source).map_err(|e| format!("{source}: {e:?}"))?;
+            if ty != Type::Primitive(expected) {
+                return Err(
+                    format!("{source}: {:?} != {:?}", ty, Type::Primitive(expected)).into(),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_never_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
         let input = r"
             pub struct Empty {
