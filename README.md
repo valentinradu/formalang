@@ -1,10 +1,27 @@
 # FormaLang
 
-FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. You write `.fv` files, the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR — generate code, drive a UI framework, configure a system — is up to your backend.
+FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. You write `.fv` files, the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend.
 
 ```text
 .fv source → formalang library → IrModule → your Backend → output
 ```
+
+---
+
+## Why FormaLang?
+
+You're building a Rust application that needs to accept user-authored logic: UI definitions, configuration with computation, state machines, scripted rules. The usual options each have a sharp edge:
+
+- **Ship Rust as the user-facing language.** Rust is a great host but a poor guest: it's AOT-compiled, lifetimes and the borrow checker land on whoever writes the file, and you can't load `.rs` snippets at runtime without dragging in a full toolchain.
+- **Embed Lua, Rhai, or JavaScript.** These are dynamically typed. Errors that should have been caught when the file was loaded surface only when the offending branch runs, usually in production.
+- **Use JSON, YAML, or TOML.** No expressions, no functions, no real types. The moment your config grows a conditional, you reinvent half a language inside string templates.
+
+FormaLang fills that gap:
+
+- **Statically typed and fully resolved.** The library hands back an `IrModule` where every type, name, and overload is already settled. A broken `.fv` fails at load, not when the user clicks the button that runs the bad branch.
+- **Embeddable by design.** A pure compiler frontend with no runtime, no I/O, no globals, no sandbox to maintain. The output is data: walk it, transform it, emit whatever you want.
+- **Small surface for users.** Structs, enums, traits, closures, generics, modules. No lifetimes, no async, no unsafe, no macros. Someone fluent in Swift or Rust can read it on day one.
+- **Backend-agnostic.** Drive a UI framework, generate code for any target, configure a runtime, layer custom IR passes. The compiler stops at the IR; you decide what comes next.
 
 ---
 
@@ -14,7 +31,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.2"
+formalang = "0.0.1-beta"
 ```
 
 Compile a source string:
@@ -39,18 +56,18 @@ println!("{}", module.structs[0].name); // User
 
 ### Primitives
 
-```formalang
+```rust
 let text: String = "hello"
 let count: Number = 42
 let flag: Boolean = true
 let logo: Path = /assets/logo.svg
 let pattern: Regex = r/[a-z]+/i
-let nothing: String? = nil       // optional — any type can be made optional with ?
+let nothing: String? = nil       // optional; any type can be made optional with ?
 ```
 
 ### Structs
 
-```formalang
+```rust
 pub struct Point {
     x: Number,
     y: Number
@@ -70,7 +87,7 @@ let u = User(name: "Alice", email: "alice@example.com", nickname: nil, score: 0)
 
 ### Methods (impl blocks)
 
-```formalang
+```rust
 pub struct Counter {
     value: Number
 }
@@ -88,20 +105,20 @@ impl Counter {
 
 ### Parameter Conventions
 
-Every function parameter has a convention controlling how the argument is received. The call site always looks the same — `f(x)` — only the function declaration changes.
+Every function parameter has a convention controlling how the argument is received. The call site always looks the same as `f(x)`; only the function declaration changes.
 
-```formalang
-// default — immutable; the callee reads the value
+```rust
+// default: immutable; the callee reads the value
 fn area(radius: Number) -> Number {
     radius * radius
 }
 
-// mut — callee may mutate; argument binding must be let mut
+// mut: callee may mutate; argument binding must be let mut
 fn bump(mut n: Number) -> Number {
     n
 }
 
-// sink — ownership transfer; caller cannot use the binding after the call
+// sink: ownership transfer; caller cannot use the binding after the call
 fn consume(sink label: String) -> String {
     label
 }
@@ -117,7 +134,7 @@ impl Counter {
 
 Traits declare field and method requirements. Any struct that satisfies all of them can declare conformance.
 
-```formalang
+```rust
 pub trait Named {
     name: String
 }
@@ -150,7 +167,7 @@ pub trait NamedShape: Named + Shape {
 
 ### Enums
 
-```formalang
+```rust
 pub enum Status {
     pending
     active
@@ -170,7 +187,7 @@ let m: Message = .text(content: "hello")
 
 ### Let bindings
 
-```formalang
+```rust
 let x = 42
 let name: String = "Alice"
 pub let MAX: Number = 100
@@ -179,7 +196,7 @@ let mut counter: Number = 0    // mutable binding
 
 ### Arrays, Dictionaries, Tuples
 
-```formalang
+```rust
 // Arrays
 let tags: [String] = ["a", "b", "c"]
 let matrix: [[Number]] = [[1, 2], [3, 4]]
@@ -195,20 +212,20 @@ let name = point.x
 
 ### Control Flow
 
-```formalang
-// if — also unwraps optionals automatically
+```rust
+// if: also unwraps optionals automatically
 if user.nickname {
     greet(name: nickname)
 } else {
     greet(name: user.name)
 }
 
-// for — iterates arrays, returns array of results
+// for: iterates arrays, returns array of results
 for item in items {
     process(item: item)
 }
 
-// match — exhaustive, on enums
+// match: exhaustive, on enums
 match message {
     .text(content): display(value: content),
     .image(url, size): showImage(src: url),
@@ -218,22 +235,60 @@ match message {
 
 ### Closures
 
-```formalang
-pub struct Button<E> {
-    onPress: () -> E,
-    onChange: String -> E,
-    onResize: Number, Number -> E
+Closure types describe a callable shape; closure expressions construct one. Both use the same arrow syntax, with an alternative pipe form for expressions.
+
+```rust
+pub enum Event {
+    pressed,
+    textChanged(value: String),
+    resized(width: Number, height: Number)
 }
 
-// Closure expressions
-let handler = () -> .submit
-let mapper = x -> .textChanged(value: x)
-let resizer = w, h -> .resized(width: w, height: h)
+pub struct Button<E> {
+    onPress:  () -> E,                  // no parameters
+    onChange: String -> E,              // single parameter
+    onResize: Number, Number -> E,      // multiple parameters
+    onSubmit: (String -> E)?            // optional closure
+}
 ```
+
+Both arrow and pipe forms are accepted at expression sites:
+
+```rust
+// Arrow form (Swift-style); parameter types inferred
+let onPress  = () -> .pressed
+let onChange = x -> .textChanged(value: x)
+let onResize = w, h -> .resized(width: w, height: h)
+
+// Pipe form (Rust-style); accepts explicit parameter types
+let increment = |n: Number| n + 1
+let combine   = |x: Number, y: Number| x + y
+```
+
+Closures capture values from their surrounding scope. The `ClosureConversionPass` lifts each closure into a top-level function plus a synthetic env struct, so backends only ever consume named functions.
+
+```rust
+fn make_adder(sink n: Number) -> Number -> Number {
+    |x: Number| x + n           // captures n
+}
+
+let add5 = make_adder(n: 5)
+```
+
+Closure parameters carry the same conventions as regular function parameters (`mut`, `sink`). The convention constrains the **caller of the closure**:
+
+```rust
+pub struct Form<E> {
+    onScale:   mut Number -> E,     // caller must pass a mutable binding
+    onConsume: sink String -> E     // caller's binding is moved
+}
+```
+
+Closures are pure and single-expression: no statements, no side effects in the language itself. Effects live in the host runtime, reached through `extern` declarations.
 
 ### Generics
 
-```formalang
+```rust
 pub struct Box<T> {
     value: T
 }
@@ -261,7 +316,7 @@ let r: Result<String, Number> = .ok(value: "success")
 
 ### Destructuring
 
-```formalang
+```rust
 // Arrays
 let [first, second, ...rest] = items
 let [_, second, ...] = items    // skip with _
@@ -276,7 +331,7 @@ let (content) = some_text_message
 
 ### Modules
 
-```formalang
+```rust
 // Inline module
 pub mod geometry {
     pub struct Point { x: Number, y: Number }
@@ -296,9 +351,9 @@ Only `pub` items can be imported. Circular imports are a compile error.
 
 ### Extern declarations
 
-Describe functions and method surfaces provided by the host runtime — they have no FormaLang body. There is no `extern type`; host-provided types are declared as regular structs and given an `extern impl` so their methods are resolved by the host.
+Describe functions and method surfaces provided by the host runtime; they have no FormaLang body. There is no `extern type`; host-provided types are declared as regular structs and given an `extern impl` so their methods are resolved by the host.
 
-```formalang
+```rust
 pub struct Canvas {}
 pub struct Connection {}
 
@@ -315,7 +370,7 @@ extern impl Canvas {
 
 ### Function overloading
 
-```formalang
+```rust
 fn format(value: Number) -> String { "number" }
 fn format(value: String) -> String { "string" }
 fn format(value: Number, precision: Number) -> String { "precise" }
@@ -365,7 +420,7 @@ let id = module.struct_id("User").unwrap();
 let s  = module.get_struct(id).unwrap();
 ```
 
-All types in the IR are fully resolved — no unresolved references remain.
+All types in the IR are fully resolved; no unresolved references remain.
 
 ### Pipeline (passes + backends)
 
@@ -445,7 +500,7 @@ These are responsibilities of the embedding application and its backends.
 
 ## Further reading
 
-- [Language Reference](docs/user/formalang.md) — full syntax reference with all rules
-- [Architecture](docs/developer/architecture.md) — compiler internals
-- [IR Reference](docs/developer/ir.md) — IrModule structure for backend authors
-- [AST Reference](docs/developer/ast.md) — AST structure for tooling authors
+- [Language Reference](docs/user/formalang.md): full syntax reference with all rules
+- [Architecture](docs/developer/architecture.md): compiler internals
+- [IR Reference](docs/developer/ir.md): IrModule structure for backend authors
+- [AST Reference](docs/developer/ast.md): AST structure for tooling authors
