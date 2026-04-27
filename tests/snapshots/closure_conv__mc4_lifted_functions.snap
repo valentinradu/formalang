@@ -48,10 +48,18 @@ expression: lifted
                     ),
                 },
                 op: Add,
-                right: Reference {
-                    path: [
-                        "n",
-                    ],
+                right: FieldAccess {
+                    object: Reference {
+                        path: [
+                            "__env",
+                        ],
+                        ty: Struct(
+                            StructId(
+                                0,
+                            ),
+                        ),
+                    },
+                    field: "n",
                     ty: Primitive(
                         I32,
                     ),

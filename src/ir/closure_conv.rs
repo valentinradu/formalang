@@ -31,21 +31,26 @@
 //!   [`IrExpr::Closure`] (PR 2 mc3).
 //! - synthesizes one top-level lifted [`IrFunction`] per closure,
 //!   prepended with an `__env: __ClosureEnv<N>` parameter (PR 2 mc4).
+//! - rewrites captured-name reads inside each lifted body so they
+//!   load the value from the env struct instead of the (no-longer-
+//!   visible) outer binding (PR 2 mc5).
 //!
-//! Still TODO across later microcommits: body capture rewrite (mc5),
-//! site rewrite to [`IrExpr::ClosureRef`] (mc6), callsite rewrite
-//! (mc7), and the post-pass invariant assertion (mc8).
+//! Still TODO across later microcommits: site rewrite to
+//! [`IrExpr::ClosureRef`] (mc6), callsite rewrite (mc7), and the
+//! post-pass invariant assertion (mc8).
 //!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
 //! [`IrFunction`]: crate::ir::IrFunction
 //! [`IrStruct`]: crate::ir::IrStruct
 
+use std::collections::HashSet;
+
 use crate::ast::{ParamConvention, Visibility};
 use crate::error::CompilerError;
 use crate::ir::{
-    walk_module, IrExpr, IrField, IrFunction, IrFunctionParam, IrModule, IrStruct, IrVisitor,
-    ResolvedType, StructId,
+    walk_module, IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm,
+    IrModule, IrStruct, IrVisitor, ResolvedType, StructId,
 };
 use crate::pipeline::IrPass;
 
@@ -236,8 +241,10 @@ fn synthesize_env_struct(
 /// Build the lifted top-level function for a closure. The first
 /// parameter is the env struct (immutable convention — the closure
 /// reads its captures); the remaining parameters mirror the closure's
-/// own parameters. The body is cloned verbatim in this microcommit;
-/// mc5 will rewrite captured-name reads to load from `__env` fields.
+/// own parameters. The body is cloned, then captured-name reads
+/// (`Reference` / `LetRef` matching one of the closure's captures)
+/// are rewritten to load from the env via
+/// [`rewrite_captured_refs`].
 fn synthesize_lifted_function(
     name: String,
     env_struct_id: StructId,
@@ -263,17 +270,376 @@ fn synthesize_lifted_function(
         });
     }
 
+    let captured_names: HashSet<String> =
+        closure.captures.iter().map(|(n, _, _)| n.clone()).collect();
+    let env_ty = ResolvedType::Struct(env_struct_id);
+    let mut bound: HashSet<String> = HashSet::new();
+    let body = rewrite_captured_refs(closure.body.clone(), &captured_names, &env_ty, &mut bound);
+
     IrFunction {
         name,
         generic_params: Vec::new(),
         params,
         return_type: Some(closure.return_ty.clone()),
-        body: Some(closure.body.clone()),
+        body: Some(body),
         extern_abi: None,
         attributes: Vec::new(),
         doc: Some(
             "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures."
                 .to_string(),
         ),
+    }
+}
+
+/// Walk a lifted closure body and replace every read of a captured
+/// name with an env field access. Tracks shadowing introduced by
+/// `let` bindings, `match` arm bindings, and `for` loop variables —
+/// references to a name inside a scope where it's been re-bound are
+/// left alone.
+///
+/// Nested [`IrExpr::Closure`] expressions are *not* recursed into:
+/// each closure's body has already been (or will be) collected into
+/// its own [`CollectedClosure`] and rewritten with its own captures
+/// when its lifted function is synthesized. The nested Closure's
+/// body field is also dead-by-construction — mc6 replaces the
+/// Closure node with a [`IrExpr::ClosureRef`] that drops it.
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive match across every IrExpr variant; splitting hurts readability"
+)]
+fn rewrite_captured_refs(
+    expr: IrExpr,
+    captured_names: &HashSet<String>,
+    env_ty: &ResolvedType,
+    bound: &mut HashSet<String>,
+) -> IrExpr {
+    match expr {
+        IrExpr::Reference { path, ty } => {
+            if let Some(head) = path.first() {
+                if path.len() == 1 && captured_names.contains(head) && !bound.contains(head) {
+                    return env_field_access(head.clone(), ty, env_ty);
+                }
+            }
+            IrExpr::Reference { path, ty }
+        }
+        IrExpr::LetRef { name, ty } => {
+            if captured_names.contains(&name) && !bound.contains(&name) {
+                return env_field_access(name, ty, env_ty);
+            }
+            IrExpr::LetRef { name, ty }
+        }
+
+        IrExpr::Closure {
+            params,
+            captures,
+            body,
+            ty,
+        } => IrExpr::Closure {
+            params,
+            captures,
+            body,
+            ty,
+        },
+
+        IrExpr::Literal { value, ty } => IrExpr::Literal { value, ty },
+        IrExpr::SelfFieldRef { field, ty } => IrExpr::SelfFieldRef { field, ty },
+
+        IrExpr::StructInst {
+            struct_id,
+            type_args,
+            fields,
+            ty,
+        } => IrExpr::StructInst {
+            struct_id,
+            type_args,
+            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
+            ty,
+        },
+        IrExpr::EnumInst {
+            enum_id,
+            variant,
+            fields,
+            ty,
+        } => IrExpr::EnumInst {
+            enum_id,
+            variant,
+            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
+            ty,
+        },
+        IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
+            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
+            ty,
+        },
+        IrExpr::Array { elements, ty } => IrExpr::Array {
+            elements: elements
+                .into_iter()
+                .map(|e| rewrite_captured_refs(e, captured_names, env_ty, bound))
+                .collect(),
+            ty,
+        },
+        IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
+            object: Box::new(rewrite_captured_refs(*object, captured_names, env_ty, bound)),
+            field,
+            ty,
+        },
+        IrExpr::BinaryOp {
+            left,
+            op,
+            right,
+            ty,
+        } => IrExpr::BinaryOp {
+            left: Box::new(rewrite_captured_refs(*left, captured_names, env_ty, bound)),
+            op,
+            right: Box::new(rewrite_captured_refs(*right, captured_names, env_ty, bound)),
+            ty,
+        },
+        IrExpr::UnaryOp { op, operand, ty } => IrExpr::UnaryOp {
+            op,
+            operand: Box::new(rewrite_captured_refs(*operand, captured_names, env_ty, bound)),
+            ty,
+        },
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ty,
+        } => IrExpr::If {
+            condition: Box::new(rewrite_captured_refs(
+                *condition,
+                captured_names,
+                env_ty,
+                bound,
+            )),
+            then_branch: Box::new(rewrite_captured_refs(
+                *then_branch,
+                captured_names,
+                env_ty,
+                bound,
+            )),
+            else_branch: else_branch
+                .map(|e| Box::new(rewrite_captured_refs(*e, captured_names, env_ty, bound))),
+            ty,
+        },
+        IrExpr::For {
+            var,
+            var_ty,
+            collection,
+            body,
+            ty,
+        } => {
+            let new_collection = rewrite_captured_refs(*collection, captured_names, env_ty, bound);
+            let inserted = bound.insert(var.clone());
+            let new_body = rewrite_captured_refs(*body, captured_names, env_ty, bound);
+            if inserted {
+                bound.remove(&var);
+            }
+            IrExpr::For {
+                var,
+                var_ty,
+                collection: Box::new(new_collection),
+                body: Box::new(new_body),
+                ty,
+            }
+        }
+        IrExpr::Match {
+            scrutinee,
+            arms,
+            ty,
+        } => IrExpr::Match {
+            scrutinee: Box::new(rewrite_captured_refs(
+                *scrutinee,
+                captured_names,
+                env_ty,
+                bound,
+            )),
+            arms: arms
+                .into_iter()
+                .map(|arm| rewrite_match_arm(arm, captured_names, env_ty, bound))
+                .collect(),
+            ty,
+        },
+        IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
+            path,
+            args: args
+                .into_iter()
+                .map(|(label, value)| {
+                    (
+                        label,
+                        rewrite_captured_refs(value, captured_names, env_ty, bound),
+                    )
+                })
+                .collect(),
+            ty,
+        },
+        IrExpr::MethodCall {
+            receiver,
+            method,
+            args,
+            dispatch,
+            ty,
+        } => IrExpr::MethodCall {
+            receiver: Box::new(rewrite_captured_refs(
+                *receiver,
+                captured_names,
+                env_ty,
+                bound,
+            )),
+            method,
+            args: args
+                .into_iter()
+                .map(|(label, value)| {
+                    (
+                        label,
+                        rewrite_captured_refs(value, captured_names, env_ty, bound),
+                    )
+                })
+                .collect(),
+            dispatch,
+            ty,
+        },
+        IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
+            entries: entries
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        rewrite_captured_refs(k, captured_names, env_ty, bound),
+                        rewrite_captured_refs(v, captured_names, env_ty, bound),
+                    )
+                })
+                .collect(),
+            ty,
+        },
+        IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
+            dict: Box::new(rewrite_captured_refs(*dict, captured_names, env_ty, bound)),
+            key: Box::new(rewrite_captured_refs(*key, captured_names, env_ty, bound)),
+            ty,
+        },
+        IrExpr::Block {
+            statements,
+            result,
+            ty,
+        } => {
+            let mut introduced: Vec<String> = Vec::new();
+            let new_stmts = statements
+                .into_iter()
+                .map(|stmt| {
+                    rewrite_block_stmt(stmt, captured_names, env_ty, bound, &mut introduced)
+                })
+                .collect();
+            let new_result = rewrite_captured_refs(*result, captured_names, env_ty, bound);
+            for name in introduced {
+                bound.remove(&name);
+            }
+            IrExpr::Block {
+                statements: new_stmts,
+                result: Box::new(new_result),
+                ty,
+            }
+        }
+
+        IrExpr::ClosureRef {
+            funcref,
+            env_struct,
+            ty,
+        } => IrExpr::ClosureRef {
+            funcref,
+            env_struct: Box::new(rewrite_captured_refs(
+                *env_struct,
+                captured_names,
+                env_ty,
+                bound,
+            )),
+            ty,
+        },
+    }
+}
+
+fn rewrite_named_fields(
+    fields: Vec<(String, IrExpr)>,
+    captured_names: &HashSet<String>,
+    env_ty: &ResolvedType,
+    bound: &mut HashSet<String>,
+) -> Vec<(String, IrExpr)> {
+    fields
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                name,
+                rewrite_captured_refs(value, captured_names, env_ty, bound),
+            )
+        })
+        .collect()
+}
+
+fn rewrite_match_arm(
+    arm: IrMatchArm,
+    captured_names: &HashSet<String>,
+    env_ty: &ResolvedType,
+    bound: &mut HashSet<String>,
+) -> IrMatchArm {
+    let mut introduced: Vec<String> = Vec::new();
+    for (name, _) in &arm.bindings {
+        if bound.insert(name.clone()) {
+            introduced.push(name.clone());
+        }
+    }
+    let body = rewrite_captured_refs(arm.body, captured_names, env_ty, bound);
+    for name in introduced {
+        bound.remove(&name);
+    }
+    IrMatchArm {
+        variant: arm.variant,
+        is_wildcard: arm.is_wildcard,
+        bindings: arm.bindings,
+        body,
+    }
+}
+
+fn rewrite_block_stmt(
+    stmt: IrBlockStatement,
+    captured_names: &HashSet<String>,
+    env_ty: &ResolvedType,
+    bound: &mut HashSet<String>,
+    introduced: &mut Vec<String>,
+) -> IrBlockStatement {
+    match stmt {
+        IrBlockStatement::Let {
+            name,
+            mutable,
+            ty,
+            value,
+        } => {
+            let new_value = rewrite_captured_refs(value, captured_names, env_ty, bound);
+            if bound.insert(name.clone()) {
+                introduced.push(name.clone());
+            }
+            IrBlockStatement::Let {
+                name,
+                mutable,
+                ty,
+                value: new_value,
+            }
+        }
+        IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
+            target: rewrite_captured_refs(target, captured_names, env_ty, bound),
+            value: rewrite_captured_refs(value, captured_names, env_ty, bound),
+        },
+        IrBlockStatement::Expr(e) => {
+            IrBlockStatement::Expr(rewrite_captured_refs(e, captured_names, env_ty, bound))
+        }
+    }
+}
+
+/// Build an `__env.<name>` field-access expression carrying the
+/// captured value's resolved type. The `__env` reference itself is
+/// typed as the env struct so backends can resolve its layout.
+fn env_field_access(field: String, ty: ResolvedType, env_ty: &ResolvedType) -> IrExpr {
+    IrExpr::FieldAccess {
+        object: Box::new(IrExpr::Reference {
+            path: vec![ENV_PARAM_NAME.to_string()],
+            ty: env_ty.clone(),
+        }),
+        field,
+        ty,
     }
 }

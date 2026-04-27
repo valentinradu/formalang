@@ -1,0 +1,48 @@
+---
+source: tests/closure_conv.rs
+expression: lifted_bodies
+---
+[
+    Some(
+        BinaryOp {
+            left: Reference {
+                path: [
+                    "x",
+                ],
+                ty: Primitive(
+                    I32,
+                ),
+            },
+            op: Add,
+            right: FieldAccess {
+                object: Reference {
+                    path: [
+                        "__env",
+                    ],
+                    ty: Struct(
+                        StructId(
+                            0,
+                        ),
+                    ),
+                },
+                field: "n",
+                ty: Primitive(
+                    I32,
+                ),
+            },
+            ty: Primitive(
+                I32,
+            ),
+        },
+    ),
+    Some(
+        Reference {
+            path: [
+                "t",
+            ],
+            ty: Primitive(
+                String,
+            ),
+        },
+    ),
+]

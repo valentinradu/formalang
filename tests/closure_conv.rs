@@ -62,3 +62,61 @@ fn mc4_synthesizes_lifted_functions() {
         .collect();
     insta::assert_debug_snapshot!("mc4_lifted_functions", lifted);
 }
+
+/// mc5 — captured-name reads inside lifted bodies become field
+/// accesses on `__env`, while parameter-name reads stay as raw
+/// references.
+///
+/// In the `make_adder` closure body `x + n`, `x` is a parameter
+/// (untouched) but `n` is a capture and must become
+/// `__env.n`. The trivial `format_tag` body `t` references only its
+/// own param.
+#[test]
+fn mc5_rewrites_captured_refs_to_env_field_access() {
+    let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
+    let original_function_count = module.functions.len();
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    let lifted_bodies: Vec<_> = converted
+        .functions
+        .iter()
+        .skip(original_function_count)
+        .map(|f| f.body.as_ref())
+        .collect();
+    insta::assert_debug_snapshot!("mc5_lifted_bodies", lifted_bodies);
+}
+
+/// mc5 — `let` shadowing: an inner `let` binding with the same name
+/// as a capture must mask the env access for references *after* the
+/// `let`.
+#[test]
+fn mc5_let_shadowing_blocks_env_rewrite() {
+    let source = r"
+        pub fn make(sink n: I32) -> (I32) -> I32 {
+            |x: I32| (
+                let n: I32 = 100
+                in x + n
+            )
+        }
+    ";
+    let module = compile_to_ir(source).expect("should compile to IR");
+    let original_function_count = module.functions.len();
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    // The lifted closure's body is a Block whose result `x + n` reads
+    // a *local* `n`. The shadowing rule should leave that read as a
+    // raw `Reference { path: ["n"] }`, not rewrite it to `__env.n`.
+    let lifted_body = converted
+        .functions
+        .iter()
+        .skip(original_function_count)
+        .find_map(|f| f.body.as_ref())
+        .expect("at least one lifted closure body");
+    insta::assert_debug_snapshot!("mc5_let_shadowing", lifted_body);
+}
