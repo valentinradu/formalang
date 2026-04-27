@@ -4,6 +4,16 @@ expression: lifted_bodies
 ---
 [
     Some(
+        Reference {
+            path: [
+                "t",
+            ],
+            ty: Primitive(
+                String,
+            ),
+        },
+    ),
+    Some(
         BinaryOp {
             left: Reference {
                 path: [
@@ -21,7 +31,7 @@ expression: lifted_bodies
                     ],
                     ty: Struct(
                         StructId(
-                            0,
+                            1,
                         ),
                     ),
                 },
@@ -32,16 +42,6 @@ expression: lifted_bodies
             },
             ty: Primitive(
                 I32,
-            ),
-        },
-    ),
-    Some(
-        Reference {
-            path: [
-                "t",
-            ],
-            ty: Primitive(
-                String,
             ),
         },
     ),

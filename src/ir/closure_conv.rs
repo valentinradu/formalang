@@ -24,20 +24,32 @@
 //! that the env structs and lifted functions go through the same
 //! reachability sweep as hand-written definitions.
 //!
-//! # Status
+//! # Algorithm
 //!
-//! In progress. The pass currently:
-//! - synthesizes one capture-environment [`IrStruct`] per
-//!   [`IrExpr::Closure`] (PR 2 mc3).
-//! - synthesizes one top-level lifted [`IrFunction`] per closure,
-//!   prepended with an `__env: __ClosureEnv<N>` parameter (PR 2 mc4).
-//! - rewrites captured-name reads inside each lifted body so they
-//!   load the value from the env struct instead of the (no-longer-
-//!   visible) outer binding (PR 2 mc5).
+//! A single recursive walk visits every site that can transitively
+//! contain an [`IrExpr::Closure`] (module-level lets, function
+//! bodies, impl-block method bodies, struct/enum field defaults,
+//! function-parameter defaults). When a [`IrExpr::Closure`] node is
+//! encountered:
 //!
-//! Still TODO across later microcommits: site rewrite to
-//! [`IrExpr::ClosureRef`] (mc6), callsite rewrite (mc7), and the
-//! post-pass invariant assertion (mc8).
+//! 1. A fresh `(__ClosureEnv<N>, __closure<N>)` name pair is
+//!    allocated and an [`IrStruct`] is synthesized whose fields
+//!    mirror the closure's `captures`.
+//! 2. The closure's body is processed *recursively* (so nested
+//!    closures get their own env / lifted-function pair) with the
+//!    inner closure's captures driving the capture-rewrite.
+//! 3. The processed body becomes the body of a new [`IrFunction`]
+//!    whose first parameter is `__env: __ClosureEnv<N>`, followed by
+//!    the closure's own parameters.
+//! 4. The original [`IrExpr::Closure`] is replaced in place by an
+//!    [`IrExpr::ClosureRef`] whose `funcref` names the lifted
+//!    function and whose `env_struct` is a [`IrExpr::StructInst`]
+//!    constructing the env. Each env field's value is the
+//!    capture name as it appears in the *outer* scope — that
+//!    expression goes through the same capture-rewrite, so a
+//!    nested closure's env construction at an outer-closure-of-
+//!    outer-closure capture site correctly produces
+//!    `__env.<name>` rather than a raw `Reference`.
 //!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
@@ -49,8 +61,8 @@ use std::collections::HashSet;
 use crate::ast::{ParamConvention, Visibility};
 use crate::error::CompilerError;
 use crate::ir::{
-    walk_module, IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm,
-    IrModule, IrStruct, IrVisitor, ResolvedType, StructId,
+    IrBlockStatement, IrExpr, IrField, IrFunction, IrFunctionParam, IrMatchArm, IrModule,
+    IrStruct, ResolvedType, StructId,
 };
 use crate::pipeline::IrPass;
 
@@ -89,88 +101,526 @@ impl IrPass for ClosureConversionPass {
     }
 
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
-        // Walk the module in deterministic order, collecting each
-        // closure's full data so we can synthesize an env struct +
-        // lifted function pair for every site. Subsequent microcommits
-        // (mc5+) re-use this same walk order to rewrite bodies and
-        // the closure expressions themselves.
-        let mut collector = ClosureCollector::default();
-        walk_module(&mut collector, &module);
+        let mut state = ConversionState::new(&module);
 
-        // Find a starting index past any pre-existing struct or
-        // function whose name already matches our generated patterns,
-        // so we can issue sequential names without per-step collision
-        // checks.
-        let mut next_idx = first_free_index(&module);
+        // Module-level let bindings.
+        let lets = std::mem::take(&mut module.lets);
+        module.lets = lets
+            .into_iter()
+            .map(|mut l| {
+                l.value = state.process(l.value, &CaptureCtx::module_level());
+                l
+            })
+            .collect();
 
-        for closure in collector.closures {
-            let idx = next_idx;
-            next_idx = next_idx.saturating_add(1);
-            let env_name = format!("{ENV_STRUCT_PREFIX}{idx}");
-            let func_name = format!("{LIFTED_FN_PREFIX}{idx}");
+        // Standalone function bodies.
+        let functions = std::mem::take(&mut module.functions);
+        module.functions = functions
+            .into_iter()
+            .map(|mut f| {
+                f.body = f
+                    .body
+                    .map(|b| state.process(b, &CaptureCtx::module_level()));
+                f.params = state.process_param_defaults(f.params);
+                f
+            })
+            .collect();
 
-            let env_struct = synthesize_env_struct(env_name.clone(), &closure.captures);
+        // Impl-block method bodies.
+        let impls = std::mem::take(&mut module.impls);
+        module.impls = impls
+            .into_iter()
+            .map(|mut i| {
+                let methods = std::mem::take(&mut i.functions);
+                i.functions = methods
+                    .into_iter()
+                    .map(|mut f| {
+                        f.body = f
+                            .body
+                            .map(|b| state.process(b, &CaptureCtx::module_level()));
+                        f.params = state.process_param_defaults(f.params);
+                        f
+                    })
+                    .collect();
+                i
+            })
+            .collect();
 
-            let env_struct_idx = module.structs.len();
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "module.structs.len() is bounded by add_struct's u32 check"
-            )]
-            let env_struct_id = StructId(env_struct_idx as u32);
-            module.structs.push(env_struct);
+        // Struct field defaults.
+        let structs = std::mem::take(&mut module.structs);
+        module.structs = structs
+            .into_iter()
+            .map(|mut s| {
+                let fields = std::mem::take(&mut s.fields);
+                s.fields = fields
+                    .into_iter()
+                    .map(|mut field| {
+                        field.default = field
+                            .default
+                            .map(|d| state.process(d, &CaptureCtx::module_level()));
+                        field
+                    })
+                    .collect();
+                s
+            })
+            .collect();
 
-            let lifted = synthesize_lifted_function(func_name, env_struct_id, &closure);
-            module.functions.push(lifted);
-        }
+        // Enum variant field defaults (rare but possible).
+        let enums = std::mem::take(&mut module.enums);
+        module.enums = enums
+            .into_iter()
+            .map(|mut e| {
+                for variant in &mut e.variants {
+                    let fields = std::mem::take(&mut variant.fields);
+                    variant.fields = fields
+                        .into_iter()
+                        .map(|mut field| {
+                            field.default = field
+                                .default
+                                .map(|d| state.process(d, &CaptureCtx::module_level()));
+                            field
+                        })
+                        .collect();
+                }
+                e
+            })
+            .collect();
+
+        // Append synthesized envs and lifted functions in declaration
+        // order (matches the recursive walk order, which makes the
+        // resulting module deterministic).
+        module.structs.extend(state.envs);
+        module.functions.extend(state.lifted);
 
         module.rebuild_indices();
         Ok(module)
     }
 }
 
-/// One closure's full lifting data, captured during the walk.
-struct CollectedClosure {
-    params: Vec<(ParamConvention, String, ResolvedType)>,
-    captures: Vec<(String, ParamConvention, ResolvedType)>,
-    body: IrExpr,
-    return_ty: ResolvedType,
+/// Mutable state threaded through the recursive walk: the next
+/// synthesized-name index, and the accumulated env structs / lifted
+/// functions waiting to be appended to the module at the end.
+struct ConversionState {
+    /// Sequential index for the next `(__ClosureEnv<N>, __closure<N>)`
+    /// allocation.
+    next_idx: usize,
+    /// Index `(== module.structs.len())` at which freshly synthesized
+    /// env structs land. Used to assign correct `StructId`s without
+    /// pushing them into the module mid-walk.
+    base_struct_index: usize,
+    /// Synthesized capture-environment structs, appended to the
+    /// module after the walk.
+    envs: Vec<IrStruct>,
+    /// Synthesized lifted closure functions, appended to the module
+    /// after the walk.
+    lifted: Vec<IrFunction>,
 }
 
-/// Visitor that records every closure's lifting data in module-walk
-/// order.
-#[derive(Default)]
-struct ClosureCollector {
-    closures: Vec<CollectedClosure>,
-}
-
-impl IrVisitor for ClosureCollector {
-    fn visit_expr(&mut self, e: &IrExpr) {
-        if let IrExpr::Closure {
-            params,
-            captures,
-            body,
-            ty,
-        } = e
-        {
-            // Lowering attaches `Closure { .. }` to every
-            // `IrExpr::Closure`. If anything else slips through (e.g.
-            // an `Error` placeholder propagated from an earlier
-            // failure), fall back to `Error` so we still produce a
-            // well-formed function shape — the surrounding
-            // CompilerError already describes the problem.
-            let return_ty = if let ResolvedType::Closure { return_ty, .. } = ty {
-                (**return_ty).clone()
-            } else {
-                ResolvedType::Error
-            };
-            self.closures.push(CollectedClosure {
-                params: params.clone(),
-                captures: captures.clone(),
-                body: (**body).clone(),
-                return_ty,
-            });
+impl ConversionState {
+    fn new(module: &IrModule) -> Self {
+        Self {
+            next_idx: first_free_index(module),
+            base_struct_index: module.structs.len(),
+            envs: Vec::new(),
+            lifted: Vec::new(),
         }
-        crate::ir::walk_expr_children(self, e);
+    }
+
+    /// Allocate the next `(idx, env_name, func_name, env_struct_id)`
+    /// quadruple. The returned `StructId` reflects where the env
+    /// struct will land in `module.structs` after the walk's
+    /// trailing `extend`.
+    fn allocate(&mut self) -> (usize, String, String, StructId) {
+        let idx = self.next_idx;
+        self.next_idx = self.next_idx.saturating_add(1);
+        let env_name = format!("{ENV_STRUCT_PREFIX}{idx}");
+        let func_name = format!("{LIFTED_FN_PREFIX}{idx}");
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "module struct count bounded by add_struct's u32 check upstream; \
+                      env-struct overflow would require billions of closures"
+        )]
+        let env_id = StructId(self.base_struct_index.saturating_add(self.envs.len()) as u32);
+        (idx, env_name, func_name, env_id)
+    }
+
+    /// Process function-parameter default expressions, threading the
+    /// module-level capture context (no captures, no env).
+    fn process_param_defaults(&mut self, params: Vec<IrFunctionParam>) -> Vec<IrFunctionParam> {
+        params
+            .into_iter()
+            .map(|mut p| {
+                p.default = p.default.map(|d| self.process(d, &CaptureCtx::module_level()));
+                p
+            })
+            .collect()
+    }
+
+    /// Recursively process an expression: rewrite captured-name reads
+    /// to env field access (mc5) AND replace `IrExpr::Closure` with
+    /// `IrExpr::ClosureRef` plus synthesized env / lifted function
+    /// (mc6). Tracks shadowing introduced by `let`, `match` arm
+    /// bindings, and `for` loop variables.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match across every IrExpr variant; splitting hurts readability"
+    )]
+    fn process(&mut self, expr: IrExpr, ctx: &CaptureCtx) -> IrExpr {
+        match expr {
+            IrExpr::Reference { path, ty } => {
+                if path.len() == 1 {
+                    if let Some(head) = path.first() {
+                        if ctx.is_captured(head) {
+                            return env_field_access(head.clone(), ty, ctx.env_ty.as_ref());
+                        }
+                    }
+                }
+                IrExpr::Reference { path, ty }
+            }
+            IrExpr::LetRef { name, ty } => {
+                if ctx.is_captured(&name) {
+                    return env_field_access(name, ty, ctx.env_ty.as_ref());
+                }
+                IrExpr::LetRef { name, ty }
+            }
+
+            IrExpr::Closure {
+                params,
+                captures,
+                body,
+                ty,
+            } => self.lift_closure(&params, &captures, *body, ty, ctx),
+
+            IrExpr::Literal { value, ty } => IrExpr::Literal { value, ty },
+            IrExpr::SelfFieldRef { field, ty } => IrExpr::SelfFieldRef { field, ty },
+
+            IrExpr::StructInst {
+                struct_id,
+                type_args,
+                fields,
+                ty,
+            } => IrExpr::StructInst {
+                struct_id,
+                type_args,
+                fields: self.process_named_fields(fields, ctx),
+                ty,
+            },
+            IrExpr::EnumInst {
+                enum_id,
+                variant,
+                fields,
+                ty,
+            } => IrExpr::EnumInst {
+                enum_id,
+                variant,
+                fields: self.process_named_fields(fields, ctx),
+                ty,
+            },
+            IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
+                fields: self.process_named_fields(fields, ctx),
+                ty,
+            },
+            IrExpr::Array { elements, ty } => IrExpr::Array {
+                elements: elements.into_iter().map(|e| self.process(e, ctx)).collect(),
+                ty,
+            },
+            IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
+                object: Box::new(self.process(*object, ctx)),
+                field,
+                ty,
+            },
+            IrExpr::BinaryOp {
+                left,
+                op,
+                right,
+                ty,
+            } => IrExpr::BinaryOp {
+                left: Box::new(self.process(*left, ctx)),
+                op,
+                right: Box::new(self.process(*right, ctx)),
+                ty,
+            },
+            IrExpr::UnaryOp { op, operand, ty } => IrExpr::UnaryOp {
+                op,
+                operand: Box::new(self.process(*operand, ctx)),
+                ty,
+            },
+            IrExpr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ty,
+            } => IrExpr::If {
+                condition: Box::new(self.process(*condition, ctx)),
+                then_branch: Box::new(self.process(*then_branch, ctx)),
+                else_branch: else_branch.map(|e| Box::new(self.process(*e, ctx))),
+                ty,
+            },
+            IrExpr::For {
+                var,
+                var_ty,
+                collection,
+                body,
+                ty,
+            } => {
+                let new_collection = self.process(*collection, ctx);
+                let mut inner_ctx = ctx.clone();
+                inner_ctx.bound.insert(var.clone());
+                let new_body = self.process(*body, &inner_ctx);
+                IrExpr::For {
+                    var,
+                    var_ty,
+                    collection: Box::new(new_collection),
+                    body: Box::new(new_body),
+                    ty,
+                }
+            }
+            IrExpr::Match {
+                scrutinee,
+                arms,
+                ty,
+            } => IrExpr::Match {
+                scrutinee: Box::new(self.process(*scrutinee, ctx)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| self.process_match_arm(arm, ctx))
+                    .collect(),
+                ty,
+            },
+            IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
+                path,
+                args: args
+                    .into_iter()
+                    .map(|(label, value)| (label, self.process(value, ctx)))
+                    .collect(),
+                ty,
+            },
+            IrExpr::MethodCall {
+                receiver,
+                method,
+                args,
+                dispatch,
+                ty,
+            } => IrExpr::MethodCall {
+                receiver: Box::new(self.process(*receiver, ctx)),
+                method,
+                args: args
+                    .into_iter()
+                    .map(|(label, value)| (label, self.process(value, ctx)))
+                    .collect(),
+                dispatch,
+                ty,
+            },
+            IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
+                entries: entries
+                    .into_iter()
+                    .map(|(k, v)| (self.process(k, ctx), self.process(v, ctx)))
+                    .collect(),
+                ty,
+            },
+            IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
+                dict: Box::new(self.process(*dict, ctx)),
+                key: Box::new(self.process(*key, ctx)),
+                ty,
+            },
+            IrExpr::Block {
+                statements,
+                result,
+                ty,
+            } => self.process_block(statements, *result, ty, ctx),
+
+            IrExpr::ClosureRef {
+                funcref,
+                env_struct,
+                ty,
+            } => IrExpr::ClosureRef {
+                funcref,
+                env_struct: Box::new(self.process(*env_struct, ctx)),
+                ty,
+            },
+        }
+    }
+
+    fn process_named_fields(
+        &mut self,
+        fields: Vec<(String, IrExpr)>,
+        ctx: &CaptureCtx,
+    ) -> Vec<(String, IrExpr)> {
+        fields
+            .into_iter()
+            .map(|(name, value)| (name, self.process(value, ctx)))
+            .collect()
+    }
+
+    fn process_match_arm(&mut self, arm: IrMatchArm, ctx: &CaptureCtx) -> IrMatchArm {
+        let mut inner_ctx = ctx.clone();
+        for (name, _) in &arm.bindings {
+            inner_ctx.bound.insert(name.clone());
+        }
+        IrMatchArm {
+            variant: arm.variant,
+            is_wildcard: arm.is_wildcard,
+            bindings: arm.bindings,
+            body: self.process(arm.body, &inner_ctx),
+        }
+    }
+
+    fn process_block(
+        &mut self,
+        statements: Vec<IrBlockStatement>,
+        result: IrExpr,
+        ty: ResolvedType,
+        ctx: &CaptureCtx,
+    ) -> IrExpr {
+        let mut inner_ctx = ctx.clone();
+        let new_stmts = statements
+            .into_iter()
+            .map(|stmt| self.process_block_stmt(stmt, &mut inner_ctx))
+            .collect();
+        let new_result = self.process(result, &inner_ctx);
+        IrExpr::Block {
+            statements: new_stmts,
+            result: Box::new(new_result),
+            ty,
+        }
+    }
+
+    fn process_block_stmt(
+        &mut self,
+        stmt: IrBlockStatement,
+        ctx: &mut CaptureCtx,
+    ) -> IrBlockStatement {
+        match stmt {
+            IrBlockStatement::Let {
+                name,
+                mutable,
+                ty,
+                value,
+            } => {
+                let new_value = self.process(value, ctx);
+                ctx.bound.insert(name.clone());
+                IrBlockStatement::Let {
+                    name,
+                    mutable,
+                    ty,
+                    value: new_value,
+                }
+            }
+            IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
+                target: self.process(target, ctx),
+                value: self.process(value, ctx),
+            },
+            IrBlockStatement::Expr(e) => IrBlockStatement::Expr(self.process(e, ctx)),
+        }
+    }
+
+    /// Replace an [`IrExpr::Closure`] node with [`IrExpr::ClosureRef`],
+    /// synthesizing the matching env struct and lifted function on
+    /// the way.
+    fn lift_closure(
+        &mut self,
+        params: &[(ParamConvention, String, ResolvedType)],
+        captures: &[(String, ParamConvention, ResolvedType)],
+        body: IrExpr,
+        closure_ty: ResolvedType,
+        outer_ctx: &CaptureCtx,
+    ) -> IrExpr {
+        let (_idx, env_name, func_name, env_id) = self.allocate();
+
+        // Synthesize the env struct.
+        let env_struct = synthesize_env_struct(env_name, captures);
+        self.envs.push(env_struct);
+
+        // Recursively process the closure body with a fresh inner
+        // context driven by THIS closure's captures.
+        let inner_ctx = CaptureCtx::for_closure(captures, ResolvedType::Struct(env_id));
+        let lifted_body = self.process(body, &inner_ctx);
+
+        // Extract return type from the closure's resolved type.
+        let return_ty = if let ResolvedType::Closure { return_ty, .. } = &closure_ty {
+            (**return_ty).clone()
+        } else {
+            ResolvedType::Error
+        };
+
+        // Synthesize the lifted top-level function.
+        let lifted_fn = build_lifted_function(
+            func_name.clone(),
+            env_id,
+            params,
+            return_ty,
+            lifted_body,
+        );
+        self.lifted.push(lifted_fn);
+
+        // Build the env-struct constructor: each capture's value is
+        // its name as visible in the OUTER scope, processed by the
+        // outer context (so an outer-capture name resolves to
+        // `__env.<name>`).
+        let env_fields = captures
+            .iter()
+            .map(|(name, _convention, capture_ty)| {
+                let raw_ref = IrExpr::Reference {
+                    path: vec![name.clone()],
+                    ty: capture_ty.clone(),
+                };
+                (name.clone(), self.process(raw_ref, outer_ctx))
+            })
+            .collect();
+
+        let env_inst = IrExpr::StructInst {
+            struct_id: Some(env_id),
+            type_args: Vec::new(),
+            fields: env_fields,
+            ty: ResolvedType::Struct(env_id),
+        };
+
+        IrExpr::ClosureRef {
+            funcref: vec![func_name],
+            env_struct: Box::new(env_inst),
+            ty: closure_ty,
+        }
+    }
+}
+
+/// Capture context threaded through the recursive walk. A node's
+/// context determines whether a `Reference` / `LetRef` of a given
+/// name should be rewritten to `__env.<name>` (for the *current*
+/// enclosing closure's captures) or left as-is (parameter or local
+/// binding).
+#[derive(Clone, Default)]
+struct CaptureCtx {
+    /// Names captured by the immediately-enclosing closure (or empty
+    /// at module level).
+    captured_names: HashSet<String>,
+    /// Resolved type of the current closure's env struct, used as the
+    /// `ty` of the synthesized `Reference { path: [__env] }`. `None`
+    /// at module level (no env in scope).
+    env_ty: Option<ResolvedType>,
+    /// Names introduced by `let` / `match` / `for` since the
+    /// enclosing closure boundary. References to these shadow
+    /// captures of the same name.
+    bound: HashSet<String>,
+}
+
+impl CaptureCtx {
+    fn module_level() -> Self {
+        Self::default()
+    }
+
+    fn for_closure(
+        captures: &[(String, ParamConvention, ResolvedType)],
+        env_ty: ResolvedType,
+    ) -> Self {
+        Self {
+            captured_names: captures.iter().map(|(n, _, _)| n.clone()).collect(),
+            env_ty: Some(env_ty),
+            bound: HashSet::new(),
+        }
+    }
+
+    fn is_captured(&self, name: &str) -> bool {
+        self.captured_names.contains(name) && !self.bound.contains(name)
     }
 }
 
@@ -238,17 +688,16 @@ fn synthesize_env_struct(
     }
 }
 
-/// Build the lifted top-level function for a closure. The first
-/// parameter is the env struct (immutable convention — the closure
-/// reads its captures); the remaining parameters mirror the closure's
-/// own parameters. The body is cloned, then captured-name reads
-/// (`Reference` / `LetRef` matching one of the closure's captures)
-/// are rewritten to load from the env via
-/// [`rewrite_captured_refs`].
-fn synthesize_lifted_function(
+/// Build the lifted top-level function for a closure: env param
+/// first, then the closure's own params; body and return type are
+/// supplied by the caller (the body has already been recursively
+/// processed by the time this is called).
+fn build_lifted_function(
     name: String,
     env_struct_id: StructId,
-    closure: &CollectedClosure,
+    closure_params: &[(ParamConvention, String, ResolvedType)],
+    return_ty: ResolvedType,
+    body: IrExpr,
 ) -> IrFunction {
     let env_param = IrFunctionParam {
         name: ENV_PARAM_NAME.to_string(),
@@ -258,9 +707,9 @@ fn synthesize_lifted_function(
         convention: ParamConvention::Let,
     };
 
-    let mut params = Vec::with_capacity(closure.params.len().saturating_add(1));
+    let mut params = Vec::with_capacity(closure_params.len().saturating_add(1));
     params.push(env_param);
-    for (convention, param_name, param_ty) in &closure.params {
+    for (convention, param_name, param_ty) in closure_params {
         params.push(IrFunctionParam {
             name: param_name.clone(),
             external_label: None,
@@ -270,17 +719,11 @@ fn synthesize_lifted_function(
         });
     }
 
-    let captured_names: HashSet<String> =
-        closure.captures.iter().map(|(n, _, _)| n.clone()).collect();
-    let env_ty = ResolvedType::Struct(env_struct_id);
-    let mut bound: HashSet<String> = HashSet::new();
-    let body = rewrite_captured_refs(closure.body.clone(), &captured_names, &env_ty, &mut bound);
-
     IrFunction {
         name,
         generic_params: Vec::new(),
         params,
-        return_type: Some(closure.return_ty.clone()),
+        return_type: Some(return_ty),
         body: Some(body),
         extern_abi: None,
         attributes: Vec::new(),
@@ -291,353 +734,20 @@ fn synthesize_lifted_function(
     }
 }
 
-/// Walk a lifted closure body and replace every read of a captured
-/// name with an env field access. Tracks shadowing introduced by
-/// `let` bindings, `match` arm bindings, and `for` loop variables —
-/// references to a name inside a scope where it's been re-bound are
-/// left alone.
-///
-/// Nested [`IrExpr::Closure`] expressions are *not* recursed into:
-/// each closure's body has already been (or will be) collected into
-/// its own [`CollectedClosure`] and rewritten with its own captures
-/// when its lifted function is synthesized. The nested Closure's
-/// body field is also dead-by-construction — mc6 replaces the
-/// Closure node with a [`IrExpr::ClosureRef`] that drops it.
-#[expect(
-    clippy::too_many_lines,
-    reason = "exhaustive match across every IrExpr variant; splitting hurts readability"
-)]
-fn rewrite_captured_refs(
-    expr: IrExpr,
-    captured_names: &HashSet<String>,
-    env_ty: &ResolvedType,
-    bound: &mut HashSet<String>,
-) -> IrExpr {
-    match expr {
-        IrExpr::Reference { path, ty } => {
-            if let Some(head) = path.first() {
-                if path.len() == 1 && captured_names.contains(head) && !bound.contains(head) {
-                    return env_field_access(head.clone(), ty, env_ty);
-                }
-            }
-            IrExpr::Reference { path, ty }
-        }
-        IrExpr::LetRef { name, ty } => {
-            if captured_names.contains(&name) && !bound.contains(&name) {
-                return env_field_access(name, ty, env_ty);
-            }
-            IrExpr::LetRef { name, ty }
-        }
-
-        IrExpr::Closure {
-            params,
-            captures,
-            body,
-            ty,
-        } => IrExpr::Closure {
-            params,
-            captures,
-            body,
-            ty,
-        },
-
-        IrExpr::Literal { value, ty } => IrExpr::Literal { value, ty },
-        IrExpr::SelfFieldRef { field, ty } => IrExpr::SelfFieldRef { field, ty },
-
-        IrExpr::StructInst {
-            struct_id,
-            type_args,
-            fields,
-            ty,
-        } => IrExpr::StructInst {
-            struct_id,
-            type_args,
-            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
-            ty,
-        },
-        IrExpr::EnumInst {
-            enum_id,
-            variant,
-            fields,
-            ty,
-        } => IrExpr::EnumInst {
-            enum_id,
-            variant,
-            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
-            ty,
-        },
-        IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
-            fields: rewrite_named_fields(fields, captured_names, env_ty, bound),
-            ty,
-        },
-        IrExpr::Array { elements, ty } => IrExpr::Array {
-            elements: elements
-                .into_iter()
-                .map(|e| rewrite_captured_refs(e, captured_names, env_ty, bound))
-                .collect(),
-            ty,
-        },
-        IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
-            object: Box::new(rewrite_captured_refs(*object, captured_names, env_ty, bound)),
-            field,
-            ty,
-        },
-        IrExpr::BinaryOp {
-            left,
-            op,
-            right,
-            ty,
-        } => IrExpr::BinaryOp {
-            left: Box::new(rewrite_captured_refs(*left, captured_names, env_ty, bound)),
-            op,
-            right: Box::new(rewrite_captured_refs(*right, captured_names, env_ty, bound)),
-            ty,
-        },
-        IrExpr::UnaryOp { op, operand, ty } => IrExpr::UnaryOp {
-            op,
-            operand: Box::new(rewrite_captured_refs(*operand, captured_names, env_ty, bound)),
-            ty,
-        },
-        IrExpr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ty,
-        } => IrExpr::If {
-            condition: Box::new(rewrite_captured_refs(
-                *condition,
-                captured_names,
-                env_ty,
-                bound,
-            )),
-            then_branch: Box::new(rewrite_captured_refs(
-                *then_branch,
-                captured_names,
-                env_ty,
-                bound,
-            )),
-            else_branch: else_branch
-                .map(|e| Box::new(rewrite_captured_refs(*e, captured_names, env_ty, bound))),
-            ty,
-        },
-        IrExpr::For {
-            var,
-            var_ty,
-            collection,
-            body,
-            ty,
-        } => {
-            let new_collection = rewrite_captured_refs(*collection, captured_names, env_ty, bound);
-            let inserted = bound.insert(var.clone());
-            let new_body = rewrite_captured_refs(*body, captured_names, env_ty, bound);
-            if inserted {
-                bound.remove(&var);
-            }
-            IrExpr::For {
-                var,
-                var_ty,
-                collection: Box::new(new_collection),
-                body: Box::new(new_body),
-                ty,
-            }
-        }
-        IrExpr::Match {
-            scrutinee,
-            arms,
-            ty,
-        } => IrExpr::Match {
-            scrutinee: Box::new(rewrite_captured_refs(
-                *scrutinee,
-                captured_names,
-                env_ty,
-                bound,
-            )),
-            arms: arms
-                .into_iter()
-                .map(|arm| rewrite_match_arm(arm, captured_names, env_ty, bound))
-                .collect(),
-            ty,
-        },
-        IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
-            path,
-            args: args
-                .into_iter()
-                .map(|(label, value)| {
-                    (
-                        label,
-                        rewrite_captured_refs(value, captured_names, env_ty, bound),
-                    )
-                })
-                .collect(),
-            ty,
-        },
-        IrExpr::MethodCall {
-            receiver,
-            method,
-            args,
-            dispatch,
-            ty,
-        } => IrExpr::MethodCall {
-            receiver: Box::new(rewrite_captured_refs(
-                *receiver,
-                captured_names,
-                env_ty,
-                bound,
-            )),
-            method,
-            args: args
-                .into_iter()
-                .map(|(label, value)| {
-                    (
-                        label,
-                        rewrite_captured_refs(value, captured_names, env_ty, bound),
-                    )
-                })
-                .collect(),
-            dispatch,
-            ty,
-        },
-        IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
-            entries: entries
-                .into_iter()
-                .map(|(k, v)| {
-                    (
-                        rewrite_captured_refs(k, captured_names, env_ty, bound),
-                        rewrite_captured_refs(v, captured_names, env_ty, bound),
-                    )
-                })
-                .collect(),
-            ty,
-        },
-        IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
-            dict: Box::new(rewrite_captured_refs(*dict, captured_names, env_ty, bound)),
-            key: Box::new(rewrite_captured_refs(*key, captured_names, env_ty, bound)),
-            ty,
-        },
-        IrExpr::Block {
-            statements,
-            result,
-            ty,
-        } => {
-            let mut introduced: Vec<String> = Vec::new();
-            let new_stmts = statements
-                .into_iter()
-                .map(|stmt| {
-                    rewrite_block_stmt(stmt, captured_names, env_ty, bound, &mut introduced)
-                })
-                .collect();
-            let new_result = rewrite_captured_refs(*result, captured_names, env_ty, bound);
-            for name in introduced {
-                bound.remove(&name);
-            }
-            IrExpr::Block {
-                statements: new_stmts,
-                result: Box::new(new_result),
-                ty,
-            }
-        }
-
-        IrExpr::ClosureRef {
-            funcref,
-            env_struct,
-            ty,
-        } => IrExpr::ClosureRef {
-            funcref,
-            env_struct: Box::new(rewrite_captured_refs(
-                *env_struct,
-                captured_names,
-                env_ty,
-                bound,
-            )),
-            ty,
-        },
-    }
-}
-
-fn rewrite_named_fields(
-    fields: Vec<(String, IrExpr)>,
-    captured_names: &HashSet<String>,
-    env_ty: &ResolvedType,
-    bound: &mut HashSet<String>,
-) -> Vec<(String, IrExpr)> {
-    fields
-        .into_iter()
-        .map(|(name, value)| {
-            (
-                name,
-                rewrite_captured_refs(value, captured_names, env_ty, bound),
-            )
-        })
-        .collect()
-}
-
-fn rewrite_match_arm(
-    arm: IrMatchArm,
-    captured_names: &HashSet<String>,
-    env_ty: &ResolvedType,
-    bound: &mut HashSet<String>,
-) -> IrMatchArm {
-    let mut introduced: Vec<String> = Vec::new();
-    for (name, _) in &arm.bindings {
-        if bound.insert(name.clone()) {
-            introduced.push(name.clone());
-        }
-    }
-    let body = rewrite_captured_refs(arm.body, captured_names, env_ty, bound);
-    for name in introduced {
-        bound.remove(&name);
-    }
-    IrMatchArm {
-        variant: arm.variant,
-        is_wildcard: arm.is_wildcard,
-        bindings: arm.bindings,
-        body,
-    }
-}
-
-fn rewrite_block_stmt(
-    stmt: IrBlockStatement,
-    captured_names: &HashSet<String>,
-    env_ty: &ResolvedType,
-    bound: &mut HashSet<String>,
-    introduced: &mut Vec<String>,
-) -> IrBlockStatement {
-    match stmt {
-        IrBlockStatement::Let {
-            name,
-            mutable,
-            ty,
-            value,
-        } => {
-            let new_value = rewrite_captured_refs(value, captured_names, env_ty, bound);
-            if bound.insert(name.clone()) {
-                introduced.push(name.clone());
-            }
-            IrBlockStatement::Let {
-                name,
-                mutable,
-                ty,
-                value: new_value,
-            }
-        }
-        IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
-            target: rewrite_captured_refs(target, captured_names, env_ty, bound),
-            value: rewrite_captured_refs(value, captured_names, env_ty, bound),
-        },
-        IrBlockStatement::Expr(e) => {
-            IrBlockStatement::Expr(rewrite_captured_refs(e, captured_names, env_ty, bound))
-        }
-    }
-}
-
 /// Build an `__env.<name>` field-access expression carrying the
 /// captured value's resolved type. The `__env` reference itself is
 /// typed as the env struct so backends can resolve its layout.
-fn env_field_access(field: String, ty: ResolvedType, env_ty: &ResolvedType) -> IrExpr {
+///
+/// `env_ty` is `None` only at module level — and at module level
+/// nothing is "captured", so this helper is never reached with
+/// `env_ty == None` in practice. The fallback to
+/// [`ResolvedType::Error`] keeps the function total without
+/// panicking.
+fn env_field_access(field: String, ty: ResolvedType, env_ty: Option<&ResolvedType>) -> IrExpr {
     IrExpr::FieldAccess {
         object: Box::new(IrExpr::Reference {
             path: vec![ENV_PARAM_NAME.to_string()],
-            ty: env_ty.clone(),
+            ty: env_ty.cloned().unwrap_or(ResolvedType::Error),
         }),
         field,
         ty,

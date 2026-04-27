@@ -89,6 +89,184 @@ fn mc5_rewrites_captured_refs_to_env_field_access() {
     insta::assert_debug_snapshot!("mc5_lifted_bodies", lifted_bodies);
 }
 
+/// mc6 — `IrExpr::Closure` is replaced by `IrExpr::ClosureRef` at
+/// every site, with `env_struct` constructing the matching env via
+/// `StructInst` whose field values reference the captured names in
+/// the outer scope.
+#[test]
+fn mc6_replaces_closure_with_closure_ref_at_sites() {
+    let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    // `make_adder`'s body should now be a ClosureRef pointing at
+    // __closure0 with an env constructor for __ClosureEnv0(n: <ref to make_adder's n param>).
+    let make_adder_body = converted
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .and_then(|f| f.body.as_ref())
+        .expect("make_adder body");
+
+    // `format_tag` is a module-level let; its value should be a
+    // ClosureRef pointing at __closure1 with an empty env.
+    let format_tag_value = &converted
+        .lets
+        .iter()
+        .find(|l| l.name == "format_tag")
+        .expect("format_tag let")
+        .value;
+
+    insta::assert_debug_snapshot!(
+        "mc6_site_rewrites",
+        (make_adder_body, format_tag_value)
+    );
+}
+
+/// mc6 — sanity: after the pass, no `IrExpr::Closure` remains in the
+/// module. (mc8 will turn this into a hard invariant assertion
+/// inside the pass; for now it's a test-only check.)
+#[test]
+fn mc6_no_residual_closure_nodes() {
+    let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    for f in &converted.functions {
+        if let Some(body) = &f.body {
+            assert_no_closure(body).expect("function body");
+        }
+    }
+    for l in &converted.lets {
+        assert_no_closure(&l.value).expect("let value");
+    }
+    for i in &converted.impls {
+        for f in &i.functions {
+            if let Some(body) = &f.body {
+                assert_no_closure(body).expect("impl method body");
+            }
+        }
+    }
+    for s in &converted.structs {
+        for field in &s.fields {
+            if let Some(d) = &field.default {
+                assert_no_closure(d).expect("struct field default");
+            }
+        }
+    }
+}
+
+fn assert_no_closure(e: &formalang::ir::IrExpr) -> Result<(), String> {
+    use formalang::ir::IrExpr;
+
+    if matches!(e, IrExpr::Closure { .. }) {
+        return Err(format!("residual Closure: {e:?}"));
+    }
+    let mut result: Result<(), String> = Ok(());
+    walk_sub_exprs(e, &mut |sub| {
+        if result.is_ok() {
+            result = assert_no_closure(sub);
+        }
+    });
+    result
+}
+
+fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::ir::IrExpr)) {
+    use formalang::ir::{IrBlockStatement, IrExpr};
+
+    match e {
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => {}
+        IrExpr::StructInst { fields, .. }
+        | IrExpr::EnumInst { fields, .. }
+        | IrExpr::Tuple { fields, .. } => {
+            for (_, v) in fields {
+                visit(v);
+            }
+        }
+        IrExpr::Array { elements, .. } => {
+            for v in elements {
+                visit(v);
+            }
+        }
+        IrExpr::FieldAccess { object, .. } => visit(object),
+        IrExpr::BinaryOp { left, right, .. } => {
+            visit(left);
+            visit(right);
+        }
+        IrExpr::UnaryOp { operand, .. } => visit(operand),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            visit(condition);
+            visit(then_branch);
+            if let Some(e) = else_branch {
+                visit(e);
+            }
+        }
+        IrExpr::For {
+            collection, body, ..
+        } => {
+            visit(collection);
+            visit(body);
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            visit(scrutinee);
+            for arm in arms {
+                visit(&arm.body);
+            }
+        }
+        IrExpr::FunctionCall { args, .. } => {
+            for (_, v) in args {
+                visit(v);
+            }
+        }
+        IrExpr::MethodCall { receiver, args, .. } => {
+            visit(receiver);
+            for (_, v) in args {
+                visit(v);
+            }
+        }
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                visit(k);
+                visit(v);
+            }
+        }
+        IrExpr::DictAccess { dict, key, .. } => {
+            visit(dict);
+            visit(key);
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            for stmt in statements {
+                match stmt {
+                    IrBlockStatement::Let { value, .. } => visit(value),
+                    IrBlockStatement::Assign { target, value } => {
+                        visit(target);
+                        visit(value);
+                    }
+                    IrBlockStatement::Expr(e) => visit(e),
+                }
+            }
+            visit(result);
+        }
+        IrExpr::Closure { body, .. } => visit(body),
+        IrExpr::ClosureRef { env_struct, .. } => visit(env_struct),
+    }
+}
+
 /// mc5 — `let` shadowing: an inner `let` binding with the same name
 /// as a capture must mask the env access for references *after* the
 /// `let`.

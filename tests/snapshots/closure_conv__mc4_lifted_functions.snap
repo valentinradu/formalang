@@ -21,6 +21,56 @@ expression: lifted
                 convention: Let,
             },
             IrFunctionParam {
+                name: "t",
+                external_label: None,
+                ty: Some(
+                    Primitive(
+                        String,
+                    ),
+                ),
+                default: None,
+                convention: Let,
+            },
+        ],
+        return_type: Some(
+            Primitive(
+                String,
+            ),
+        ),
+        body: Some(
+            Reference {
+                path: [
+                    "t",
+                ],
+                ty: Primitive(
+                    String,
+                ),
+            },
+        ),
+        extern_abi: None,
+        attributes: [],
+        doc: Some(
+            "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures.",
+        ),
+    },
+    IrFunction {
+        name: "__closure1",
+        generic_params: [],
+        params: [
+            IrFunctionParam {
+                name: "__env",
+                external_label: None,
+                ty: Some(
+                    Struct(
+                        StructId(
+                            1,
+                        ),
+                    ),
+                ),
+                default: None,
+                convention: Let,
+            },
+            IrFunctionParam {
                 name: "x",
                 external_label: None,
                 ty: Some(
@@ -55,7 +105,7 @@ expression: lifted
                         ],
                         ty: Struct(
                             StructId(
-                                0,
+                                1,
                             ),
                         ),
                     },
@@ -66,56 +116,6 @@ expression: lifted
                 },
                 ty: Primitive(
                     I32,
-                ),
-            },
-        ),
-        extern_abi: None,
-        attributes: [],
-        doc: Some(
-            "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures.",
-        ),
-    },
-    IrFunction {
-        name: "__closure1",
-        generic_params: [],
-        params: [
-            IrFunctionParam {
-                name: "__env",
-                external_label: None,
-                ty: Some(
-                    Struct(
-                        StructId(
-                            1,
-                        ),
-                    ),
-                ),
-                default: None,
-                convention: Let,
-            },
-            IrFunctionParam {
-                name: "t",
-                external_label: None,
-                ty: Some(
-                    Primitive(
-                        String,
-                    ),
-                ),
-                default: None,
-                convention: Let,
-            },
-        ],
-        return_type: Some(
-            Primitive(
-                String,
-            ),
-        ),
-        body: Some(
-            Reference {
-                path: [
-                    "t",
-                ],
-                ty: Primitive(
-                    String,
                 ),
             },
         ),
