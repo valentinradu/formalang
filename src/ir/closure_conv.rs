@@ -29,11 +29,12 @@
 //! In progress. The pass currently:
 //! - synthesizes one capture-environment [`IrStruct`] per
 //!   [`IrExpr::Closure`] (PR 2 mc3).
+//! - synthesizes one top-level lifted [`IrFunction`] per closure,
+//!   prepended with an `__env: __ClosureEnv<N>` parameter (PR 2 mc4).
 //!
-//! Still TODO across later microcommits: lifted-function synthesis
-//! (mc4), body capture rewrite (mc5), site rewrite to
-//! [`IrExpr::ClosureRef`] (mc6), callsite rewrite (mc7), and the
-//! post-pass invariant assertion (mc8).
+//! Still TODO across later microcommits: body capture rewrite (mc5),
+//! site rewrite to [`IrExpr::ClosureRef`] (mc6), callsite rewrite
+//! (mc7), and the post-pass invariant assertion (mc8).
 //!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
@@ -42,8 +43,21 @@
 
 use crate::ast::{ParamConvention, Visibility};
 use crate::error::CompilerError;
-use crate::ir::{walk_module, IrExpr, IrField, IrModule, IrStruct, IrVisitor, ResolvedType};
+use crate::ir::{
+    walk_module, IrExpr, IrField, IrFunction, IrFunctionParam, IrModule, IrStruct, IrVisitor,
+    ResolvedType, StructId,
+};
 use crate::pipeline::IrPass;
+
+/// Name prefix for synthesized capture-environment structs.
+const ENV_STRUCT_PREFIX: &str = "__ClosureEnv";
+
+/// Name prefix for synthesized lifted closure functions.
+const LIFTED_FN_PREFIX: &str = "__closure";
+
+/// Parameter name used for the env-struct argument prepended to every
+/// lifted closure function.
+const ENV_PARAM_NAME: &str = "__env";
 
 /// Closure-conversion pass.
 ///
@@ -70,19 +84,38 @@ impl IrPass for ClosureConversionPass {
     }
 
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
-        // Phase 1 (mc3): collect every closure's capture list in a
-        // deterministic walk order, synthesize one env struct per
-        // closure, append to `module.structs`. Subsequent microcommits
-        // will reuse this same walk order to correlate each closure
-        // with its env struct when lifting bodies and rewriting sites.
+        // Walk the module in deterministic order, collecting each
+        // closure's full data so we can synthesize an env struct +
+        // lifted function pair for every site. Subsequent microcommits
+        // (mc5+) re-use this same walk order to rewrite bodies and
+        // the closure expressions themselves.
         let mut collector = ClosureCollector::default();
         walk_module(&mut collector, &module);
 
-        let mut next_idx: usize = 0;
-        for captures in collector.captures {
-            let name = allocate_env_struct_name(&module, &mut next_idx);
-            let env_struct = synthesize_env_struct(name, &captures);
+        // Find a starting index past any pre-existing struct or
+        // function whose name already matches our generated patterns,
+        // so we can issue sequential names without per-step collision
+        // checks.
+        let mut next_idx = first_free_index(&module);
+
+        for closure in collector.closures {
+            let idx = next_idx;
+            next_idx = next_idx.saturating_add(1);
+            let env_name = format!("{ENV_STRUCT_PREFIX}{idx}");
+            let func_name = format!("{LIFTED_FN_PREFIX}{idx}");
+
+            let env_struct = synthesize_env_struct(env_name.clone(), &closure.captures);
+
+            let env_struct_idx = module.structs.len();
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "module.structs.len() is bounded by add_struct's u32 check"
+            )]
+            let env_struct_id = StructId(env_struct_idx as u32);
             module.structs.push(env_struct);
+
+            let lifted = synthesize_lifted_function(func_name, env_struct_id, &closure);
+            module.functions.push(lifted);
         }
 
         module.rebuild_indices();
@@ -90,33 +123,79 @@ impl IrPass for ClosureConversionPass {
     }
 }
 
-/// Visitor that records every closure's captures in module-walk order.
+/// One closure's full lifting data, captured during the walk.
+struct CollectedClosure {
+    params: Vec<(ParamConvention, String, ResolvedType)>,
+    captures: Vec<(String, ParamConvention, ResolvedType)>,
+    body: IrExpr,
+    return_ty: ResolvedType,
+}
+
+/// Visitor that records every closure's lifting data in module-walk
+/// order.
 #[derive(Default)]
 struct ClosureCollector {
-    captures: Vec<Vec<(String, ParamConvention, ResolvedType)>>,
+    closures: Vec<CollectedClosure>,
 }
 
 impl IrVisitor for ClosureCollector {
     fn visit_expr(&mut self, e: &IrExpr) {
-        if let IrExpr::Closure { captures, .. } = e {
-            self.captures.push(captures.clone());
+        if let IrExpr::Closure {
+            params,
+            captures,
+            body,
+            ty,
+        } = e
+        {
+            // Lowering attaches `Closure { .. }` to every
+            // `IrExpr::Closure`. If anything else slips through (e.g.
+            // an `Error` placeholder propagated from an earlier
+            // failure), fall back to `Error` so we still produce a
+            // well-formed function shape — the surrounding
+            // CompilerError already describes the problem.
+            let return_ty = if let ResolvedType::Closure { return_ty, .. } = ty {
+                (**return_ty).clone()
+            } else {
+                ResolvedType::Error
+            };
+            self.closures.push(CollectedClosure {
+                params: params.clone(),
+                captures: captures.clone(),
+                body: (**body).clone(),
+                return_ty,
+            });
         }
         crate::ir::walk_expr_children(self, e);
     }
 }
 
-/// Allocate a fresh `__ClosureEnv<N>` name not already used by an
-/// existing struct in the module. The counter starts at `*next_idx`
-/// and is advanced past the chosen index so successive calls keep
-/// allocating uniquely.
-fn allocate_env_struct_name(module: &IrModule, next_idx: &mut usize) -> String {
-    loop {
-        let candidate = format!("__ClosureEnv{n}", n = *next_idx);
-        *next_idx = next_idx.saturating_add(1);
-        if module.struct_id(&candidate).is_none() {
-            return candidate;
-        }
+/// Scan the module for any pre-existing struct/function whose name
+/// already follows the generated prefix + integer pattern. Return one
+/// past the highest matching index (or `0` if no matches), which is
+/// safe to use as a sequential allocation start.
+fn first_free_index(module: &IrModule) -> usize {
+    let max_struct = module
+        .structs
+        .iter()
+        .filter_map(|s| parse_suffix_index(&s.name, ENV_STRUCT_PREFIX))
+        .max();
+    let max_func = module
+        .functions
+        .iter()
+        .filter_map(|f| parse_suffix_index(&f.name, LIFTED_FN_PREFIX))
+        .max();
+    match (max_struct, max_func) {
+        (Some(s), Some(f)) => s.max(f).saturating_add(1),
+        (Some(s), None) => s.saturating_add(1),
+        (None, Some(f)) => f.saturating_add(1),
+        (None, None) => 0,
     }
+}
+
+/// If `name` is exactly `<prefix><N>` for some non-negative integer
+/// `N`, return `N`.
+fn parse_suffix_index(name: &str, prefix: &str) -> Option<usize> {
+    name.strip_prefix(prefix).and_then(|tail| tail.parse().ok())
 }
 
 /// Build the capture-environment struct for a closure with the given
@@ -149,6 +228,51 @@ fn synthesize_env_struct(
         generic_params: Vec::new(),
         doc: Some(
             "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`."
+                .to_string(),
+        ),
+    }
+}
+
+/// Build the lifted top-level function for a closure. The first
+/// parameter is the env struct (immutable convention — the closure
+/// reads its captures); the remaining parameters mirror the closure's
+/// own parameters. The body is cloned verbatim in this microcommit;
+/// mc5 will rewrite captured-name reads to load from `__env` fields.
+fn synthesize_lifted_function(
+    name: String,
+    env_struct_id: StructId,
+    closure: &CollectedClosure,
+) -> IrFunction {
+    let env_param = IrFunctionParam {
+        name: ENV_PARAM_NAME.to_string(),
+        external_label: None,
+        ty: Some(ResolvedType::Struct(env_struct_id)),
+        default: None,
+        convention: ParamConvention::Let,
+    };
+
+    let mut params = Vec::with_capacity(closure.params.len().saturating_add(1));
+    params.push(env_param);
+    for (convention, param_name, param_ty) in &closure.params {
+        params.push(IrFunctionParam {
+            name: param_name.clone(),
+            external_label: None,
+            ty: Some(param_ty.clone()),
+            default: None,
+            convention: *convention,
+        });
+    }
+
+    IrFunction {
+        name,
+        generic_params: Vec::new(),
+        params,
+        return_type: Some(closure.return_ty.clone()),
+        body: Some(closure.body.clone()),
+        extern_abi: None,
+        attributes: Vec::new(),
+        doc: Some(
+            "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures."
                 .to_string(),
         ),
     }

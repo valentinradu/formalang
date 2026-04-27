@@ -9,22 +9,24 @@
 use formalang::ir::ClosureConversionPass;
 use formalang::{compile_to_ir, IrPass};
 
+/// Standard two-closure fixture used by every microcommit's snapshot
+/// test, kept in one place so each snapshot exercises the same input.
+const TWO_CLOSURES_SOURCE: &str = r"
+    pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+        |x: I32| x + n
+    }
+
+    let format_tag: String -> String = |t: String| t
+";
+
 /// mc3 — synthesizes one capture-environment struct per closure.
 ///
-/// The fixture defines two closures: `make_adder` returning a closure
-/// that captures `n`, and a module-level `format_tag` whose body has
-/// no captures. After the pass, two `__ClosureEnv<N>` structs should
-/// exist in the module.
+/// `make_adder` returns a closure that captures `n`; `format_tag` is
+/// a module-level closure with no captures. After the pass, two
+/// `__ClosureEnv<N>` structs should exist in the module.
 #[test]
 fn mc3_synthesizes_capture_env_structs() {
-    let source = r"
-        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
-        }
-
-        let format_tag: String -> String = |t: String| t
-    ";
-    let module = compile_to_ir(source).expect("should compile to IR");
+    let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
     let original_struct_count = module.structs.len();
 
     let converted = ClosureConversionPass::new()
@@ -37,4 +39,26 @@ fn mc3_synthesizes_capture_env_structs() {
         .skip(original_struct_count)
         .collect();
     insta::assert_debug_snapshot!("mc3_capture_env_structs", new_structs);
+}
+
+/// mc4 — synthesizes one lifted function per closure, prepended with
+/// an `__env` parameter that points at the corresponding env struct.
+///
+/// The lifted function's body is the closure body verbatim; mc5
+/// rewrites captured-name reads to load from `__env` fields.
+#[test]
+fn mc4_synthesizes_lifted_functions() {
+    let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
+    let original_function_count = module.functions.len();
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    let lifted: Vec<_> = converted
+        .functions
+        .iter()
+        .skip(original_function_count)
+        .collect();
+    insta::assert_debug_snapshot!("mc4_lifted_functions", lifted);
 }
