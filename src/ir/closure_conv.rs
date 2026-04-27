@@ -26,17 +26,23 @@
 //!
 //! # Status
 //!
-//! Skeleton only — the pass currently returns the module unchanged.
-//! Subsequent microcommits add capture-struct synthesis, body lifting,
-//! site rewriting, and the post-pass invariant check.
+//! In progress. The pass currently:
+//! - synthesizes one capture-environment [`IrStruct`] per
+//!   [`IrExpr::Closure`] (PR 2 mc3).
+//!
+//! Still TODO across later microcommits: lifted-function synthesis
+//! (mc4), body capture rewrite (mc5), site rewrite to
+//! [`IrExpr::ClosureRef`] (mc6), callsite rewrite (mc7), and the
+//! post-pass invariant assertion (mc8).
 //!
 //! [`IrExpr::Closure`]: crate::ir::IrExpr::Closure
 //! [`IrExpr::ClosureRef`]: crate::ir::IrExpr::ClosureRef
 //! [`IrFunction`]: crate::ir::IrFunction
 //! [`IrStruct`]: crate::ir::IrStruct
 
+use crate::ast::{ParamConvention, Visibility};
 use crate::error::CompilerError;
-use crate::ir::IrModule;
+use crate::ir::{walk_module, IrExpr, IrField, IrModule, IrStruct, IrVisitor, ResolvedType};
 use crate::pipeline::IrPass;
 
 /// Closure-conversion pass.
@@ -63,9 +69,87 @@ impl IrPass for ClosureConversionPass {
         "closure-conversion"
     }
 
-    fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
-        // Skeleton: no-op until subsequent microcommits introduce
-        // capture-struct synthesis, body lifting, and site rewriting.
+    fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
+        // Phase 1 (mc3): collect every closure's capture list in a
+        // deterministic walk order, synthesize one env struct per
+        // closure, append to `module.structs`. Subsequent microcommits
+        // will reuse this same walk order to correlate each closure
+        // with its env struct when lifting bodies and rewriting sites.
+        let mut collector = ClosureCollector::default();
+        walk_module(&mut collector, &module);
+
+        let mut next_idx: usize = 0;
+        for captures in collector.captures {
+            let name = allocate_env_struct_name(&module, &mut next_idx);
+            let env_struct = synthesize_env_struct(name, &captures);
+            module.structs.push(env_struct);
+        }
+
+        module.rebuild_indices();
         Ok(module)
+    }
+}
+
+/// Visitor that records every closure's captures in module-walk order.
+#[derive(Default)]
+struct ClosureCollector {
+    captures: Vec<Vec<(String, ParamConvention, ResolvedType)>>,
+}
+
+impl IrVisitor for ClosureCollector {
+    fn visit_expr(&mut self, e: &IrExpr) {
+        if let IrExpr::Closure { captures, .. } = e {
+            self.captures.push(captures.clone());
+        }
+        crate::ir::walk_expr_children(self, e);
+    }
+}
+
+/// Allocate a fresh `__ClosureEnv<N>` name not already used by an
+/// existing struct in the module. The counter starts at `*next_idx`
+/// and is advanced past the chosen index so successive calls keep
+/// allocating uniquely.
+fn allocate_env_struct_name(module: &IrModule, next_idx: &mut usize) -> String {
+    loop {
+        let candidate = format!("__ClosureEnv{n}", n = *next_idx);
+        *next_idx = next_idx.saturating_add(1);
+        if module.struct_id(&candidate).is_none() {
+            return candidate;
+        }
+    }
+}
+
+/// Build the capture-environment struct for a closure with the given
+/// captures. Each capture becomes a private field carrying the
+/// captured value's type. The capture's [`ParamConvention`] is not
+/// materialised on the field today; later microcommits (mc9) will
+/// revisit how `Mut` captures preserve borrow semantics through the
+/// env.
+fn synthesize_env_struct(
+    name: String,
+    captures: &[(String, ParamConvention, ResolvedType)],
+) -> IrStruct {
+    let fields = captures
+        .iter()
+        .map(|(field_name, _convention, ty)| IrField {
+            name: field_name.clone(),
+            ty: ty.clone(),
+            mutable: false,
+            optional: false,
+            default: None,
+            doc: None,
+        })
+        .collect();
+
+    IrStruct {
+        name,
+        visibility: Visibility::Private,
+        traits: Vec::new(),
+        fields,
+        generic_params: Vec::new(),
+        doc: Some(
+            "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`."
+                .to_string(),
+        ),
     }
 }

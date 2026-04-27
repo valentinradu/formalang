@@ -1,0 +1,37 @@
+---
+source: tests/closure_conv.rs
+expression: new_structs
+---
+[
+    IrStruct {
+        name: "__ClosureEnv0",
+        visibility: Private,
+        traits: [],
+        fields: [
+            IrField {
+                name: "n",
+                ty: Primitive(
+                    I32,
+                ),
+                mutable: false,
+                optional: false,
+                default: None,
+                doc: None,
+            },
+        ],
+        generic_params: [],
+        doc: Some(
+            "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`.",
+        ),
+    },
+    IrStruct {
+        name: "__ClosureEnv1",
+        visibility: Private,
+        traits: [],
+        fields: [],
+        generic_params: [],
+        doc: Some(
+            "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`.",
+        ),
+    },
+]
