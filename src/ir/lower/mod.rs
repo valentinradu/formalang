@@ -344,7 +344,7 @@ impl<'a> IrLowerer<'a> {
                 )]
                 let index_key = IrExpr::Literal {
                     value: Literal::Number((i as f64).into()),
-                    ty: ResolvedType::Primitive(PrimitiveType::Number),
+                    ty: ResolvedType::Primitive(PrimitiveType::I32),
                 };
                 // `arr[i]` — dictionary-access is the IR node for index access
                 let access_expr = IrExpr::DictAccess {
@@ -1440,7 +1440,6 @@ impl<'a> IrLowerer<'a> {
         match ty {
             ast::Type::Primitive(prim) => match prim {
                 ast::PrimitiveType::String => "String".to_string(),
-                ast::PrimitiveType::Number => "Number".to_string(),
                 ast::PrimitiveType::I32 => "I32".to_string(),
                 ast::PrimitiveType::I64 => "I64".to_string(),
                 ast::PrimitiveType::F32 => "F32".to_string(),

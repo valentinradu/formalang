@@ -1283,7 +1283,7 @@ fn test_optional_type_doesnt_satisfy_constraint() -> Result<(), Box<dyn std::err
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { item: T }
-        struct Config { b: Box<Number?> }
+        struct Config { b: Box<I32?> }
     ";
     let result = compile(source);
     if result.is_ok() {

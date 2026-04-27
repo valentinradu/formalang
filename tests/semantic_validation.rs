@@ -65,7 +65,7 @@ fn test_resolve_tuple_with_generics() -> Result<(), Box<dyn std::error::Error>> 
             second: B
         }
         struct Data {
-            pair: Pair<String, Number>
+            pair: Pair<String, I32>
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

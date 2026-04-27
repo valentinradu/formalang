@@ -11,13 +11,12 @@ use super::span_from_simple;
 
 /// Map a single-segment type identifier to its primitive type, if any.
 ///
-/// Returns `Some(primitive)` for the primitive type names (`String`, `Number`,
-/// `I32`, `I64`, `F32`, `F64`, `Boolean`, `Path`, `Regex`, `Never`) and `None`
-/// for any other identifier.
+/// Returns `Some(primitive)` for the primitive type names (`String`, `I32`,
+/// `I64`, `F32`, `F64`, `Boolean`, `Path`, `Regex`, `Never`) and `None` for
+/// any other identifier.
 fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
     match name {
         "String" => Some(PrimitiveType::String),
-        "Number" => Some(PrimitiveType::Number),
         "I32" => Some(PrimitiveType::I32),
         "I64" => Some(PrimitiveType::I64),
         "F32" => Some(PrimitiveType::F32),
@@ -43,8 +42,8 @@ where
     recursive(|type_ref| {
         // Parse identifier path (e.g., alignment::Horizontal) with optional generic arguments.
         //
-        // Primitive type names (`String`, `Number`, `I32`, `I64`, `F32`, `F64`,
-        // `Boolean`, `Path`, `Regex`, `Never`) are recognized here by string-matching a
+        // Primitive type names (`String`, `I32`, `I64`, `F32`, `F64`, `Boolean`,
+        // `Path`, `Regex`, `Never`) are recognized here by string-matching a
         // single-segment identifier, and are mapped to `Type::Primitive`. This lets
         // struct/enum/trait/fn definitions with those names parse successfully so the
         // semantic pass can emit `PrimitiveRedefinition` for them.

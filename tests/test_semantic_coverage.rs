@@ -1164,7 +1164,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
 fn test_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { box: Box<Number> = Box<Number>(value: 42) }
+        struct Config { box: Box<I32> = Box<I32>(value: 42) }
     ";
     compile(source).map_err(|e| format!("Generic struct instantiation: {e:?}"))?;
     Ok(())
@@ -1175,7 +1175,7 @@ fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn
 {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { box: Box<Number> = Box(value: 42) }
+        struct Config { box: Box<I32> = Box(value: 42) }
     ";
     let result = compile(source);
     // Missing type args in invocation should be caught

@@ -519,7 +519,7 @@ fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> (Number -> Boolean) }";
+    let source = "struct A { callback: String -> (I32 -> Boolean) }";
     compile(source).map_err(|e| format!("Closure returning closure: {e:?}"))?;
     Ok(())
 }

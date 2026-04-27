@@ -593,13 +593,13 @@ fn test_monomorphise_specialises_generic_struct() -> Result<(), Box<dyn std::err
     use formalang::ir::MonomorphisePass;
     let source = r"
         pub struct Box<T> { value: T }
-        pub let b: Box<Number> = Box<Number>(value: 1)
+        pub let b: Box<I32> = Box<I32>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Box<Number>, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Box<I32>, got: {e:?}"))?;
     // The original `Box<T>` generic definition should be gone.
     if result.structs.iter().any(|s| s.name == "Box") {
         return Err(
@@ -626,14 +626,14 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     use formalang::ir::MonomorphisePass;
     // A generic impl block on Box<T> must be cloned for each specialisation,
     // with TypeParam("T") substituted to the concrete type arg. Without the
-    // Phase 2b specialisation step, Box__Number would end up with zero
+    // Phase 2b specialisation step, Box__I32 would end up with zero
     // methods after compaction.
     let source = r"
         pub struct Box<T> { value: T }
         impl Box {
             fn get(self) -> T { self.value }
         }
-        pub let b: Box<Number> = Box<Number>(value: 1)
+        pub let b: Box<I32> = Box<I32>(value: 1)
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     // Sanity: the source produces at least one impl block before
@@ -645,9 +645,9 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Box<Number> impl, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Box<I32> impl, got: {e:?}"))?;
 
-    // Locate the specialised Box__Number struct.
+    // Locate the specialised Box__I32 struct.
     let spec_struct = result
         .structs
         .iter()
@@ -795,7 +795,7 @@ fn test_monomorphise_accepts_concrete_module() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
-    // Exercise a generic enum used as a field type. `Option<Number>` is
+    // Exercise a generic enum used as a field type. `Option<I32>` is
     // what the lowering layer turns into a `ResolvedType::Generic` with a
     // `GenericBase::Enum` base.
     let source = r"
@@ -804,14 +804,14 @@ fn test_monomorphise_specialises_generic_enum() -> Result<(), Box<dyn std::error
             none
         }
         pub struct Container {
-            maybe: Option<Number>
+            maybe: Option<I32>
         }
     ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let mut pipeline = formalang::Pipeline::new().pass(MonomorphisePass::default());
     let result = pipeline
         .run(module)
-        .map_err(|e| format!("monomorphise should specialise Option<Number>, got: {e:?}"))?;
+        .map_err(|e| format!("monomorphise should specialise Option<I32>, got: {e:?}"))?;
     // The original `Option<T>` generic definition should be gone.
     if result.enums.iter().any(|e| e.name == "Option") {
         return Err(

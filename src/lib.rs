@@ -172,7 +172,7 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
 /// let source = r#"
 /// pub struct User {
 ///     name: String,
-///     age: Number
+///     age: I32
 /// }
 /// "#;
 ///

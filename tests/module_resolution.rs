@@ -1030,7 +1030,7 @@ struct Main { h: Helper }
 
 #[test]
 fn test_monomorphise_specialises_external_generic() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #45: when a main module uses `External<Number>` from an
+    // Audit #45: when a main module uses `External<I32>` from an
     // imported module, MonomorphisePass with `with_imports` clones the
     // imported generic definition into the main module with substituted
     // arguments and rewrites the External reference to a local Struct.
@@ -1039,7 +1039,7 @@ fn test_monomorphise_specialises_external_generic() -> Result<(), Box<dyn std::e
 
     let main_source = r"
 use utils::Helper
-struct Main { h: Helper<Number> }
+struct Main { h: Helper<I32> }
 ";
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(

@@ -1195,7 +1195,7 @@ impl IrLowerer<'_> {
                     )]
                     let key = IrExpr::Literal {
                         value: Literal::Number((i as f64).into()),
-                        ty: ResolvedType::Primitive(PrimitiveType::Number),
+                        ty: ResolvedType::Primitive(PrimitiveType::I32),
                     };
                     IrBlockStatement::Let {
                         name,

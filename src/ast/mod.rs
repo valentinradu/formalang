@@ -472,7 +472,6 @@ pub struct TupleField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveType {
     String,
-    Number,
     I32,
     I64,
     F32,

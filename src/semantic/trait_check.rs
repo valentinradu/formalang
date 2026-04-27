@@ -333,7 +333,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         match ty {
             Type::Primitive(prim) => match prim {
                 PrimitiveType::String => "String".to_string(),
-                PrimitiveType::Number => "Number".to_string(),
                 PrimitiveType::I32 => "I32".to_string(),
                 PrimitiveType::I64 => "I64".to_string(),
                 PrimitiveType::F32 => "F32".to_string(),

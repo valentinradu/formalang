@@ -345,7 +345,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            compute: I32, Number -> I32
+            compute: I32, I32 -> I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;

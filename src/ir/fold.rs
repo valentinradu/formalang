@@ -816,7 +816,7 @@ mod tests {
         let ir_module = IrModule::new();
         let _ = &ir_module;
         let folder = ConstantFolder::new();
-        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {
                 value: Literal::Number(0.0.into()),
@@ -847,7 +847,7 @@ mod tests {
         let ir_module = IrModule::new();
         let _ = &ir_module;
         let folder = ConstantFolder::new();
-        let number_ty = ResolvedType::Primitive(PrimitiveType::Number);
+        let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
         let expression = IrExpr::BinaryOp {
             left: Box::new(IrExpr::Literal {
                 value: Literal::Number(f64::NAN.into()),

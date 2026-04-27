@@ -30,7 +30,6 @@ impl IrLowerer<'_> {
     pub(super) fn string_to_resolved_type(&mut self, type_str: &str) -> Option<ResolvedType> {
         match type_str {
             "String" => Some(ResolvedType::Primitive(PrimitiveType::String)),
-            "Number" => Some(ResolvedType::Primitive(PrimitiveType::Number)),
             "I32" => Some(ResolvedType::Primitive(PrimitiveType::I32)),
             "I64" => Some(ResolvedType::Primitive(PrimitiveType::I64)),
             "F32" => Some(ResolvedType::Primitive(PrimitiveType::F32)),

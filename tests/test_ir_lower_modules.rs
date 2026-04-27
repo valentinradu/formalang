@@ -311,7 +311,10 @@ fn resolved_type_display_name_primitive_variants() -> Result<(), Box<dyn std::er
     let module = formalang::ir::IrModule::new();
     let cases = [
         (PrimitiveType::String, "String"),
-        (PrimitiveType::Number, "Number"),
+        (PrimitiveType::I32, "I32"),
+        (PrimitiveType::I64, "I64"),
+        (PrimitiveType::F32, "F32"),
+        (PrimitiveType::F64, "F64"),
         (PrimitiveType::Boolean, "Boolean"),
         (PrimitiveType::Path, "Path"),
         (PrimitiveType::Regex, "Regex"),
@@ -3068,7 +3071,7 @@ fn dce_eliminator_generic_type_marks_base_struct() -> Result<(), Box<dyn std::er
     // We do this by compiling a source that has a generic field type
     let source = r"
         struct Box<T> { value: T }
-        struct Container { inner: Box<Number> }
+        struct Container { inner: Box<I32> }
     ";
     let module = compile_to_ir(source)
         .map_err(|e| format!("generic struct fields should compile: {e:?}"))?;

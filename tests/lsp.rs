@@ -487,16 +487,16 @@ fn test_query_provider_completions_builtin_types() -> Result<(), Box<dyn std::er
     let provider = QueryProvider::new(analyzer.symbols());
     let completions = provider.get_type_completions();
 
-    // Should include builtin types like String, Number, Boolean
+    // Should include builtin types like String, I32, Boolean
     let has_string = completions.iter().any(|c| c.label == "String");
-    let has_number = completions.iter().any(|c| c.label == "Number");
+    let has_i32 = completions.iter().any(|c| c.label == "I32");
     let has_boolean = completions.iter().any(|c| c.label == "Boolean");
 
     if !(has_string) {
         return Err("Should have String completion".into());
     }
-    if !(has_number) {
-        return Err("Should have Number completion".into());
+    if !(has_i32) {
+        return Err("Should have I32 completion".into());
     }
     if !(has_boolean) {
         return Err("Should have Boolean completion".into());

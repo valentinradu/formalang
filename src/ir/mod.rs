@@ -15,7 +15,7 @@
 //! let source = r#"
 //! pub struct User {
 //!     name: String,
-//!     age: Number
+//!     age: I32
 //! }
 //! "#;
 //!
@@ -117,7 +117,7 @@ pub struct EnumId(pub u32);
 /// ```
 /// use formalang::compile_to_ir;
 ///
-/// let source = "pub fn add(a: Number, b: Number) -> Number { a + b }";
+/// let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
 /// let module = compile_to_ir(source).unwrap();
 /// let id = formalang::FunctionId(0);
 /// let func_def = &module.functions[id.0 as usize];
@@ -768,7 +768,6 @@ impl ResolvedType {
         match self {
             Self::Primitive(p) => match p {
                 PrimitiveType::String => "String".to_string(),
-                PrimitiveType::Number => "Number".to_string(),
                 PrimitiveType::I32 => "I32".to_string(),
                 PrimitiveType::I64 => "I64".to_string(),
                 PrimitiveType::F32 => "F32".to_string(),

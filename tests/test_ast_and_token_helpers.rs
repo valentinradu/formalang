@@ -259,7 +259,7 @@ fn test_generic_constraint_validation() -> Result<(), Box<dyn std::error::Error>
 fn test_multiple_generic_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Pair<A, B> { first: A, second: B }
-        struct Container { pair: Pair<String, Number> }
+        struct Container { pair: Pair<String, I32> }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -421,7 +421,7 @@ fn test_generic_without_args_in_field() -> Result<(), Box<dyn std::error::Error>
 fn test_error_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
-        struct Container { box: Box<String, Number> }
+        struct Container { box: Box<String, I32> }
     ";
     let errors = compile(source)
         .err()
@@ -507,7 +507,7 @@ fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Reducer {
-            reduce: I32, Number -> I32
+            reduce: I32, I32 -> I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -518,7 +518,7 @@ fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Factory {
-            create: String -> (Number -> Boolean)
+            create: String -> (I32 -> Boolean)
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1126,7 +1126,7 @@ fn test_error_struct_extra_generic_args() -> Result<(), Box<dyn std::error::Erro
 fn test_error_struct_wrong_generic_arity() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Pair<A, B> { a: A, b: B }
-        struct Container { pair: Pair<String, Number> = Pair<String>(a: "x", b: 1) }
+        struct Container { pair: Pair<String, I32> = Pair<String>(a: "x", b: 1) }
     "#;
     let errors = compile(source)
         .err()
@@ -1592,7 +1592,7 @@ fn test_type_mismatch_generic() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Container<T> { item: T }
         trait Holder { box: Container<String> }
-        struct MyHolder { box: Container<Number> }
+        struct MyHolder { box: Container<I32> }
         impl Holder for MyHolder {}
     ";
     let errors = compile(source)
@@ -1799,7 +1799,7 @@ fn test_inferred_enum_in_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_multiple_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { reducer: I32, Number -> I32 }
+        struct A { reducer: I32, I32 -> I32 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1817,7 +1817,7 @@ fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_returning_closure_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { factory: String -> (Number -> Boolean) }
+        struct A { factory: String -> (I32 -> Boolean) }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())

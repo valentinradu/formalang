@@ -248,7 +248,7 @@ fn test_nested_module_type_path_type_not_found() -> Result<(), Box<dyn std::erro
 #[test]
 fn test_generic_with_undefined_base_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { item: Undefined<Number> }
+        struct Config { item: Undefined<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -261,13 +261,13 @@ fn test_generic_with_undefined_base_type() -> Result<(), Box<dyn std::error::Err
 fn test_generic_base_type_is_trait_not_struct() -> Result<(), Box<dyn std::error::Error>> {
     // Tier-1 item E2: a trait name in a value-type position is
     // rejected with TraitUsedAsValueType — even when written as a
-    // generic application (`Container<Number>`). The recommended fix
+    // generic application (`Container<I32>`). The recommended fix
     // is `<T: Container>` once generic-trait constraints with args
     // land; for now `<T: Container>` (no args) is the closest legal
     // form.
     let source = r"
         trait Container { val: I32 }
-        struct Config { item: Container<Number> }
+        struct Config { item: Container<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -315,7 +315,7 @@ fn test_struct_instantiation_with_extra_type_args() -> Result<(), Box<dyn std::e
     // Non-generic struct with type arguments at instantiation site
     let source = r"
         struct Point { x: I32, y: I32 }
-        struct Config { p: Point = Point<Number>(x: 1, y: 2) }
+        struct Config { p: Point = Point<I32>(x: 1, y: 2) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -592,7 +592,7 @@ fn test_primitive_type_does_not_satisfy_constraint() -> Result<(), Box<dyn std::
     let source = r"
         trait Printable { label: String }
         struct Box<T: Printable> { value: T }
-        struct Config { b: Box<Number> }
+        struct Config { b: Box<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {

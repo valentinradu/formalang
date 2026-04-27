@@ -2754,10 +2754,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // arithmetic over backend-specific scalar/vector types should
         // implement their own type-compat rules in their codegen pass.
         // Numeric primitives accepted for arithmetic / comparison / range.
-        // Both operands must agree (no implicit promotion across widths);
-        // Number is retained as a transitional default and accepted alongside
-        // the width-tagged variants until microcommit 8 removes it.
-        let is_numeric = |s: &str| matches!(s, "Number" | "I32" | "I64" | "F32" | "F64");
+        // Both operands must agree (no implicit promotion across widths).
+        let is_numeric = |s: &str| matches!(s, "I32" | "I64" | "F32" | "F64");
         let valid = match op {
             // Add: matched-numeric pair, or String + String (concatenation)
             BinaryOperator::Add => {

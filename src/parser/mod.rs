@@ -620,9 +620,9 @@ mod tests {
 
     #[test]
     fn test_dictionary_type_parsing() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_type_str("[String: Number]");
+        let result = parse_type_str("[String: I32]");
         if result.is_err() {
-            return Err(format!("Failed to parse [String: Number] type: : {result:?}").into());
+            return Err(format!("Failed to parse [String: I32] type: : {result:?}").into());
         }
         let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
@@ -635,11 +635,11 @@ mod tests {
                     )
                     .into());
                 }
-                if *value != Type::Primitive(PrimitiveType::Number) {
+                if *value != Type::Primitive(PrimitiveType::I32) {
                     return Err(format!(
                         "{:?} != {:?}",
                         *value,
-                        Type::Primitive(PrimitiveType::Number)
+                        Type::Primitive(PrimitiveType::I32)
                     )
                     .into());
                 }
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_nested_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_type_str("[String: [Number: Boolean]]");
+        let result = parse_type_str("[String: [I32: Boolean]]");
         if result.is_err() {
             return Err(format!("Failed to parse nested dictionary type: : {result:?}").into());
         }
@@ -741,11 +741,11 @@ mod tests {
                         key: inner_key,
                         value: inner_value,
                     } => {
-                        if *inner_key != Type::Primitive(PrimitiveType::Number) {
+                        if *inner_key != Type::Primitive(PrimitiveType::I32) {
                             return Err(format!(
                                 "{:?} != {:?}",
                                 *inner_key,
-                                Type::Primitive(PrimitiveType::Number)
+                                Type::Primitive(PrimitiveType::I32)
                             )
                             .into());
                         }
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_optional_dictionary_type() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_type_str("[String: Number]?");
+        let result = parse_type_str("[String: I32]?");
         if result.is_err() {
             return Err(format!("Failed to parse optional dictionary type: : {result:?}").into());
         }
@@ -800,11 +800,11 @@ mod tests {
                         )
                         .into());
                     }
-                    if *value != Type::Primitive(PrimitiveType::Number) {
+                    if *value != Type::Primitive(PrimitiveType::I32) {
                         return Err(format!(
                             "{:?} != {:?}",
                             *value,
-                            Type::Primitive(PrimitiveType::Number)
+                            Type::Primitive(PrimitiveType::I32)
                         )
                         .into());
                     }
@@ -1293,9 +1293,9 @@ mod tests {
 
     #[test]
     fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_type_str("Number, Number -> Point");
+        let result = parse_type_str("I32, I32 -> Point");
         if result.is_err() {
-            return Err(format!("Failed to parse Number, Number -> Point: : {result:?}").into());
+            return Err(format!("Failed to parse I32, I32 -> Point: : {result:?}").into());
         }
         let ty = result.map_err(|e| format!("{e:?}"))?;
         match ty {
@@ -1304,20 +1304,20 @@ mod tests {
                     return Err(format!("expected {:?} == {:?}", params.len(), 2).into());
                 }
                 let (_, p0) = params.first().ok_or("expected at least 1 param")?;
-                if *p0 != Type::Primitive(PrimitiveType::Number) {
+                if *p0 != Type::Primitive(PrimitiveType::I32) {
                     return Err(format!(
                         "{:?} != {:?}",
                         p0,
-                        Type::Primitive(PrimitiveType::Number)
+                        Type::Primitive(PrimitiveType::I32)
                     )
                     .into());
                 }
                 let (_, p1) = params.get(1).ok_or("expected at least 2 params")?;
-                if *p1 != Type::Primitive(PrimitiveType::Number) {
+                if *p1 != Type::Primitive(PrimitiveType::I32) {
                     return Err(format!(
                         "{:?} != {:?}",
                         p1,
-                        Type::Primitive(PrimitiveType::Number)
+                        Type::Primitive(PrimitiveType::I32)
                     )
                     .into());
                 }
@@ -1729,7 +1729,7 @@ mod tests {
 
     #[test]
     fn test_let_expr_with_type() -> Result<(), Box<dyn std::error::Error>> {
-        let result = parse_expr_from_let("let count: Number = 100 in count");
+        let result = parse_expr_from_let("let count: I32 = 100 in count");
         if result.is_err() {
             return Err(format!("Failed to parse let with type: : {result:?}").into());
         }
@@ -1747,7 +1747,7 @@ mod tests {
                     | BindingPattern::Tuple { .. } => return Err("Expected simple pattern".into()),
                 }
                 match ty {
-                    Some(Type::Primitive(PrimitiveType::Number)) => {}
+                    Some(Type::Primitive(PrimitiveType::I32)) => {}
                     _ => return Err("Expected Number type annotation".into()),
                 }
             }

@@ -1205,14 +1205,14 @@ fn test_generic_trait_specialises() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_generic_trait_constraint_specialises() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
-    // A generic-bounded function constrained on `Container<Number>`
+    // A generic-bounded function constrained on `Container<I32>`
     // should also drive specialisation of Container.
     let source = r"
         pub trait Container<T> {
             fn get(self) -> I32
         }
         pub struct Box { value: I32 }
-        impl Container<Number> for Box {
+        impl Container<I32> for Box {
             fn get(self) -> I32 { self.value }
         }
     ";

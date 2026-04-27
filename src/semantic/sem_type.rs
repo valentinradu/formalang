@@ -420,7 +420,6 @@ impl SemType {
 const fn primitive_name(p: PrimitiveType) -> &'static str {
     match p {
         PrimitiveType::String => "String",
-        PrimitiveType::Number => "Number",
         PrimitiveType::I32 => "I32",
         PrimitiveType::I64 => "I64",
         PrimitiveType::F32 => "F32",
@@ -435,7 +434,6 @@ const fn primitive_name(p: PrimitiveType) -> &'static str {
 fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
     match name {
         "String" => Some(PrimitiveType::String),
-        "Number" => Some(PrimitiveType::Number),
         "I32" => Some(PrimitiveType::I32),
         "I64" => Some(PrimitiveType::I64),
         "F32" => Some(PrimitiveType::F32),
@@ -566,7 +564,9 @@ mod tests {
 
     #[test]
     fn primitives_round_trip() {
-        for p in ["String", "Number", "Boolean", "Path", "Regex", "Never"] {
+        for p in [
+            "String", "I32", "I64", "F32", "F64", "Boolean", "Path", "Regex", "Never",
+        ] {
             round_trip(p);
         }
     }
@@ -586,7 +586,7 @@ mod tests {
 
     #[test]
     fn array_round_trips() {
-        round_trip("[Number]");
+        round_trip("[I32]");
         round_trip("[[String]]");
         round_trip("[Unknown]");
     }
@@ -595,18 +595,18 @@ mod tests {
     fn optional_round_trips() {
         round_trip("Number?");
         round_trip("Event?");
-        round_trip("[Number]?");
+        round_trip("[I32]?");
     }
 
     #[test]
     fn tuple_round_trips() {
         round_trip("(a: Number, b: String)");
-        round_trip("(x: [Number], y: Event?)");
+        round_trip("(x: [I32], y: Event?)");
     }
 
     #[test]
     fn generic_round_trips() {
-        round_trip("Box<Number>");
+        round_trip("Box<I32>");
         round_trip("Map<String, Item>");
         round_trip("Range<Number>");
         round_trip("Box<Pair<A, B>>");
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn dictionary_round_trips() {
         round_trip("[String: Number]");
-        round_trip("[String: [Number]]");
+        round_trip("[String: [I32]]");
     }
 
     #[test]
@@ -623,13 +623,13 @@ mod tests {
         round_trip("() -> Number");
         round_trip("Number -> Boolean");
         round_trip("Number, String -> Boolean");
-        round_trip("[Number] -> [String]");
+        round_trip("[I32] -> [String]");
     }
 
     #[test]
     fn nested_closure_in_array() {
         // Arrays of closures are rare but should survive.
-        round_trip("[Number]");
+        round_trip("[I32]");
     }
 
     #[test]
@@ -637,7 +637,7 @@ mod tests {
         assert!(SemType::Unknown.is_indeterminate());
         assert!(SemType::array_of(SemType::Unknown).is_indeterminate());
         assert!(SemType::optional_of(SemType::Unknown).is_indeterminate());
-        assert!(!SemType::Primitive(PrimitiveType::Number).is_indeterminate());
+        assert!(!SemType::Primitive(PrimitiveType::I32).is_indeterminate());
         assert!(!SemType::Named("Foo".to_string()).is_indeterminate());
     }
 
@@ -663,19 +663,19 @@ mod tests {
 
     #[test]
     fn optional_of_optional_is_idempotent() {
-        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::Number));
+        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::I32));
         let twice = SemType::optional_of(t.clone());
         assert_eq!(t, twice);
     }
 
     #[test]
     fn strip_optional_unwraps_one_layer() {
-        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::Number));
+        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::I32));
         assert_eq!(
             t.strip_optional(),
-            SemType::Primitive(PrimitiveType::Number)
+            SemType::Primitive(PrimitiveType::I32)
         );
-        let bare = SemType::Primitive(PrimitiveType::Number);
+        let bare = SemType::Primitive(PrimitiveType::I32);
         assert_eq!(bare.strip_optional(), bare);
     }
 
@@ -685,8 +685,8 @@ mod tests {
             base: "Box".into(),
             args: vec![SemType::Named("T".into())],
         };
-        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::Number));
-        assert_eq!(result.display(), "Box<Number>");
+        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::I32));
+        assert_eq!(result.display(), "Box<I32>");
     }
 
     #[test]
@@ -698,8 +698,8 @@ mod tests {
             base: "TList".into(),
             args: vec![SemType::Named("T".into())],
         };
-        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::Number));
-        assert_eq!(result.display(), "TList<Number>");
+        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::I32));
+        assert_eq!(result.display(), "TList<I32>");
     }
 
     #[test]
@@ -717,7 +717,7 @@ mod tests {
         use crate::ast::Ident;
         use crate::location::Span;
         let ty = crate::ast::Type::Ident(Ident {
-            name: "Number".into(),
+            name: "I32".into(),
             span: Span::default(),
         });
         // Identifier whose name happens to be a primitive should be
@@ -725,7 +725,7 @@ mod tests {
         // type position.
         assert_eq!(
             SemType::from_ast(&ty),
-            SemType::Primitive(PrimitiveType::Number)
+            SemType::Primitive(PrimitiveType::I32)
         );
     }
 }

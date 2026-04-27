@@ -250,7 +250,7 @@ fn test_generic_struct_multiple_params() -> Result<(), Box<dyn std::error::Error
             second: B
         }
         struct Usage {
-            pair: Pair<String, Number>
+            pair: Pair<String, I32>
         }
     ";
     compile(source).map_err(|e| format!("Generic struct multiple params: {e:?}"))?;

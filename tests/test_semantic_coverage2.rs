@@ -53,7 +53,7 @@ fn test_duplicate_function_definition() -> Result<(), Box<dyn std::error::Error>
 fn test_non_generic_struct_with_type_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point { x: I32, y: I32 }
-        struct Config { p: Point = Point<Number>(x: 1, y: 2) }
+        struct Config { p: Point = Point<I32>(x: 1, y: 2) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -70,7 +70,7 @@ fn test_non_generic_struct_with_type_args() -> Result<(), Box<dyn std::error::Er
 fn test_function_call_with_type_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         fn compute(x: I32) -> I32 { x }
-        struct Config { val: I32 = compute<Number>(x: 1) }
+        struct Config { val: I32 = compute<I32>(x: 1) }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -208,7 +208,7 @@ fn test_generic_constraint_violation_primitive() -> Result<(), Box<dyn std::erro
     let source = r"
         trait Serializable { data: String }
         struct Wrapper<T: Serializable> { content: T }
-        struct Config { item: Wrapper<Number> }
+        struct Config { item: Wrapper<I32> }
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -1024,7 +1024,7 @@ fn test_generic_struct_with_constraint_met() -> Result<(), Box<dyn std::error::E
 fn test_array_of_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Box<T> { value: T }
-        struct Config { items: [Box<Number>] }
+        struct Config { items: [Box<I32>] }
     ";
     compile(source).map_err(|e| format!("Array of generic struct: {e:?}"))?;
     Ok(())

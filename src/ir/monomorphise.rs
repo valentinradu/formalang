@@ -981,7 +981,6 @@ fn type_suffix(ty: &ResolvedType, out: &mut String) {
     match ty {
         ResolvedType::Primitive(p) => out.push_str(match p {
             PrimitiveType::String => "String",
-            PrimitiveType::Number => "Number",
             PrimitiveType::I32 => "I32",
             PrimitiveType::I64 => "I64",
             PrimitiveType::F32 => "F32",
