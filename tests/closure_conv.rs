@@ -6,7 +6,9 @@
 
 #![allow(clippy::expect_used)]
 
-use formalang::ir::{ClosureConversionPass, DeadCodeEliminationPass, IrExpr};
+use formalang::ir::{
+    ClosureConversionPass, DeadCodeEliminationPass, IrExpr, MonomorphisePass,
+};
 use formalang::{compile_to_ir, IrPass, Pipeline};
 
 /// Standard two-closure fixture used by every microcommit's snapshot
@@ -295,7 +297,9 @@ fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
 }
 
 /// mc10 — end-to-end check that a closure-rich, multi-feature
-/// program survives `ClosureConversionPass` + `DeadCodeEliminationPass`.
+/// program survives the full pipeline:
+/// `MonomorphisePass` → `ClosureConversionPass` →
+/// `DeadCodeEliminationPass`.
 ///
 /// The fixture exercises every interesting capture pattern the IR
 /// produces today:
@@ -337,11 +341,12 @@ fn mc10_closure_rich_fixture_survives_pipeline() {
     );
 
     let mut pipeline = Pipeline::new()
+        .pass(MonomorphisePass::default())
         .pass(ClosureConversionPass::new())
         .pass(DeadCodeEliminationPass::new());
     let converted = pipeline
         .run(module)
-        .expect("ClosureConv + DCE pipeline should succeed");
+        .expect("Monomorphise + ClosureConv + DCE pipeline should succeed");
 
     assert_module_closure_free(&converted);
 
@@ -362,6 +367,27 @@ fn mc10_closure_rich_fixture_survives_pipeline() {
         surviving_closure_refs > 0,
         "at least one ClosureRef should survive DCE"
     );
+}
+
+/// `tests/fixtures/complete.fv` — the project's "every-feature"
+/// fixture — survives the same `MonomorphisePass` →
+/// `ClosureConversionPass` → `DeadCodeEliminationPass` pipeline.
+/// Catches regressions in the lowering or in the individual passes
+/// that wouldn't show up in narrower tests.
+#[test]
+fn complete_fixture_survives_full_pipeline() {
+    let source = include_str!("fixtures/complete.fv");
+    let module = compile_to_ir(source).expect("complete.fv should compile to IR");
+
+    let mut pipeline = Pipeline::new()
+        .pass(MonomorphisePass::default())
+        .pass(ClosureConversionPass::new())
+        .pass(DeadCodeEliminationPass::new());
+    let converted = pipeline
+        .run(module)
+        .expect("full pipeline should succeed on complete.fv");
+
+    assert_module_closure_free(&converted);
 }
 
 fn count_closure_exprs(module: &formalang::ir::IrModule) -> usize {
