@@ -40,8 +40,8 @@ pub struct GenericParam {
 /// `Trait { name, args }` represents a trait bound — `T: Foo` (with
 /// `args: []`) or `T: Foo<X, Y>` (with concrete or generic-param type
 /// arguments). The args slot lets generic-trait constraints survive
-/// monomorphisation: `<T: Container<Number>>` instantiates Container
-/// for `Number` and constrains T against that specialised trait.
+/// monomorphisation: `<T: Container<I32>>` instantiates Container
+/// for `I32` and constrains T against that specialised trait.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GenericConstraint {
@@ -241,7 +241,7 @@ pub struct LetBinding {
 /// ```formalang
 /// trait Shape {
 ///     color: String
-///     fn area(self) -> Number
+///     fn area(self) -> F64
 /// }
 /// ```
 #[non_exhaustive]

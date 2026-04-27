@@ -1650,7 +1650,7 @@ fn compiler_error_display_messages() -> Result<(), Box<dyn std::error::Error>> {
             span: Span::default(),
         },
         CompilerError::TypeMismatch {
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             found: "String".to_string(),
             span: Span::default(),
         },
@@ -1746,7 +1746,7 @@ fn compiler_error_trait_errors_display() -> Result<(), Box<dyn std::error::Error
         CompilerError::TraitFieldTypeMismatch {
             field: "x".to_string(),
             trait_name: "T".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
@@ -1799,15 +1799,15 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         CompilerError::InvalidBinaryOp {
             op: "+".to_string(),
             left_type: "Boolean".to_string(),
-            right_type: "Number".to_string(),
+            right_type: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::ForLoopNotArray {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::InvalidIfCondition {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::MatchNotEnum {
@@ -1898,16 +1898,16 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         },
         CompilerError::FunctionReturnTypeMismatch {
             function: "foo".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
         CompilerError::ArrayDestructuringNotArray {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::StructDestructuringNotStruct {
-            actual: "Number".to_string(),
+            actual: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::UnexpectedEof {
@@ -1923,7 +1923,7 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
         },
         CompilerError::FunctionReturnTypeMismatch {
             function: "foo".to_string(),
-            expected: "Number".to_string(),
+            expected: "I32".to_string(),
             actual: "String".to_string(),
             span: Span::default(),
         },
@@ -1931,7 +1931,7 @@ fn compiler_error_expression_errors_display() -> Result<(), Box<dyn std::error::
             span: Span::default(),
         },
         CompilerError::PrimitiveRedefinition {
-            name: "Number".to_string(),
+            name: "I32".to_string(),
             span: Span::default(),
         },
         CompilerError::NotATrait {

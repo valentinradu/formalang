@@ -501,7 +501,7 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
         ..
     } = body.as_ref()
     else {
-        return Err(format!("expected for-body to fold to a Number literal, got {body:?}").into());
+        return Err(format!("expected for-body to fold to a I32 literal, got {body:?}").into());
     };
     if (n.value - 3.0_f64).abs() > f64::EPSILON {
         return Err(format!("expected folded value 3, got {}", n.value).into());

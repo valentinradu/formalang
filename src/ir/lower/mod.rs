@@ -104,7 +104,7 @@ struct IrLowerer<'a> {
     /// expected closure type from the call/assignment context. The
     /// closure lowerer reads it to fill in any param/return types that
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
-    /// `x: Number` instead of `x: ResolvedType::Error`.
+    /// `x: I32` instead of `x: ResolvedType::Error`.
     pub(super) expected_closure_type: Option<ResolvedType>,
     /// Stack of currently-open module nodes during lowering. The
     /// outermost source module is at index 0; the deepest in-progress
@@ -1461,7 +1461,7 @@ impl<'a> IrLowerer<'a> {
     fn lower_generic_params(&mut self, params: &[ast::GenericParam]) -> Vec<IrGenericParam> {
         // Phase C: each constraint becomes an IrTraitRef carrying
         // both the trait id and any generic-trait args
-        // (`<T: Container<Number>>`). Arg lowering goes through
+        // (`<T: Container<I32>>`). Arg lowering goes through
         // `lower_type`, which is why this method now needs `&mut self`.
         params
             .iter()

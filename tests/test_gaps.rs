@@ -15,7 +15,7 @@ fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::Compiler
 
 #[test]
 fn test_assignment_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
-    // Assigning a String to a Number binding should produce TypeMismatch
+    // Assigning a String to a I32 binding should produce TypeMismatch
     let source = r#"
         fn f() -> I32 {
             let mut n: I32 = 1
@@ -36,7 +36,7 @@ fn test_assignment_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_assignment_type_match_ok() -> Result<(), Box<dyn std::error::Error>> {
-    // Assigning Number to a Number binding should succeed
+    // Assigning I32 to a I32 binding should succeed
     let source = r"
         fn f() -> I32 {
             let mut n: I32 = 1
@@ -54,7 +54,7 @@ fn test_assignment_type_match_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_default_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
-    // Providing a String default for a Number field should produce TypeMismatch
+    // Providing a String default for a I32 field should produce TypeMismatch
     let source = r#"
         struct S { x: I32 = "text" }
     "#;
@@ -71,7 +71,7 @@ fn test_struct_default_type_mismatch() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_struct_default_type_ok() -> Result<(), Box<dyn std::error::Error>> {
-    // A Number default for a Number field should succeed
+    // A I32 default for a I32 field should succeed
     let source = r"
         struct S { x: I32 = 0 }
     ";
@@ -162,7 +162,7 @@ fn test_pub_item_from_outside_module() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_overload_mode_b_number() -> Result<(), Box<dyn std::error::Error>> {
-    // Two overloads differing only in first param type; call with Number should resolve
+    // Two overloads differing only in first param type; call with I32 should resolve
     let source = r#"
         fn process(n: I32) -> String { "number" }
         fn process(label: String, n: I32) -> String { "string" }
@@ -288,7 +288,7 @@ fn test_match_arm_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_match_arm_type_ok() -> Result<(), Box<dyn std::error::Error>> {
-    // Match arms all returning Number should succeed
+    // Match arms all returning I32 should succeed
     let source = r"
         enum Color { red, blue }
         fn describe(c: Color) -> I32 {
@@ -308,7 +308,7 @@ fn test_match_arm_type_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_if_branch_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
-    // If branches returning Number and String should produce TypeMismatch
+    // If branches returning I32 and String should produce TypeMismatch
     let source = r#"
         fn f(b: Boolean) -> I32 {
             if b { 1 } else { "text" }
@@ -327,7 +327,7 @@ fn test_if_branch_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_if_branch_type_ok() -> Result<(), Box<dyn std::error::Error>> {
-    // Both branches returning Number should succeed
+    // Both branches returning I32 should succeed
     let source = r"
         fn f(b: Boolean) -> I32 {
             if b { 1 } else { 2 }
@@ -343,8 +343,8 @@ fn test_if_branch_type_ok() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
-    // Closure x -> x with declared type Number -> I32 should compile
-    // The inferred type "Number -> I32" now matches the annotation
+    // Closure x -> x with declared type I32 -> I32 should compile
+    // The inferred type "I32 -> I32" now matches the annotation
     let source = r"
         let f: I32 -> I32 = x -> x
     ";
@@ -404,7 +404,7 @@ fn test_dict_literal_value_heterogeneity_rejected() -> Result<(), Box<dyn std::e
 
 #[test]
 fn test_dict_literal_key_heterogeneity_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit2 B11: same for keys — `[1: "x", "two": "y"]` mixes Number
+    // Audit2 B11: same for keys — `[1: "x", "two": "y"]` mixes I32
     // and String keys.
     let source = r#"
         let d = [1: "x", "two": "y"]
@@ -1135,7 +1135,7 @@ fn test_monomorphise_specialises_generic_function() -> Result<(), Box<dyn std::e
         .collect();
     if specialised.len() != 2 {
         return Err(format!(
-            "expected 2 identity specialisations (Number + String), got: {specialised:?}"
+            "expected 2 identity specialisations (I32 + String), got: {specialised:?}"
         )
         .into());
     }

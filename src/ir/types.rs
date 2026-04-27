@@ -60,7 +60,7 @@ pub struct IrStruct {
     /// Traits implemented by this struct, with optional generic-trait
     /// args (`<T>`). Empty args means a non-generic trait. Generic-
     /// traits PR: changed from `Vec<TraitId>` so generic-trait
-    /// instantiations (`impl Eq<Number> for Foo`) can be tracked
+    /// instantiations (`impl Eq<I32> for Foo`) can be tracked
     /// distinctly per arg-tuple.
     pub traits: Vec<IrTraitRef>,
 
@@ -266,7 +266,7 @@ impl IrImpl {
 ///
 /// ```formalang
 /// impl Vec2 {
-///     fn length(self) -> Number {
+///     fn length(self) -> F64 {
 ///         self.x * self.x + self.y * self.y
 ///     }
 /// }
@@ -389,7 +389,7 @@ pub struct IrGenericParam {
     /// Parameter name (e.g., "T")
     pub name: String,
 
-    /// Trait constraints (e.g., `T: Container` or `T: Container<Number>`).
+    /// Trait constraints (e.g., `T: Container` or `T: Container<I32>`).
     /// Each entry carries the constrained trait id plus zero or more
     /// concrete arg types — empty when the trait isn't generic.
     pub constraints: Vec<IrTraitRef>,
@@ -401,7 +401,7 @@ pub struct IrGenericParam {
 /// [`IrGenericParam`] and as the trait-impl shape on [`IrImpl`]. An
 /// empty `args` slot means the trait isn't generic (`T: Container`,
 /// `impl Container for X`); a non-empty slot carries the
-/// instantiation (`T: Container<Number>`, `impl Container<Number> for X`)
+/// instantiation (`T: Container<I32>`, `impl Container<I32> for X`)
 /// so monomorphisation can specialise generic traits.
 #[expect(
     clippy::exhaustive_structs,

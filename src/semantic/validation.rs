@@ -902,7 +902,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// and leave a dangling capture.
     fn validate_function_return_escape(&mut self, return_type: Option<&Type>, body: &Expr) {
         // The legacy fast-path: function returns a closure type directly
-        // (`fn make() -> () -> Number`). The recursive walk handles every
+        // (`fn make() -> () -> I32`). The recursive walk handles every
         // concrete return shape — closure literals, references to
         // closure bindings, branches, blocks. Tier-1 escape extension
         // also fires on aggregate returns (struct / enum / tuple /

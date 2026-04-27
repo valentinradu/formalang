@@ -272,7 +272,7 @@ fn test_compiler_error_display_invalid_binary_op() -> Result<(), Box<dyn std::er
     let error = CompilerError::InvalidBinaryOp {
         op: "Add".to_string(),
         left_type: "String".to_string(),
-        right_type: "Number".to_string(),
+        right_type: "I32".to_string(),
         span: Span {
             start: Location {
                 offset: 0,
@@ -411,7 +411,7 @@ fn test_error_report_circular_trait() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_error_display_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let error = CompilerError::TypeMismatch {
-        expected: "Number".to_string(),
+        expected: "I32".to_string(),
         found: "String".to_string(),
         span: Span {
             start: Location {
@@ -427,9 +427,9 @@ fn test_error_display_type_mismatch() -> Result<(), Box<dyn std::error::Error>> 
         },
     };
     let display = format!("{error}");
-    if !(display.contains("Number") || display.contains("mismatch")) {
+    if !(display.contains("I32") || display.contains("mismatch")) {
         return Err(
-            format!("expected display to contain 'Number' or 'mismatch', got: {display}").into(),
+            format!("expected display to contain 'I32' or 'mismatch', got: {display}").into(),
         );
     }
     Ok(())
@@ -514,7 +514,7 @@ fn test_error_display_trait_field_type_mismatch() -> Result<(), Box<dyn std::err
     let error = CompilerError::TraitFieldTypeMismatch {
         field: "value".to_string(),
         trait_name: "Valuable".to_string(),
-        expected: "Number".to_string(),
+        expected: "I32".to_string(),
         actual: "String".to_string(),
         span: Span::default(),
     };
@@ -562,13 +562,13 @@ fn test_error_display_for_loop_not_array() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_error_display_invalid_if_condition() -> Result<(), Box<dyn std::error::Error>> {
     let error = CompilerError::InvalidIfCondition {
-        actual: "Number".to_string(),
+        actual: "I32".to_string(),
         span: Span::default(),
     };
     let display = format!("{error}");
-    if !(display.contains("Number") || display.contains("condition")) {
+    if !(display.contains("I32") || display.contains("condition")) {
         return Err(
-            format!("expected display to contain 'Number' or 'condition', got: {display}").into(),
+            format!("expected display to contain 'I32' or 'condition', got: {display}").into(),
         );
     }
     Ok(())
@@ -716,7 +716,7 @@ fn test_valid_complex_source() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_report_error_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     let error = CompilerError::TypeMismatch {
-        expected: "Number".to_string(),
+        expected: "I32".to_string(),
         found: "String".to_string(),
         span: Span::default(),
     };
@@ -798,7 +798,7 @@ fn test_report_error_trait_field_type_mismatch() -> Result<(), Box<dyn std::erro
     let error = CompilerError::TraitFieldTypeMismatch {
         field: "value".to_string(),
         trait_name: "Typed".to_string(),
-        expected: "Number".to_string(),
+        expected: "I32".to_string(),
         actual: "String".to_string(),
         span: Span::default(),
     };
@@ -815,7 +815,7 @@ fn test_report_error_invalid_binary_op() -> Result<(), Box<dyn std::error::Error
     let error = CompilerError::InvalidBinaryOp {
         op: "Add".to_string(),
         left_type: "String".to_string(),
-        right_type: "Number".to_string(),
+        right_type: "I32".to_string(),
         span: Span::default(),
     };
     let source = "let x = \"a\" + 1";
@@ -843,7 +843,7 @@ fn test_report_error_for_loop_not_array() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_report_error_invalid_if_condition() -> Result<(), Box<dyn std::error::Error>> {
     let error = CompilerError::InvalidIfCondition {
-        actual: "Number".to_string(),
+        actual: "I32".to_string(),
         span: Span::default(),
     };
     let source = "if 42 { \"yes\" }";

@@ -2364,7 +2364,7 @@ fn test_position_context_is_in_type_position() -> Result<(), Box<dyn std::error:
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let offset = offset_of(source, "I32")?;
     let ctx = find_node_at_offset(&file, offset);
-    // Number is a primitive type with no span tracking; the finder returns StructDef or StructField
+    // I32 is a primitive type with no span tracking; the finder returns StructDef or StructField
     // is_in_type_position() only returns true for Type nodes (not Primitive types)
     if !matches!(
         ctx.node,
@@ -2374,7 +2374,7 @@ fn test_position_context_is_in_type_position() -> Result<(), Box<dyn std::error:
             | NodeAtPosition::Identifier(_)
     ) {
         return Err(format!(
-            "Cursor on Number type should resolve to a type-related node, got {:?}",
+            "Cursor on I32 type should resolve to a type-related node, got {:?}",
             ctx.node
         )
         .into());

@@ -1,8 +1,8 @@
 //! Lexer and parser correctness tests for Phase 2 fixes.
 //!
 //! Covers:
-//! - Number literals with underscores (`1_000_000`).
-//! - Number literals with scientific notation (`1.5e-3`).
+//! - I32 literals with underscores (`1_000_000`).
+//! - I32 literals with scientific notation (`1.5e-3`).
 //! - Unterminated strings producing `UnterminatedString`.
 //! - Invalid characters producing `InvalidCharacter`.
 //! - Multiline strings with raw newlines.
@@ -15,7 +15,7 @@ use formalang::lexer::{Lexer, Token};
 use formalang::CompilerError;
 
 // ============================================================================
-// Number literals
+// I32 literals
 // ============================================================================
 
 fn compile(source: &str) -> Result<formalang::ast::File, Vec<formalang::CompilerError>> {

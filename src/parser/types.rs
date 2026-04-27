@@ -64,7 +64,7 @@ where
             )
             .map_with(|(path, args), e| {
                 // Map single-segment primitive names to `Type::Primitive` (only when no
-                // generic args are supplied — `Number<T>` etc. are not primitives).
+                // generic args are supplied — `I32<T>` etc. are not primitives).
                 if args.is_none() && path.len() == 1 {
                     if let Some(first) = path.first() {
                         if let Some(prim) = primitive_from_name(first.name.as_str()) {

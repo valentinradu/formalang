@@ -101,7 +101,7 @@ where
 {
     // A single trait constraint: `Foo` or `Foo<X, Y>`. Args are
     // parsed via `type_parser()` so any legal type — including
-    // nested generics — can appear (`<T: Container<Box<Number>>>`).
+    // nested generics — can appear (`<T: Container<Box<I32>>>`).
     let trait_constraint = ident_parser()
         .then(
             type_parser()

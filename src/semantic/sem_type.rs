@@ -593,14 +593,14 @@ mod tests {
 
     #[test]
     fn optional_round_trips() {
-        round_trip("Number?");
+        round_trip("I32?");
         round_trip("Event?");
         round_trip("[I32]?");
     }
 
     #[test]
     fn tuple_round_trips() {
-        round_trip("(a: Number, b: String)");
+        round_trip("(a: I32, b: String)");
         round_trip("(x: [I32], y: Event?)");
     }
 
@@ -608,21 +608,21 @@ mod tests {
     fn generic_round_trips() {
         round_trip("Box<I32>");
         round_trip("Map<String, Item>");
-        round_trip("Range<Number>");
+        round_trip("Range<I32>");
         round_trip("Box<Pair<A, B>>");
     }
 
     #[test]
     fn dictionary_round_trips() {
-        round_trip("[String: Number]");
+        round_trip("[String: I32]");
         round_trip("[String: [I32]]");
     }
 
     #[test]
     fn closure_round_trips() {
-        round_trip("() -> Number");
-        round_trip("Number -> Boolean");
-        round_trip("Number, String -> Boolean");
+        round_trip("() -> I32");
+        round_trip("I32 -> Boolean");
+        round_trip("I32, String -> Boolean");
         round_trip("[I32] -> [String]");
     }
 

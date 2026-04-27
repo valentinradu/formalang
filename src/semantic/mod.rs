@@ -84,7 +84,7 @@ fn collect_bindings_from_pattern(pattern: &BindingPattern) -> Vec<PatternBinding
 pub(crate) fn is_primitive_name(name: &str) -> bool {
     matches!(
         name,
-        "String" | "Number" | "Boolean" | "Path" | "Regex" | "Never"
+        "String" | "I32" | "I64" | "F32" | "F64" | "Boolean" | "Path" | "Regex" | "Never"
     )
 }
 
@@ -128,8 +128,8 @@ fn depth_zero_colon_index(s: &str) -> Option<usize> {
     None
 }
 
-/// Parse a tuple type string like `(a: Number, b: String)` into a flat list
-/// of field type strings `["Number", "String"]`. Commas inside nested
+/// Parse a tuple type string like `(a: I32, b: String)` into a flat list
+/// of field type strings `["I32", "String"]`. Commas inside nested
 /// generics/tuples/arrays are respected.
 fn parse_tuple_field_types(ty: &str) -> Vec<String> {
     let trimmed = ty.trim();
@@ -1734,30 +1734,30 @@ mod tests {
     #[test]
     fn test_strip_array_type_simple() {
         assert_eq!(strip_array_type("[String]"), Some("String"));
-        assert_eq!(strip_array_type("[Number]"), Some("Number"));
+        assert_eq!(strip_array_type("[I32]"), Some("I32"));
     }
 
     #[test]
     fn test_strip_array_type_nested_array() {
         // Audit2 B17: nested array used to be misclassified because the
         // outer `contains(':')` check fired on the inner dict's colon.
-        assert_eq!(strip_array_type("[[Number]]"), Some("[Number]"));
+        assert_eq!(strip_array_type("[[I32]]"), Some("[I32]"));
         assert_eq!(
-            strip_array_type("[[String: Number]]"),
-            Some("[String: Number]")
+            strip_array_type("[[String: I32]]"),
+            Some("[String: I32]")
         );
     }
 
     #[test]
     fn test_strip_array_type_rejects_dict() {
-        assert_eq!(strip_array_type("[String: Number]"), None);
+        assert_eq!(strip_array_type("[String: I32]"), None);
         assert_eq!(strip_array_type("[K: V]"), None);
     }
 
     #[test]
     fn test_strip_array_type_rejects_non_array() {
         assert_eq!(strip_array_type("String"), None);
-        assert_eq!(strip_array_type("(x: Number)"), None);
+        assert_eq!(strip_array_type("(x: I32)"), None);
     }
 
     #[test]

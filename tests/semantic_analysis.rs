@@ -198,7 +198,7 @@ fn test_number_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
             value: I32 = 1 + 2 * 3 - 4 / 2
         }
     ";
-    compile(source).map_err(|e| format!("Number arithmetic: {e:?}"))?;
+    compile(source).map_err(|e| format!("I32 arithmetic: {e:?}"))?;
     Ok(())
 }
 

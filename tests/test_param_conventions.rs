@@ -458,7 +458,7 @@ fn test_pipe_closure_without_return_type_is_none() {
 
 #[test]
 fn test_pipe_closure_return_type_mismatch_rejected() {
-    // Body returns Number but the closure declares String — should fail.
+    // Body returns I32 but the closure declares String — should fail.
     assert!(has_error(
         "let f: (I32) -> String = |x: I32| -> String { x + 1 }",
         |e| matches!(e, CompilerError::FunctionReturnTypeMismatch { .. }),

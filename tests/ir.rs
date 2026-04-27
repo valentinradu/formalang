@@ -1687,7 +1687,7 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    // Arithmetic results in Number
+    // Arithmetic results in I32
     if type_name(expr.ty()) != "I32" {
         return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty())).into());
     }
@@ -4019,7 +4019,7 @@ fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-/// Test that method calls for `size()` return Number
+/// Test that method calls for `size()` return I32
 #[test]
 #[expect(
     clippy::items_after_statements,

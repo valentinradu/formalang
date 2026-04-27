@@ -893,7 +893,7 @@ fn test_closure_type_in_return_type_mismatch() -> Result<(), Box<dyn std::error:
 
 #[test]
 fn test_trait_field_type_mismatch_with_optional_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Trait requires String? field; struct has Number — exercises optional type
+    // Trait requires String? field; struct has I32 — exercises optional type
     // display in TraitFieldTypeMismatch error message.
     let source = r"
         trait Nullable { value: String? }
@@ -912,7 +912,7 @@ fn test_trait_field_type_mismatch_with_optional_type() -> Result<(), Box<dyn std
 
 #[test]
 fn test_trait_field_type_mismatch_with_array_type() -> Result<(), Box<dyn std::error::Error>> {
-    // Trait requires [String] field; struct has Number — exercises array type
+    // Trait requires [String] field; struct has I32 — exercises array type
     // display in TraitFieldTypeMismatch error message.
     let source = r"
         trait Collection { items: [String] }

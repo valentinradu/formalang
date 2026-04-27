@@ -860,7 +860,7 @@ fn suffixed_numeric_literals_thread_to_ir_with_concrete_types(
 
     // One field per width-tag suffix; default value is a literal carrying the
     // matching suffix. After IR lowering, each literal's `ty` should resolve
-    // to the suffix's PrimitiveType, not the legacy `Number` placeholder.
+    // to the suffix's PrimitiveType, not the legacy `I32` placeholder.
     let source = r"
         struct Sample {
             a: I32 = 42I32,

@@ -113,14 +113,14 @@ fn variant_arity_mismatch_too_few_bindings_in_match() -> Result<(), Box<dyn std:
 #[test]
 fn primitive_redefinition_struct() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Number { x: I32 }
+        struct I32 { x: I32 }
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
     let has_redef = errors.iter().any(
-        |e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "Number"),
+        |e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "I32"),
     );
     if !has_redef {
-        return Err(format!("expected PrimitiveRedefinition for 'Number', got {errors:?}").into());
+        return Err(format!("expected PrimitiveRedefinition for 'I32', got {errors:?}").into());
     }
     Ok(())
 }

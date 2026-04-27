@@ -1748,7 +1748,7 @@ mod tests {
                 }
                 match ty {
                     Some(Type::Primitive(PrimitiveType::I32)) => {}
-                    _ => return Err("Expected Number type annotation".into()),
+                    _ => return Err("Expected I32 type annotation".into()),
                 }
             }
             Expr::Literal { .. }

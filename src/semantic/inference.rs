@@ -239,7 +239,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // and the declared return type is itself a generic
             // parameter (`fn id<T>(x: T) -> T`), substitute the
             // inferred concrete type from a matching argument so the
-            // call site sees `Number` instead of the placeholder `T`.
+            // call site sees `I32` instead of the placeholder `T`.
             // Other shapes (`[T]`, `T -> U`, etc.) fall through and
             // keep the original generic-param string — extending
             // this to compound shapes lives with the broader generic-
@@ -277,7 +277,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// If the function is generic and its declared return type is a
     /// bare generic-parameter name, substitute the inferred type from
     /// the matching argument. Used by the call-site inference path so
-    /// `let n: Number = identity(1)` doesn't surface `T` to the
+    /// `let n: I32 = identity(1)` doesn't surface `T` to the
     /// type-mismatch checker.
     fn specialise_generic_return(
         &self,
@@ -797,7 +797,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         let is_optional = receiver_type.is_optional();
         let stripped = receiver_type.strip_optional();
-        // Receiver-side generic args (`Box<Number>` → `["Number"]`)
+        // Receiver-side generic args (`Box<I32>` → `["I32"]`)
         // for substituting the impl method's `TypeParam` references
         // with concrete types.
         let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = match &stripped {

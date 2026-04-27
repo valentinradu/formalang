@@ -1081,7 +1081,7 @@ struct Main { h: Helper<I32> }
     let mut pass = MonomorphisePass::default().with_imports(imports);
     module = pass.run(module).map_err(|e| format!("{e:?}"))?;
 
-    // After monomorphise, a `Helper__Number` struct exists locally and
+    // After monomorphise, a `Helper__I32` struct exists locally and
     // Main.h is now a concrete local Struct reference.
     if !module
         .structs

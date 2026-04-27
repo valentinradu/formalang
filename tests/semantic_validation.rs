@@ -778,7 +778,7 @@ fn test_function_return_type_mismatch() -> Result<(), Box<dyn std::error::Error>
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Function returning Number when String expected should fail".into());
+        return Err("Function returning I32 when String expected should fail".into());
     }
     let err = result.err().ok_or("expected error")?;
     if !err
@@ -931,7 +931,7 @@ fn test_nested_block_expressions() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_field_access_inference_detects_invalid_if_condition(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // p.count has type Number; using it as the if condition must now error
+    // p.count has type I32; using it as the if condition must now error
     // (was previously accepted because field-access inference returned Unknown).
     let source = r"
         struct Counter { count: I32 }
@@ -940,7 +940,7 @@ fn test_field_access_inference_detects_invalid_if_condition(
     ";
     let result = compile(source);
     match result {
-        Ok(_) => Err("expected InvalidIfCondition for Number-typed field as condition".into()),
+        Ok(_) => Err("expected InvalidIfCondition for I32-typed field as condition".into()),
         Err(errors) => {
             if errors
                 .iter()

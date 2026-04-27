@@ -685,16 +685,16 @@ fn test_function_with_closure_no_params_return_type() -> Result<(), Box<dyn std:
 }
 
 // =============================================================================
-// Lines 3222-3232: type_strings_compatible for Number/f32/i32/u32 and bool/Boolean
+// Lines 3222-3232: type_strings_compatible for I32/f32/i32/u32 and bool/Boolean
 // =============================================================================
 
 #[test]
 fn test_function_return_number_f32_compatible() -> Result<(), Box<dyn std::error::Error>> {
-    // f32 literal (or Number) compatible with Number return type
+    // f32 literal (or I32) compatible with I32 return type
     let source = r"
         fn compute() -> I32 { 42 }
     ";
-    compile(source).map_err(|e| format!("Number return: {e:?}"))?;
+    compile(source).map_err(|e| format!("I32 return: {e:?}"))?;
     Ok(())
 }
 

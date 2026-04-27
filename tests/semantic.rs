@@ -409,7 +409,7 @@ fn test_field_default_type_must_match_annotation() -> Result<(), Box<dyn std::er
     // ("test_error_type_mismatch_in_field") with a passing case that
     // asserted nothing. Split into two real assertions:
     //   1. matching default → compiles cleanly
-    //   2. mismatched default (`Number = "hi"`) → TypeMismatch
+    //   2. mismatched default (`I32 = "hi"`) → TypeMismatch
     let happy = r"
         struct Wrapper {
             count: I32 = 42
@@ -429,7 +429,7 @@ fn test_field_default_type_must_match_annotation() -> Result<(), Box<dyn std::er
         .iter()
         .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }));
     if !saw_mismatch {
-        return Err(format!("expected TypeMismatch for `Number = \"hi\"`, got: {errors:?}").into());
+        return Err(format!("expected TypeMismatch for `I32 = \"hi\"`, got: {errors:?}").into());
     }
     Ok(())
 }

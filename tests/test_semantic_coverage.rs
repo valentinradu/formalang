@@ -416,13 +416,13 @@ fn test_trait_missing_required_field() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_binary_op_string_plus_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
-    // String + Number is invalid
+    // String + I32 is invalid
     let source = r#"
         let result: I32 = "hello" + 42
     "#;
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for String + Number".into());
+        return Err("Expected type error for String + I32".into());
     }
     Ok(())
 }
@@ -450,7 +450,7 @@ fn test_binary_op_logical_with_numbers() -> Result<(), Box<dyn std::error::Error
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for Number && Number".into());
+        return Err("Expected type error for I32 && I32".into());
     }
     Ok(())
 }
@@ -871,7 +871,7 @@ fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_division_without_spaces_tokenises_as_division() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #20: `10/2` used to lex as Number(10), Path("2"). Now it must
+    // Audit #20: `10/2` used to lex as I32(10), Path("2"). Now it must
     // produce integer division.
     let source = r"
         pub let quotient: I32 = 10/2
@@ -944,7 +944,7 @@ fn test_generic_fn_duplicate_param_errors() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn test_struct_literal_field_value_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
     // Previously validate_struct_fields checked arity/names only. Provide a
-    // Number where the field declares String — must now type-error.
+    // I32 where the field declares String — must now type-error.
     let source = r"
         struct Thing { name: String }
         let t = Thing(name: 42)
@@ -1786,7 +1786,7 @@ fn test_string_multiplication_invalid() -> Result<(), Box<dyn std::error::Error>
     "#;
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected type error for String * Number".into());
+        return Err("Expected type error for String * I32".into());
     }
     Ok(())
 }

@@ -1075,28 +1075,28 @@ fn test_closure_type_with_no_params() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_method_call_abs_on_number() -> Result<(), Box<dyn std::error::Error>> {
-    // abs is not a built-in method on Number in FormaLang; should produce an undefined method error
+    // abs is not a built-in method on I32 in FormaLang; should produce an undefined method error
     let source = r"
         let x: I32 = -5
         let result: I32 = x.abs()
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected error: abs() is not a built-in method on Number".into());
+        return Err("Expected error: abs() is not a built-in method on I32".into());
     }
     Ok(())
 }
 
 #[test]
 fn test_method_call_sqrt_on_number() -> Result<(), Box<dyn std::error::Error>> {
-    // sqrt is not a built-in method on Number in FormaLang; should produce an undefined method error
+    // sqrt is not a built-in method on I32 in FormaLang; should produce an undefined method error
     let source = r"
         let x: I32 = 16
         let result: I32 = x.sqrt()
     ";
     let result = compile(source);
     if result.is_ok() {
-        return Err("Expected error: sqrt() is not a built-in method on Number".into());
+        return Err("Expected error: sqrt() is not a built-in method on I32".into());
     }
     Ok(())
 }
