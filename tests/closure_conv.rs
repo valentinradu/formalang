@@ -6,8 +6,8 @@
 
 #![allow(clippy::expect_used)]
 
-use formalang::ir::ClosureConversionPass;
-use formalang::{compile_to_ir, IrPass};
+use formalang::ir::{ClosureConversionPass, DeadCodeEliminationPass, IrExpr};
+use formalang::{compile_to_ir, IrPass, Pipeline};
 
 /// Standard two-closure fixture used by every microcommit's snapshot
 /// test, kept in one place so each snapshot exercises the same input.
@@ -136,22 +136,140 @@ fn mc6_no_residual_closure_nodes() {
         .run(module)
         .expect("closure conversion succeeds");
 
-    for f in &converted.functions {
+    assert_module_closure_free(&converted);
+}
+
+/// mc10 — end-to-end check that a closure-rich, multi-feature
+/// program survives `ClosureConversionPass` + `DeadCodeEliminationPass`.
+///
+/// The fixture exercises every interesting capture pattern the IR
+/// produces today:
+/// - a closure with no captures (in a `let`),
+/// - a closure capturing a `Sink`-mode parameter (returned from a
+///   function),
+/// - a closure capturing module-level `Let` and `Mut` bindings.
+///
+/// After the pipeline:
+/// - the module is closure-free (mc8 invariant transitively
+///   verified),
+/// - one synthesized `__closure<N>` lifted function exists per
+///   closure that DCE retained, paired with a `__ClosureEnv<N>`
+///   env struct,
+/// - every surviving `ClosureRef.funcref` resolves to a real
+///   top-level function in the module.
+#[test]
+fn mc10_closure_rich_fixture_survives_pipeline() {
+    let source = r"
+        // No-capture closure.
+        let trivial: I32 -> I32 = |x: I32| x
+
+        // Sink-capture closure (returns a closure capturing the param).
+        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
+        }
+
+        // Module-level Let + Mut captures.
+        let base: I32 = 10
+        let mut counter: I32 = 0
+        let bump: () -> I32 = () -> base + counter
+    ";
+    let module = compile_to_ir(source).expect("fixture should compile to IR");
+
+    let closure_count_before = count_closure_exprs(&module);
+    assert!(
+        closure_count_before >= 3,
+        "fixture should contain at least 3 closure expressions, got {closure_count_before}"
+    );
+
+    let mut pipeline = Pipeline::new()
+        .pass(ClosureConversionPass::new())
+        .pass(DeadCodeEliminationPass::new());
+    let converted = pipeline
+        .run(module)
+        .expect("ClosureConv + DCE pipeline should succeed");
+
+    assert_module_closure_free(&converted);
+
+    // Every surviving ClosureRef's funcref names an extant function
+    // in the module.
+    let mut surviving_closure_refs = 0usize;
+    for l in &converted.lets {
+        if let IrExpr::ClosureRef { funcref, .. } = &l.value {
+            surviving_closure_refs = surviving_closure_refs.saturating_add(1);
+            let name = funcref.first().expect("non-empty funcref path");
+            assert!(
+                converted.functions.iter().any(|f| &f.name == name),
+                "ClosureRef funcref `{name}` should name an existing function"
+            );
+        }
+    }
+    assert!(
+        surviving_closure_refs > 0,
+        "at least one ClosureRef should survive DCE"
+    );
+}
+
+fn count_closure_exprs(module: &formalang::ir::IrModule) -> usize {
+    let mut count = 0usize;
+    let mut visit = |e: &IrExpr| {
+        if matches!(e, IrExpr::Closure { .. }) {
+            count = count.saturating_add(1);
+        }
+    };
+    walk_module_exprs(module, &mut visit);
+    count
+}
+
+fn walk_module_exprs(
+    module: &formalang::ir::IrModule,
+    visit: &mut dyn FnMut(&IrExpr),
+) {
+    for l in &module.lets {
+        visit_all(&l.value, visit);
+    }
+    for f in &module.functions {
+        if let Some(body) = &f.body {
+            visit_all(body, visit);
+        }
+    }
+    for i in &module.impls {
+        for f in &i.functions {
+            if let Some(body) = &f.body {
+                visit_all(body, visit);
+            }
+        }
+    }
+    for s in &module.structs {
+        for field in &s.fields {
+            if let Some(d) = &field.default {
+                visit_all(d, visit);
+            }
+        }
+    }
+}
+
+fn visit_all(e: &IrExpr, visit: &mut dyn FnMut(&IrExpr)) {
+    visit(e);
+    walk_sub_exprs(e, &mut |sub| visit_all(sub, visit));
+}
+
+fn assert_module_closure_free(module: &formalang::ir::IrModule) {
+    for f in &module.functions {
         if let Some(body) = &f.body {
             assert_no_closure(body).expect("function body");
         }
     }
-    for l in &converted.lets {
+    for l in &module.lets {
         assert_no_closure(&l.value).expect("let value");
     }
-    for i in &converted.impls {
+    for i in &module.impls {
         for f in &i.functions {
             if let Some(body) = &f.body {
                 assert_no_closure(body).expect("impl method body");
             }
         }
     }
-    for s in &converted.structs {
+    for s in &module.structs {
         for field in &s.fields {
             if let Some(d) = &field.default {
                 assert_no_closure(d).expect("struct field default");
