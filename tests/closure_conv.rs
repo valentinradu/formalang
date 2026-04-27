@@ -139,6 +139,60 @@ fn mc6_no_residual_closure_nodes() {
     assert_module_closure_free(&converted);
 }
 
+/// Nested closures: an outer closure returns an inner closure that
+/// captures both an outer-scope variable AND an outer-closure
+/// parameter. Verifies the recursive `lift_closure` path:
+/// - one env struct + lifted function per closure,
+/// - the inner `ClosureRef` constructed inside the outer's lifted
+///   body builds its env from `(x, n)` where `x` is the outer's
+///   parameter (raw `Reference{x}` expected) but `n` is an outer
+///   capture (rewritten to `__env.n`).
+#[test]
+fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
+    let source = r"
+        pub fn make_curried(sink n: I32) -> (I32) -> (I32) -> I32 {
+            |x: I32| |y: I32| x + y + n
+        }
+    ";
+    let module = compile_to_ir(source).expect("nested closure should compile");
+
+    // Two closures expected: outer (`|x| ...`) and inner (`|y| ...`).
+    let closure_count = count_closure_exprs(&module);
+    assert_eq!(closure_count, 2, "expected 2 closures, got {closure_count}");
+
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .expect("closure conversion succeeds");
+
+    assert_module_closure_free(&converted);
+
+    // Snapshot the body of `make_curried` (outer ClosureRef) and the
+    // body of its lifted function `__closure0` (which contains the
+    // inner ClosureRef whose env-struct construction is the
+    // load-bearing case for the recursion).
+    let make_curried_body = converted
+        .functions
+        .iter()
+        .find(|f| f.name == "make_curried")
+        .and_then(|f| f.body.as_ref())
+        .expect("make_curried body");
+
+    // Find the outer-lifted function — it's the one that returns the
+    // inner ClosureRef. Its name depends on walk order; locate it
+    // structurally instead of by hardcoded name.
+    let outer_lifted_body = converted
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("__closure") && matches!(f.body, Some(IrExpr::ClosureRef { .. })))
+        .and_then(|f| f.body.as_ref())
+        .expect("outer-lifted function with ClosureRef body");
+
+    insta::assert_debug_snapshot!(
+        "nested_closure_lift",
+        (make_curried_body, outer_lifted_body)
+    );
+}
+
 /// mc10 — end-to-end check that a closure-rich, multi-feature
 /// program survives `ClosureConversionPass` + `DeadCodeEliminationPass`.
 ///
