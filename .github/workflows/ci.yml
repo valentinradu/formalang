@@ -30,6 +30,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Reclaim ~25 GB of disk by removing preinstalled tooling we
+      # don't use on this runner image (Android SDK, .NET, hosted
+      # tool cache, large language runtimes). Linking ~44 integration
+      # test binaries in `target/debug/deps/` plus the cargo registry
+      # cache routinely overshoots the ~14 GB ephemeral disk that the
+      # default runner image leaves free after its preinstalls;
+      # CI surfaces as `No space left on device` partway through the
+      # build. Reclaiming up front gives the build comfortable
+      # headroom regardless of how much the toolchains grow.
+      - name: Free up disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet \
+                      /usr/local/lib/android \
+                      /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL \
+                      /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk \
+                      /opt/hostedtoolcache/PyPy
+          df -h /
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -52,14 +72,14 @@ jobs:
       #
       # The workspace produces ~44 integration-test binaries; each is
       # statically linked with the full crate + dependency rlib set.
-      # On the standard ubuntu-latest runner (4 cores, ~7 GB RAM,
-      # ~14 GB ephemeral disk), default `cargo test` runs `ld` in 4
-      # parallel processes and each `ld` mmaps the rlib set
-      # independently. When peak memory exceeds the page cache budget
-      # the kernel evicts mapped pages and `ld` dies with
-      # `signal 7 [Bus error]` — visibly intermittent, easy to
-      # mistake for a flake. `--jobs 2` halves peak memory; trade is
-      # ~30–50% slower compile but reliably green.
+      # On the standard ubuntu-latest runner (4 cores, ~7 GB RAM),
+      # default `cargo test` runs `ld` in 4 parallel processes and
+      # each `ld` mmaps the rlib set independently. When peak memory
+      # exceeds the page cache budget the kernel evicts mapped pages
+      # and `ld` dies with `signal 7 [Bus error]` — visibly
+      # intermittent, easy to mistake for a flake. `--jobs 2` halves
+      # peak memory; trade is ~30–50% slower compile but reliably
+      # green.
       - name: Run tests
         run: cargo test --workspace --jobs 2
 
