@@ -73,7 +73,7 @@ metadata field if external tooling already depends on it.
 Suffixes constrain the legal range:
 
 | Suffix | Allowed range (integer syntax) |
-|---|---|
+| --- | --- |
 | `I32` | `i32::MIN..=i32::MAX` |
 | `I64` | `i64::MIN..=i64::MAX` |
 | `F32` / `F64` | conversion via `as` from `i128` (some loss possible; existing behaviour) |
