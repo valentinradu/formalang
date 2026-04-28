@@ -6,7 +6,6 @@
 # Format: <max_lines> <path-relative-to-repo-root>
 3576 src/semantic/validation.rs
 3153 src/ir/monomorphise.rs
-2090 src/parser/mod.rs
 1915 src/ir/lower/expr.rs
 1774 src/semantic/mod.rs
 1740 src/ir/lower/mod.rs

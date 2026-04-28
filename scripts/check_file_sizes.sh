@@ -26,6 +26,11 @@ fail=0
 shrunk=()
 while IFS= read -r -d '' file; do
     rel="${file#"$ROOT"/}"
+    # Skip dedicated test files — `tests.rs` and anything under a
+    # `tests/` directory. Per-test-file size limit isn't useful here.
+    if [[ "$rel" == */tests.rs || "$rel" == */tests/*.rs ]]; then
+        continue
+    fi
     lines=$(wc -l < "$file")
     if [[ -n "${allowed[$rel]+x}" ]]; then
         cap="${allowed[$rel]}"
