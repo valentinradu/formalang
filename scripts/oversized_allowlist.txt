@@ -10,6 +10,4 @@
 1774 src/semantic/mod.rs
 1740 src/ir/lower/mod.rs
 1471 src/ir/dce.rs
-1256 src/semantic/node_finder.rs
 1068 src/ir/closure_conv.rs
-1019 src/semantic/symbol_table.rs
