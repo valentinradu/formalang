@@ -20,8 +20,8 @@ impl ConversionState {
     /// the way.
     pub(super) fn lift_closure(
         &mut self,
-        params: &[(ParamConvention, String, ResolvedType)],
-        captures: &[(String, ParamConvention, ResolvedType)],
+        params: &[(ParamConvention, crate::ir::BindingId, String, ResolvedType)],
+        captures: &[(crate::ir::BindingId, String, ParamConvention, ResolvedType)],
         body: IrExpr,
         closure_ty: ResolvedType,
         outer_ctx: &CaptureCtx,
@@ -56,7 +56,7 @@ impl ConversionState {
         let env_fields = captures
             .iter()
             .enumerate()
-            .map(|(i, (name, _convention, capture_ty))| {
+            .map(|(i, (_bid, name, _convention, capture_ty))| {
                 let raw_ref = IrExpr::Reference {
                     path: vec![name.clone()],
                     target: crate::ir::ReferenceTarget::Unresolved,
@@ -93,7 +93,7 @@ impl ConversionState {
 fn build_lifted_function(
     name: String,
     env_struct_id: StructId,
-    closure_params: &[(ParamConvention, String, ResolvedType)],
+    closure_params: &[(ParamConvention, crate::ir::BindingId, String, ResolvedType)],
     return_ty: ResolvedType,
     body: IrExpr,
 ) -> IrFunction {
@@ -108,7 +108,7 @@ fn build_lifted_function(
 
     let mut params = Vec::with_capacity(closure_params.len().saturating_add(1));
     params.push(env_param);
-    for (convention, param_name, param_ty) in closure_params {
+    for (convention, _bid, param_name, param_ty) in closure_params {
         params.push(IrFunctionParam {
             binding_id: crate::ir::BindingId(0),
             name: param_name.clone(),

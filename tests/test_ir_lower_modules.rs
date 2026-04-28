@@ -2741,7 +2741,12 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
     let num_ty = ResolvedType::Primitive(PrimitiveType::I32);
 
     let expr = IrExpr::Closure {
-        params: vec![(ParamConvention::Let, "x".to_string(), num_ty.clone())],
+        params: vec![(
+            ParamConvention::Let,
+            formalang::ir::BindingId(0),
+            "x".to_string(),
+            num_ty.clone(),
+        )],
         captures: Vec::new(),
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(42.0.into()),

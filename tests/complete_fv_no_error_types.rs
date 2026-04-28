@@ -13,10 +13,7 @@
 )]
 
 use formalang::compile_to_ir;
-use formalang::ir::{
-    walk_expr_children, walk_module, ClosureConversionPass, DeadCodeEliminationPass, IrExpr,
-    IrModule, IrVisitor, MonomorphisePass, ResolveReferencesPass, ResolvedType,
-};
+use formalang::ir::{walk_expr_children, walk_module, IrExpr, IrModule, IrVisitor, ResolvedType};
 use formalang::Pipeline;
 
 struct ErrorCounter(usize);
@@ -41,15 +38,6 @@ fn complete_fv_has_no_error_types_through_the_full_pipeline() {
     let module = compile_to_ir(source).expect("compile");
     assert_eq!(count_error_types(&module), 0, "before any pass");
 
-    let mut p = Pipeline::new()
-        .pass(MonomorphisePass::default())
-        .pass(ResolveReferencesPass::new())
-        .pass(ClosureConversionPass::new())
-        .pass(DeadCodeEliminationPass::new());
-    let m = p.run(module).expect("full pipeline");
-    assert_eq!(
-        count_error_types(&m),
-        0,
-        "after Mono+ResolveRefs+ClosureConv+DCE"
-    );
+    let m = Pipeline::for_codegen().run(module).expect("full pipeline");
+    assert_eq!(count_error_types(&m), 0, "after Pipeline::for_codegen()");
 }

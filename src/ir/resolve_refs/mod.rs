@@ -24,8 +24,8 @@ use std::collections::HashMap;
 
 use crate::error::CompilerError;
 use crate::ir::{
-    BindingId, FieldIdx, IrBlockStatement, IrExpr, IrFunction, IrLet, IrMatchArm, IrModule,
-    MethodIdx, ReferenceTarget, ResolvedType, VariantIdx,
+    BindingId, FieldIdx, IrExpr, IrFunction, IrLet, IrModule, MethodIdx, ReferenceTarget,
+    ResolvedType, VariantIdx,
 };
 use crate::pipeline::IrPass;
 
@@ -73,6 +73,7 @@ impl IrPass for ResolveReferencesPass {
         // structs / enums / traits / impls during expression rewriting to
         // look up field / variant / method indices.
         let symbols = ModuleSymbols::build(&module);
+        let mut errors: Vec<CompilerError> = Vec::new();
 
         // Functions / module-lets can be detached and walked freely against
         // the rest of `module`. For impl methods we need `module.impls`
@@ -83,7 +84,7 @@ impl IrPass for ResolveReferencesPass {
         let mut lets = std::mem::take(&mut module.lets);
 
         for func in &mut functions {
-            resolve_function(func, &symbols, &module);
+            resolve_function(func, &symbols, &module, &mut errors);
         }
         module.functions = functions;
         // Method bodies are extracted one-at-a-time via mem::replace so
@@ -104,24 +105,30 @@ impl IrPass for ResolveReferencesPass {
                     &mut module.impls[impl_idx].functions[fn_idx],
                     placeholder_function(),
                 );
-                resolve_function(&mut taken, &symbols, &module);
+                resolve_function(&mut taken, &symbols, &module, &mut errors);
                 module.impls[impl_idx].functions[fn_idx] = taken;
             }
         }
         for l in &mut lets {
-            resolve_module_let(l, &symbols, &module);
+            resolve_module_let(l, &symbols, &module, &mut errors);
         }
         module.lets = lets;
 
-        Ok(module)
+        if errors.is_empty() {
+            Ok(module)
+        } else {
+            Err(errors)
+        }
     }
 }
 
 mod lookups;
 mod symbols;
+mod walkers;
 
-use lookups::{lookup_method_idx, match_variant_idx, struct_field_idx};
+use lookups::{lookup_method_idx, struct_field_idx};
 use symbols::ModuleSymbols;
+use walkers::{resolve_block_stmt, resolve_match_arm, resolve_path};
 
 /// Whether a binding was introduced as a function parameter or as a
 /// function-local `let` (or for-loop / match-arm / closure parameter,
@@ -138,6 +145,10 @@ enum BindingKind {
 struct FnResolver<'a> {
     symbols: &'a ModuleSymbols,
     module: &'a IrModule,
+    /// Errors collected during the walk. The pass surfaces these via
+    /// its `Err` return when non-empty so callers see a real
+    /// `CompilerError` rather than silent `Unresolved` placeholders.
+    errors: &'a mut Vec<CompilerError>,
     next_id: u32,
     /// Stack of name → (`BindingId`, kind) frames. Each block / for /
     /// match-arm / closure body pushes a frame; lookup walks
@@ -146,10 +157,15 @@ struct FnResolver<'a> {
 }
 
 impl<'a> FnResolver<'a> {
-    fn new(symbols: &'a ModuleSymbols, module: &'a IrModule) -> Self {
+    fn new(
+        symbols: &'a ModuleSymbols,
+        module: &'a IrModule,
+        errors: &'a mut Vec<CompilerError>,
+    ) -> Self {
         Self {
             symbols,
             module,
+            errors,
             next_id: 0,
             scopes: vec![HashMap::new()],
         }
@@ -196,8 +212,13 @@ const fn placeholder_function() -> IrFunction {
     }
 }
 
-fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrModule) {
-    let mut r = FnResolver::new(symbols, module);
+fn resolve_function(
+    func: &mut IrFunction,
+    symbols: &ModuleSymbols,
+    module: &IrModule,
+    errors: &mut Vec<CompilerError>,
+) {
+    let mut r = FnResolver::new(symbols, module, errors);
     for param in &mut func.params {
         let id = r.fresh();
         param.binding_id = id;
@@ -211,8 +232,13 @@ fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrM
     }
 }
 
-fn resolve_module_let(l: &mut IrLet, symbols: &ModuleSymbols, module: &IrModule) {
-    let mut r = FnResolver::new(symbols, module);
+fn resolve_module_let(
+    l: &mut IrLet,
+    symbols: &ModuleSymbols,
+    module: &IrModule,
+    errors: &mut Vec<CompilerError>,
+) {
+    let mut r = FnResolver::new(symbols, module, errors);
     resolve_expr(&mut l.value, &mut r);
 }
 
@@ -223,8 +249,20 @@ fn resolve_module_let(l: &mut IrLet, symbols: &ModuleSymbols, module: &IrModule)
 fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
     match expr {
         IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => {}
-        IrExpr::Reference { path, target, .. } => {
+        IrExpr::Reference { path, target, ty } => {
             *target = resolve_path(path, r);
+            // Promote a remaining `Unresolved` to a typed
+            // `UndefinedReference` error — but only when the upstream
+            // didn't already mark the reference's type as `Error`,
+            // which is how lowering signals "I already pushed a
+            // CompilerError for this site". Without the gate we'd
+            // double-count any unbound name.
+            if matches!(target, ReferenceTarget::Unresolved) && !matches!(ty, ResolvedType::Error) {
+                r.errors.push(CompilerError::UndefinedReference {
+                    name: path.join("::"),
+                    span: crate::location::Span::default(),
+                });
+            }
         }
         IrExpr::LetRef {
             name, binding_id, ..
@@ -388,13 +426,23 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
         }
         IrExpr::Closure {
             params,
-            captures: _,
+            captures,
             body,
             ..
         } => {
+            // Capture binding-id resolution: each capture's
+            // `outer_binding_id` must point at the introducing
+            // binding *in the enclosing scope*, which we look up
+            // BEFORE pushing the closure's own scope frame.
+            for (cap_bid, cap_name, _, _) in captures.iter_mut() {
+                if let Some((id, _)) = r.lookup(cap_name) {
+                    *cap_bid = id;
+                }
+            }
             r.push_scope();
-            for (_, name, _) in params.iter() {
+            for (_, param_bid, name, _) in params.iter_mut() {
                 let id = r.fresh();
+                *param_bid = id;
                 r.bind(name.clone(), id, BindingKind::Local);
             }
             resolve_expr(body, r);
@@ -424,62 +472,4 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             r.pop_scope();
         }
     }
-}
-
-fn resolve_block_stmt(stmt: &mut IrBlockStatement, r: &mut FnResolver<'_>) {
-    match stmt {
-        IrBlockStatement::Let {
-            binding_id,
-            name,
-            value,
-            ..
-        } => {
-            resolve_expr(value, r);
-            let id = r.fresh();
-            *binding_id = id;
-            r.bind(name.clone(), id, BindingKind::Local);
-        }
-        IrBlockStatement::Assign { target, value } => {
-            resolve_expr(target, r);
-            resolve_expr(value, r);
-        }
-        IrBlockStatement::Expr(e) => resolve_expr(e, r),
-    }
-}
-
-fn resolve_match_arm(arm: &mut IrMatchArm, scrutinee_ty: &ResolvedType, r: &mut FnResolver<'_>) {
-    if !arm.is_wildcard {
-        if let Some(idx) = match_variant_idx(scrutinee_ty, &arm.variant, r.module) {
-            arm.variant_idx = VariantIdx(idx);
-        }
-    }
-    r.push_scope();
-    for (name, binding_id, _ty) in &mut arm.bindings {
-        let id = r.fresh();
-        *binding_id = id;
-        r.bind(name.clone(), id, BindingKind::Local);
-    }
-    resolve_expr(&mut arm.body, r);
-    r.pop_scope();
-}
-
-fn resolve_path(path: &[String], r: &FnResolver<'_>) -> ReferenceTarget {
-    if let [single] = path {
-        if let Some((id, kind)) = r.lookup(single) {
-            return match kind {
-                BindingKind::Param => ReferenceTarget::Param(id),
-                BindingKind::Local => ReferenceTarget::Local(id),
-            };
-        }
-        if let Some(target) = r.symbols.by_name.get(single) {
-            return target.clone();
-        }
-    } else if let [first, ..] = path {
-        // Multi-segment path: try the first segment as a module-scope
-        // symbol; leave nested-module / external resolution as a follow-up.
-        if let Some(target) = r.symbols.by_name.get(first) {
-            return target.clone();
-        }
-    }
-    ReferenceTarget::Unresolved
 }

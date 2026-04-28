@@ -39,7 +39,7 @@ fn assert_closure_param_is_i32(value: &IrExpr, label: &str) -> TestResult {
     let IrExpr::Closure { params, .. } = closure else {
         return Err(format!("[{label}] expected Closure, got {closure:?}").into());
     };
-    let (_, _, ty) = params.first().ok_or("missing param")?;
+    let (_, _, _, ty) = params.first().ok_or("missing param")?;
     if !matches!(ty, ResolvedType::Primitive(PrimitiveType::I32)) {
         return Err(format!("[{label}] expected param ty I32, got {ty:?}").into());
     }
@@ -88,7 +88,7 @@ fn array_destructuring_preserves_param_convention() -> TestResult {
     let IrExpr::Closure { params, .. } = closure else {
         return Err(format!("expected Closure, got {closure:?}").into());
     };
-    let (conv, _, _) = params.first().ok_or("missing param")?;
+    let (conv, _, _, _) = params.first().ok_or("missing param")?;
     if *conv != ParamConvention::Mut {
         return Err(format!("expected Mut convention, got {conv:?}").into());
     }

@@ -14,11 +14,11 @@ use crate::ir::{IrField, IrStruct, ResolvedType};
 /// `Mut` (caller-frame reference), and `Sink` (move ownership).
 pub(super) fn synthesize_env_struct(
     name: String,
-    captures: &[(String, ParamConvention, ResolvedType)],
+    captures: &[(crate::ir::BindingId, String, ParamConvention, ResolvedType)],
 ) -> IrStruct {
     let fields = captures
         .iter()
-        .map(|(field_name, convention, ty)| IrField {
+        .map(|(_bid, field_name, convention, ty)| IrField {
             name: field_name.clone(),
             ty: ty.clone(),
             mutable: matches!(convention, ParamConvention::Mut),

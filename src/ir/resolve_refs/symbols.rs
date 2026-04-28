@@ -8,6 +8,24 @@ use std::collections::HashMap;
 
 use crate::ir::{EnumId, FunctionId, IrModule, LetId, ReferenceTarget, StructId, TraitId};
 
+/// Registered targets for cross-module imports. Each entry maps the
+/// **unqualified** import-item name to an `External` target carrying
+/// the resolved `module_path` so backends can re-link later.
+pub(super) fn register_imports(by_name: &mut HashMap<String, ReferenceTarget>, module: &IrModule) {
+    for import in &module.imports {
+        for item in &import.items {
+            // Don't shadow a same-named local definition; locals win.
+            by_name
+                .entry(item.name.clone())
+                .or_insert_with(|| ReferenceTarget::External {
+                    module_path: import.module_path.clone(),
+                    name: item.name.clone(),
+                    kind: item.kind.clone(),
+                });
+        }
+    }
+}
+
 pub(super) struct ModuleSymbols {
     pub(super) by_name: HashMap<String, ReferenceTarget>,
 }
@@ -53,6 +71,7 @@ impl ModuleSymbols {
             )]
             by_name.insert(l.name.clone(), ReferenceTarget::ModuleLet(LetId(i as u32)));
         }
+        register_imports(&mut by_name, module);
         Self { by_name }
     }
 }

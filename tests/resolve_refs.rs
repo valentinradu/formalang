@@ -344,6 +344,136 @@ fn method_call_static_dispatch_resolves_method_idx() -> TestResult {
 }
 
 #[test]
+fn nested_module_struct_registered_with_qualified_name() -> TestResult {
+    // Structs declared inside `mod foo { … }` end up in
+    // `IrModule.structs` under the qualified name `"foo::Bar"`. The
+    // resolve pass's `resolve_path` joins multi-segment paths with
+    // `::` and looks them up directly against this same flat table —
+    // so any `Reference { path: ["foo", "Bar"] }` resolves whenever
+    // the qualified name is registered. This test pins the
+    // qualified-name invariant; the joined-name lookup is exercised
+    // by existing single-segment tests when the lookup hits.
+    let module = resolved(
+        r"
+        mod shapes {
+            pub struct Point { x: I32, y: I32 }
+        }
+        ",
+    )?;
+    if !module.structs.iter().any(|s| s.name == "shapes::Point") {
+        let names: Vec<&str> = module.structs.iter().map(|s| s.name.as_str()).collect();
+        return Err(format!("shapes::Point not registered; structs = {names:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn unresolved_path_with_concrete_type_emits_undefined_reference() -> TestResult {
+    // Hand-build an IrModule where a Reference's `path` doesn't match any
+    // module symbol and whose `ty` isn't already `Error`. The pass must
+    // surface a `CompilerError::UndefinedReference` instead of silently
+    // leaving `Unresolved` in place.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrFunction, ResolvedType};
+
+    let mut module = IrModule::default();
+    module.functions.push(IrFunction {
+        name: "f".to_string(),
+        generic_params: vec![],
+        params: vec![],
+        return_type: Some(ResolvedType::Primitive(PrimitiveType::I32)),
+        body: Some(IrExpr::Reference {
+            path: vec!["definitely_not_defined".to_string()],
+            target: ReferenceTarget::Unresolved,
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
+        }),
+        extern_abi: None,
+        attributes: vec![],
+        doc: None,
+    });
+    module.rebuild_indices();
+    let mut pass = formalang::ir::ResolveReferencesPass::new();
+    let result = pass.run(module);
+    let errors = result.err().ok_or("pass should have errored")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::UndefinedReference { name, .. } if name == "definitely_not_defined"))
+    {
+        return Err(format!("expected UndefinedReference, got {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
+    // When the upstream has already pushed an error and signalled that
+    // by setting `ty: ResolvedType::Error`, the resolve pass must NOT
+    // emit a second error for the same site.
+    use formalang::ir::{IrFunction, ResolvedType};
+
+    let mut module = IrModule::default();
+    module.functions.push(IrFunction {
+        name: "f".to_string(),
+        generic_params: vec![],
+        params: vec![],
+        return_type: None,
+        body: Some(IrExpr::Reference {
+            path: vec!["upstream_already_errored".to_string()],
+            target: ReferenceTarget::Unresolved,
+            ty: ResolvedType::Error,
+        }),
+        extern_abi: None,
+        attributes: vec![],
+        doc: None,
+    });
+    module.rebuild_indices();
+    let mut pass = formalang::ir::ResolveReferencesPass::new();
+    pass.run(module).map_err(|e| format!("{e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn closure_capture_binding_id_points_at_outer_introducing_binding() -> TestResult {
+    // `n` is a function parameter; the inner closure captures it.
+    // After the pass, the closure's `captures[0].0` (outer binding id)
+    // should equal the function param's `binding_id`.
+    let module = resolved(
+        r"
+        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
+        }
+        ",
+    )?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .ok_or("make_adder not found")?;
+    let n_id = f
+        .params
+        .iter()
+        .find(|p| p.name == "n")
+        .ok_or("n param missing")?
+        .binding_id;
+    let body = f.body.as_ref().ok_or("no body")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    let n_capture = captures
+        .iter()
+        .find(|(_, name, _, _)| name == "n")
+        .ok_or("n not in captures")?;
+    if n_capture.0 != n_id {
+        return Err(format!(
+            "capture's outer BindingId is {:?}, expected {n_id:?}",
+            n_capture.0
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();

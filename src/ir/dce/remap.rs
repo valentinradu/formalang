@@ -312,10 +312,10 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             body,
             ..
         } => {
-            for (_, _, t) in params {
+            for (_, _, _, t) in params {
                 remap_type(t, remap);
             }
-            for (_, _, t) in captures {
+            for (_, _, _, t) in captures {
                 remap_type(t, remap);
             }
             remap_expr(body, remap);

@@ -243,6 +243,29 @@ impl Pipeline {
         self
     }
 
+    /// Pre-built pipeline for backends emitting integer-indexed code
+    /// (formawasm, eventual JVM/LLVM): runs `MonomorphisePass`,
+    /// `ResolveReferencesPass`, `ClosureConversionPass`, then
+    /// `DeadCodeEliminationPass`. Pure-source-printing backends should
+    /// use [`Self::new`] and pick passes individually.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use formalang::{compile_to_ir, Pipeline};
+    ///
+    /// let module = compile_to_ir("pub fn id(x: I32) -> I32 { x }").unwrap();
+    /// let _ = Pipeline::for_codegen().run(module).unwrap();
+    /// ```
+    #[must_use]
+    pub fn for_codegen() -> Self {
+        Self::new()
+            .pass(crate::ir::MonomorphisePass::default())
+            .pass(crate::ir::ResolveReferencesPass::new())
+            .pass(crate::ir::ClosureConversionPass::new())
+            .pass(crate::ir::DeadCodeEliminationPass::new())
+    }
+
     /// Run all passes in order, returning the transformed module.
     ///
     /// # Errors

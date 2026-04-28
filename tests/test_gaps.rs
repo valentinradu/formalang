@@ -494,7 +494,7 @@ fn test_closure_arg_to_function_picks_up_expected_param_types(
     let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
         return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
     };
-    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    let (_, _, _, param_ty) = params.first().ok_or("expected at least one param")?;
     if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::I32)) {
         return Err(format!("expected closure param to lower as I32, got {param_ty:?}").into());
     }
@@ -532,7 +532,7 @@ fn test_closure_arg_to_method_picks_up_expected_param_types(
     let formalang::ir::IrExpr::Closure { params, .. } = first_arg else {
         return Err(format!("expected Closure as first arg, got {first_arg:?}").into());
     };
-    let (_, _, param_ty) = params.first().ok_or("expected at least one param")?;
+    let (_, _, _, param_ty) = params.first().ok_or("expected at least one param")?;
     if !matches!(param_ty, ResolvedType::Primitive(PrimitiveType::I32)) {
         return Err(format!("expected closure param to lower as I32, got {param_ty:?}").into());
     }
