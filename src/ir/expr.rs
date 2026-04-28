@@ -249,7 +249,7 @@ pub enum IrExpr {
         /// `(binding_name, capture_mode, resolved_type)` — the mode
         /// mirrors the `ParamConvention` of the outer binding (or `Let`
         /// for a plain immutable capture) so backends can choose between
-        /// copy, move, reference, or sink semantics. Audit finding #32.
+        /// copy, move, reference, or sink semantics.
         ///
         /// Populated during IR lowering by walking the body and collecting
         /// every [`Reference`](Self::Reference) / [`LetRef`](Self::LetRef)

@@ -53,33 +53,22 @@ use crate::ir::{
 use crate::location::Span;
 use crate::pipeline::IrPass;
 
-/// Monomorphisation pass.
-///
-/// See the module-level documentation in `src/ir/monomorphise.rs` for the
-/// full algorithm and limitations.
+/// Monomorphisation pass. See module docs for the algorithm.
 #[expect(
     clippy::exhaustive_structs,
     reason = "single optional field for imported module IRs; no further fields planned"
 )]
 #[derive(Debug, Clone, Default)]
 pub struct MonomorphisePass {
-    /// Imported module IRs keyed by their logical module path. When
-    /// supplied, the pass specialises generic types referenced via
-    /// `ResolvedType::External { type_args, .. }` by cloning the imported
-    /// definition into the main module with substituted type arguments
-    /// (audit finding #45). When empty, External-typed generic
-    /// instantiations are left alone, preserving previous behaviour.
+    /// Imported IRs keyed by logical module path. When present, generic
+    /// `External` types are specialised locally; when empty they are left
+    /// as-is.
     pub imported_modules: HashMap<Vec<String>, IrModule>,
 }
 
 impl MonomorphisePass {
-    /// Configure the pass with imported module IRs (audit finding #45).
-    ///
-    /// The map is keyed by logical module path (matching
-    /// `ResolvedType::External::module_path`) and lets the pass clone
-    /// imported generic definitions into the main module with substituted
-    /// type arguments instead of leaving the External reference
-    /// unspecialised.
+    /// Configure the pass with imported module IRs, keyed by logical module
+    /// path (matching `ResolvedType::External::module_path`).
     #[must_use]
     pub fn with_imports(mut self, imported_modules: HashMap<Vec<String>, IrModule>) -> Self {
         self.imported_modules = imported_modules;
@@ -95,12 +84,9 @@ impl IrPass for MonomorphisePass {
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         let mut errors = Vec::new();
 
-        // Phase 1a: specialise external generic instantiations (audit #45).
-        // For each `External { module_path, name, type_args }` with
-        // non-empty type_args, look up the imported module's IR, clone the
-        // generic definition into the current module with substituted
-        // arguments, and remember the mapping so Phase 2 can rewrite
-        // External references to the new local Struct/Enum.
+        // Phase 1a: clone each imported generic `External` into the current
+        // module under a fresh local id. Phase 2 uses the returned map to
+        // rewrite the External references.
         let external_mapping = if self.imported_modules.is_empty() {
             HashMap::new()
         } else {
@@ -158,10 +144,9 @@ impl IrPass for MonomorphisePass {
         // clones — Phase 2c uses it to rewrite dispatch sites.
         let impl_remap = specialise_impls(&mut module, &mapping);
 
-        // Phase 2c: rewrite `DispatchKind::Static { impl_id }` at every
-        // method-call site. A call on a specialised receiver should
-        // dispatch to the cloned impl, not the original generic-impl
-        // slot. Audit finding #5b.
+        // Phase 2c: rewrite `DispatchKind::Static { impl_id }` so calls on
+        // specialised receivers dispatch to the cloned impl, not the
+        // original generic slot.
         rewrite_dispatch_impl_ids(&mut module, &impl_remap);
 
         // Phase 2d: specialise generic functions. Walks every
@@ -232,9 +217,7 @@ impl IrPass for MonomorphisePass {
     }
 }
 
-// =============================================================================
 // Phase 1: collection
-// =============================================================================
 
 fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantiation> {
     let mut out = HashSet::new();
@@ -332,9 +315,7 @@ fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiation>) {
     }
 }
 
-// =============================================================================
-// Phase 1a: external generic specialisation (audit #45)
-// =============================================================================
+// Phase 1a: external generic specialisation
 
 /// External generic instantiation key: `(module_path, name, type_args)`.
 /// Populated from every `External { type_args, .. }` whose `type_args`
@@ -398,11 +379,9 @@ fn collect_external_from_type(ty: &ResolvedType, out: &mut HashSet<ExternalInsta
     }
 }
 
-/// Specialise every external generic instantiation by cloning the
-/// imported definition into the main module with substituted type
-/// arguments. Returns a map from external instantiation to the new
-/// local `(StructId | EnumId)` so Phase 2 can rewrite the External
-/// references. Audit finding #45.
+/// Clone every external generic instantiation into the main module with
+/// substituted type arguments. Returns a map from each instantiation to
+/// its new local id so Phase 2 can rewrite the External references.
 fn specialise_external_instantiations(
     module: &mut IrModule,
     imported_modules: &HashMap<Vec<String>, IrModule>,
@@ -725,9 +704,7 @@ fn rewrite_external_type(
     }
 }
 
-// =============================================================================
 // Phase 1b: specialisation
-// =============================================================================
 
 /// A single generic instantiation key: `(base, type_args)`.
 type Instantiation = (GenericBase, Vec<ResolvedType>);
@@ -1078,9 +1055,7 @@ fn write_usize(out: &mut String, prefix: &str, n: usize) -> core::fmt::Result {
     write!(out, "{prefix}{n}")
 }
 
-// =============================================================================
 // Phase 1c: substitution helpers
-// =============================================================================
 
 fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) {
     match ty {
@@ -1132,9 +1107,7 @@ fn substitute_expr_types(expr: &mut IrExpr, subs: &HashMap<String, ResolvedType>
     walk_expr_types_mut(expr, &mut |ty| substitute_type(ty, subs));
 }
 
-// =============================================================================
 // Phase 2: rewrite Generic → Struct(spec)
-// =============================================================================
 
 fn rewrite_module(module: &mut IrModule, mapping: &HashMap<Instantiation, GenericBase>) {
     {
@@ -1252,9 +1225,7 @@ fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiation, GenericB
     }
 }
 
-// =============================================================================
 // Phase 2b: specialise impl blocks targeting generic structs/enums
-// =============================================================================
 
 /// For each impl block whose target is a generic struct/enum, append one
 /// cloned impl per specialisation of that target (with `TypeParam`s
@@ -1448,10 +1419,7 @@ fn rewrite_dispatch_impl_ids(module: &mut IrModule, impl_remap: &ImplRemap) {
     }
 }
 
-// =============================================================================
-// Phase 2e (renumbered from 2d in commit history): generic function
-// specialisation
-// =============================================================================
+// Phase 2e: generic function specialisation
 
 /// `(function_name, type_arg_tuple)` — the unique key for a generic
 /// function specialisation. Mirrors the struct/enum [`Instantiation`]
@@ -2179,9 +2147,7 @@ fn walk_impl_types_mut(imp: &mut IrImpl, visit: &mut impl FnMut(&mut ResolvedTyp
     }
 }
 
-// =============================================================================
 // Phase 3: compact — drop original generic definitions, remap IDs
-// =============================================================================
 
 /// Build an old-id → new-id remap table for structs. Structs with non-empty
 /// `generic_params` become `None` (they will be dropped on compaction);
@@ -2235,11 +2201,8 @@ fn build_trait_remap(module: &IrModule) -> Vec<Option<TraitId>> {
 
 /// Remap struct/enum IDs across the module after compaction.
 ///
-/// Returns `Err` if an impl-target lookup hits an out-of-bounds index
-/// or a `None` slot (a "dropped" struct/enum that should have been
-/// removed alongside its impl by [`drop_specialised_generic_impls`]).
-/// Audit2 B22: previously these cases silently no-op'd, leaving
-/// dangling target IDs in the IR.
+/// Returns `Err` on out-of-bounds or dropped-slot impl targets — silently
+/// no-op'ing them would leave dangling target IDs in the IR.
 #[expect(
     clippy::too_many_lines,
     reason = "linear walk over every TraitId-bearing slot in the module"
@@ -2516,9 +2479,7 @@ fn remap_type(
     }
 }
 
-// =============================================================================
 // Phase 4: leftover detection (sanity check)
-// =============================================================================
 
 #[derive(Default)]
 struct LeftoverScanner {
@@ -2706,12 +2667,8 @@ fn walk_expr(expr: &IrExpr, visit: &mut impl FnMut(&IrExpr)) {
 }
 
 fn first_leftover(ty: &ResolvedType) -> Option<String> {
-    // After audit findings #4, #8, and #27, IR lowering no longer emits
-    // `TypeParam` as a "best-effort placeholder" — every reachable lowering
-    // path either resolves to a concrete type or pushes an
-    // `InternalError`. A `TypeParam` survival here therefore means a real
-    // monomorphisation gap (a type parameter that wasn't substituted) and
-    // should be reported.
+    // Lowering never emits `TypeParam` as a placeholder, so a survivor here
+    // is a real monomorphisation gap — report it.
     match ty {
         ResolvedType::TypeParam(name) => Some(format!("unresolved TypeParam(`{name}`)")),
         ResolvedType::Generic { base, args } => {
@@ -2751,9 +2708,7 @@ fn first_leftover(ty: &ResolvedType) -> Option<String> {
     }
 }
 
-// =============================================================================
 // Walkers
-// =============================================================================
 
 /// Read-only walk over every `ResolvedType` reachable from the module.
 fn walk_module_types(module: &IrModule, visit: &mut impl FnMut(&ResolvedType)) {

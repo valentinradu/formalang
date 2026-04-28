@@ -927,7 +927,7 @@ impl<'ast> NodeFinder<'ast> {
     }
 
     /// Get the span of an expression. Every `Expr` variant now carries a
-    /// real span (audit finding #19), so this is always `Some` — kept for
+    /// real span, so this is always `Some` — kept for
     /// backwards compatibility with the existing callers.
     #[expect(
         clippy::unnecessary_wraps,

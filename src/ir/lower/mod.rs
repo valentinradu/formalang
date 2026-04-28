@@ -81,7 +81,7 @@ struct IrLowerer<'a> {
     /// binding name to its declared parameter convention and resolved type.
     /// Used so that a `Reference` to a parameter resolves to the concrete
     /// type instead of a `TypeParam(name)` placeholder, and so that closure
-    /// captures inherit the outer binding's convention (audit finding #32).
+    /// captures inherit the outer binding's convention.
     pub(super) local_binding_scopes: Vec<HashMap<String, (ParamConvention, ResolvedType)>>,
     /// When lowering the body of an impl method, maps the current impl's
     /// methods to their declared return types so that forward references
@@ -96,9 +96,9 @@ struct IrLowerer<'a> {
     /// Span of the AST node currently being lowered. Updated at the top of
     /// `lower_expr` and a few other lowering entry points so that
     /// `InternalError` diagnostics can cite a meaningful source location
-    /// instead of `Span::default()`. See audit finding #31.
+    /// instead of `Span::default()`.
     pub(super) current_span: crate::location::Span,
-    /// Audit2 B19: when a closure literal is being lowered as the
+    /// when a closure literal is being lowered as the
     /// argument to a function call (or assigned to a closure-typed
     /// struct field, or passed as a method argument), this carries the
     /// expected closure type from the call/assignment context. The
@@ -136,7 +136,7 @@ impl<'a> IrLowerer<'a> {
     /// continue assembling the IR. The caller's error will surface via
     /// `self.errors` at the end of lowering; the returned placeholder only
     /// exists so we don't have to plumb `Result` through every lowering
-    /// helper. See audit finding #8.
+    /// helper.
     pub(super) fn internal_error_type(&mut self, detail: String) -> ResolvedType {
         self.errors.push(CompilerError::InternalError {
             detail,
@@ -149,7 +149,7 @@ impl<'a> IrLowerer<'a> {
     /// offending type is already `ResolvedType::Error` — that indicates an
     /// upstream lowering step already pushed its own `CompilerError` and
     /// returned the placeholder. This avoids a cascade of secondary
-    /// `InternalError` diagnostics for the same root cause (audit finding #8).
+    /// `InternalError` diagnostics for the same root cause.
     pub(super) fn internal_error_type_if_concrete(
         &mut self,
         bad_ty: &ResolvedType,
@@ -274,14 +274,14 @@ impl<'a> IrLowerer<'a> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
-        // Audit2 B18: thread the let's annotation as the inferred-enum
+        // thread the let's annotation as the inferred-enum
         // target so `.variant` literals in the value resolve to the
         // declared enum (e.g. `let s: Status = .pending`) instead of
         // lowering to `TypeParam("InferredEnum")`.
         let saved_return_type = self.current_function_return_type.take();
         self.current_function_return_type =
             let_binding.type_annotation.as_ref().map(Self::type_name);
-        // Audit2 B19 follow-up: when the let's type annotation is a
+        // when the let's type annotation is a
         // closure type, thread it through `expected_closure_type` so
         // closure-literal values with un-annotated params (e.g.
         // `let f: I32 -> I32 = mut n -> n`) pick up the param types
@@ -306,7 +306,7 @@ impl<'a> IrLowerer<'a> {
                 .and_then(|s| self.string_to_resolved_type(&s))
                 .unwrap_or_else(|| value.ty().clone())
         };
-        // Audit #41: an empty array literal lowers to `Array(Never)`
+        // an empty array literal lowers to `Array(Never)`
         // because it has no elements to seed the element type from.
         // When the binding is annotated `[T]`, retype the value's
         // `Array(Never)` to `Array(T)` so backends and downstream IR
@@ -1308,7 +1308,7 @@ impl<'a> IrLowerer<'a> {
 
         // Push a local scope so References inside the body resolve against
         // the parameters' declared types and so closure captures see the
-        // parameter's convention (audit finding #32).
+        // parameter's convention.
         let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
@@ -1318,7 +1318,7 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        // Audit #28 / Tier-1 item E: trust the AST's explicit
+        // trust the AST's explicit
         // `extern_abi` rather than re-deriving from `body.is_none()`.
         // Under parser error recovery the two can diverge; the
         // semantic layer surfaces the mismatch as `ExternFnWithBody` /
@@ -1379,7 +1379,7 @@ impl<'a> IrLowerer<'a> {
         // Push a local scope so the body's References to parameters resolve
         // to the declared param types rather than TypeParam(name) placeholders,
         // and so closures inherit the parameter convention when capturing
-        // (audit finding #32).
+        //.
         let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
         for p in &params {
             if let Some(ty) = &p.ty {
@@ -1402,7 +1402,7 @@ impl<'a> IrLowerer<'a> {
         self.local_binding_scopes.push(frame);
 
         let body = f.body.as_ref().map(|b| self.lower_expr(b));
-        // Audit2 A1 / Tier-1 item E: source the extern ABI from the
+        // source the extern ABI from the
         // enclosing `ImplDef` rather than re-deriving from
         // `body.is_none()`. The semantic layer enforces body/extern
         // consistency for valid programs, but under parser error
@@ -1522,7 +1522,7 @@ impl<'a> IrLowerer<'a> {
     }
 
     fn lower_struct_field(&mut self, f: &StructField) -> IrField {
-        // Audit2 B18: thread the field's declared type as the
+        // thread the field's declared type as the
         // inferred-enum target so `.variant` literals inside the
         // default expression resolve to the field's enum type.
         let saved_return_type = self.current_function_return_type.take();
@@ -1565,7 +1565,7 @@ impl<'a> IrLowerer<'a> {
                 } else if self.is_generic_param_in_scope(name) {
                     ResolvedType::TypeParam(name.clone())
                 } else {
-                    // Tier-1 audit: surface unresolved type names loudly
+                    // surface unresolved type names loudly
                     // instead of silently lowering to `TypeParam(name)`.
                     // Semantic should normally catch this; reaching here
                     // means a typo, an unimported type, or an out-of-

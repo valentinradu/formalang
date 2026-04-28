@@ -106,7 +106,7 @@ impl<'source> Lexer<'source> {
         while let Some((token, span)) = lexer.next_token() {
             // Logos signals end-of-input by returning `None` from
             // `next_token` — there is no separate EOF sentinel token.
-            // (Audit finding #48 removed `Token::Eof` and the dead
+            // (`Token::Eof` and the dead
             // guard that previously matched it here.)
             //
             // Fill in line/column positions from byte offsets
@@ -114,7 +114,7 @@ impl<'source> Lexer<'source> {
             tokens.push((token, span));
         }
 
-        // Audit2 B3: drain unterminated block-comment ranges accumulated
+        // drain unterminated block-comment ranges accumulated
         // in `extras` and surface them as real `UnterminatedBlockComment`
         // diagnostics rather than letting the parser report a misleading
         // "unexpected end of input".
@@ -124,7 +124,7 @@ impl<'source> Lexer<'source> {
             });
         }
 
-        // Audit2 B4: drain bad `\uXXXX` escape ranges and surface them as
+        // drain bad `\uXXXX` escape ranges and surface them as
         // `InvalidUnicodeEscape` diagnostics. The decoded string still
         // contains a U+FFFD replacement so downstream parsing can
         // continue, but the user is told what went wrong.

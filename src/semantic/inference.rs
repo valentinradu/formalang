@@ -73,7 +73,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::MatchExpr {
                 scrutinee, arms, ..
             } => {
-                // Audit #27: pre-populate each arm's pattern bindings into
+                // pre-populate each arm's pattern bindings into
                 // an inference-scope frame so references inside the arm
                 // body resolve to concrete types instead of "Unknown".
                 let scrutinee_ty = self.infer_type_sem(scrutinee, file);
@@ -105,7 +105,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Expr::DictAccess { dict, .. } => {
-                // Audit2 B8: extract V from a Dictionary shape.
+                // extract V from a Dictionary shape.
                 // Structural unpacking — no string scanning needed.
                 if let SemType::Dictionary { value, .. } = self.infer_type_sem(dict, file) {
                     *value
@@ -141,7 +141,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.inference_scope_stack.borrow_mut().push(frame);
                 let inferred_body_type = self.infer_type_sem(body, file);
                 self.inference_scope_stack.borrow_mut().pop();
-                // Audit #38: prefer the explicit return type when present;
+                // prefer the explicit return type when present;
                 // fall back to body inference otherwise.
                 let return_ty = return_type
                     .as_ref()
@@ -156,7 +156,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Block {
                 statements, result, ..
             } => {
-                // Audit #4/#27: walk the block's statements to push each
+                // walk the block's statements to push each
                 // let binding into the inference-scope stack before
                 // inferring the trailing expression. Without this the
                 // function-return-type check below loses sight of any
@@ -246,7 +246,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // function inference work.
             self.specialise_generic_return(func_info, raw, args, file)
         } else if path.len() >= 2 {
-            // Audit #27: resolve impl-block static method calls
+            // resolve impl-block static method calls
             // (`Type::method(...)`), enum variant constructors
             // (`Enum::variant(...)`) that weren't rewritten to
             // EnumInstantiation at parse time, and module-qualified
@@ -453,9 +453,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return SemType::Unknown;
         };
 
-        // Resolve the root type. Audit #27: consult the inference-scope
-        // stack first so match-arm pattern bindings (and similar
-        // pattern-introduced bindings) resolve to their concrete types
+        // Consult the inference-scope stack first so pattern-introduced
+        // bindings (match arms, etc.) resolve to their concrete types
         // instead of falling through to "Unknown".
         let scope_lookup = {
             let stack = self.inference_scope_stack.borrow();

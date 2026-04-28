@@ -76,7 +76,7 @@ impl FileSystemResolver {
 
     /// Try to find a module file for the given path, preferring a location
     /// relative to `current_file`'s directory before falling back to
-    /// `root_dir`. See audit finding #18.
+    /// `root_dir`.
     fn find_module_file(&self, path: &[String], current_file: Option<&PathBuf>) -> Option<PathBuf> {
         // Search roots: current file's parent directory first, then the
         // configured project root. This lets `foo/bar.fv` do `use other`

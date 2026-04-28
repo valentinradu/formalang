@@ -11,9 +11,7 @@ use crate::ast::Visibility;
 use crate::location::Span;
 use std::path::PathBuf;
 
-/// Kind of completion item. `View` / `ViewTrait` were vestiges of the
-/// pre-"unified struct" design and were never produced by the completion
-/// code — removed per audit finding #43.
+/// Kind of completion item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CompletionKind {
@@ -218,7 +216,7 @@ impl<'a> QueryProvider<'a> {
             return Some(Self::let_info_to_hover(name, info));
         }
 
-        // Check standalone functions (audit2 B16).
+        // Check standalone functions.
         if let Some(info) = self.symbols.get_function(name) {
             return Some(Self::function_info_to_hover(name, info));
         }
@@ -286,7 +284,7 @@ impl<'a> QueryProvider<'a> {
             });
         }
 
-        // Check standalone functions (audit2 B16).
+        // Check standalone functions.
         if let Some(info) = self.symbols.get_function(name) {
             return Some(DefinitionInfo {
                 symbol_name: name.to_string(),
@@ -428,7 +426,7 @@ impl<'a> QueryProvider<'a> {
         }
     }
 
-    /// Audit2 B16: build a hover signature from a `FunctionInfo`. For
+    /// build a hover signature from a `FunctionInfo`. For
     /// overloaded functions, only the first overload is shown; full
     /// overload resolution is left for a future LSP enhancement.
     fn function_info_to_hover(name: &str, info: &FunctionInfo) -> HoverInfo {
@@ -507,7 +505,7 @@ impl<'a> QueryProvider<'a> {
     }
 }
 
-/// Audit2 B16: minimal type-to-string formatter for hover signatures.
+/// minimal type-to-string formatter for hover signatures.
 /// Mirrors the analyser-internal `type_to_string` (in `trait_check`) but
 /// is callable from `QueryProvider` without a full analyser instance.
 fn format_type_brief(ty: &crate::ast::Type) -> String {

@@ -16,7 +16,7 @@
 //! - **Pass 5** — detect circular dependencies in let-bindings and
 //!   in struct/trait/enum field types.
 //!
-//! Audit2 B40: this file's overview comment used `//` (a regular line
+//! this file's overview comment used `//` (a regular line
 //! comment) and didn't reach `cargo doc`. Promoted to `//!` so the
 //! pass list shows up in the rendered API docs alongside the
 //! `SemanticAnalyzer` type.
@@ -91,7 +91,7 @@ pub(crate) fn is_primitive_name(name: &str) -> bool {
 /// If `ty` is `[T]`, return `T`. Returns `None` for non-array shapes
 /// and for dictionary types `[K: V]`.
 ///
-/// Audit2 B17: previously used `!ty.contains(':')` to reject dict types,
+/// previously used `!ty.contains(':')` to reject dict types,
 /// which mis-classified `[[K: V]]` (an array of dicts) as a dict because
 /// the colon lives inside a nested type. Now walks at depth 0 only, so
 /// only a top-level `:` disqualifies the input as an array.
@@ -262,7 +262,7 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// Wrapped in `RefCell` so the read-only `infer_type` family doesn't
     /// have to thread `&mut self` through every helper.
     ///
-    /// Audit finding #27.
+    ///
     pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, String>>>,
     /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
@@ -1545,7 +1545,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        // Audit finding #28: `FunctionDef` carries an explicit
+        // `FunctionDef` carries an explicit
         // `is_extern` flag set by the parser (`extern_fn_parser` →
         // `true`, `function_def_parser` → `false`). Cross-check it
         // against `body` so a mismatch — which can happen under parser
@@ -1620,7 +1620,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// struct/enum. `impl Sum<T>` carries the param name without
     /// constraints; the constraints (`T: Foo`) live on `struct Sum<T: Foo>`.
     /// Without merging, methods inside the impl can't see the trait
-    /// bounds on T. Audit findings #12 and #4/#27.
+    /// bounds on T.
     pub(super) fn push_impl_generic_scope(
         &mut self,
         impl_generics: &[crate::ast::GenericParam],
@@ -1739,7 +1739,7 @@ mod tests {
 
     #[test]
     fn test_strip_array_type_nested_array() {
-        // Audit2 B17: nested array used to be misclassified because the
+        // nested array used to be misclassified because the
         // outer `contains(':')` check fired on the inner dict's colon.
         assert_eq!(strip_array_type("[[I32]]"), Some("[I32]"));
         assert_eq!(strip_array_type("[[String: I32]]"), Some("[String: I32]"));

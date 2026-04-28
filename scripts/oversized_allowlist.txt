@@ -1,0 +1,29 @@
+# Files temporarily exceeding the 500-LOC ceiling enforced by
+# scripts/check_file_sizes.sh. Each row caps the file at its current size;
+# the script fails if the file grows. Remove a row once the file is split
+# below 500. Goal: empty file.
+#
+# Format: <max_lines> <path-relative-to-repo-root>
+3576 src/semantic/validation.rs
+3153 src/ir/monomorphise.rs
+2090 src/parser/mod.rs
+1915 src/ir/lower/expr.rs
+1774 src/semantic/mod.rs
+1740 src/ir/lower/mod.rs
+1471 src/ir/dce.rs
+1256 src/semantic/node_finder.rs
+1084 src/ast/mod.rs
+1068 src/ir/closure_conv.rs
+1063 src/reporting.rs
+1019 src/semantic/symbol_table.rs
+960 src/semantic/inference.rs
+905 src/parser/defs.rs
+884 src/ir/fold.rs
+882 src/ir/mod.rs
+736 src/parser/exprs.rs
+728 src/semantic/sem_type.rs
+631 src/lexer/token.rs
+574 src/semantic/type_resolution.rs
+560 src/parser/span.rs
+555 src/semantic/queries.rs
+502 src/ir/expr.rs

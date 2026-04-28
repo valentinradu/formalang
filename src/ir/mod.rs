@@ -366,7 +366,7 @@ pub enum ResolvedType {
 /// `#[serde(skip)]` so round-tripped modules don't carry stale entries.
 /// After deserialising, callers must call [`IrModule::rebuild_indices`]
 /// before any `struct_id` / `trait_id` / `get_function` lookups, or those
-/// helpers will return `None`. See audit finding #34.
+/// helpers will return `None`.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct IrModule {
     /// All struct definitions, indexed by `StructId`
@@ -410,7 +410,7 @@ pub struct IrModule {
 
     /// Mapping from struct names to IDs for lookup during lowering.
     /// Skipped during serde round-trips; rebuilt on load via
-    /// `rebuild_indices`. See audit finding #34.
+    /// `rebuild_indices`.
     #[serde(skip)]
     struct_names: HashMap<String, StructId>,
 

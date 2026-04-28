@@ -167,7 +167,7 @@ where
 
 /// Parse a field definition: mut? name: Type
 ///
-/// Audit2 B2: leading `///` doc comments are captured into `FieldDef.doc`.
+/// leading `///` doc comments are captured into `FieldDef.doc`.
 pub(super) fn field_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FieldDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -211,7 +211,7 @@ where
 
 /// Parse a function signature (no body): `fn name(params) -> Type`
 ///
-/// Audit #51: optional leading `///` doc comments are consumed; the
+/// optional leading `///` doc comments are consumed; the
 /// docstring is ignored at the `FnSig` level (signatures live inside
 /// traits where doc storage is on `FnDef` only).
 pub(super) fn fn_sig_parser<'tokens, I>(
@@ -326,7 +326,7 @@ where
 
 /// Parse a single struct field: mut? name: Type? = default
 ///
-/// Audit2 B2: leading `///` doc comments are captured into
+/// leading `///` doc comments are captured into
 /// `StructField.doc` instead of being silently dropped.
 pub(super) fn struct_field_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructField, extra::Err<Rich<'tokens, Token>>> + Clone
@@ -593,14 +593,10 @@ where
     // Expression item
     let fn_expr = expr_parser().map(BlockStatement::Expr);
 
-    // Parse item (let, assign, or expr - in that order). Audit #40:
-    // wrap in `recover_with(via_parser(...))` so a malformed item inside
-    // a function body (e.g. a syntactically broken expression) is
-    // recovered by consuming tokens up to the next item start (`let`)
-    // or the closing brace, producing an empty placeholder expression.
-    // Without this, a parse failure inside one function body aborts
-    // diagnostics for the rest of the file: the error is emitted by
-    // chumsky and parsing continues with the next item. The first
+    // Wrap each item in `recover_with(via_parser(...))` so a malformed
+    // item (broken expression) is recovered by skipping to the next
+    // `let` or `}`. Without this, one bad function body suppresses
+    // diagnostics for the rest of the file. The first
     // token is consumed unconditionally on `Let` (so an item starting
     // with `let` whose value is broken can be recovered), but never on
     // `RBrace` (so the body's closing brace stays for `delimited_by`).
@@ -729,12 +725,12 @@ where
             span: span_from_simple(e.span()),
         });
 
-    // `Type` only (Mode B overloading — no name, no label). Audit #23.
+    // `Type` only (Mode B overloading — no name, no label).
     // The parameter is synthesised with a fresh name so existing plumbing
     // can continue to reference parameters by name; the name is not
     // visible at the call site since these are always positional.
     //
-    // Audit2 B7: synthesise a unique name from the parameter's start
+    // synthesise a unique name from the parameter's start
     // offset (`_arg<offset>`) so two type-only params in the same fn no
     // longer share a name and collide in scope tables.
     let type_only_param = convention

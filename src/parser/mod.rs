@@ -198,7 +198,7 @@ where
 
 /// Parse a top-level statement, optionally preceded by `///` doc-comment
 /// lines. The collected doc text is attached to the resulting definition
-/// or let binding (audit finding #51).
+/// or let binding.
 fn statement_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Statement, extra::Err<Rich<'tokens, Token>>> + Clone
 where

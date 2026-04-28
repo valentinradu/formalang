@@ -171,7 +171,7 @@ pub fn walk_module_children<V: IrVisitor + ?Sized>(visitor: &mut V, module: &IrM
         walk_expr(visitor, &l.value);
     }
 
-    // Visit imports (audit2 A3)
+    // Visit imports
     for i in &module.imports {
         visitor.visit_import(i);
     }

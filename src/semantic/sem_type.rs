@@ -235,7 +235,7 @@ impl SemType {
     /// - Identical types -> themselves
     /// - Otherwise, return [`SemType::Unknown`] so downstream validation
     ///   sees an indeterminate type rather than silently accepting a
-    ///   wrong branch (audit #26).
+    ///   wrong branch.
     pub(super) fn widen_branches(a: &Self, b: &Self) -> Self {
         if a == b {
             return a.clone();

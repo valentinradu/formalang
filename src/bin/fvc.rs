@@ -54,7 +54,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Audit2 B30/B31: parse a subcommand's args without assuming a fixed
+/// parse a subcommand's args without assuming a fixed
 /// positional index. Recognises `-h` / `--help` *anywhere* among the
 /// args (not just at index 0) and accepts `--module-root <path>` either
 /// before or after the input file.
@@ -197,7 +197,7 @@ fn check_command(input_path: &str, module_root: Option<PathBuf>) -> ExitCode {
 /// continues. On exit the process returns the last check's exit code,
 /// so a CI runner that wraps `fvc watch` and signals it on shutdown
 /// will still see a nonzero exit when the most recent check failed.
-/// Audit finding #33.
+///
 fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> ExitCode {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -209,12 +209,9 @@ fn watch_command(input_path: &str, module_root: Option<&std::path::Path>) -> Exi
     let path = PathBuf::from(input_path);
     let mut last_modified = fs::metadata(&path).and_then(|m| m.modified()).ok();
 
-    // Track whether the user signalled shutdown, plus whether the most
-    // recent `check` succeeded. The signal handler runs in a separate
-    // thread, so the flags must be atomic. Audit2 B34: default to
-    // `false` so a Ctrl+C before the initial check completes (or any
-    // path that bypasses the first `record` call) reports a non-zero
-    // exit instead of a misleading success.
+    // Atomics: the signal handler runs on a separate thread. Default
+    // `last_succeeded` to `false` so a Ctrl+C before the first check
+    // completes reports a non-zero exit instead of a false success.
     let shutdown = Arc::new(AtomicBool::new(false));
     let last_succeeded = Arc::new(AtomicBool::new(false));
     let shutdown_handler = Arc::clone(&shutdown);

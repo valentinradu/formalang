@@ -6,10 +6,10 @@ use logos::{Logos, Skip};
 /// directly through the `Result<Token, ()>` return convention:
 ///
 /// - `unterminated_block_comments` — byte ranges of `/* … */` comments
-///   that run to end-of-input (audit2 B3).
+///   that run to end-of-input.
 /// - `invalid_unicode_escapes` — `(literal_start, literal_end, bad_hex)`
 ///   for each `\uXXXX` escape inside a string literal whose hex digits do
-///   not denote a valid Unicode scalar value (audit2 B4). The literal
+///   not denote a valid Unicode scalar value. The literal
 ///   span is used as the diagnostic span; the bad hex is reported as the
 ///   error's `value`.
 ///
@@ -42,20 +42,20 @@ pub enum Token {
     /// rest of the comment manually (tracking nest depth) and returns
     /// `Skip`, so this variant is never emitted into the token stream.
     /// It exists only because Logos requires the `#[token]` attribute
-    /// to live on a variant. Closes audit finding #47.
+    /// to live on a variant.
     #[token("/*", skip_block_comment)]
     BlockComment,
 
     /// Item doc comment: `/// text` attaches to the following definition.
     /// Captured trimmed (leading `/// ` stripped, trailing whitespace
     /// removed). Multiple consecutive doc-comment lines are joined by
-    /// the parser into a single attached docstring. Audit finding #51.
+    /// the parser into a single attached docstring.
     #[regex(r"///[^\n]*", parse_doc_comment)]
     DocComment(String),
 
     /// Module/parent doc comment: `//! text` attaches to the enclosing
     /// definition or file. Captured the same way as `DocComment`.
-    /// Audit finding #51.
+    ///
     #[regex(r"//![^\n]*", parse_inner_doc_comment)]
     InnerDocComment(String),
 
@@ -155,7 +155,7 @@ pub enum Token {
     // Path literals start with `/` and must be followed by a non-digit,
     // non-operator character. This disambiguates them from integer
     // division (`10/2` tokenises as Number, Slash, Number, not as
-    // Number followed by Path("2")). See audit finding #20.
+    // Number followed by Path("2")).
     #[regex(
         r"/[a-zA-Z._~][^/\s\\,(){}\[\]]*(/([^/\s\\,(){}\[\]]|\\.)+)*",
         |lex| lex.slice()[1..].to_string()
@@ -258,14 +258,14 @@ fn parse_inner_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
 /// Called after Logos has matched the opening `/*`. Scans the remainder
 /// while tracking nesting depth: every `/*` increments the counter and
 /// every `*/` decrements it. Bumps the lexer cursor past the matching
-/// closing `*/` on success (audit finding #47).
+/// closing `*/` on success.
 ///
 /// On an unterminated comment, records the byte range of the opening
 /// `/*` through end-of-input on the lexer's [`LexerExtras`] so the
 /// wrapping [`Lexer`](super::Lexer) can surface a real
 /// [`CompilerError::UnterminatedBlockComment`](crate::CompilerError)
 /// instead of a misleading "unexpected end of input" parse error
-/// (audit2 B3).
+///.
 fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
     let remainder = lex.remainder();
     let bytes = remainder.as_bytes();
@@ -376,7 +376,7 @@ fn parse_multiline_string(lex: &mut logos::Lexer<'_, Token>) -> String {
 /// into the lexer's extras alongside the enclosing string literal's
 /// byte range, so the wrapping [`Lexer`](super::Lexer) can surface a
 /// real [`CompilerError::InvalidUnicodeEscape`](crate::CompilerError).
-/// Audit2 B4.
+///
 fn record_bad_escapes(lex: &mut logos::Lexer<'_, Token>, bad: Vec<String>) {
     if bad.is_empty() {
         return;

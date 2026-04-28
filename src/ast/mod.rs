@@ -118,14 +118,14 @@ pub struct FunctionDef {
     /// `extern "system" fn`); `None` for regular functions. Tracked
     /// alongside `body` so the semantic layer can detect mismatches
     /// (extern with body, regular without) consistently — including
-    /// under parser error recovery. Audit findings #28, Tier-1 item E.
+    /// under parser error recovery. Tier-1 item E.
     pub extern_abi: Option<ExternAbi>,
     /// Codegen attributes parsed as keyword prefixes (`inline`,
     /// `no_inline`, `cold`). Order is the source order; duplicates are
     /// preserved so semantic / backends can diagnose them. Each entry
     /// carries the span of the introducing keyword.
     pub attributes: Vec<AttributeAnnotation>,
-    /// Joined `///` doc comments preceding this definition. Audit #51.
+    /// Joined `///` doc comments preceding this definition.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -226,7 +226,7 @@ pub struct LetBinding {
     pub pattern: BindingPattern,
     pub type_annotation: Option<Type>,
     pub value: Expr,
-    /// Joined `///` doc comments preceding this binding. Audit #51.
+    /// Joined `///` doc comments preceding this binding.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -256,7 +256,7 @@ pub struct TraitDef {
     pub fields: Vec<FieldDef>,
     /// Required method signatures (no default implementations)
     pub methods: Vec<FnSig>,
-    /// Joined `///` doc comments preceding this trait. Audit #51.
+    /// Joined `///` doc comments preceding this trait.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -269,7 +269,7 @@ pub struct StructDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<StructField>,
-    /// Joined `///` doc comments preceding this struct. Audit #51.
+    /// Joined `///` doc comments preceding this struct.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -283,7 +283,7 @@ pub struct StructField {
     pub ty: Type,
     pub optional: bool,
     pub default: Option<Expr>,
-    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    /// Joined `///` doc comments preceding this field.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -308,7 +308,7 @@ pub struct ImplDef {
     pub functions: Vec<FnDef>,
     /// When `true`, this is `extern impl`; all contained `FnDef` bodies must be `None`.
     pub is_extern: bool,
-    /// Joined `///` doc comments preceding this impl block. Audit #51.
+    /// Joined `///` doc comments preceding this impl block.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -328,7 +328,7 @@ pub struct FnDef {
     /// `fn` keyword. See [`FunctionAttribute`]. Each entry carries the
     /// span of the introducing keyword.
     pub attributes: Vec<AttributeAnnotation>,
-    /// Joined `///` doc comments preceding this method. Audit #51.
+    /// Joined `///` doc comments preceding this method.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -392,7 +392,7 @@ pub struct EnumDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<EnumVariant>,
-    /// Joined `///` doc comments preceding this enum. Audit #51.
+    /// Joined `///` doc comments preceding this enum.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -413,7 +413,7 @@ pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub definitions: Vec<Definition>,
-    /// Joined `///` doc comments preceding this module. Audit #51.
+    /// Joined `///` doc comments preceding this module.
     pub doc: Option<String>,
     pub span: Span,
 }
@@ -425,7 +425,7 @@ pub struct FieldDef {
     pub mutable: bool,
     pub name: Ident,
     pub ty: Type,
-    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    /// Joined `///` doc comments preceding this field.
     pub doc: Option<String>,
     pub span: Span,
 }

@@ -66,7 +66,7 @@ impl IrLowerer<'_> {
     pub(super) fn lower_expr(&mut self, expr: &Expr) -> IrExpr {
         // Track the span of the current expression so that InternalError
         // diagnostics surfaced during lowering carry a real source
-        // location. See audit finding #31.
+        // location.
         let prev_span = self.current_span;
         self.current_span = expr.span();
         let out = self.lower_expr_inner(expr);
@@ -155,7 +155,7 @@ impl IrLowerer<'_> {
         }
     }
 
-    /// Audit2 B18 follow-up: resolve a `ResolvedType` to its enum
+    /// resolve a `ResolvedType` to its enum
     /// type-name (used as the inferred-enum target for a struct-arg
     /// expression). Returns the empty string for non-enum, non-optional-
     /// of-enum types, which the caller filters out.
@@ -203,7 +203,7 @@ impl IrLowerer<'_> {
                     args: type_args_resolved.clone(),
                 }
             };
-            // Audit2 B18 follow-up: build a name->type-name map of the
+            // build a name->type-name map of the
             // struct's fields so each named-arg lowers with the field's
             // declared type as the inferred-enum target. Without this,
             // `Size(width: .auto)` inherits whatever outer
@@ -229,7 +229,7 @@ impl IrLowerer<'_> {
                             .get(&n.name)
                             .map(|t| Self::enum_name_of(&self.module, t))
                             .filter(|s| !s.is_empty());
-                        // Audit2 B19: thread closure-typed field annotations
+                        // thread closure-typed field annotations
                         // into the closure-literal lowering so untyped params
                         // pick up the field's expected param types.
                         if let Some(t) = field_target.get(&n.name) {
@@ -268,7 +268,7 @@ impl IrLowerer<'_> {
             }
         } else {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
-            // Audit2 B19: look up the function's expected parameter
+            // look up the function's expected parameter
             // types so a closure literal passed as an argument
             // (`fn apply(f: I32 -> I32) ... apply(x -> x + 1)`)
             // lowers with `x: I32` instead of `ResolvedType::Error`.
@@ -298,7 +298,7 @@ impl IrLowerer<'_> {
         }
     }
 
-    /// Audit2 B19 helper: find the IR function with the given name and
+    /// find the IR function with the given name and
     /// return its parameter list as `(param_name, param_ty)` pairs. The
     /// caller uses the list to seed `expected_closure_type` for each
     /// argument before lowering. Returns an empty vec when the function
@@ -315,7 +315,7 @@ impl IrLowerer<'_> {
         Vec::new()
     }
 
-    /// Audit2 B19 helper: pick the expected parameter type for arg
+    /// pick the expected parameter type for arg
     /// position `i`, preferring name match (for named args like
     /// `apply(callback: x -> x + 1)`) and falling back to positional
     /// index. Returns `Some(ty)` only when the matched parameter is a
@@ -369,10 +369,9 @@ impl IrLowerer<'_> {
         variant: &str,
         data: &[(crate::ast::Ident, Expr)],
     ) -> IrExpr {
-        // Inferred-enum uses outside a return-typed context (e.g. struct
-        // field defaults, top-level lets) are a known gap — the upstream
-        // context-threading work in audit finding #27 will surface the
-        // real signal, so we leave a TypeParam placeholder without error.
+        // Inferred-enum uses outside a return-typed context (struct field
+        // defaults, top-level lets) are a known gap; leave a TypeParam
+        // placeholder — context-threading work upstream will surface it.
         #[expect(
             clippy::option_if_let_else,
             reason = "three-branch resolution (local enum / external / error) reads clearer as if/else"
@@ -410,7 +409,7 @@ impl IrLowerer<'_> {
         // Empty array literal: type element as `Never` ("no values yet").
         // Matches `nil`'s representation as `Optional(Never)` and lets
         // the existing array-shape compatibility check accept assignment
-        // to `let xs: [T] = []`. Audit finding #8.
+        // to `let xs: [T] = []`.
         let elem_ty = lowered.first().map_or_else(
             || ResolvedType::Primitive(PrimitiveType::Never),
             |e| e.ty().clone(),
@@ -476,7 +475,7 @@ impl IrLowerer<'_> {
             )]
             let name = &path_strs[0];
             if let Some(let_type) = self.symbols.get_let_type(name).map(str::to_string) {
-                // Audit Tier-1: prefer the simple-name resolution; fall
+                // prefer the simple-name resolution; fall
                 // back to the value's known type for composite type
                 // strings the helper can't reparse (closures, tuples,
                 // arrays, etc.). The let was previously lowered, so its
@@ -674,7 +673,7 @@ impl IrLowerer<'_> {
             .iter()
             .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
             .collect();
-        // Empty dict literal: both type args are `Never` (audit #8). The
+        // Empty dict literal: both type args are `Never`. The
         // shape stays a `Dictionary`, so assignment to `let d: [K: V] = [:]`
         // matches via the existing structural compatibility check.
         let ty = if let Some((k, v)) = lowered_entries.first() {
@@ -722,7 +721,7 @@ impl IrLowerer<'_> {
         args: &[(Option<crate::ast::Ident>, Expr)],
     ) -> IrExpr {
         let receiver_ir = self.lower_expr(receiver);
-        // Audit2 B19: same idea as the function-call path — pull the
+        // same idea as the function-call path — pull the
         // method's expected param types so closure-literal arguments
         // get their `x` typed against what the method expects.
         let expected_param_tys = self.lookup_method_param_types(receiver_ir.ty(), method_name);
@@ -749,7 +748,7 @@ impl IrLowerer<'_> {
         }
     }
 
-    /// Audit2 B19 helper: locate the impl method matching
+    /// locate the impl method matching
     /// `(receiver_ty, method_name)` and return its non-self parameter
     /// list as `(name, type)` pairs. The caller uses these to seed
     /// `expected_closure_type` for closure-literal arguments. Returns
@@ -1020,7 +1019,7 @@ impl IrLowerer<'_> {
     /// binding as one or more statements. Destructuring patterns are
     /// expanded into per-field let statements so the bindings actually
     /// reach the body — previously they collapsed to a single `_let`
-    /// binding. See audit finding #21.
+    /// binding.
     fn lower_let_expr(
         &mut self,
         mutable: bool,
@@ -1084,12 +1083,10 @@ impl IrLowerer<'_> {
     }
 
     fn lower_block_expr(&mut self, statements: &[BlockStatement], result: &Expr) -> IrExpr {
-        // Push a fresh binding-scope frame so each block-scoped `let`
-        // becomes visible to subsequent statements and to `result`. The
-        // frame is popped on exit so siblings don't see this block's
-        // bindings. Audit finding #5b (and a long-standing inference
-        // gap that surfaced once dispatch rewriting needed accurate
-        // receiver types).
+        // Fresh binding-scope frame so each block `let` is visible to
+        // subsequent statements and `result`, then popped so siblings
+        // don't see it. Required for accurate receiver types in dispatch
+        // rewriting.
         self.local_binding_scopes.push(HashMap::new());
         let mut ir_statements: Vec<IrBlockStatement> = Vec::new();
         for stmt in statements {
@@ -1314,7 +1311,7 @@ impl IrLowerer<'_> {
             // `nil` is the zero value of every optional type. Modelled as
             // `Optional(Never)` — backends destructure this as "missing
             // value, no payload" and assignments to `T?` widen via the
-            // existing `Optional` matching path. Audit finding #8.
+            // existing `Optional` matching path.
             Literal::Nil => {
                 ResolvedType::Optional(Box::new(ResolvedType::Primitive(PrimitiveType::Never)))
             }
@@ -1598,7 +1595,7 @@ impl IrLowerer<'_> {
         return_type: Option<&ast::Type>,
         body: &Expr,
     ) -> IrExpr {
-        // Audit2 B19: when the surrounding context (a call argument,
+        // when the surrounding context (a call argument,
         // a closure-typed struct field, etc.) supplies an expected
         // closure type, fall back to its param/return types for any
         // closure-literal slots the AST didn't annotate. This turns
@@ -1643,7 +1640,7 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(closure_frame);
 
-        // Audit2 B18: set `current_function_return_type` from the
+        // set `current_function_return_type` from the
         // closure's declared return type so an inferred-enum
         // `.variant` inside the body resolves against the closure's
         // own return type, not the surrounding context (which after B18
@@ -1654,7 +1651,7 @@ impl IrLowerer<'_> {
         let body_ir = self.lower_expr(body);
 
         self.current_function_return_type = saved_return_type;
-        // Audit #38 + audit2 B19: prefer the declared return type when
+        // prefer the declared return type when
         // present, then the expected return type from the surrounding
         // context, then the inferred body type (which may be `Unknown`
         // or narrower).
@@ -1681,7 +1678,7 @@ impl IrLowerer<'_> {
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         collect_free_refs(&body_ir, &param_names, &mut captures, &mut seen);
 
-        // Audit #32: each capture inherits the convention of the outer
+        // each capture inherits the convention of the outer
         // binding it refers to — function parameter convention, mutable-let
         // in a block, outer closure parameter convention, or module-level
         // `let mut`. Bindings whose convention can't be located default to

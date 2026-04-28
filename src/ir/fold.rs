@@ -21,7 +21,7 @@ use crate::ir::{IrExpr, IrModule, ResolvedType};
 
 /// Constant folder that evaluates compile-time constant expressions.
 ///
-/// # Folding contract (audit2 B29)
+/// # Folding contract
 ///
 /// - Folds only when both operands of a binary op are concrete
 ///   `IrExpr::Literal` values; let-binding values are NOT propagated
@@ -39,7 +39,7 @@ pub struct ConstantFolder;
 impl ConstantFolder {
     /// Create a new constant folder.
     ///
-    /// Audit2 B26: previously held a `_module: &IrModule` field that was
+    /// previously held a `_module: &IrModule` field that was
     /// never read. The folder is fully stateless; the constructor takes
     /// no arguments now.
     #[must_use]

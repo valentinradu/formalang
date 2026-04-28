@@ -369,12 +369,10 @@ where
         // Expression item
         let block_expr_item = expr.clone().map(BlockStatement::Expr);
 
-        // Parse a block item (let, assign, or expr - in that order). Audit
-        // #40: recover_with(via_parser) so a malformed item inside a block
-        // expression doesn't abort parsing of subsequent items. Mirrors
-        // the recovery in `fn_body_parser` — first token consumed
-        // unconditionally except when it is `}` (the closing brace of the
-        // block must reach `delimited_by`).
+        // recover_with(via_parser) so a malformed block item doesn't
+        // abort parsing of later items. Mirrors `fn_body_parser` — the
+        // first token is consumed except when it's `}` (which must reach
+        // `delimited_by`).
         let block_recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
         let block_recovery_tail = any()
             .and_is(just(Token::Let).not())
@@ -462,10 +460,9 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Let expression: `let pattern = value in body` (also with `mut` and
-        // optional `: Type` annotation). Audit #21: the explicit `in`
-        // separator removes the value/body grammar ambiguity that
-        // previously relied on greedy parsing to find the boundary.
+        // Let expression: `let pattern = value in body` (with optional
+        // `mut` and `: Type`). The explicit `in` separator removes the
+        // value/body ambiguity that greedy parsing used to resolve.
         let let_expr = just(Token::Let)
             .ignore_then(just(Token::Mut).or_not())
             .then(binding_pattern_parser())

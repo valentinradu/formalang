@@ -3,7 +3,7 @@
 use crate::error::CompilerError;
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source};
 
-/// Audit2 B35: honour the `NO_COLOR` environment variable.
+/// honour the `NO_COLOR` environment variable.
 ///
 /// When `NO_COLOR` is set to any non-empty value, error rendering omits
 /// ANSI escape codes — both ariadne's frame chrome (governed by
@@ -1015,7 +1015,7 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
 
         CompilerError::InternalError { detail, .. } => {
-            // Audit2 B32: subdivide the catch-all internal-error code by
+            // subdivide the catch-all internal-error code by
             // looking at the leading subsystem prefix on `detail`.
             // Push sites already include a prefix (e.g. "IR lowering:",
             // "monomorphise:", "registration lookup ...") so we reuse
@@ -1035,7 +1035,7 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
     }
 }
 
-/// Audit2 B32: pick a specific internal-error code based on the leading
+/// pick a specific internal-error code based on the leading
 /// subsystem prefix on the `detail` string. Returns `"E999"` (generic)
 /// for any prefix the table doesn't know.
 fn internal_error_code(detail: &str) -> &'static str {

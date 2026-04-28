@@ -54,10 +54,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann);
         }
         self.validate_expr(&let_binding.value, file);
-        // nil literals must not be assigned to non-optional types, and
-        // (audit2 B12) the inferred value type must be compatible with
-        // the declared annotation. Previously only the nil case was
-        // checked, so `let f: m::Foo = "wrong"` compiled silently.
+        // Reject nil-into-nonopt and any other mismatch between the
+        // inferred value type and the declared annotation.
         if let Some(type_ann) = &let_binding.type_annotation {
             let declared = Self::type_to_string(type_ann);
             let inferred_sem = self.infer_type_sem(&let_binding.value, file);
@@ -91,7 +89,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
-        // Audit2 B9: when a let binding declares a closure type and is
+        // when a let binding declares a closure type and is
         // assigned a closure literal, type-check the closure body
         // bidirectionally — push the declared param types into the
         // inference scope (covering literal params with no annotation)
@@ -177,7 +175,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn validate_impl_expressions(&mut self, impl_def: &crate::ast::ImplDef, file: &File) {
         // Push the impl's generic scope (merging target struct/enum
         // generics) so method bodies see trait bounds on type
-        // parameters during expression validation. Audit #4/#27.
+        // parameters during expression validation.
         self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
         self.current_impl_struct = Some(impl_def.name.name.clone());
         self.local_let_bindings.clear();
@@ -305,7 +303,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for elem in elements {
                     self.escape_closure_value(elem);
                 }
-                // Audit #41: unify the element types so a heterogeneous
+                // unify the element types so a heterogeneous
                 // array literal (`[1, "two"]`) surfaces as a real
                 // TypeMismatch instead of silently using the first
                 // element's type.
@@ -381,17 +379,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
-                // Audit #22: when the condition is an optional receiver
-                // like `if foo` or `if user.nickname`, introduce the
-                // unwrapped binding into the then-branch scope so the body
-                // can reference it by its trailing name.
+                // For optional conditions like `if user.nickname`, expose the
+                // unwrapped value to the then-branch under its trailing name.
                 let (auto_binding_name, auto_binding_prev) =
                     self.bind_optional_auto_binding(condition, file);
-                // Each branch is a separate control-flow path. Snapshot
-                // consumed_bindings before entering either branch so we can
-                // compute the conservative post-join union. Conservative (never
-                // unsound): may produce false-positive UseAfterSink but never
-                // miss one.
+                // Snapshot consumed_bindings; the post-join union is
+                // conservative (may over-report UseAfterSink, never miss).
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
                 // Restore any auto-binding we installed before entering the
@@ -411,8 +404,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
                 if let Some(else_expr) = else_branch {
                     self.validate_expr(else_expr, file);
-                    // Check that both branch types are compatible.
-                    // Widening rules: T and Nil unify to T?; T and T? unify to T?.
+                    // Branch types must unify under optional widening
+                    // (T + Nil → T?, T + T? → T?).
                     let then_sem = self.infer_type_sem(then_branch, file);
                     let else_sem = self.infer_type_sem(else_expr, file);
                     // Skip when either type is indeterminate (Unknown / nested Unknown / InferredEnum).
@@ -447,7 +440,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let mut arm_sems: Vec<SemType> = Vec::new();
                 for arm in arms {
                     self.consumed_bindings.clone_from(&pre_match);
-                    // Register arm pattern bindings into a temporary scope
                     if let crate::ast::Pattern::Variant { bindings, .. } = &arm.pattern {
                         let scope: HashSet<String> =
                             bindings.iter().map(|b| b.name.clone()).collect();
@@ -499,7 +491,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.escape_closure_value(key);
                     self.escape_closure_value(value);
                 }
-                // Audit2 B11: unify key types and value types across
+                // unify key types and value types across
                 // entries so a heterogeneous dict literal
                 // (`["a": 1, "b": "two"]`) surfaces as a real
                 // TypeMismatch instead of silently using the first
@@ -587,14 +579,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
     }
 
-    /// Return the name of the leftmost (root) binding referenced by `expr`, if any.
-    ///
-    /// Walks through `FieldAccess`, `Group`, and `Reference` nodes to find the
-    /// root identifier. Returns `None` for expressions that don't reference a
-    /// binding (literals, calls, etc.) — those are new values, not places.
-    ///
-    /// Used to mark the root binding as consumed when a compound expression
-    /// (e.g., `x.field`) is passed to a sink parameter.
+    /// Name of the leftmost binding referenced by `expr`, walking through
+    /// `FieldAccess`, `Group`, and `Reference`. `None` for non-place
+    /// expressions (literals, calls). Used to mark the root binding consumed
+    /// when a compound place (`x.field`) is passed to a sink parameter.
     fn root_binding(expr: &Expr) -> Option<String> {
         match expr {
             Expr::Reference { path, .. } => path.first().map(|id| id.name.clone()),
@@ -620,13 +608,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Extract the set of captures for an escaping closure value.
-    ///
-    /// - `Reference` to a tracked closure binding → its recorded captures.
-    /// - `ClosureExpr` literal → free variables of the literal body.
-    /// - `Group` → recurse on the inner expression.
-    ///
-    /// Returns `None` if `expr` is not a closure value in a form we can handle.
+    /// Captures for a closure value: tracked binding, literal, or `Group`
+    /// wrapping one. `None` for anything else.
     fn closure_captures_of_expr(&self, expr: &Expr) -> Option<Vec<String>> {
         match expr {
             Expr::Reference { path, .. } => {
@@ -699,10 +682,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Validate that every key (and every value) in a dict literal has
-    /// a compatible type with the first entry. Audit2 B11: previously
-    /// the dict's type came from the first entry only and a mix like
-    /// `["a": 1, "b": "two"]` lowered silently.
+    /// Validate that every key (and value) in a dict literal is compatible
+    /// with the first entry. A mix like `["a": 1, "b": "two"]` is rejected.
     fn validate_dict_homogeneity(&mut self, entries: &[(Expr, Expr)], span: Span, file: &File) {
         let mut iter = entries.iter();
         let Some((first_k, first_v)) = iter.next() else {
@@ -746,9 +727,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Validate that every element of an array literal has a compatible
-    /// type. Audit #41: previously the array's type came from the first
-    /// element only and a mix like `[1, "two"]` lowered silently.
+    /// Validate every element of an array literal is type-compatible with
+    /// the first. Rejects mixes like `[1, "two"]`.
     fn validate_array_homogeneity(&mut self, elements: &[Expr], span: Span, file: &File) {
         let mut iter = elements.iter();
         let Some(first) = iter.next() else {
@@ -779,15 +759,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Walk the body's result expression and collect every closure value that
-    /// would escape the function via `return` along with its captures.
-    ///
-    /// A closure "escapes via return" if it is the outermost value of the
-    /// function body. That may be a direct `ClosureExpr`, a `Reference` to a
-    /// closure-typed let binding, or a closure reachable through a `Block`,
-    /// `LetExpr`, `IfExpr`, or `MatchExpr` result. Returns one `(captures,
-    /// span)` entry per escaping closure (if/match branches contribute one
-    /// entry per branch so per-branch error reporting is possible).
+    /// Closures escaping via the function's result expression, with captures
+    /// and span. Recurses through Block/LetExpr/IfExpr/MatchExpr results;
+    /// if/match contribute one entry per branch for per-branch reporting.
     fn collect_returned_closure_captures(&self, expr: &Expr) -> Vec<(Vec<String>, Span)> {
         let mut results: Vec<(Vec<String>, Span)> = Vec::new();
         self.collect_returned_closure_captures_rec(expr, &mut results);
@@ -811,9 +785,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Reference { path, span } => {
                 if path.len() == 1 {
                     if let Some(first) = path.first() {
-                        // Prefer the flat function-scope map so bindings
-                        // introduced inside a now-popped nested block still
-                        // carry their captures for the return-escape check.
+                        // Use the flat fn-scope map so bindings from popped
+                        // nested blocks still carry captures.
                         if let Some(caps) = self
                             .fn_scope_closure_captures
                             .get(&first.name)
@@ -1381,7 +1354,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     self.validate_closure_call_conventions(&conventions, args, span, file);
                 } else if !self.resolve_qualified_function(name) {
-                    // Audit #42: a missing function is an undefined
+                    // a missing function is an undefined
                     // reference, not an undefined type — use the correct
                     // error variant so downstream tooling can distinguish
                     // the two cases.
@@ -1541,11 +1514,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 || first_param_type == "Unknown"
                 || self.type_strings_compatible(&first_param_type, &first_arg_sem.display())
         } else {
-            // Mixed labeled / unlabeled args — reject. FormaLang's overload
-            // resolution modes are "all-labeled" (A) or "all-unlabeled" (B);
-            // a mix has no defined match and previously fell through to
-            // `true`, silently accepting overloads whose label patterns were
-            // incompatible. See audit finding #14.
+            // Mixed labeled/unlabeled args have no defined match — overload
+            // resolution is all-labeled (mode A) or all-unlabeled (mode B).
             false
         }
     }
@@ -1620,7 +1590,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.validate_expr(body, file);
         self.closure_param_scopes.pop();
 
-        // Audit #38: when a pipe closure declares a return type, verify the
+        // when a pipe closure declares a return type, verify the
         // body's inferred type is compatible. Mirrors the function-return
         // mismatch check; reuses `FunctionReturnTypeMismatch` with a
         // synthetic `<closure>` function name since closures don't have one.
@@ -1640,7 +1610,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let body_type = body_sem.display();
             let expected = Self::type_to_string(declared);
             if !self.type_strings_compatible(&expected, &body_type) {
-                // Audit2 B13: cite the body span (the offending expression),
+                // cite the body span (the offending expression),
                 // not the whole closure-position span — IDE goto-definition
                 // and `cargo check` output now point at the wrong return.
                 self.errors.push(CompilerError::FunctionReturnTypeMismatch {
@@ -2425,12 +2395,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             });
                         }
                     }
-                    // Tier-1 escape extension: a closure value assigned
-                    // to an outer-scope `mut` binding outlives this
-                    // block; its captures must outlive the function
-                    // frame. `saved_let_bindings` is the set in scope
-                    // before this block opened — bindings declared in
-                    // *this* block are absent from it.
+                    // A closure assigned to an outer-scope `mut` binding
+                    // outlives this block; its captures must outlive the
+                    // function frame. `saved_let_bindings` holds only
+                    // pre-block bindings, so this filters out locals.
                     if let Expr::Reference { path, .. } = target {
                         if let [seg] = path.as_slice() {
                             if saved_let_bindings.contains_key(&seg.name) {
@@ -2470,7 +2438,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// (`T?`), install a local binding whose name matches the trailing
     /// segment with the unwrapped type `T` and return the binding name
     /// (plus the prior entry, if any, so the caller can restore it after
-    /// the then-branch). Otherwise returns (None, None). Audit #22.
+    /// the then-branch). Otherwise returns (None, None).
     fn bind_optional_auto_binding(
         &mut self,
         condition: &Expr,
@@ -2748,13 +2716,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let left_type = left_sem.display();
         let right_type = right_sem.display();
 
-        // Check type compatibility based on operator. Audit #44: the
-        // hardcoded GPU numeric compat (`f32`, `vec3`, etc.) was a wart
-        // from the retired WGSL backend and is gone — backends needing
-        // arithmetic over backend-specific scalar/vector types should
-        // implement their own type-compat rules in their codegen pass.
-        // Numeric primitives accepted for arithmetic / comparison / range.
-        // Both operands must agree (no implicit promotion across widths).
+        // Numeric primitives accepted for arithmetic/comparison/range;
+        // both operands must agree (no implicit width promotion).
+        // Backend-specific scalar/vector types are the codegen pass's job.
         let is_numeric = |s: &str| matches!(s, "I32" | "I64" | "F32" | "F64");
         let valid = match op {
             // Add: matched-numeric pair, or String + String (concatenation)
@@ -3448,7 +3412,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
-        // Audit2 B14: qualified-type lookup — when the receiver type is
+        // qualified-type lookup — when the receiver type is
         // `m::Foo`, walk into the nested module path (inline modules in
         // the current file, then cached imported modules) and check for
         // an impl of `Foo` with the requested method. The bare-name
@@ -3540,7 +3504,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 }
 
-/// Audit2 B14: split a qualified type name `m1::m2::Foo` into module
+/// split a qualified type name `m1::m2::Foo` into module
 /// segments `["m1", "m2"]` and bare name `"Foo"`. Returns `None` if the
 /// name has no `::`.
 fn split_qualified_type(name: &str) -> Option<(Vec<&str>, &str)> {
@@ -3552,7 +3516,7 @@ fn split_qualified_type(name: &str) -> Option<(Vec<&str>, &str)> {
     Some((parts, last))
 }
 
-/// Audit2 B14: walk a slice of `Statement`s looking for the nested
+/// walk a slice of `Statement`s looking for the nested
 /// module path `segments`, returning that module's `definitions`.
 /// Recurses into nested `Definition::Module` matches.
 fn find_nested_module_definitions<'a>(
@@ -3595,7 +3559,7 @@ fn find_nested_module_definitions_in_defs<'a>(
     None
 }
 
-/// Audit2 B14: scan a slice of definitions for `impl <bare> { fn <method> }`.
+/// scan a slice of definitions for `impl <bare> { fn <method> }`.
 fn impl_method_in_definitions(definitions: &[Definition], bare: &str, method: &str) -> bool {
     for def in definitions {
         if let Definition::Impl(impl_def) = def {

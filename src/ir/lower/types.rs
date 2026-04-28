@@ -24,7 +24,7 @@ impl IrLowerer<'_> {
     /// *simple* name cases (primitives, named structs/enums/traits, in-
     /// scope generic params); for anything composite it returns `None`
     /// so callers can fall back to the value's already-lowered type.
-    /// Tier-1 audit: an unrecognised *simple identifier* now surfaces
+    /// an unrecognised *simple identifier* now surfaces
     /// as `UndefinedType` rather than silently lowering to
     /// `TypeParam(name)`.
     pub(super) fn string_to_resolved_type(&mut self, type_str: &str) -> Option<ResolvedType> {

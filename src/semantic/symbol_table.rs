@@ -36,15 +36,14 @@ pub struct TraitInfo {
     pub span: Span,
     /// Generic parameters
     pub generics: Vec<GenericParam>,
-    /// Required fields, in source order. Audit2 B2 upgraded this from
-    /// `HashMap<String, Type>` to a `Vec<FieldInfo>` so trait fields
-    /// preserve their order and carry doc-comments through to the IR.
+    /// Required fields, in source order. `Vec` (not map) so order and
+    /// doc-comments survive to the IR.
     pub fields: Vec<FieldInfo>,
     /// Trait composition list (trait names this trait extends)
     pub composed_traits: Vec<String>,
     /// Required method signatures declared in the trait body
     pub methods: Vec<FnSig>,
-    /// Joined `///` doc comments preceding this trait. Audit #51.
+    /// Joined `///` doc comments preceding this trait.
     pub doc: Option<String>,
 }
 
@@ -56,7 +55,7 @@ pub struct LetInfo {
     pub span: Span,
     /// Inferred type of the binding (optional, computed during semantic analysis)
     pub inferred_type: Option<String>,
-    /// Joined `///` doc comments preceding this binding. Audit #51.
+    /// Joined `///` doc comments preceding this binding.
     pub doc: Option<String>,
 }
 
@@ -72,7 +71,7 @@ pub struct StructInfo {
     pub fields: Vec<FieldInfo>,
     /// Track if impl block exists
     pub has_impl: bool,
-    /// Joined `///` doc comments preceding this struct. Audit #51.
+    /// Joined `///` doc comments preceding this struct.
     pub doc: Option<String>,
 }
 
@@ -82,7 +81,7 @@ pub struct StructInfo {
 pub struct FieldInfo {
     pub name: String,
     pub ty: Type,
-    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    /// Joined `///` doc comments preceding this field.
     pub doc: Option<String>,
 }
 
@@ -126,7 +125,7 @@ pub struct EnumInfo {
     pub variant_fields: HashMap<String, Vec<FieldInfo>>,
     /// Traits this enum implements (from : Trait syntax)
     pub traits: Vec<String>,
-    /// Joined `///` doc comments preceding this enum. Audit #51.
+    /// Joined `///` doc comments preceding this enum.
     pub doc: Option<String>,
 }
 
@@ -164,7 +163,7 @@ pub struct FunctionInfo {
     pub return_type: Option<Type>,
     /// Generic parameters declared on this function
     pub generics: Vec<GenericParam>,
-    /// Joined `///` doc comments preceding this function. Audit #51.
+    /// Joined `///` doc comments preceding this function.
     pub doc: Option<String>,
 }
 

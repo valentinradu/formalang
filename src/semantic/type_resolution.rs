@@ -21,7 +21,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.resolve_struct_types(struct_def);
                     }
                     Definition::Impl(impl_def) => {
-                        // Audit #12/#27: merge target struct/enum generics into the
+                        // merge target struct/enum generics into the
                         // impl scope so method bodies see trait bounds declared on T.
                         self.push_impl_generic_scope(&impl_def.generics, &impl_def.name.name);
 
@@ -250,7 +250,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.resolve_struct_types(struct_def);
                 }
                 Definition::Impl(impl_def) => {
-                    // Audit #37: previously this arm pushed the generic
+                    // previously this arm pushed the generic
                     // scope and immediately cleared it without running
                     // return-type validation, so module-nested impl
                     // methods (e.g. `pub mod m { impl Foo { fn bar() -> X
@@ -396,11 +396,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         } else if self.symbols.is_trait(&ident.name) {
-            // FormaLang has no dynamic dispatch: a trait name in a
-            // value-producing type position (param, return, field,
-            // let annotation) means the user expected a trait object
-            // value, which the IR does not represent. Tier-1 audit:
-            // require `<T: Trait>` instead of `: Trait`.
+            // No dynamic dispatch: a trait in a value-producing position
+            // (param/return/field/let annotation) implies a trait-object
+            // value, which the IR can't represent — require `<T: Trait>`.
             self.errors.push(CompilerError::TraitUsedAsValueType {
                 trait_name: ident.name.clone(),
                 span: ident.span,
