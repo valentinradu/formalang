@@ -76,7 +76,7 @@ impl IrLowerer<'_> {
                 // need to be visible to the arm body. Without this frame
                 // the body lowered with the binding as an UndefinedReference.
                 let mut frame = HashMap::new();
-                for (name, ty) in &bindings {
+                for (name, _binding_id, ty) in &bindings {
                     frame.insert(name.clone(), (ParamConvention::Let, ty.clone()));
                 }
                 self.local_binding_scopes.push(frame);
@@ -406,7 +406,7 @@ impl IrLowerer<'_> {
         &mut self,
         pattern: &ast::Pattern,
         scrutinee: &IrExpr,
-    ) -> Vec<(String, ResolvedType)> {
+    ) -> Vec<(String, crate::ir::BindingId, ResolvedType)> {
         match pattern {
             ast::Pattern::Variant { name, bindings } => {
                 // Try to find variant field types from the enum
@@ -435,7 +435,7 @@ impl IrLowerer<'_> {
                             .get(i)
                             .cloned()
                             .unwrap_or_else(|| out_of_range_ty.clone());
-                        (ident.name.clone(), ty)
+                        (ident.name.clone(), crate::ir::BindingId(0), ty)
                     })
                     .collect()
             }

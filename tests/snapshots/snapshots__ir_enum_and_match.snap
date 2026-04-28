@@ -136,6 +136,9 @@ IrModule {
                             bindings: [
                                 (
                                     "since",
+                                    BindingId(
+                                        0,
+                                    ),
                                     Primitive(
                                         I32,
                                     ),

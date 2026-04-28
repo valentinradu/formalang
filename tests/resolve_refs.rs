@@ -208,6 +208,38 @@ fn distinguishes_param_from_local_in_same_function() -> TestResult {
 }
 
 #[test]
+fn match_arm_binding_id_drives_local_resolution() -> TestResult {
+    // Pattern bindings inside a match arm get fresh `BindingId`s; a
+    // reference to one inside the arm body must resolve to that id.
+    let module = resolved(
+        r"
+        pub enum Box { full(value: I32), empty }
+        pub fn unwrap(b: Box) -> I32 {
+            match b {
+                .full(v): v,
+                .empty: 0
+            }
+        }
+        ",
+    )?;
+    let body = function_body(&module, "unwrap").ok_or("no body")?;
+    let IrExpr::Match { arms, .. } = body else {
+        return Err(format!("expected Match, got {body:?}").into());
+    };
+    let full_arm = arms
+        .iter()
+        .find(|a| a.variant == "full")
+        .ok_or("no full arm")?;
+    let (_, binding_id, _) = full_arm.bindings.first().ok_or("expected one binding")?;
+    // The arm body is `v` — must reference the same BindingId.
+    let (_, target) = first_reference(&full_arm.body).ok_or("no reference in arm body")?;
+    match target {
+        ReferenceTarget::Local(id) if id == binding_id => Ok(()),
+        other => Err(format!("expected Local({binding_id:?}), got {other:?}").into()),
+    }
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();

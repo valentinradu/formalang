@@ -85,12 +85,12 @@ pub struct IrMatchArm {
     /// Whether this is a wildcard pattern (`_`)
     pub is_wildcard: bool,
 
-    /// Bindings for associated data: `(name, type)`. (A per-arm
-    /// [`BindingId`] is introduced for each binding by
-    /// `ResolveReferencesPass` via a side-table; threading it into the
-    /// tuple shape is tracked as a follow-up that will land alongside
-    /// the bindings-aware backend work.)
-    pub bindings: Vec<(String, ResolvedType)>,
+    /// Bindings for associated data: `(name, binding_id, type)`. The
+    /// `binding_id` is a fresh per-function identifier introduced by
+    /// the match arm; lowering emits `BindingId(0)` and
+    /// `ResolveReferencesPass` overwrites it. Backends key on the
+    /// `BindingId` to reach the slot the arm writes the payload into.
+    pub bindings: Vec<(String, BindingId, ResolvedType)>,
 
     /// Body expression
     pub body: IrExpr,

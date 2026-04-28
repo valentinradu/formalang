@@ -402,8 +402,9 @@ fn resolve_match_arm(arm: &mut IrMatchArm, scrutinee_ty: &ResolvedType, r: &mut 
         }
     }
     r.push_scope();
-    for (name, _ty) in &arm.bindings {
+    for (name, binding_id, _ty) in &mut arm.bindings {
         let id = r.fresh();
+        *binding_id = id;
         r.bind(name.clone(), id, BindingKind::Local);
     }
     resolve_expr(&mut arm.body, r);
