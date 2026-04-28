@@ -34,11 +34,11 @@ impl CaptureCtx {
     }
 
     pub(super) fn for_closure(
-        captures: &[(String, ParamConvention, ResolvedType)],
+        captures: &[(crate::ir::BindingId, String, ParamConvention, ResolvedType)],
         env_ty: ResolvedType,
     ) -> Self {
         Self {
-            captured_names: captures.iter().map(|(n, _, _)| n.clone()).collect(),
+            captured_names: captures.iter().map(|(_, n, _, _)| n.clone()).collect(),
             env_ty: Some(env_ty),
             bound: HashSet::new(),
         }

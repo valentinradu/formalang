@@ -210,10 +210,10 @@ impl DeadCodeEliminator<'_> {
                 body,
                 ..
             } => {
-                for (_, _, ty) in params {
+                for (_, _, _, ty) in params {
                     self.mark_used_in_type(ty);
                 }
-                for (_, _, ty) in captures {
+                for (_, _, _, ty) in captures {
                     self.mark_used_in_type(ty);
                 }
                 self.mark_used_in_expr(body);

@@ -38,28 +38,34 @@ impl IrLowerer<'_> {
         };
 
         // General closure: lower params and body
-        let lowered_params: Vec<(ParamConvention, String, ResolvedType)> = params
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let ty = p.ty.as_ref().map_or_else(
-                    || {
-                        expected_param_tys
-                            .get(i)
-                            .and_then(std::clone::Clone::clone)
-                            .unwrap_or(ResolvedType::Error)
-                    },
-                    |t| self.lower_type(t),
-                );
-                (p.convention, p.name.name.clone(), ty)
-            })
-            .collect();
+        let lowered_params: Vec<(ParamConvention, crate::ir::BindingId, String, ResolvedType)> =
+            params
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    let ty = p.ty.as_ref().map_or_else(
+                        || {
+                            expected_param_tys
+                                .get(i)
+                                .and_then(std::clone::Clone::clone)
+                                .unwrap_or(ResolvedType::Error)
+                        },
+                        |t| self.lower_type(t),
+                    );
+                    (
+                        p.convention,
+                        crate::ir::BindingId(0),
+                        p.name.name.clone(),
+                        ty,
+                    )
+                })
+                .collect();
 
         // Push a binding-scope frame for the closure's own parameters so that
         // (a) References inside the body resolve to declared types and
         // (b) nested closures see them when computing their own captures.
         let mut closure_frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
-        for (conv, name, ty) in &lowered_params {
+        for (conv, _bid, name, ty) in &lowered_params {
             closure_frame.insert(name.clone(), (*conv, ty.clone()));
         }
         self.local_binding_scopes.push(closure_frame);
@@ -96,8 +102,10 @@ impl IrLowerer<'_> {
         // capture lookups consult only the enclosing scopes.
         self.local_binding_scopes.pop();
 
-        let param_names: std::collections::HashSet<String> =
-            lowered_params.iter().map(|(_, n, _)| n.clone()).collect();
+        let param_names: std::collections::HashSet<String> = lowered_params
+            .iter()
+            .map(|(_, _, n, _)| n.clone())
+            .collect();
         let mut captures: Vec<(String, ResolvedType)> = Vec::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         collect_free_refs(&body_ir, &param_names, &mut captures, &mut seen);
@@ -107,30 +115,31 @@ impl IrLowerer<'_> {
         // in a block, outer closure parameter convention, or module-level
         // `let mut`. Bindings whose convention can't be located default to
         // `Let` (immutable view is the safest backend assumption).
-        let captures_with_mode: Vec<(String, ParamConvention, ResolvedType)> = captures
-            .into_iter()
-            .map(|(name, ty)| {
-                let convention = self
-                    .lookup_local_binding_entry(&name)
-                    .map(|(c, _)| *c)
-                    .or_else(|| {
-                        self.module.lets.iter().find(|l| l.name == name).map(|l| {
-                            if l.mutable {
-                                ParamConvention::Mut
-                            } else {
-                                ParamConvention::Let
-                            }
+        let captures_with_mode: Vec<(crate::ir::BindingId, String, ParamConvention, ResolvedType)> =
+            captures
+                .into_iter()
+                .map(|(name, ty)| {
+                    let convention = self
+                        .lookup_local_binding_entry(&name)
+                        .map(|(c, _)| *c)
+                        .or_else(|| {
+                            self.module.lets.iter().find(|l| l.name == name).map(|l| {
+                                if l.mutable {
+                                    ParamConvention::Mut
+                                } else {
+                                    ParamConvention::Let
+                                }
+                            })
                         })
-                    })
-                    .unwrap_or(ParamConvention::Let);
-                (name, convention, ty)
-            })
-            .collect();
+                        .unwrap_or(ParamConvention::Let);
+                    (crate::ir::BindingId(0), name, convention, ty)
+                })
+                .collect();
 
         let ty = ResolvedType::Closure {
             param_tys: lowered_params
                 .iter()
-                .map(|(c, _, t)| (*c, t.clone()))
+                .map(|(c, _, _, t)| (*c, t.clone()))
                 .collect(),
             return_ty: Box::new(return_ty),
         };
@@ -248,8 +257,8 @@ fn collect_free_refs(
             // its body. Any capture that is bound in the outer scope is not
             // free at this level; the rest bubble up as outer-closure captures.
             let inner_params: std::collections::HashSet<String> =
-                params.iter().map(|(_, n, _)| n.clone()).collect();
-            for (name, _, ty) in captures {
+                params.iter().map(|(_, _, n, _)| n.clone()).collect();
+            for (_, name, _, ty) in captures {
                 if !inner_params.contains(name)
                     && !bound.contains(name)
                     && seen.insert(name.clone())

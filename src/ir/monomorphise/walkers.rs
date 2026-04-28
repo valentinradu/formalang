@@ -185,10 +185,10 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
             body,
             ..
         } => {
-            for (_, _, ty) in params {
+            for (_, _, _, ty) in params {
                 visit(ty);
             }
-            for (_, _, ty) in captures {
+            for (_, _, _, ty) in captures {
                 visit(ty);
             }
             walk_expr_types(body, visit);
@@ -433,10 +433,10 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
             ..
         } => {
             visit(ty);
-            for (_, _, ty) in params {
+            for (_, _, _, ty) in params {
                 visit(ty);
             }
-            for (_, _, ty) in captures {
+            for (_, _, _, ty) in captures {
                 visit(ty);
             }
             walk_expr_types_mut_inner(body, visit);

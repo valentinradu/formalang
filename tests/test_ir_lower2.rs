@@ -69,10 +69,10 @@ fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::
     if params.len() != 1 {
         return Err(format!("expected 1 param, got {}", params.len()).into());
     }
-    if params.first().ok_or("index out of bounds")?.1 != "x" {
+    if params.first().ok_or("index out of bounds")?.2 != "x" {
         return Err(format!(
             "expected param 'x', got '{}'",
-            params.first().ok_or("index out of bounds")?.1
+            params.first().ok_or("index out of bounds")?.2
         )
         .into());
     }
@@ -1016,7 +1016,7 @@ fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("expected Closure, got {body:?}").into());
     };
     // The closure body references `n`, which is a parameter of make_adder.
-    let captured: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
+    let captured: Vec<&str> = captures.iter().map(|(_, n, _, _)| n.as_str()).collect();
     if !captured.contains(&"n") {
         return Err(format!("expected `n` in captures, got {captured:?}").into());
     }
@@ -1064,7 +1064,7 @@ fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::
     let IrExpr::Closure { captures, .. } = body else {
         return Err(format!("expected Closure, got {body:?}").into());
     };
-    let names: Vec<&str> = captures.iter().map(|(n, _, _)| n.as_str()).collect();
+    let names: Vec<&str> = captures.iter().map(|(_, n, _, _)| n.as_str()).collect();
     if names.contains(&"x") {
         return Err(format!("closure param `x` leaked into captures: {names:?}").into());
     }
@@ -1095,7 +1095,7 @@ fn test_closure_captures_inherit_sink_param_convention() -> Result<(), Box<dyn s
     };
     let n_conv = captures
         .iter()
-        .find_map(|(name, c, _)| (name == "n").then_some(*c))
+        .find_map(|(_, name, c, _)| (name == "n").then_some(*c))
         .ok_or("expected `n` capture")?;
     if n_conv != ParamConvention::Sink {
         return Err(format!("expected `n` captured as Sink, got {n_conv:?}").into());
@@ -1124,7 +1124,7 @@ fn test_closure_captures_inherit_module_let_conventions() -> Result<(), Box<dyn 
     };
     let by_name: std::collections::HashMap<&str, ParamConvention> = captures
         .iter()
-        .map(|(n, conv, _)| (n.as_str(), *conv))
+        .map(|(_, n, conv, _)| (n.as_str(), *conv))
         .collect();
     let imm = by_name
         .get("immutable")

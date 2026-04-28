@@ -433,6 +433,47 @@ fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
 }
 
 #[test]
+fn closure_capture_binding_id_points_at_outer_introducing_binding() -> TestResult {
+    // `n` is a function parameter; the inner closure captures it.
+    // After the pass, the closure's `captures[0].0` (outer binding id)
+    // should equal the function param's `binding_id`.
+    let module = resolved(
+        r"
+        pub fn make_adder(sink n: I32) -> (I32) -> I32 {
+            |x: I32| x + n
+        }
+        ",
+    )?;
+    let f = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make_adder")
+        .ok_or("make_adder not found")?;
+    let n_id = f
+        .params
+        .iter()
+        .find(|p| p.name == "n")
+        .ok_or("n param missing")?
+        .binding_id;
+    let body = f.body.as_ref().ok_or("no body")?;
+    let IrExpr::Closure { captures, .. } = body else {
+        return Err(format!("expected Closure, got {body:?}").into());
+    };
+    let n_capture = captures
+        .iter()
+        .find(|(_, name, _, _)| name == "n")
+        .ok_or("n not in captures")?;
+    if n_capture.0 != n_id {
+        return Err(format!(
+            "capture's outer BindingId is {:?}, expected {n_id:?}",
+            n_capture.0
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();

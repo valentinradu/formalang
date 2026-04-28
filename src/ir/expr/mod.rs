@@ -326,14 +326,19 @@ pub enum IrExpr {
 
     /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
     Closure {
-        /// Parameter conventions, names, and types
-        params: Vec<(ParamConvention, String, ResolvedType)>,
+        /// Parameter conventions, binding ids, names, and types.
+        /// `binding_id` is fresh per-function; lowering emits
+        /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
+        params: Vec<(ParamConvention, BindingId, String, ResolvedType)>,
         /// Free variables referenced by the body that are bound in an
         /// enclosing scope. Each entry is
-        /// `(binding_name, capture_mode, resolved_type)` — the mode
-        /// mirrors the `ParamConvention` of the outer binding (or `Let`
-        /// for a plain immutable capture) so backends can choose between
-        /// copy, move, reference, or sink semantics.
+        /// `(outer_binding_id, name, capture_mode, resolved_type)` — the
+        /// mode mirrors the `ParamConvention` of the outer binding (or
+        /// `Let` for a plain immutable capture) so backends can choose
+        /// between copy, move, reference, or sink semantics. The
+        /// `outer_binding_id` is the [`BindingId`] of the introducing
+        /// binding *in the enclosing function*; lowering emits
+        /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
         ///
         /// Populated during IR lowering by walking the body and collecting
         /// every [`Reference`](Self::Reference) / [`LetRef`](Self::LetRef)
@@ -344,7 +349,7 @@ pub enum IrExpr {
         ///
         /// Capture entries are deduplicated by name and ordered by the
         /// first reference encountered during the traversal.
-        captures: Vec<(String, ParamConvention, ResolvedType)>,
+        captures: Vec<(BindingId, String, ParamConvention, ResolvedType)>,
         /// Closure body
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
