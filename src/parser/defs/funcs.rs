@@ -4,9 +4,7 @@
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
-use crate::ast::{
-    BlockStatement, FnDef, FnParam, FnSig, FunctionDef, Ident, ParamConvention,
-};
+use crate::ast::{BlockStatement, FnDef, FnParam, FnSig, FunctionDef, Ident, ParamConvention};
 use crate::lexer::Token;
 
 use super::super::{

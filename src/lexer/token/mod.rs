@@ -2,8 +2,8 @@ mod callbacks;
 
 pub use callbacks::parse_regex;
 use callbacks::{
-    parse_doc_comment, parse_inner_doc_comment, parse_multiline_string, parse_number,
-    parse_string, skip_block_comment,
+    parse_doc_comment, parse_inner_doc_comment, parse_multiline_string, parse_number, parse_string,
+    skip_block_comment,
 };
 
 use logos::Logos;

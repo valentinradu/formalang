@@ -483,7 +483,6 @@ where
         ))
         .labelled("expression");
 
-
         operators::apply_operators(atom, expr.clone(), invocation_args.clone())
     })
 }

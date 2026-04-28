@@ -262,5 +262,4 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         None
     }
-
 }

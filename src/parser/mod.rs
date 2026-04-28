@@ -485,6 +485,5 @@ const fn span_from_simple(s: SimpleSpan) -> CustomSpan {
     CustomSpan::from_range(s.start, s.end)
 }
 
-
 #[cfg(test)]
 mod tests;

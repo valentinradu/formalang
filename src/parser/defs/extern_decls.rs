@@ -6,10 +6,10 @@ use chumsky::prelude::*;
 use crate::ast::{ExternAbi, FnDef, FunctionDef, ImplDef};
 use crate::lexer::Token;
 
-use super::super::{
-    ident_parser, span_from_simple, types::type_parser, visibility_parser,
+use super::super::{ident_parser, span_from_simple, types::type_parser, visibility_parser};
+use super::{
+    fn_attributes_parser, fn_def_parser, fn_params_parser, fn_sig_parser, generic_params_parser,
 };
-use super::{fn_attributes_parser, fn_def_parser, fn_params_parser, fn_sig_parser, generic_params_parser};
 
 /// Parse the optional ABI string after `extern`. Defaults to `"C"` when
 /// the string is omitted; accepts `"C"` and `"system"`.
@@ -46,9 +46,7 @@ where
         .then(ident_parser())
         .then(generic_params_parser())
         .then(fn_params_parser())
-        .then(
-            just(Token::Arrow).ignore_then(type_parser()).or_not(),
-        )
+        .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .map_with(
             |((((((visibility, attributes), abi), name), generics), params), return_type), e| {
                 let span = span_from_simple(e.span());

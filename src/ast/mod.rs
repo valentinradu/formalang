@@ -37,17 +37,17 @@ use crate::location::Span;
 use serde::{Deserialize, Serialize};
 
 pub use definitions::{
-    Definition, EnumDef, EnumVariant, FieldDef, File, FnDef, FnParam, FnSig, FunctionDef,
-    ImplDef, LetBinding, ModuleDef, Statement, StructDef, StructField, TraitDef, UseItems,
-    UseStmt, FORMAT_VERSION,
+    Definition, EnumDef, EnumVariant, FieldDef, File, FnDef, FnParam, FnSig, FunctionDef, ImplDef,
+    LetBinding, ModuleDef, Statement, StructDef, StructField, TraitDef, UseItems, UseStmt,
+    FORMAT_VERSION,
 };
 pub use expressions::{
     ArrayPatternElement, BindingPattern, BlockStatement, ClosureParam, Expr, Literal, MatchArm,
     NumberLiteral, NumberSourceKind, NumericSuffix, Pattern, StructPatternField,
 };
 pub use types::{
-    AttributeAnnotation, ExternAbi, FunctionAttribute, GenericConstraint, GenericParam,
-    TupleField, Type,
+    AttributeAnnotation, ExternAbi, FunctionAttribute, GenericConstraint, GenericParam, TupleField,
+    Type,
 };
 
 /// Visibility modifier

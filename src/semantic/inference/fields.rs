@@ -5,7 +5,6 @@ use crate::ast::{Definition, File, Statement};
 // HashMap unused after split
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
-
     /// Infer the type of a field access given the receiver's type.
     ///
     /// Handles optional receiver types by stripping `?`, looking up the struct,
@@ -258,5 +257,4 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         None
     }
-
 }

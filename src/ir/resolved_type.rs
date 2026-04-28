@@ -64,10 +64,7 @@ pub enum ResolvedType {
     Tuple(Vec<(String, Self)>),
 
     /// Generic type instantiation: `Box<String>` or `Option<I32>`.
-    Generic {
-        base: GenericBase,
-        args: Vec<Self>,
-    },
+    Generic { base: GenericBase, args: Vec<Self> },
 
     /// Unresolved type parameter (e.g., `T` in a generic definition).
     /// Within a generic, the actual type is not yet known; codegen

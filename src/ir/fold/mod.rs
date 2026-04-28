@@ -371,6 +371,5 @@ impl crate::pipeline::IrPass for ConstantFoldingPass {
     }
 }
 
-
 #[cfg(test)]
 mod tests;

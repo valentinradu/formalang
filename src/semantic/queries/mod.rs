@@ -254,7 +254,12 @@ impl<'a> QueryProvider<'a> {
                     .get(name)
                     .map(|i| (SymbolKind::Enum, i.span))
             })
-            .or_else(|| self.symbols.lets.get(name).map(|i| (SymbolKind::Let, i.span)))
+            .or_else(|| {
+                self.symbols
+                    .lets
+                    .get(name)
+                    .map(|i| (SymbolKind::Let, i.span))
+            })
             .or_else(|| {
                 self.symbols
                     .get_function(name)
@@ -275,7 +280,12 @@ impl<'a> QueryProvider<'a> {
                     .traits
                     .get(name)
                     .map(|i| (SymbolKind::Trait, i.span))
-                    .or_else(|| symbols.structs.get(name).map(|i| (SymbolKind::Struct, i.span)))
+                    .or_else(|| {
+                        symbols
+                            .structs
+                            .get(name)
+                            .map(|i| (SymbolKind::Struct, i.span))
+                    })
                     .or_else(|| symbols.enums.get(name).map(|i| (SymbolKind::Enum, i.span)))
                     .or_else(|| symbols.lets.get(name).map(|i| (SymbolKind::Let, i.span)))
                     .or_else(|| {
