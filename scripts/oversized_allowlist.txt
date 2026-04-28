@@ -25,4 +25,3 @@
 631 src/lexer/token.rs
 574 src/semantic/type_resolution.rs
 560 src/parser/span.rs
-555 src/semantic/queries.rs
