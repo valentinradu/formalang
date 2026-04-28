@@ -389,9 +389,14 @@ fn test_lower_module_with_function() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    let helper = module.functions.iter().find(|f| f.name == "helper");
+    // Functions inside `mod utils { … }` are registered with the
+    // qualified name `"utils::helper"` (matching the convention for
+    // structs / enums / traits) so external callers can resolve via
+    // joined-name lookup.
+    let helper = module.functions.iter().find(|f| f.name == "utils::helper");
     if helper.is_none() {
-        return Err("Should have helper function from module".into());
+        let names: Vec<&str> = module.functions.iter().map(|f| f.name.as_str()).collect();
+        return Err(format!("expected utils::helper; functions = {names:?}").into());
     }
     Ok(())
 }

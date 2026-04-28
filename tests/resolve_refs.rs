@@ -474,6 +474,41 @@ fn closure_capture_binding_id_points_at_outer_introducing_binding() -> TestResul
 }
 
 #[test]
+fn nested_module_function_qualifies_and_resolves() -> TestResult {
+    // Two invariants pinned:
+    //  1. A function declared inside `mod foo { … }` is registered
+    //     in `IrModule.functions` under the qualified name
+    //     `"foo::add"`.
+    //  2. The bare last segment is also reachable via `function_id`
+    //     so intra-module calls keep resolving.
+    let module = resolved(
+        r"
+        mod math {
+            pub fn double(x: I32) -> I32 { x * 2 }
+        }
+        ",
+    )?;
+    let qualified = module
+        .functions
+        .iter()
+        .find(|f| f.name == "math::double")
+        .ok_or("math::double not registered")?;
+    let id_via_qualified = module
+        .function_id("math::double")
+        .ok_or("function_id(math::double) failed")?;
+    let id_via_bare = module
+        .function_id("double")
+        .ok_or("function_id(double) alias missing")?;
+    if id_via_qualified != id_via_bare {
+        return Err(
+            format!("qualified id {id_via_qualified:?} != bare alias {id_via_bare:?}").into(),
+        );
+    }
+    let _ = qualified;
+    Ok(())
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();

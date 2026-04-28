@@ -300,9 +300,29 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn lower_dict_literal(&mut self, entries: &[(Expr, Expr)]) -> IrExpr {
+        // Like `lower_array_expr` / `lower_tuple_expr`, propagate the
+        // `Dictionary { value_ty }` to closure-literal entry values
+        // when a destructuring let / annotated context supplies one.
+        // Without this, `let d: [String: I32 -> I32] = ["k": |x| x]`
+        // produces a closure with `params: [(Let, "x", Error)]`.
+        let value_expected: Option<ResolvedType> = match self.expected_value_type.take() {
+            Some(ResolvedType::Dictionary { value_ty, .. }) => Some(*value_ty),
+            _ => None,
+        };
         let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
             .iter()
-            .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
+            .map(|(k, v)| {
+                let lowered_v = if matches!(value_expected, Some(ResolvedType::Closure { .. })) {
+                    let saved = self.expected_closure_type.take();
+                    self.expected_closure_type.clone_from(&value_expected);
+                    let l = self.lower_expr(v);
+                    self.expected_closure_type = saved;
+                    l
+                } else {
+                    self.lower_expr(v)
+                };
+                (self.lower_expr(k), lowered_v)
+            })
             .collect();
         // Empty dict literal: both type args are `Never`. The
         // shape stays a `Dictionary`, so assignment to `let d: [K: V] = [:]`
