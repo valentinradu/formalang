@@ -218,7 +218,29 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn lower_array_expr(&mut self, elements: &[Expr]) -> IrExpr {
-        let lowered: Vec<IrExpr> = elements.iter().map(|e| self.lower_expr(e)).collect();
+        // If the surrounding context supplies an expected aggregate type
+        // (e.g. a destructuring let `let [f]: [I32 -> I32] = [|x| x]`),
+        // pass the element type down to each element's lowering as
+        // `expected_closure_type`. Without this, un-annotated closure
+        // params lower to `ResolvedType::Error`.
+        let elem_expected: Option<ResolvedType> = match self.expected_value_type.take() {
+            Some(ResolvedType::Array(inner)) => Some(*inner),
+            _ => None,
+        };
+        let lowered: Vec<IrExpr> = elements
+            .iter()
+            .map(|e| {
+                if matches!(elem_expected, Some(ResolvedType::Closure { .. })) {
+                    let saved = self.expected_closure_type.take();
+                    self.expected_closure_type.clone_from(&elem_expected);
+                    let lowered = self.lower_expr(e);
+                    self.expected_closure_type = saved;
+                    lowered
+                } else {
+                    self.lower_expr(e)
+                }
+            })
+            .collect();
         // Empty array literal: type element as `Never` ("no values yet").
         // Matches `nil`'s representation as `Optional(Never)` and lets
         // the existing array-shape compatibility check accept assignment
@@ -234,9 +256,32 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn lower_tuple_expr(&mut self, fields: &[(crate::ast::Ident, Expr)]) -> IrExpr {
+        // Like `lower_array_expr`, propagate per-field expected types to
+        // closure-literal field values when a destructuring let supplies
+        // the aggregate annotation.
+        let expected_fields: Option<Vec<(String, ResolvedType)>> =
+            match self.expected_value_type.take() {
+                Some(ResolvedType::Tuple(ts)) => Some(ts),
+                _ => None,
+            };
         let lowered: Vec<(String, IrExpr)> = fields
             .iter()
-            .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+            .map(|(n, e)| {
+                let expected_field_ty = expected_fields
+                    .as_ref()
+                    .and_then(|ts| ts.iter().find(|(name, _)| *name == n.name))
+                    .map(|(_, t)| t.clone());
+                let lowered_e = if matches!(expected_field_ty, Some(ResolvedType::Closure { .. })) {
+                    let saved = self.expected_closure_type.take();
+                    self.expected_closure_type = expected_field_ty;
+                    let l = self.lower_expr(e);
+                    self.expected_closure_type = saved;
+                    l
+                } else {
+                    self.lower_expr(e)
+                };
+                (n.name.clone(), lowered_e)
+            })
             .collect();
         let tuple_types: Vec<(String, ResolvedType)> = lowered
             .iter()

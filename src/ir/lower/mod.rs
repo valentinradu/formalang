@@ -10,6 +10,7 @@
 //! `crate::semantic::symbol_table` directly.
 
 mod definitions;
+mod destructuring;
 mod expr;
 mod let_and_module;
 mod register;
@@ -103,6 +104,14 @@ struct IrLowerer<'a> {
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
     /// `x: I32` instead of `x: ResolvedType::Error`.
     pub(super) expected_closure_type: Option<ResolvedType>,
+    /// When the surrounding context (e.g. a destructuring let with a
+    /// type annotation) supplies the *aggregate* type that the next
+    /// expression should produce, this carries it. Array- and
+    /// tuple-literal lowering propagate it down to per-element
+    /// closure-literal lowerings so
+    /// `let [f]: [I32 -> I32] = [|x| x]` produces `x: I32` instead of
+    /// `x: Error`. Consumed once.
+    pub(super) expected_value_type: Option<ResolvedType>,
     /// Stack of currently-open module nodes during lowering. The
     /// outermost source module is at index 0; the deepest in-progress
     /// module is at the back. On entering `mod foo { ... }` we push a
@@ -173,6 +182,7 @@ impl<'a> IrLowerer<'a> {
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
             expected_closure_type: None,
+            expected_value_type: None,
             module_node_stack: Vec::new(),
         }
     }
