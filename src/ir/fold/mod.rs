@@ -91,7 +91,7 @@ impl ConstantFolder {
                 type_args,
                 fields: fields
                     .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
+                    .map(|(n, idx, e)| (n, idx, self.fold_expr(e)))
                     .collect(),
                 ty,
             },
@@ -123,9 +123,15 @@ impl ConstantFolder {
             | IrExpr::Reference { .. }
             | IrExpr::SelfFieldRef { .. }
             | IrExpr::LetRef { .. } => expr,
-            IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
+            IrExpr::FieldAccess {
+                object,
+                field,
+                field_idx,
+                ty,
+            } => IrExpr::FieldAccess {
                 object: Box::new(self.fold_expr(*object)),
                 field,
+                field_idx,
                 ty,
             },
             IrExpr::For {
@@ -151,7 +157,7 @@ impl ConstantFolder {
                     .into_iter()
                     .map(|arm| crate::ir::IrMatchArm {
                         variant: arm.variant,
-                        variant_idx: crate::ir::VariantIdx(0),
+                        variant_idx: arm.variant_idx,
                         is_wildcard: arm.is_wildcard,
                         bindings: arm.bindings,
                         body: self.fold_expr(arm.body),
@@ -162,14 +168,16 @@ impl ConstantFolder {
             IrExpr::EnumInst {
                 enum_id,
                 variant,
+                variant_idx,
                 fields,
                 ty,
             } => IrExpr::EnumInst {
                 enum_id,
                 variant,
+                variant_idx,
                 fields: fields
                     .into_iter()
-                    .map(|(n, e)| (n, self.fold_expr(e)))
+                    .map(|(n, idx, e)| (n, idx, self.fold_expr(e)))
                     .collect(),
                 ty,
             },

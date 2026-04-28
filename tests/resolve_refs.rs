@@ -10,7 +10,7 @@
 )]
 
 use formalang::compile_to_ir;
-use formalang::ir::{IrBlockStatement, IrExpr, IrModule, ReferenceTarget, VariantIdx};
+use formalang::ir::{FieldIdx, IrBlockStatement, IrExpr, IrModule, ReferenceTarget, VariantIdx};
 use formalang::IrPass;
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -27,6 +27,14 @@ fn function_body<'a>(module: &'a IrModule, name: &str) -> Option<&'a IrExpr> {
         .iter()
         .find(|f| f.name == name)
         .and_then(|f| f.body.as_ref())
+}
+
+fn find_field_access(expr: &IrExpr) -> Option<&IrExpr> {
+    match expr {
+        IrExpr::FieldAccess { .. } => Some(expr),
+        IrExpr::Block { result, .. } => find_field_access(result),
+        _ => None,
+    }
 }
 
 fn first_reference(expr: &IrExpr) -> Option<(&[String], &ReferenceTarget)> {
@@ -237,6 +245,76 @@ fn match_arm_binding_id_drives_local_resolution() -> TestResult {
         ReferenceTarget::Local(id) if id == binding_id => Ok(()),
         other => Err(format!("expected Local({binding_id:?}), got {other:?}").into()),
     }
+}
+
+#[test]
+fn struct_inst_field_indices_resolve_in_declaration_order() -> TestResult {
+    // `User(name: ..., age: ...)` lowers as `IrExpr::StructInst` with
+    // placeholder field indices; the pass must rewrite each field's
+    // `FieldIdx` to its declaration-order position in the struct.
+    let module = resolved(
+        r#"
+        pub struct User { name: String, age: I32 }
+        pub fn make() -> User { User(name: "bob", age: 7) }
+        "#,
+    )?;
+    let body = function_body(&module, "make").ok_or("no body")?;
+    let IrExpr::StructInst { fields, .. } = body else {
+        return Err(format!("expected StructInst, got {body:?}").into());
+    };
+    let by_name: std::collections::HashMap<&str, FieldIdx> = fields
+        .iter()
+        .map(|(n, idx, _)| (n.as_str(), *idx))
+        .collect();
+    if by_name.get("name") != Some(&FieldIdx(0)) {
+        return Err(format!("name expected FieldIdx(0), got {:?}", by_name.get("name")).into());
+    }
+    if by_name.get("age") != Some(&FieldIdx(1)) {
+        return Err(format!("age expected FieldIdx(1), got {:?}", by_name.get("age")).into());
+    }
+    Ok(())
+}
+
+#[test]
+fn field_access_resolves_field_idx() -> TestResult {
+    // FieldAccess fires when the receiver is a computed expression
+    // (parenthesised), not a simple identifier path. Field-idx lookup
+    // walks the receiver's struct type and writes back the position.
+    let module = resolved(
+        r#"
+        pub struct User { name: String, age: I32 }
+        pub fn make() -> User { User(name: "bob", age: 7) }
+        pub fn age() -> I32 { (make()).age }
+        "#,
+    )?;
+    let body = function_body(&module, "age").ok_or("no body")?;
+    let fa = find_field_access(body).ok_or("no FieldAccess")?;
+    let IrExpr::FieldAccess { field_idx, .. } = fa else {
+        return Err(format!("expected FieldAccess, got {fa:?}").into());
+    };
+    if *field_idx != FieldIdx(1) {
+        return Err(format!("expected FieldIdx(1), got {field_idx:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn enum_inst_variant_idx_resolves() -> TestResult {
+    // `.middle` on a 3-variant enum must resolve to `VariantIdx(1)`.
+    let module = resolved(
+        r"
+        pub enum Tier { low, middle, high }
+        pub fn pick() -> Tier { .middle }
+        ",
+    )?;
+    let body = function_body(&module, "pick").ok_or("no body")?;
+    let IrExpr::EnumInst { variant_idx, .. } = body else {
+        return Err(format!("expected EnumInst, got {body:?}").into());
+    };
+    if *variant_idx != VariantIdx(1) {
+        return Err(format!("expected VariantIdx(1), got {variant_idx:?}").into());
+    }
+    Ok(())
 }
 
 #[test]

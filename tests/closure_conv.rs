@@ -476,10 +476,13 @@ fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::i
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
         | IrExpr::LetRef { .. } => {}
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, v) in fields {
+                visit(v);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, v) in fields {
                 visit(v);
             }
         }

@@ -187,10 +187,13 @@ pub fn walk_expr<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
 /// This is called by the default `visit_expr` implementation.
 pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
     match expr {
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, e) in fields {
+                walk_expr(visitor, e);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, e) in fields {
                 walk_expr(visitor, e);
             }
         }

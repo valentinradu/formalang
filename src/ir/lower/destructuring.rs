@@ -84,6 +84,7 @@ impl IrLowerer<'_> {
             let access_expr = IrExpr::FieldAccess {
                 object: Box::new(value_expr.clone()),
                 field: field_name,
+                field_idx: crate::ir::FieldIdx(0),
                 ty: field_ty.clone(),
             };
             self.module.add_let(IrLet {
@@ -140,6 +141,7 @@ impl IrLowerer<'_> {
                 let access_expr = IrExpr::FieldAccess {
                     object: Box::new(value_expr.clone()),
                     field: field_name,
+                    field_idx: crate::ir::FieldIdx(0),
                     ty: ty.clone(),
                 };
                 self.module.add_let(IrLet {

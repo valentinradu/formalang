@@ -174,10 +174,13 @@ fn collect_free_refs(
             }
         }
         IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => {}
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, field_expr) in fields {
+                collect_free_refs(field_expr, bound, out, seen);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, field_expr) in fields {
                 collect_free_refs(field_expr, bound, out, seen);
             }
         }

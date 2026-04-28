@@ -220,7 +220,7 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             for t in type_args {
                 remap_type(t, remap);
             }
-            for (_, e) in fields {
+            for (_, _, e) in fields {
                 remap_expr(e, remap);
             }
         }
@@ -232,7 +232,7 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
                     *id = new;
                 }
             }
-            for (_, e) in fields {
+            for (_, _, e) in fields {
                 remap_expr(e, remap);
             }
         }

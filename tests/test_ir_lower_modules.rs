@@ -2306,7 +2306,7 @@ fn fold_constants_struct_inst_in_default() -> Result<(), Box<dyn std::error::Err
     let field = outer.fields.first().ok_or("no fields in Outer")?;
     let expr = field.default.as_ref().ok_or("default")?;
     if let IrExpr::StructInst { fields, .. } = expr {
-        let (_, x_val) = fields.first().ok_or("no fields in StructInst")?;
+        let (_, _, x_val) = fields.first().ok_or("no fields in StructInst")?;
         if let IrExpr::Literal {
             value: formalang::ast::Literal::Number(n),
             ..
@@ -2784,6 +2784,7 @@ fn visitor_walk_expr_field_access_child() -> Result<(), Box<dyn std::error::Erro
             ty: num_ty.clone(),
         }),
         field: "x".to_string(),
+        field_idx: formalang::ir::FieldIdx(0),
         ty: num_ty,
     };
 
@@ -2908,8 +2909,10 @@ fn visitor_walk_expr_enum_inst_fields() -> Result<(), Box<dyn std::error::Error>
     let expr = IrExpr::EnumInst {
         enum_id: None,
         variant: "active".to_string(),
+        variant_idx: formalang::ir::VariantIdx(0),
         fields: vec![(
             "count".to_string(),
+            formalang::ir::FieldIdx(0),
             IrExpr::Literal {
                 value: Literal::Number(3.0.into()),
                 ty: num_ty,
@@ -3016,6 +3019,7 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
         fields: vec![
             (
                 "x".to_string(),
+                formalang::ir::FieldIdx(0),
                 IrExpr::Literal {
                     value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
@@ -3023,6 +3027,7 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
             ),
             (
                 "y".to_string(),
+                formalang::ir::FieldIdx(1),
                 IrExpr::Literal {
                     value: Literal::Number(2.0.into()),
                     ty: num_ty,

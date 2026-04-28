@@ -755,11 +755,11 @@ fn test_fold_field_access_object() -> Result<(), Box<dyn std::error::Error>> {
     let IrExpr::Literal {
         value: Literal::Number(n),
         ..
-    } = &fields.first().ok_or("index out of bounds")?.1
+    } = &fields.first().ok_or("index out of bounds")?.2
     else {
         return Err(format!(
             "Expected folded x field, got {:?}",
-            fields.first().ok_or("index out of bounds")?.1
+            fields.first().ok_or("index out of bounds")?.2
         )
         .into());
     };

@@ -412,12 +412,12 @@ fn test_dce_expr_struct_inst_with_dead_code() -> Result<(), Box<dyn std::error::
     }
     // x: if true { 1 } -> x: 1
     if !matches!(
-        &fields.first().ok_or("index out of bounds")?.1,
+        &fields.first().ok_or("index out of bounds")?.2,
         IrExpr::Literal { .. } | IrExpr::If { .. }
     ) {
         return Err(format!(
             "Unexpected field value: {:?}",
-            fields.first().ok_or("index out of bounds")?.1
+            fields.first().ok_or("index out of bounds")?.2
         )
         .into());
     }

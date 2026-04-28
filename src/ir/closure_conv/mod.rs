@@ -370,9 +370,10 @@ fn expr_has_closure(expr: &IrExpr) -> bool {
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
         | IrExpr::LetRef { .. } => false,
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => fields.iter().any(|(_, v)| expr_has_closure(v)),
+        IrExpr::Tuple { fields, .. } => fields.iter().any(|(_, v)| expr_has_closure(v)),
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            fields.iter().any(|(_, _, v)| expr_has_closure(v))
+        }
         IrExpr::Array { elements, .. } => elements.iter().any(expr_has_closure),
         IrExpr::FieldAccess { object, .. } => expr_has_closure(object),
         IrExpr::BinaryOp { left, right, .. } => expr_has_closure(left) || expr_has_closure(right),

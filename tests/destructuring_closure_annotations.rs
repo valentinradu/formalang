@@ -27,9 +27,8 @@ fn find_closure(expr: &IrExpr) -> Option<&IrExpr> {
             IrExpr::Array { elements, .. } => elements.first().and_then(find_closure),
             other => find_closure(other),
         },
-        IrExpr::StructInst { fields, .. } | IrExpr::Tuple { fields, .. } => {
-            fields.iter().find_map(|(_, e)| find_closure(e))
-        }
+        IrExpr::Tuple { fields, .. } => fields.iter().find_map(|(_, e)| find_closure(e)),
+        IrExpr::StructInst { fields, .. } => fields.iter().find_map(|(_, _, e)| find_closure(e)),
         _ => None,
     }
 }

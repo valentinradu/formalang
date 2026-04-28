@@ -107,6 +107,7 @@ impl IrLowerer<'_> {
                 IrExpr::FieldAccess {
                     object: Box::new(object_ir),
                     field: field.name.clone(),
+                    field_idx: crate::ir::FieldIdx(0),
                     ty,
                 }
             }

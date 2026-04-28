@@ -126,6 +126,9 @@ expression: lifted
                         ),
                     },
                     field: "n",
+                    field_idx: FieldIdx(
+                        0,
+                    ),
                     ty: Primitive(
                         I32,
                     ),

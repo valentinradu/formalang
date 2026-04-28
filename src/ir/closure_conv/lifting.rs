@@ -55,13 +55,19 @@ impl ConversionState {
         // `__env.<name>`).
         let env_fields = captures
             .iter()
-            .map(|(name, _convention, capture_ty)| {
+            .enumerate()
+            .map(|(i, (name, _convention, capture_ty))| {
                 let raw_ref = IrExpr::Reference {
                     path: vec![name.clone()],
                     target: crate::ir::ReferenceTarget::Unresolved,
                     ty: capture_ty.clone(),
                 };
-                (name.clone(), self.process(raw_ref, outer_ctx))
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "capture count is bounded by the upstream u32 ceiling on field count"
+                )]
+                let idx = crate::ir::FieldIdx(i as u32);
+                (name.clone(), idx, self.process(raw_ref, outer_ctx))
             })
             .collect();
 
