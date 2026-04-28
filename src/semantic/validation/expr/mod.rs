@@ -37,7 +37,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         match expr {
-            Expr::Literal { .. } => {}
+            Expr::Literal { value, span } => {
+                self.validate_numeric_literal(value, *span);
+            }
             Expr::Array { elements, span } => {
                 for elem in elements {
                     self.validate_expr(elem, file);

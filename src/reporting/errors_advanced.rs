@@ -471,6 +471,23 @@ pub(super) fn closure_capture_escapes_local_binding<'a>(
         )
 }
 
+pub(super) fn numeric_overflow<'a>(
+    filename: &'a str,
+    span: Span,
+    written: &'a str,
+    target: crate::ast::PrimitiveType,
+) -> ReportBuilder<'a> {
+    Report::build(ReportKind::Error, filename, span.start.offset)
+        .with_code("E0801")
+        .with_message(format!(
+            "integer literal {written} does not fit in {target:?}",
+        ))
+        .with_label(label(filename, span).with_message("value out of range for target type"))
+        .with_help(format!(
+            "use the {target:?} suffix only on values within its range",
+        ))
+}
+
 pub(super) fn internal_error<'a>(
     filename: &'a str,
     span: Span,

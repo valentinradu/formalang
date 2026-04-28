@@ -272,6 +272,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::InternalError { detail, .. } => {
             errors_advanced::internal_error(filename, span, detail)
         }
+        CompilerError::NumericOverflow {
+            written, target, ..
+        } => errors_advanced::numeric_overflow(filename, span, written, *target),
     }
 }
 
