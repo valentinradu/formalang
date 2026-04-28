@@ -14,4 +14,3 @@
 1256 src/semantic/node_finder.rs
 1068 src/ir/closure_conv.rs
 1019 src/semantic/symbol_table.rs
-631 src/lexer/token.rs
