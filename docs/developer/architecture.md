@@ -77,7 +77,21 @@ Built-in passes exported from `formalang::ir`:
   concrete receivers. The frontend has no dynamic dispatch, so this
   pass is the bridge from generic source to fully-resolved IR.
 - `DeadCodeEliminationPass` — removes unreachable definitions
-- `ConstantFoldingPass` — evaluates constant expressions at compile time
+- `ConstantFoldingPass` — evaluates constant expressions at compile
+  time. Numeric folding takes the high-precision path when both
+  operands are `NumberValue::Integer(i128)` (checked `i128` arithmetic;
+  overflow leaves the `BinaryOp` un-folded so codegen decides the
+  emit). Any operand carrying `NumberValue::Float(f64)` falls back to
+  `f64` IEEE 754 — mixed-precision results are stored as `Float`, so
+  `Integer(2^60) + Float(0.0)` round-trips as `Float`, losing exactness
+  beyond `2^53`. Backends that need exact integer results should
+  ensure their inputs are integer-only or skip folding for that
+  expression.
+- `ResolveReferencesPass` — rewrites name-keyed references
+  (`IrExpr::Reference.path`, `LetRef.name`, `IrMatchArm.variant`) into
+  typed IDs (`ReferenceTarget`, `BindingId`, `VariantIdx`). Opt-in;
+  not in `Pipeline::default()`. Use it when the backend emits
+  integer-indexed code (wasm, JVM, native).
 
 ## Compiler Outputs
 
