@@ -4,4 +4,4 @@
 # below 500. Goal: empty file.
 #
 # Format: <max_lines> <path-relative-to-repo-root>
-3576 src/semantic/validation.rs
+
