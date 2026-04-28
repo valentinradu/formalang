@@ -45,7 +45,10 @@ pub use dce::{
 };
 pub use expr::{DispatchKind, IrExpr};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
-pub use ids::{EnumId, FunctionId, ImplId, StructId, TraitId};
+pub use ids::{
+    BindingId, EnumId, FieldIdx, FunctionId, ImplId, LetId, MethodIdx, StructId, TraitId,
+    VariantIdx,
+};
 pub use imports::{ImportedKind, IrImport, IrImportItem};
 pub use lower::lower_to_ir;
 pub use module::{IrModule, IrModuleNode};

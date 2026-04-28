@@ -88,3 +88,67 @@ pub struct FunctionId(pub u32);
 )]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ImplId(pub u32);
+
+/// ID for a binding inside a function body.
+///
+/// Either a `Let` introduced by an
+/// [`IrBlockStatement::Let`](super::block::IrBlockStatement) or a parameter
+/// from [`IrFunctionParam`](super::IrFunctionParam). Unique within the
+/// containing function only; not stable across functions. Assigned by
+/// `ResolveReferencesPass`, with a fresh counter per function starting at 0.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BindingId(pub u32);
+
+/// Position of a field within an [`IrStruct`](super::IrStruct)'s `fields`.
+///
+/// For an [`IrEnum`](super::IrEnum) variant, indexes into that variant's
+/// `fields`. Backends use this to compute layout offsets without re-doing
+/// field-name lookups.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FieldIdx(pub u32);
+
+/// Position of a variant within an [`IrEnum`](super::IrEnum)'s `variants`.
+///
+/// Used by backends to drive `br_table` / `switch` emission against the
+/// runtime tag.
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct VariantIdx(pub u32);
+
+/// Position of a method within an [`IrImpl`](super::IrImpl) or [`IrTrait`].
+///
+/// For `DispatchKind::Static`, indexes into [`IrImpl::functions`]; for
+/// `DispatchKind::Virtual`, into [`IrTrait::methods`].
+///
+/// [`IrTrait`]: super::IrTrait
+/// [`IrTrait::methods`]: super::IrTrait
+/// [`IrImpl::functions`]: super::IrImpl
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct MethodIdx(pub u32);
+
+/// ID for a module-scope `let` binding in [`IrModule::lets`].
+///
+/// Distinct from [`BindingId`], which indexes function-local bindings.
+///
+/// [`IrModule::lets`]: super::IrModule
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "IR types are constructed directly by consumer code"
+)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct LetId(pub u32);
