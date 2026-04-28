@@ -43,7 +43,7 @@ pub use definitions::{
 };
 pub use expressions::{
     ArrayPatternElement, BindingPattern, BlockStatement, ClosureParam, Expr, Literal, MatchArm,
-    NumberLiteral, NumberSourceKind, NumericSuffix, Pattern, StructPatternField,
+    NumberLiteral, NumberSourceKind, NumberValue, NumericSuffix, Pattern, StructPatternField,
 };
 pub use types::{
     AttributeAnnotation, ExternAbi, FunctionAttribute, GenericConstraint, GenericParam, TupleField,

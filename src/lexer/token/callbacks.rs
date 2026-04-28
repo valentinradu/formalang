@@ -72,15 +72,17 @@ pub(super) fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
     Skip
 }
 
-/// Parse a numeric literal slice into its `f64` value plus optional width-tag
-/// suffix.
+/// Parse a numeric literal slice into its [`NumberValue`] payload plus
+/// optional width-tag suffix.
 ///
-/// The slice may end in one of `I32`, `I64`, `F32`, `F64`; the digits before
-/// the suffix are stripped of underscores and parsed via `f64::parse`. Returns
-/// `None` on parse failure so logos emits an error that the lexer converts
-/// into [`crate::error::CompilerError::InvalidNumber`].
+/// The slice may end in one of `I32`, `I64`, `F32`, `F64`. Integer-syntax
+/// digits (`42`, `1_000_000`) parse via `i128::from_str` so the exact value
+/// round-trips into the IR; float-syntax digits (`3.14`, `1e5`) parse via
+/// `f64::from_str`. Returns `None` on parse failure (overflow / unparseable)
+/// so logos emits an error that the lexer converts into
+/// [`crate::error::CompilerError::InvalidNumber`].
 pub(super) fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
-    use crate::ast::{NumberLiteral, NumberSourceKind};
+    use crate::ast::{NumberLiteral, NumberSourceKind, NumberValue};
 
     let (digits, suffix) = strip_numeric_suffix(s);
     // The source kind is determined syntactically: a `.` or `e`/`E` in the
@@ -91,10 +93,11 @@ pub(super) fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
         NumberSourceKind::Integer
     };
     let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
-    cleaned
-        .parse::<f64>()
-        .ok()
-        .map(|value| NumberLiteral::from_lex(value, suffix, kind))
+    let value = match kind {
+        NumberSourceKind::Integer => NumberValue::Integer(cleaned.parse::<i128>().ok()?),
+        NumberSourceKind::Float => NumberValue::Float(cleaned.parse::<f64>().ok()?),
+    };
+    Some(NumberLiteral::from_lex(value, suffix, kind))
 }
 
 /// Strip a trailing width-tag suffix (`I32`, `I64`, `F32`, `F64`) from a

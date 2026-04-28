@@ -193,7 +193,9 @@ File {
                             Literal {
                                 value: Number(
                                     NumberLiteral {
-                                        value: 10.0,
+                                        value: Integer(
+                                            10,
+                                        ),
                                         suffix: None,
                                         kind: Integer,
                                     },

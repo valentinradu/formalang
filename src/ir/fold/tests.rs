@@ -26,8 +26,8 @@ fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n.value - 3.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 3, got {}", n.value).into());
+        if (n.value.as_f64() - 3.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 3, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -58,8 +58,8 @@ fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> 
         ..
     } = expr
     {
-        if (n.value - 6.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 6, got {}", n.value).into());
+        if (n.value.as_f64() - 6.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 6, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -91,8 +91,8 @@ fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n.value - 14.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 14, got {}", n.value).into());
+        if (n.value.as_f64() - 14.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 14, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -219,8 +219,8 @@ fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n.value - 1.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 1, got {}", n.value).into());
+        if (n.value.as_f64() - 1.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 1, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());

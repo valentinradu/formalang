@@ -34,8 +34,8 @@ fn test_fold_numeric_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n.value - 6.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 6, got {}", n.value).into());
+    if ((n.value.as_f64() - 6.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 6, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -62,8 +62,8 @@ fn test_fold_numeric_division() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {}", n.value).into());
+    if ((n.value.as_f64() - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -90,8 +90,8 @@ fn test_fold_numeric_modulo() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n.value - 1.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 1, got {}", n.value).into());
+    if ((n.value.as_f64() - 1.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 1, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -322,8 +322,8 @@ fn test_fold_numeric_negation() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
     };
-    if ((n.value + 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected -5, got {}", n.value).into());
+    if ((n.value.as_f64() + 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected -5, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -422,8 +422,8 @@ fn test_fold_constants_in_impl_function_body() -> Result<(), Box<dyn std::error:
         )
         .into());
     };
-    if ((n.value - 6.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 6, got {}", n.value).into());
+    if ((n.value.as_f64() - 6.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 6, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -466,8 +466,8 @@ fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {}", n.value).into());
+    if ((n.value.as_f64() - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -503,8 +503,8 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
     else {
         return Err(format!("expected for-body to fold to a I32 literal, got {body:?}").into());
     };
-    if (n.value - 3.0_f64).abs() > f64::EPSILON {
-        return Err(format!("expected folded value 3, got {}", n.value).into());
+    if (n.value.as_f64() - 3.0_f64).abs() > f64::EPSILON {
+        return Err(format!("expected folded value 3, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -550,8 +550,8 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n.value - 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 5 in arm, got {}", n.value).into());
+    if ((n.value.as_f64() - 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 5 in arm, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -653,8 +653,8 @@ fn test_fold_closure_body() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded closure body, got {body:?}").into());
     };
-    if ((n.value - 5.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 5, got {}", n.value).into());
+    if ((n.value.as_f64() - 5.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 5, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -705,8 +705,8 @@ fn test_fold_block_let_statement() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded let value, got {value:?}").into());
     };
-    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3 in block let, got {}", n.value).into());
+    if ((n.value.as_f64() - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3 in block let, got {}", n.value.as_f64()).into());
     }
     // Result expression should be a reference to x (LetRef/Reference) or a Literal
     if !(matches!(
@@ -763,8 +763,8 @@ fn test_fold_field_access_object() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     };
-    if ((n.value - 3.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 3, got {}", n.value).into());
+    if ((n.value.as_f64() - 3.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 3, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -802,8 +802,8 @@ fn test_constant_folding_pass_via_pipeline() -> Result<(), Box<dyn std::error::E
     else {
         return Err(format!("Expected 21 after folding pass, got {expr:?}").into());
     };
-    if ((n.value - 21.0).abs()).abs() >= f64::EPSILON {
-        return Err(format!("Expected 21, got {}", n.value).into());
+    if ((n.value.as_f64() - 21.0).abs()).abs() >= f64::EPSILON {
+        return Err(format!("Expected 21, got {}", n.value.as_f64()).into());
     }
     Ok(())
 }
@@ -920,8 +920,8 @@ fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
     else {
         return Err(format!("Expected folded literal for -0, got {expr:?}").into());
     };
-    if n.value != 0.0 {
-        return Err(format!("Expected 0 (any sign), got {}", n.value).into());
+    if n.value.as_f64() != 0.0 {
+        return Err(format!("Expected 0 (any sign), got {}", n.value.as_f64()).into());
     }
     Ok(())
 }

@@ -31,7 +31,7 @@ fn tokenize_number_with_underscores() -> Result<(), Box<dyn std::error::Error>> 
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(n.value),
+            Token::Number(n) => Some(n.value.as_f64()),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -50,7 +50,7 @@ fn tokenize_number_scientific_notation() -> Result<(), Box<dyn std::error::Error
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(n.value),
+            Token::Number(n) => Some(n.value.as_f64()),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -70,7 +70,7 @@ fn tokenize_number_scientific_notation_positive_exponent() -> Result<(), Box<dyn
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(n.value),
+            Token::Number(n) => Some(n.value.as_f64()),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -89,7 +89,7 @@ fn tokenize_number_mixed_underscore_and_decimal() -> Result<(), Box<dyn std::err
     let got = tokens
         .iter()
         .find_map(|(t, _)| match t {
-            Token::Number(n) => Some(n.value),
+            Token::Number(n) => Some(n.value.as_f64()),
             _ => None,
         })
         .ok_or("expected Token::Number")?;
@@ -125,10 +125,10 @@ fn tokenize_number_with_width_tag_suffix() -> Result<(), Box<dyn std::error::Err
                 _ => None,
             })
             .ok_or_else(|| format!("{source}: expected Token::Number"))?;
-        if (lit.value - expected_value).abs() > 1e-9 {
+        if (lit.value.as_f64() - expected_value).abs() > 1e-9 {
             return Err(format!(
                 "{source}: expected value {expected_value}, got {}",
-                lit.value
+                lit.value.as_f64()
             )
             .into());
         }

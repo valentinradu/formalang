@@ -569,8 +569,8 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
             ..
         } = value
         {
-            if (n.value - 99.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 99.0, got {}", n.value).into());
+            if (n.value.as_f64() - 99.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 99.0, got {}", n.value.as_f64()).into());
             }
         } else {
             return Err("Expected number literal after map_exprs".into());
@@ -677,8 +677,8 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
         ..
     } = result
     {
-        if (n.value - 10.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 10.0, got {}", n.value).into());
+        if (n.value.as_f64() - 10.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 10.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected literal 10.0, got {result:?}").into());
@@ -716,8 +716,8 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
         ..
     } = result
     {
-        if (n.value - 20.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 20.0, got {}", n.value).into());
+        if (n.value.as_f64() - 20.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 20.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected literal 20.0, got {result:?}").into());
@@ -814,8 +814,8 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
         ..
     } = default
     {
-        if (n.value - 99.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 99.0, got {}", n.value).into());
+        if (n.value.as_f64() - 99.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 99.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded 99.0, got {default:?}").into());
@@ -896,8 +896,8 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
         ..
     } = expr
     {
-        if (n.value - 6.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 6.0, got {}", n.value).into());
+        if (n.value.as_f64() - 6.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 6.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -927,8 +927,8 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
         ..
     } = expr
     {
-        if (n.value - 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 5.0, got {}", n.value).into());
+        if (n.value.as_f64() - 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 5.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -958,8 +958,8 @@ fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> 
         ..
     } = expr
     {
-        if (n.value - 1.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 1.0, got {}", n.value).into());
+        if (n.value.as_f64() - 1.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 1.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded literal, got {expr:?}").into());
@@ -1113,8 +1113,8 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n.value - 7.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 7.0, got {}", n.value).into());
+        if (n.value.as_f64() - 7.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 7.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected 7.0, got {expr:?}").into());
@@ -1144,8 +1144,8 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
         ..
     } = expr
     {
-        if (n.value - 8.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 8.0, got {}", n.value).into());
+        if (n.value.as_f64() - 8.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 8.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected 8.0, got {expr:?}").into());
@@ -1175,8 +1175,8 @@ fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = expr
     {
-        if (n.value + 5.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected -5.0, got {}", n.value).into());
+        if (n.value.as_f64() + 5.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected -5.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected folded -5.0, got {expr:?}").into());
@@ -1231,8 +1231,8 @@ fn fold_constants_in_let_bindings() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = &binding.value
     {
-        if (n.value - 12.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 12.0, got {}", n.value).into());
+        if (n.value.as_f64() - 12.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 12.0, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!(
@@ -2310,8 +2310,8 @@ fn fold_constants_struct_inst_in_default() -> Result<(), Box<dyn std::error::Err
             ..
         } = x_val
         {
-            if (n.value - 5.0).abs() >= f64::EPSILON {
-                return Err(format!("Expected 5.0 from 2+3, got {}", n.value).into());
+            if (n.value.as_f64() - 5.0).abs() >= f64::EPSILON {
+                return Err(format!("Expected 5.0 from 2+3, got {}", n.value.as_f64()).into());
             }
         } else {
             return Err(format!("Expected folded 5.0, got {x_val:?}").into());

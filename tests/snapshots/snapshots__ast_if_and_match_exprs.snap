@@ -437,7 +437,9 @@ File {
                     then_branch: Literal {
                         value: Number(
                             NumberLiteral {
-                                value: 1.0,
+                                value: Integer(
+                                    1,
+                                ),
                                 suffix: None,
                                 kind: Integer,
                             },
@@ -459,7 +461,9 @@ File {
                         Literal {
                             value: Number(
                                 NumberLiteral {
-                                    value: 0.0,
+                                    value: Integer(
+                                        0,
+                                    ),
                                     suffix: None,
                                     kind: Integer,
                                 },

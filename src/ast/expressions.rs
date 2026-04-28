@@ -49,28 +49,123 @@ impl NumericSuffix {
     }
 }
 
-/// Parsed payload of a numeric literal: the `f64` value, an optional
-/// source-level type suffix, and the integer-vs-float source-syntax kind.
+/// Parsed payload of a numeric literal.
 ///
-/// A single field type that both `lexer::Token::Number` and `Literal::Number`
-/// wrap. Single field because logos (used by the lexer) only supports
-/// single-field token variants. Storage is `f64` for both integer and float
-/// literals — values above 2^53 with `I64` suffix lose precision; specialising
-/// the storage is tracked as a follow-up.
+/// Carries a discriminated [`NumberValue`] (preserving exact integer digits
+/// or `f64` float bits), an optional source-level type suffix, and the
+/// integer-vs-float source-syntax kind. A single field type that both
+/// `lexer::Token::Number` and `Literal::Number` wrap — single-field because
+/// logos (used by the lexer) only supports single-field token variants.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct NumberLiteral {
-    pub value: f64,
+    pub value: NumberValue,
     pub suffix: Option<NumericSuffix>,
     pub kind: NumberSourceKind,
+}
+
+/// Discriminated payload for a numeric literal.
+///
+/// Integer-syntax literals (`42`, `9_223_372_036_854_775_807I64`) preserve the
+/// exact digits as `i128` so backends emitting native integer instructions
+/// (wasm `i64.const`, JVM `ldc`, native `mov $imm, %rax`) round-trip without
+/// loss. Float-syntax literals (`3.14`, `1e5`) use `f64`, matching their IEEE
+/// 754 representation in source.
+///
+/// The `i128` arm comfortably covers `i64::MIN..=u64::MAX`; suffix range
+/// checks happen at semantic-analysis time, so by the time codegen runs the
+/// payload fits the target primitive.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum NumberValue {
+    /// Lexed from integer syntax. Preserves the exact digits.
+    Integer(i128),
+    /// Lexed from float syntax (digits include `.` or `e`).
+    Float(f64),
+}
+
+impl NumberValue {
+    /// Convert to `i32` if the integer value fits in range, else `None`.
+    /// For float-syntax payloads: returns `None` (semantic analysis rejects
+    /// float-typed literals where an integer was expected).
+    #[must_use]
+    pub fn as_i32(&self) -> Option<i32> {
+        match *self {
+            Self::Integer(v) => i32::try_from(v).ok(),
+            Self::Float(_) => None,
+        }
+    }
+
+    /// Convert to `i64` if the integer value fits in range, else `None`.
+    /// For float-syntax payloads: returns `None`.
+    #[must_use]
+    pub fn as_i64(&self) -> Option<i64> {
+        match *self {
+            Self::Integer(v) => i64::try_from(v).ok(),
+            Self::Float(_) => None,
+        }
+    }
+
+    /// Best-effort cast to `f32`. Integer payloads cast via `as`; large
+    /// magnitudes lose precision (existing behaviour). Float payloads are
+    /// truncated from `f64`.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "best-effort backend cast; range-check happened at semantic time"
+    )]
+    pub const fn as_f32(&self) -> f32 {
+        match *self {
+            Self::Integer(v) => v as f32,
+            Self::Float(f) => f as f32,
+        }
+    }
+
+    /// Best-effort cast to `f64`. Integer payloads above `2^53` lose
+    /// precision in the cast. Float payloads pass through.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "i128 → f64 may lose precision above 2^53; semantic gates this when it matters"
+    )]
+    pub const fn as_f64(&self) -> f64 {
+        match *self {
+            Self::Integer(v) => v as f64,
+            Self::Float(f) => f,
+        }
+    }
+}
+
+impl From<f64> for NumberValue {
+    /// `Integer(v as i128)` for finite whole-number values; `Float(v)`
+    /// otherwise. Preserves the existing `From<f64> for NumberLiteral`
+    /// heuristic.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "finite whole-number f64 fits i128 modulo magnitudes beyond 2^127, which the From<f64> heuristic does not promise to preserve exactly"
+    )]
+    fn from(value: f64) -> Self {
+        if value.is_finite() && value.fract() == 0.0 {
+            Self::Integer(value as i128)
+        } else {
+            Self::Float(value)
+        }
+    }
+}
+
+impl From<i128> for NumberValue {
+    fn from(value: i128) -> Self {
+        Self::Integer(value)
+    }
 }
 
 impl NumberLiteral {
     /// Construct an integer-syntax literal with no suffix.
     #[must_use]
-    pub const fn unsuffixed(value: f64) -> Self {
+    pub const fn unsuffixed(value: i128) -> Self {
         Self {
-            value,
+            value: NumberValue::Integer(value),
             suffix: None,
             kind: NumberSourceKind::Integer,
         }
@@ -80,7 +175,7 @@ impl NumberLiteral {
     #[must_use]
     pub const fn unsuffixed_float(value: f64) -> Self {
         Self {
-            value,
+            value: NumberValue::Float(value),
             suffix: None,
             kind: NumberSourceKind::Float,
         }
@@ -89,7 +184,7 @@ impl NumberLiteral {
     /// Construct with an explicit suffix. The source kind is inferred from
     /// the suffix's family (`I32`/`I64` → Integer, `F32`/`F64` → Float).
     #[must_use]
-    pub const fn suffixed(value: f64, suffix: NumericSuffix) -> Self {
+    pub const fn suffixed(value: NumberValue, suffix: NumericSuffix) -> Self {
         let kind = match suffix {
             NumericSuffix::I32 | NumericSuffix::I64 => NumberSourceKind::Integer,
             NumericSuffix::F32 | NumericSuffix::F64 => NumberSourceKind::Float,
@@ -106,7 +201,7 @@ impl NumberLiteral {
     /// both fields independently from the literal slice.
     #[must_use]
     pub const fn from_lex(
-        value: f64,
+        value: NumberValue,
         suffix: Option<NumericSuffix>,
         kind: NumberSourceKind,
     ) -> Self {
@@ -152,9 +247,20 @@ impl From<f64> for NumberLiteral {
             NumberSourceKind::Float
         };
         Self {
-            value,
+            value: NumberValue::from(value),
             suffix: None,
             kind,
+        }
+    }
+}
+
+impl From<i128> for NumberLiteral {
+    /// Construct an integer-syntax literal with no suffix from an `i128`.
+    fn from(value: i128) -> Self {
+        Self {
+            value: NumberValue::Integer(value),
+            suffix: None,
+            kind: NumberSourceKind::Integer,
         }
     }
 }
