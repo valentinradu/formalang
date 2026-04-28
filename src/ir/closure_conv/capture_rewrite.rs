@@ -1,31 +1,41 @@
 //! Capture context and the helper that rewrites a captured-name read
 //! into an `__env.<name>` field-access.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::ast::ParamConvention;
-use crate::ir::{IrExpr, ResolvedType};
+use crate::ir::{BindingId, IrExpr, ResolvedType};
 
 use super::ENV_PARAM_NAME;
 
 /// Capture context threaded through the recursive walk. A node's
-/// context determines whether a `Reference` / `LetRef` of a given
-/// name should be rewritten to `__env.<name>` (for the *current*
-/// enclosing closure's captures) or left as-is (parameter or local
-/// binding).
+/// context determines whether a `Reference` / `LetRef` whose
+/// `BindingId` matches one of the enclosing closure's captures
+/// should be rewritten to `__env.<name>`.
+///
+/// Detection is `BindingId`-based: the pass relies on
+/// `ResolveReferencesPass` having run first so each `Reference` /
+/// `LetRef` carries the introducing binding's id, and each capture
+/// records the same id under `Closure.captures`. Shadowing is handled
+/// by `BindingId` distinctness — a `let x = …` inside the closure body
+/// gets a fresh id different from any captured outer id, so the inner
+/// reference resolves to the new id and is *not* in the captured set.
+/// No separate "shadowed names" tracking is needed.
 #[derive(Clone, Default)]
 pub(super) struct CaptureCtx {
-    /// Names captured by the immediately-enclosing closure (or empty
-    /// at module level).
-    captured_names: HashSet<String>,
+    /// `BindingId`s captured by the immediately-enclosing closure
+    /// (or empty at module level). Each id corresponds to an
+    /// outer-scope `IrFunctionParam` / `IrBlockStatement::Let`.
+    captured_bindings: HashSet<BindingId>,
+    /// Map from captured `BindingId` to the source-level name the
+    /// capture was introduced under; used to construct the
+    /// `__env.<name>` field access on rewrite.
+    capture_names: HashMap<BindingId, String>,
     /// Resolved type of the current closure's env struct, used as the
     /// `ty` of the synthesized `Reference { path: [__env] }`. `None`
     /// at module level (no env in scope).
     env_ty: Option<ResolvedType>,
-    /// Names introduced by `let` / `match` / `for` since the
-    /// enclosing closure boundary. References to these shadow
-    /// captures of the same name.
-    bound: HashSet<String>,
 }
 
 impl CaptureCtx {
@@ -34,24 +44,31 @@ impl CaptureCtx {
     }
 
     pub(super) fn for_closure(
-        captures: &[(crate::ir::BindingId, String, ParamConvention, ResolvedType)],
+        captures: &[(BindingId, String, ParamConvention, ResolvedType)],
         env_ty: ResolvedType,
     ) -> Self {
         Self {
-            captured_names: captures.iter().map(|(_, n, _, _)| n.clone()).collect(),
+            captured_bindings: captures.iter().map(|(bid, _, _, _)| *bid).collect(),
+            capture_names: captures
+                .iter()
+                .map(|(bid, name, _, _)| (*bid, name.clone()))
+                .collect(),
             env_ty: Some(env_ty),
-            bound: HashSet::new(),
         }
     }
 
-    pub(super) fn is_captured(&self, name: &str) -> bool {
-        self.captured_names.contains(name) && !self.bound.contains(name)
+    /// Whether the given `BindingId` refers to one of the captures
+    /// of the immediately-enclosing closure (and therefore needs
+    /// rewriting to `__env.<name>`).
+    pub(super) fn is_captured(&self, id: BindingId) -> bool {
+        self.captured_bindings.contains(&id)
     }
 
-    /// Add `name` to the set of locally-bound names that shadow any
-    /// like-named capture for the remainder of this scope.
-    pub(super) fn bind(&mut self, name: String) {
-        self.bound.insert(name);
+    /// Look up the source-level name a captured `BindingId` was
+    /// introduced under. `None` for ids that aren't in this context's
+    /// captured set.
+    pub(super) fn capture_name(&self, id: BindingId) -> Option<&str> {
+        self.capture_names.get(&id).map(String::as_str)
     }
 
     /// Resolved type of the current closure's env struct, or `None`

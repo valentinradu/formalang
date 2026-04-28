@@ -9,7 +9,11 @@ expression: lifted_bodies
             path: [
                 "t",
             ],
-            target: Unresolved,
+            target: Local(
+                BindingId(
+                    0,
+                ),
+            ),
             ty: Primitive(
                 String,
             ),
@@ -21,7 +25,11 @@ expression: lifted_bodies
                 path: [
                     "x",
                 ],
-                target: Unresolved,
+                target: Local(
+                    BindingId(
+                        1,
+                    ),
+                ),
                 ty: Primitive(
                     I32,
                 ),

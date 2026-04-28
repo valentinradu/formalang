@@ -166,7 +166,15 @@ impl IrPass for ClosureConversionPass {
         "closure-conversion"
     }
 
-    fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
+    fn run(&mut self, module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
+        // The pass requires every `Reference` / `LetRef` / closure
+        // capture to carry a non-zero `BindingId` so the BindingId-
+        // based capture detection in `process` distinguishes inner
+        // (shadowed) bindings from outer captures. Run
+        // `ResolveReferencesPass` internally — it's idempotent, so
+        // running it twice in a pipeline that already includes it
+        // is a cheap no-op walk.
+        let mut module = crate::ir::ResolveReferencesPass::new().run(module)?;
         let mut state = ConversionState::new(&module);
 
         // Module-level let bindings.

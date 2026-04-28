@@ -99,11 +99,19 @@ impl ConversionState {
     pub(super) fn process(&mut self, expr: IrExpr, ctx: &CaptureCtx) -> IrExpr {
         match expr {
             IrExpr::Reference { path, target, ty } => {
-                if path.len() == 1 {
-                    if let Some(head) = path.first() {
-                        if ctx.is_captured(head) {
-                            return env_field_access(head.clone(), ty, ctx.env_ty());
-                        }
+                if let crate::ir::ReferenceTarget::Local(id)
+                | crate::ir::ReferenceTarget::Param(id) = target
+                {
+                    if ctx.is_captured(id) {
+                        // The capture's introducing name was recorded in
+                        // `ctx.capture_names`; prefer it over `path[0]`
+                        // because a shadowed-then-resolved path could
+                        // disagree with the canonical capture name.
+                        let name = ctx.capture_name(id).map_or_else(
+                            || path.first().cloned().unwrap_or_default(),
+                            str::to_string,
+                        );
+                        return env_field_access(name, ty, ctx.env_ty());
                     }
                 }
                 IrExpr::Reference { path, target, ty }
@@ -113,7 +121,7 @@ impl ConversionState {
                 binding_id,
                 ty,
             } => {
-                if ctx.is_captured(&name) {
+                if ctx.is_captured(binding_id) {
                     return env_field_access(name, ty, ctx.env_ty());
                 }
                 IrExpr::LetRef {
@@ -218,10 +226,11 @@ impl ConversionState {
                 body,
                 ty,
             } => {
+                // No `inner_ctx.bind(var)` needed: BindingId-based
+                // detection inherently distinguishes the for-loop
+                // variable's id from any outer capture id.
                 let new_collection = self.process(*collection, ctx);
-                let mut inner_ctx = ctx.clone();
-                inner_ctx.bind(var.clone());
-                let new_body = self.process(*body, &inner_ctx);
+                let new_body = self.process(*body, ctx);
                 IrExpr::For {
                     var,
                     var_ty,
@@ -321,16 +330,16 @@ impl ConversionState {
     }
 
     fn process_match_arm(&mut self, arm: IrMatchArm, ctx: &CaptureCtx) -> IrMatchArm {
-        let mut inner_ctx = ctx.clone();
-        for (name, _, _) in &arm.bindings {
-            inner_ctx.bind(name.clone());
-        }
+        // BindingId-based detection: the match-arm bindings have
+        // their own fresh ids assigned by ResolveReferencesPass, so
+        // a reference to one resolves to its inner id and is *not*
+        // in the captured set. No shadow-tracking needed.
         IrMatchArm {
             variant: arm.variant,
             variant_idx: arm.variant_idx,
             is_wildcard: arm.is_wildcard,
             bindings: arm.bindings,
-            body: self.process(arm.body, &inner_ctx),
+            body: self.process(arm.body, ctx),
         }
     }
 
@@ -341,12 +350,11 @@ impl ConversionState {
         ty: ResolvedType,
         ctx: &CaptureCtx,
     ) -> IrExpr {
-        let mut inner_ctx = ctx.clone();
         let new_stmts = statements
             .into_iter()
-            .map(|stmt| self.process_block_stmt(stmt, &mut inner_ctx))
+            .map(|stmt| self.process_block_stmt(stmt, ctx))
             .collect();
-        let new_result = self.process(result, &inner_ctx);
+        let new_result = self.process(result, ctx);
         IrExpr::Block {
             statements: new_stmts,
             result: Box::new(new_result),
@@ -354,12 +362,12 @@ impl ConversionState {
         }
     }
 
-    fn process_block_stmt(
-        &mut self,
-        stmt: IrBlockStatement,
-        ctx: &mut CaptureCtx,
-    ) -> IrBlockStatement {
+    fn process_block_stmt(&mut self, stmt: IrBlockStatement, ctx: &CaptureCtx) -> IrBlockStatement {
         match stmt {
+            // BindingId-based detection inherently handles shadowing —
+            // the let's `binding_id` differs from any outer capture's
+            // id, so references to it after the let resolve to the
+            // inner id and stay un-rewritten.
             IrBlockStatement::Let {
                 binding_id,
                 name,
@@ -368,7 +376,6 @@ impl ConversionState {
                 value,
             } => {
                 let new_value = self.process(value, ctx);
-                ctx.bind(name.clone());
                 IrBlockStatement::Let {
                     binding_id,
                     name,

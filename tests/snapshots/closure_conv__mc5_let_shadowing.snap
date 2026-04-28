@@ -1,13 +1,13 @@
 ---
 source: tests/closure_conv.rs
-assertion_line: 629
+assertion_line: 632
 expression: lifted_body
 ---
 Block {
     statements: [
         Let {
             binding_id: BindingId(
-                0,
+                2,
             ),
             name: "n",
             mutable: false,
@@ -37,7 +37,11 @@ Block {
             path: [
                 "x",
             ],
-            target: Unresolved,
+            target: Local(
+                BindingId(
+                    1,
+                ),
+            ),
             ty: Primitive(
                 I32,
             ),
@@ -47,7 +51,11 @@ Block {
             path: [
                 "n",
             ],
-            target: Unresolved,
+            target: Local(
+                BindingId(
+                    2,
+                ),
+            ),
             ty: Primitive(
                 I32,
             ),
