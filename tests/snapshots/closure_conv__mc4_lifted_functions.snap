@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 63
 expression: lifted
 ---
 [
@@ -42,6 +43,7 @@ expression: lifted
                 path: [
                     "t",
                 ],
+                target: Unresolved,
                 ty: Primitive(
                     String,
                 ),
@@ -93,6 +95,7 @@ expression: lifted
                     path: [
                         "x",
                     ],
+                    target: Unresolved,
                     ty: Primitive(
                         I32,
                     ),
@@ -103,6 +106,7 @@ expression: lifted
                         path: [
                             "__env",
                         ],
+                        target: Unresolved,
                         ty: Struct(
                             StructId(
                                 1,

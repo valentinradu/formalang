@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 122
 expression: "(make_adder_body, format_tag_value)"
 ---
 (
@@ -21,6 +22,7 @@ expression: "(make_adder_body, format_tag_value)"
                         path: [
                             "n",
                         ],
+                        target: Unresolved,
                         ty: Primitive(
                             I32,
                         ),

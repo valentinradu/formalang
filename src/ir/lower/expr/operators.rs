@@ -80,6 +80,7 @@ impl IrLowerer<'_> {
                 let ty = self.resolve_impl_self_type(&impl_name);
                 return IrExpr::Reference {
                     path: path_strs,
+                    target: crate::ir::ReferenceTarget::Unresolved,
                     ty,
                 };
             }
@@ -151,6 +152,7 @@ impl IrLowerer<'_> {
         };
         IrExpr::Reference {
             path: path_strs,
+            target: crate::ir::ReferenceTarget::Unresolved,
             ty,
         }
     }

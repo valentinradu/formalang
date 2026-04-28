@@ -72,6 +72,7 @@ IrModule {
                         path: [
                             "s",
                         ],
+                        target: Unresolved,
                         ty: Enum(
                             EnumId(
                                 0,
@@ -132,6 +133,7 @@ IrModule {
                                 path: [
                                     "since",
                                 ],
+                                target: Unresolved,
                                 ty: Primitive(
                                     I32,
                                 ),

@@ -98,7 +98,7 @@ impl ConversionState {
     )]
     pub(super) fn process(&mut self, expr: IrExpr, ctx: &CaptureCtx) -> IrExpr {
         match expr {
-            IrExpr::Reference { path, ty } => {
+            IrExpr::Reference { path, target, ty } => {
                 if path.len() == 1 {
                     if let Some(head) = path.first() {
                         if ctx.is_captured(head) {
@@ -106,7 +106,7 @@ impl ConversionState {
                         }
                     }
                 }
-                IrExpr::Reference { path, ty }
+                IrExpr::Reference { path, target, ty }
             }
             IrExpr::LetRef { name, ty } => {
                 if ctx.is_captured(&name) {

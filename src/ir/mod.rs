@@ -43,7 +43,7 @@ pub use closure_conv::ClosureConversionPass;
 pub use dce::{
     eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
 };
-pub use expr::{DispatchKind, IrExpr};
+pub use expr::{DispatchKind, IrExpr, ReferenceTarget};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use ids::{
     BindingId, EnumId, FieldIdx, FunctionId, ImplId, LetId, MethodIdx, StructId, TraitId,

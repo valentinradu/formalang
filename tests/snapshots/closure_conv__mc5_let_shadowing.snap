@@ -34,6 +34,7 @@ Block {
             path: [
                 "x",
             ],
+            target: Unresolved,
             ty: Primitive(
                 I32,
             ),
@@ -43,6 +44,7 @@ Block {
             path: [
                 "n",
             ],
+            target: Unresolved,
             ty: Primitive(
                 I32,
             ),

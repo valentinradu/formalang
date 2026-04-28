@@ -3,7 +3,49 @@
 use crate::ast::{BinaryOperator, Literal, ParamConvention, UnaryOperator};
 
 use super::block::{IrBlockStatement, IrMatchArm};
-use super::{EnumId, ImplId, ResolvedType, StructId, TraitId};
+use super::{
+    BindingId, EnumId, FunctionId, ImplId, ImportedKind, LetId, ResolvedType, StructId, TraitId,
+};
+
+/// Target of an [`IrExpr::Reference`] after `ResolveReferencesPass` runs.
+///
+/// Pre-resolve, every reference carries [`Self::Unresolved`]. The pass
+/// rewrites each one to the matching variant. Backends can dispatch on the
+/// variant directly without re-walking module symbol tables. The original
+/// `path` on `IrExpr::Reference` is preserved alongside for diagnostics.
+#[expect(
+    clippy::exhaustive_enums,
+    reason = "IR types are matched exhaustively by code generators"
+)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ReferenceTarget {
+    /// A standalone function (resolved against `IrModule::functions`).
+    Function(FunctionId),
+    /// A struct definition used as a value or type.
+    Struct(StructId),
+    /// An enum definition.
+    Enum(EnumId),
+    /// A trait definition.
+    Trait(TraitId),
+    /// A module-scope `let` binding.
+    ModuleLet(LetId),
+    /// A function-local `let` binding (introduced by
+    /// [`super::IrBlockStatement::Let`]).
+    Local(BindingId),
+    /// A function parameter (introduced by
+    /// [`super::IrFunctionParam`]).
+    Param(BindingId),
+    /// A reference into another module that has not yet been linked —
+    /// cross-module linking lands later (formawasm Phase 4).
+    External {
+        module_path: Vec<String>,
+        name: String,
+        kind: ImportedKind,
+    },
+    /// Pre-`ResolveReferencesPass` placeholder. Lowering emits this and the
+    /// pass overwrites it; backends should never see `Unresolved`.
+    Unresolved,
+}
 
 /// How a method call should be dispatched.
 ///
@@ -105,8 +147,13 @@ pub enum IrExpr {
     ///
     /// Note: For `self.field` references within impl blocks, use [`IrExpr::SelfFieldRef`] instead.
     Reference {
-        /// The reference path (single name or dotted path)
+        /// The reference path (single name or dotted path) — preserved
+        /// alongside [`Self::Reference::target`] for diagnostics.
         path: Vec<String>,
+        /// Resolved target of this reference. Set to
+        /// [`ReferenceTarget::Unresolved`] by lowering and rewritten by
+        /// `ResolveReferencesPass` to the matching variant.
+        target: ReferenceTarget,
         /// Resolved type of the referenced value
         ty: ResolvedType,
     },

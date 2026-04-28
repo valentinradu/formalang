@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 89
 expression: lifted_bodies
 ---
 [
@@ -8,6 +9,7 @@ expression: lifted_bodies
             path: [
                 "t",
             ],
+            target: Unresolved,
             ty: Primitive(
                 String,
             ),
@@ -19,6 +21,7 @@ expression: lifted_bodies
                 path: [
                     "x",
                 ],
+                target: Unresolved,
                 ty: Primitive(
                     I32,
                 ),
@@ -29,6 +32,7 @@ expression: lifted_bodies
                     path: [
                         "__env",
                     ],
+                    target: Unresolved,
                     ty: Struct(
                         StructId(
                             1,

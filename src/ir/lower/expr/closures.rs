@@ -161,7 +161,7 @@ fn collect_free_refs(
     seen: &mut std::collections::HashSet<String>,
 ) {
     match expr {
-        IrExpr::Reference { path, ty } => {
+        IrExpr::Reference { path, ty, .. } => {
             if let [name] = path.as_slice() {
                 if !bound.contains(name) && seen.insert(name.clone()) {
                     out.push((name.clone(), ty.clone()));

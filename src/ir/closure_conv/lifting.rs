@@ -58,6 +58,7 @@ impl ConversionState {
             .map(|(name, _convention, capture_ty)| {
                 let raw_ref = IrExpr::Reference {
                     path: vec![name.clone()],
+                    target: crate::ir::ReferenceTarget::Unresolved,
                     ty: capture_ty.clone(),
                 };
                 (name.clone(), self.process(raw_ref, outer_ctx))
