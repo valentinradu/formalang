@@ -18,6 +18,9 @@ expression: "(make_curried_body, outer_lifted_body)"
             fields: [
                 (
                     "n",
+                    FieldIdx(
+                        0,
+                    ),
                     Reference {
                         path: [
                             "n",
@@ -73,6 +76,9 @@ expression: "(make_curried_body, outer_lifted_body)"
             fields: [
                 (
                     "x",
+                    FieldIdx(
+                        0,
+                    ),
                     Reference {
                         path: [
                             "x",
@@ -85,6 +91,9 @@ expression: "(make_curried_body, outer_lifted_body)"
                 ),
                 (
                     "n",
+                    FieldIdx(
+                        1,
+                    ),
                     FieldAccess {
                         object: Reference {
                             path: [
@@ -98,6 +107,9 @@ expression: "(make_curried_body, outer_lifted_body)"
                             ),
                         },
                         field: "n",
+                        field_idx: FieldIdx(
+                            0,
+                        ),
                         ty: Primitive(
                             I32,
                         ),

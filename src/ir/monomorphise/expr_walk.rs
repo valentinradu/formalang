@@ -93,10 +93,13 @@ pub(super) fn walk_expr(expr: &IrExpr, visit: &mut impl FnMut(&IrExpr)) {
                 walk_expr(e, visit);
             }
         }
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, e) in fields {
+                walk_expr(e, visit);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, e) in fields {
                 walk_expr(e, visit);
             }
         }
@@ -185,10 +188,13 @@ pub(super) fn iter_expr_children_mut(expr: &mut IrExpr) -> Vec<&mut IrExpr> {
                 out.push(e);
             }
         }
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, e) in fields {
+                out.push(e);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, e) in fields {
                 out.push(e);
             }
         }

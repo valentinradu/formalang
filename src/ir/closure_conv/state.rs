@@ -131,7 +131,15 @@ impl ConversionState {
             } => self.lift_closure(&params, &captures, *body, ty, ctx),
 
             IrExpr::Literal { value, ty } => IrExpr::Literal { value, ty },
-            IrExpr::SelfFieldRef { field, ty } => IrExpr::SelfFieldRef { field, ty },
+            IrExpr::SelfFieldRef {
+                field,
+                field_idx,
+                ty,
+            } => IrExpr::SelfFieldRef {
+                field,
+                field_idx,
+                ty,
+            },
 
             IrExpr::StructInst {
                 struct_id,
@@ -141,18 +149,20 @@ impl ConversionState {
             } => IrExpr::StructInst {
                 struct_id,
                 type_args,
-                fields: self.process_named_fields(fields, ctx),
+                fields: self.process_indexed_fields(fields, ctx),
                 ty,
             },
             IrExpr::EnumInst {
                 enum_id,
                 variant,
+                variant_idx,
                 fields,
                 ty,
             } => IrExpr::EnumInst {
                 enum_id,
                 variant,
-                fields: self.process_named_fields(fields, ctx),
+                variant_idx,
+                fields: self.process_indexed_fields(fields, ctx),
                 ty,
             },
             IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
@@ -163,9 +173,15 @@ impl ConversionState {
                 elements: elements.into_iter().map(|e| self.process(e, ctx)).collect(),
                 ty,
             },
-            IrExpr::FieldAccess { object, field, ty } => IrExpr::FieldAccess {
+            IrExpr::FieldAccess {
+                object,
+                field,
+                field_idx,
+                ty,
+            } => IrExpr::FieldAccess {
                 object: Box::new(self.process(*object, ctx)),
                 field,
+                field_idx,
                 ty,
             },
             IrExpr::BinaryOp {
@@ -291,6 +307,17 @@ impl ConversionState {
             .collect()
     }
 
+    pub(super) fn process_indexed_fields(
+        &mut self,
+        fields: Vec<(String, crate::ir::FieldIdx, IrExpr)>,
+        ctx: &CaptureCtx,
+    ) -> Vec<(String, crate::ir::FieldIdx, IrExpr)> {
+        fields
+            .into_iter()
+            .map(|(name, idx, value)| (name, idx, self.process(value, ctx)))
+            .collect()
+    }
+
     fn process_match_arm(&mut self, arm: IrMatchArm, ctx: &CaptureCtx) -> IrMatchArm {
         let mut inner_ctx = ctx.clone();
         for (name, _, _) in &arm.bindings {
@@ -298,7 +325,7 @@ impl ConversionState {
         }
         IrMatchArm {
             variant: arm.variant,
-            variant_idx: crate::ir::VariantIdx(0),
+            variant_idx: arm.variant_idx,
             is_wildcard: arm.is_wildcard,
             bindings: arm.bindings,
             body: self.process(arm.body, &inner_ctx),

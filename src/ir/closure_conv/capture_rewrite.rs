@@ -82,6 +82,7 @@ pub(super) fn env_field_access(
             ty: env_ty.cloned().unwrap_or(ResolvedType::Error),
         }),
         field,
+        field_idx: crate::ir::FieldIdx(0),
         ty,
     }
 }

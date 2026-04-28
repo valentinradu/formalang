@@ -72,7 +72,7 @@ impl IrLowerer<'_> {
                         .collect()
                 })
                 .unwrap_or_default();
-            let named_fields: Vec<(String, IrExpr)> = args
+            let named_fields: Vec<(String, crate::ir::FieldIdx, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
                     name_opt.as_ref().map(|n| {
@@ -93,7 +93,7 @@ impl IrLowerer<'_> {
                         let lowered = self.lower_expr(expr);
                         self.expected_closure_type = saved_closure;
                         self.current_function_return_type = saved;
-                        (n.name.clone(), lowered)
+                        (n.name.clone(), crate::ir::FieldIdx(0), lowered)
                     })
                 })
                 .collect();
@@ -105,12 +105,16 @@ impl IrLowerer<'_> {
             }
         } else if let Some(external_ty) = self.try_external_type(&name, type_args_resolved.clone())
         {
-            let named_fields: Vec<(String, IrExpr)> = args
+            let named_fields: Vec<(String, crate::ir::FieldIdx, IrExpr)> = args
                 .iter()
                 .filter_map(|(name_opt, expr)| {
-                    name_opt
-                        .as_ref()
-                        .map(|n| (n.name.clone(), self.lower_expr(expr)))
+                    name_opt.as_ref().map(|n| {
+                        (
+                            n.name.clone(),
+                            crate::ir::FieldIdx(0),
+                            self.lower_expr(expr),
+                        )
+                    })
                 })
                 .collect();
             IrExpr::StructInst {
@@ -169,9 +173,10 @@ impl IrLowerer<'_> {
         IrExpr::EnumInst {
             enum_id,
             variant: variant.to_string(),
+            variant_idx: crate::ir::VariantIdx(0),
             fields: data
                 .iter()
-                .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                .map(|(n, e)| (n.name.clone(), crate::ir::FieldIdx(0), self.lower_expr(e)))
                 .collect(),
             ty,
         }
@@ -209,9 +214,10 @@ impl IrLowerer<'_> {
         IrExpr::EnumInst {
             enum_id,
             variant: variant.to_string(),
+            variant_idx: crate::ir::VariantIdx(0),
             fields: data
                 .iter()
-                .map(|(n, e)| (n.name.clone(), self.lower_expr(e)))
+                .map(|(n, e)| (n.name.clone(), crate::ir::FieldIdx(0), self.lower_expr(e)))
                 .collect(),
             ty,
         }

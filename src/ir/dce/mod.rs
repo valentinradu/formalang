@@ -283,7 +283,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             type_args,
             fields: fields
                 .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
+                .map(|(n, idx, e)| (n, idx, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
         },
@@ -310,7 +310,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .into_iter()
                 .map(|arm| crate::ir::IrMatchArm {
                     variant: arm.variant,
-                    variant_idx: crate::ir::VariantIdx(0),
+                    variant_idx: arm.variant_idx,
                     is_wildcard: arm.is_wildcard,
                     bindings: arm.bindings,
                     body: eliminate_dead_code_expr(arm.body),
@@ -345,14 +345,16 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         IrExpr::EnumInst {
             enum_id,
             variant,
+            variant_idx,
             fields,
             ty,
         } => IrExpr::EnumInst {
             enum_id,
             variant,
+            variant_idx,
             fields: fields
                 .into_iter()
-                .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
+                .map(|(n, idx, e)| (n, idx, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
         },

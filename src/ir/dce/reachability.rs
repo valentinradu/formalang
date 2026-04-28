@@ -97,7 +97,7 @@ impl DeadCodeEliminator<'_> {
                 for arg in type_args {
                     self.mark_used_in_type(arg);
                 }
-                for (_, e) in fields {
+                for (_, _, e) in fields {
                     self.mark_used_in_expr(e);
                 }
             }
@@ -136,7 +136,7 @@ impl DeadCodeEliminator<'_> {
                 // struct/enum used as a generic arg of an external
                 // enum (e.g. `Result<LocalErr, OK>`) is marked used.
                 self.mark_used_in_type(ty);
-                for (_, e) in fields {
+                for (_, _, e) in fields {
                     self.mark_used_in_expr(e);
                 }
             }

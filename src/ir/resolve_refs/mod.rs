@@ -24,8 +24,8 @@ use std::collections::HashMap;
 
 use crate::error::CompilerError;
 use crate::ir::{
-    BindingId, IrBlockStatement, IrExpr, IrFunction, IrLet, IrMatchArm, IrModule, ReferenceTarget,
-    ResolvedType, VariantIdx,
+    BindingId, FieldIdx, IrBlockStatement, IrExpr, IrFunction, IrLet, IrMatchArm, IrModule,
+    ReferenceTarget, ResolvedType, VariantIdx,
 };
 use crate::pipeline::IrPass;
 
@@ -102,69 +102,8 @@ impl IrPass for ResolveReferencesPass {
     }
 }
 
-/// Module-scope symbol table — name → resolved target. Built once per
-/// pass invocation. Currently a flat top-level lookup; nested-module
-/// resolution is a follow-up.
-struct ModuleSymbols {
-    by_name: HashMap<String, ReferenceTarget>,
-}
-
-impl ModuleSymbols {
-    fn build(module: &IrModule) -> Self {
-        let mut by_name = HashMap::new();
-        for (i, f) in module.functions.iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "function count is bounded by add_function's u32 ceiling upstream"
-            )]
-            by_name.insert(
-                f.name.clone(),
-                ReferenceTarget::Function(crate::ir::FunctionId(i as u32)),
-            );
-        }
-        for (i, s) in module.structs.iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "struct count bounded upstream"
-            )]
-            by_name.insert(
-                s.name.clone(),
-                ReferenceTarget::Struct(crate::ir::StructId(i as u32)),
-            );
-        }
-        for (i, e) in module.enums.iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "enum count bounded upstream"
-            )]
-            by_name.insert(
-                e.name.clone(),
-                ReferenceTarget::Enum(crate::ir::EnumId(i as u32)),
-            );
-        }
-        for (i, t) in module.traits.iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "trait count bounded upstream"
-            )]
-            by_name.insert(
-                t.name.clone(),
-                ReferenceTarget::Trait(crate::ir::TraitId(i as u32)),
-            );
-        }
-        for (i, l) in module.lets.iter().enumerate() {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "let count bounded upstream"
-            )]
-            by_name.insert(
-                l.name.clone(),
-                ReferenceTarget::ModuleLet(crate::ir::LetId(i as u32)),
-            );
-        }
-        Self { by_name }
-    }
-}
+mod symbols;
+use symbols::ModuleSymbols;
 
 /// Whether a binding was introduced as a function parameter or as a
 /// function-local `let` (or for-loop / match-arm / closure parameter,
@@ -274,14 +213,86 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
                 resolve_expr(arg, r);
             }
         }
-        IrExpr::FieldAccess { object, .. } => {
+        IrExpr::FieldAccess {
+            object,
+            field,
+            field_idx,
+            ..
+        } => {
             resolve_expr(object, r);
+            if let Some(idx) = struct_field_idx(object.ty(), field, r.module) {
+                *field_idx = FieldIdx(idx);
+            }
         }
-        IrExpr::StructInst { fields, .. }
-        | IrExpr::EnumInst { fields, .. }
-        | IrExpr::Tuple { fields, .. } => {
+        IrExpr::Tuple { fields, .. } => {
             for (_, fexpr) in fields {
                 resolve_expr(fexpr, r);
+            }
+        }
+        IrExpr::StructInst {
+            struct_id, fields, ..
+        } => {
+            for (name, idx, fexpr) in fields.iter_mut() {
+                resolve_expr(fexpr, r);
+                if let Some(sid) = struct_id {
+                    if let Some(found) = r
+                        .module
+                        .get_struct(*sid)
+                        .and_then(|s| s.fields.iter().position(|f| f.name == *name))
+                    {
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "field count is bounded upstream"
+                        )]
+                        let new_idx = FieldIdx(found as u32);
+                        *idx = new_idx;
+                    }
+                }
+            }
+        }
+        IrExpr::EnumInst {
+            enum_id,
+            variant,
+            variant_idx,
+            fields,
+            ..
+        } => {
+            if let Some(eid) = enum_id {
+                if let Some(found) = r
+                    .module
+                    .get_enum(*eid)
+                    .and_then(|e| e.variants.iter().position(|v| v.name == *variant))
+                {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "variant count is bounded upstream"
+                    )]
+                    let new_idx = VariantIdx(found as u32);
+                    *variant_idx = new_idx;
+                }
+            }
+            for (fname, fidx, fexpr) in fields.iter_mut() {
+                resolve_expr(fexpr, r);
+                if let Some(eid) = enum_id {
+                    if let Some(found_field) = r
+                        .module
+                        .get_enum(*eid)
+                        .and_then(|e| {
+                            e.variants
+                                .iter()
+                                .find(|v| v.name == *variant)
+                                .map(|v| v.fields.iter().position(|f| f.name == *fname))
+                        })
+                        .flatten()
+                    {
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "field count is bounded upstream"
+                        )]
+                        let new_field_idx = FieldIdx(found_field as u32);
+                        *fidx = new_field_idx;
+                    }
+                }
             }
         }
         IrExpr::Array { elements, .. } => {
@@ -409,6 +420,21 @@ fn resolve_match_arm(arm: &mut IrMatchArm, scrutinee_ty: &ResolvedType, r: &mut 
     }
     resolve_expr(&mut arm.body, r);
     r.pop_scope();
+}
+
+fn struct_field_idx(ty: &ResolvedType, field: &str, module: &IrModule) -> Option<u32> {
+    let &ResolvedType::Struct(sid) = ty else {
+        return None;
+    };
+    let s = module.get_struct(sid)?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "field count is bounded upstream"
+    )]
+    s.fields
+        .iter()
+        .position(|f| f.name == field)
+        .map(|i| i as u32)
 }
 
 fn match_variant_idx(scrutinee_ty: &ResolvedType, variant: &str, module: &IrModule) -> Option<u32> {

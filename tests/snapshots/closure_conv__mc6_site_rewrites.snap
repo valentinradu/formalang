@@ -18,6 +18,9 @@ expression: "(make_adder_body, format_tag_value)"
             fields: [
                 (
                     "n",
+                    FieldIdx(
+                        0,
+                    ),
                     Reference {
                         path: [
                             "n",

@@ -109,6 +109,9 @@ IrModule {
                         BinaryOp {
                             left: SelfFieldRef {
                                 field: "side",
+                                field_idx: FieldIdx(
+                                    0,
+                                ),
                                 ty: Primitive(
                                     I32,
                                 ),
@@ -116,6 +119,9 @@ IrModule {
                             op: Mul,
                             right: SelfFieldRef {
                                 field: "side",
+                                field_idx: FieldIdx(
+                                    0,
+                                ),
                                 ty: Primitive(
                                     I32,
                                 ),

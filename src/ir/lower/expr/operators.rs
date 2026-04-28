@@ -66,6 +66,7 @@ impl IrLowerer<'_> {
             let ty = self.resolve_self_field_type(field_name);
             return IrExpr::SelfFieldRef {
                 field: field_name.clone(),
+                field_idx: crate::ir::FieldIdx(0),
                 ty,
             };
         }

@@ -4,7 +4,8 @@ use crate::ast::{BinaryOperator, Literal, ParamConvention, UnaryOperator};
 
 use super::block::{IrBlockStatement, IrMatchArm};
 use super::{
-    BindingId, EnumId, FunctionId, ImplId, ImportedKind, LetId, ResolvedType, StructId, TraitId,
+    BindingId, EnumId, FieldIdx, FunctionId, ImplId, ImportedKind, LetId, ResolvedType, StructId,
+    TraitId, VariantIdx,
 };
 
 /// Target of an [`IrExpr::Reference`] after `ResolveReferencesPass` runs.
@@ -108,8 +109,11 @@ pub enum IrExpr {
         struct_id: Option<StructId>,
         /// Generic type arguments (e.g., `[String]` for `Box<String>`)
         type_args: Vec<ResolvedType>,
-        /// Regular field arguments
-        fields: Vec<(String, Self)>,
+        /// Regular field arguments: `(name, field_idx, value)`. The
+        /// `field_idx` is the field's position in [`super::IrStruct`]'s
+        /// `fields` vector. Lowering emits `FieldIdx(0)` and
+        /// `ResolveReferencesPass` overwrites it.
+        fields: Vec<(String, FieldIdx, Self)>,
         /// Resolved type (the struct type or External)
         ty: ResolvedType,
     },
@@ -119,10 +123,16 @@ pub enum IrExpr {
         /// The enum being instantiated.
         /// `None` for external enums - use `ty` field instead.
         enum_id: Option<EnumId>,
-        /// Variant name
+        /// Variant name (preserved for diagnostics).
         variant: String,
-        /// Associated data fields
-        fields: Vec<(String, Self)>,
+        /// Variant index within the enum's `variants` vector.
+        /// Lowering emits `VariantIdx(0)` and `ResolveReferencesPass`
+        /// overwrites it.
+        variant_idx: VariantIdx,
+        /// Associated data fields: `(name, field_idx, value)`. The
+        /// `field_idx` is the field's position in the
+        /// matched [`super::IrEnumVariant`]'s `fields` vector.
+        fields: Vec<(String, FieldIdx, Self)>,
         /// Resolved type (the enum type or External)
         ty: ResolvedType,
     },
@@ -172,8 +182,14 @@ pub enum IrExpr {
     /// }
     /// ```
     SelfFieldRef {
-        /// The field name being accessed (without the `self.` prefix)
+        /// The field name being accessed (without the `self.` prefix);
+        /// preserved alongside [`Self::SelfFieldRef::field_idx`] for
+        /// diagnostics.
         field: String,
+        /// Position of `field` in the impl's struct's `fields` vector.
+        /// Lowering emits `FieldIdx(0)` and `ResolveReferencesPass`
+        /// overwrites it.
+        field_idx: FieldIdx,
         /// Resolved type of the field
         ty: ResolvedType,
     },
@@ -186,8 +202,12 @@ pub enum IrExpr {
     FieldAccess {
         /// The base expression to access a field on
         object: Box<Self>,
-        /// The field name to access
+        /// The field name to access (preserved for diagnostics).
         field: String,
+        /// Position of `field` in `object`'s struct's `fields` vector.
+        /// Lowering emits `FieldIdx(0)` and `ResolveReferencesPass`
+        /// overwrites it.
+        field_idx: FieldIdx,
         /// Resolved type of the field
         ty: ResolvedType,
     },
@@ -452,9 +472,10 @@ impl IrExpr {
         match self {
             Self::Literal { .. } => true,
             Self::Array { elements, .. } => elements.iter().all(Self::is_constant),
-            Self::Tuple { fields, .. }
-            | Self::StructInst { fields, .. }
-            | Self::EnumInst { fields, .. } => fields.iter().all(|(_, e)| e.is_constant()),
+            Self::Tuple { fields, .. } => fields.iter().all(|(_, e)| e.is_constant()),
+            Self::StructInst { fields, .. } | Self::EnumInst { fields, .. } => {
+                fields.iter().all(|(_, _, e)| e.is_constant())
+            }
             Self::DictLiteral { entries, .. } => entries
                 .iter()
                 .all(|(k, v)| k.is_constant() && v.is_constant()),
