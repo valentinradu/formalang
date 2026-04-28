@@ -166,15 +166,26 @@ impl ModuleSymbols {
     }
 }
 
+/// Whether a binding was introduced as a function parameter or as a
+/// function-local `let` (or for-loop / match-arm / closure parameter,
+/// all of which the `Local` arm covers — only top-level
+/// [`IrFunctionParam`] entries are `Param`).
+#[derive(Copy, Clone)]
+enum BindingKind {
+    Param,
+    Local,
+}
+
 /// Per-function rewriter — assigns `BindingId`s and walks the body
 /// resolving references.
 struct FnResolver<'a> {
     symbols: &'a ModuleSymbols,
     module: &'a IrModule,
     next_id: u32,
-    /// Stack of name → `BindingId` frames. Each block / for / match-arm /
-    /// closure body pushes a frame; lookup walks innermost-first.
-    scopes: Vec<HashMap<String, BindingId>>,
+    /// Stack of name → (`BindingId`, kind) frames. Each block / for /
+    /// match-arm / closure body pushes a frame; lookup walks
+    /// innermost-first.
+    scopes: Vec<HashMap<String, (BindingId, BindingKind)>>,
 }
 
 impl<'a> FnResolver<'a> {
@@ -193,13 +204,13 @@ impl<'a> FnResolver<'a> {
         id
     }
 
-    fn bind(&mut self, name: String, id: BindingId) {
+    fn bind(&mut self, name: String, id: BindingId, kind: BindingKind) {
         if let Some(frame) = self.scopes.last_mut() {
-            frame.insert(name, id);
+            frame.insert(name, (id, kind));
         }
     }
 
-    fn lookup(&self, name: &str) -> Option<BindingId> {
+    fn lookup(&self, name: &str) -> Option<(BindingId, BindingKind)> {
         self.scopes
             .iter()
             .rev()
@@ -220,7 +231,7 @@ fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrM
     for param in &mut func.params {
         let id = r.fresh();
         param.binding_id = id;
-        r.bind(param.name.clone(), id);
+        r.bind(param.name.clone(), id, BindingKind::Param);
         if let Some(default) = param.default.as_mut() {
             resolve_expr(default, &mut r);
         }
@@ -248,7 +259,7 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
         IrExpr::LetRef {
             name, binding_id, ..
         } => {
-            if let Some(id) = r.lookup(name) {
+            if let Some((id, _)) = r.lookup(name) {
                 *binding_id = id;
             }
         }
@@ -310,7 +321,7 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             resolve_expr(collection, r);
             r.push_scope();
             let id = r.fresh();
-            r.bind(var.clone(), id);
+            r.bind(var.clone(), id, BindingKind::Local);
             resolve_expr(body, r);
             r.pop_scope();
         }
@@ -332,7 +343,7 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             r.push_scope();
             for (_, name, _) in params.iter() {
                 let id = r.fresh();
-                r.bind(name.clone(), id);
+                r.bind(name.clone(), id, BindingKind::Local);
             }
             resolve_expr(body, r);
             r.pop_scope();
@@ -374,7 +385,7 @@ fn resolve_block_stmt(stmt: &mut IrBlockStatement, r: &mut FnResolver<'_>) {
             resolve_expr(value, r);
             let id = r.fresh();
             *binding_id = id;
-            r.bind(name.clone(), id);
+            r.bind(name.clone(), id, BindingKind::Local);
         }
         IrBlockStatement::Assign { target, value } => {
             resolve_expr(target, r);
@@ -393,7 +404,7 @@ fn resolve_match_arm(arm: &mut IrMatchArm, scrutinee_ty: &ResolvedType, r: &mut 
     r.push_scope();
     for (name, _ty) in &arm.bindings {
         let id = r.fresh();
-        r.bind(name.clone(), id);
+        r.bind(name.clone(), id, BindingKind::Local);
     }
     resolve_expr(&mut arm.body, r);
     r.pop_scope();
@@ -416,12 +427,11 @@ fn match_variant_idx(scrutinee_ty: &ResolvedType, variant: &str, module: &IrModu
 
 fn resolve_path(path: &[String], r: &FnResolver<'_>) -> ReferenceTarget {
     if let [single] = path {
-        if let Some(id) = r.lookup(single) {
-            // Cannot distinguish Local vs Param from BindingId alone — both
-            // share the same per-function counter. Backends key on the
-            // owning declaration's `binding_id` field, so `Local` is the
-            // safe label here.
-            return ReferenceTarget::Local(id);
+        if let Some((id, kind)) = r.lookup(single) {
+            return match kind {
+                BindingKind::Param => ReferenceTarget::Param(id),
+                BindingKind::Local => ReferenceTarget::Local(id),
+            };
         }
         if let Some(target) = r.symbols.by_name.get(single) {
             return target.clone();
