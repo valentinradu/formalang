@@ -58,8 +58,8 @@ fn function_param_gets_binding_id_and_reference_resolves_to_param() -> TestResul
         return Err(format!("expected path [\"x\"], got {path:?}").into());
     }
     match target {
-        ReferenceTarget::Local(id) if *id == param_id => Ok(()),
-        other => Err(format!("expected Local({param_id:?}), got {other:?}").into()),
+        ReferenceTarget::Param(id) if *id == param_id => Ok(()),
+        other => Err(format!("expected Param({param_id:?}), got {other:?}").into()),
     }
 }
 
@@ -168,6 +168,41 @@ fn match_arm_variant_idx_resolves() -> TestResult {
         .any(|a| a.variant_idx == VariantIdx(0) && a.variant != "red")
     {
         return Err("non-red arm has variant_idx 0".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn distinguishes_param_from_local_in_same_function() -> TestResult {
+    // Function with both a param and a let binding; references to each
+    // must produce distinct `ReferenceTarget` variants.
+    let module = resolved(
+        r"
+        pub fn f(x: I32) -> I32 {
+            let y = x
+            y
+        }
+        ",
+    )?;
+    let body = function_body(&module, "f").ok_or("no body")?;
+    let IrExpr::Block {
+        statements, result, ..
+    } = body
+    else {
+        return Err(format!("expected Block, got {body:?}").into());
+    };
+    // The let's value (x) should resolve to Param.
+    let IrBlockStatement::Let { value, .. } = statements.first().ok_or("no let")? else {
+        return Err("expected Let stmt".into());
+    };
+    let (_, x_target) = first_reference(value).ok_or("no x ref")?;
+    if !matches!(x_target, ReferenceTarget::Param(_)) {
+        return Err(format!("x should be Param, got {x_target:?}").into());
+    }
+    // The block result (y) should resolve to Local.
+    let (_, y_target) = first_reference(result).ok_or("no y ref")?;
+    if !matches!(y_target, ReferenceTarget::Local(_)) {
+        return Err(format!("y should be Local, got {y_target:?}").into());
     }
     Ok(())
 }
