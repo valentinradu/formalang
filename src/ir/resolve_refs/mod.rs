@@ -73,6 +73,7 @@ impl IrPass for ResolveReferencesPass {
         // structs / enums / traits / impls during expression rewriting to
         // look up field / variant / method indices.
         let symbols = ModuleSymbols::build(&module);
+        let mut errors: Vec<CompilerError> = Vec::new();
 
         // Functions / module-lets can be detached and walked freely against
         // the rest of `module`. For impl methods we need `module.impls`
@@ -83,7 +84,7 @@ impl IrPass for ResolveReferencesPass {
         let mut lets = std::mem::take(&mut module.lets);
 
         for func in &mut functions {
-            resolve_function(func, &symbols, &module);
+            resolve_function(func, &symbols, &module, &mut errors);
         }
         module.functions = functions;
         // Method bodies are extracted one-at-a-time via mem::replace so
@@ -104,16 +105,20 @@ impl IrPass for ResolveReferencesPass {
                     &mut module.impls[impl_idx].functions[fn_idx],
                     placeholder_function(),
                 );
-                resolve_function(&mut taken, &symbols, &module);
+                resolve_function(&mut taken, &symbols, &module, &mut errors);
                 module.impls[impl_idx].functions[fn_idx] = taken;
             }
         }
         for l in &mut lets {
-            resolve_module_let(l, &symbols, &module);
+            resolve_module_let(l, &symbols, &module, &mut errors);
         }
         module.lets = lets;
 
-        Ok(module)
+        if errors.is_empty() {
+            Ok(module)
+        } else {
+            Err(errors)
+        }
     }
 }
 
@@ -138,6 +143,10 @@ enum BindingKind {
 struct FnResolver<'a> {
     symbols: &'a ModuleSymbols,
     module: &'a IrModule,
+    /// Errors collected during the walk. The pass surfaces these via
+    /// its `Err` return when non-empty so callers see a real
+    /// `CompilerError` rather than silent `Unresolved` placeholders.
+    errors: &'a mut Vec<CompilerError>,
     next_id: u32,
     /// Stack of name → (`BindingId`, kind) frames. Each block / for /
     /// match-arm / closure body pushes a frame; lookup walks
@@ -146,10 +155,15 @@ struct FnResolver<'a> {
 }
 
 impl<'a> FnResolver<'a> {
-    fn new(symbols: &'a ModuleSymbols, module: &'a IrModule) -> Self {
+    fn new(
+        symbols: &'a ModuleSymbols,
+        module: &'a IrModule,
+        errors: &'a mut Vec<CompilerError>,
+    ) -> Self {
         Self {
             symbols,
             module,
+            errors,
             next_id: 0,
             scopes: vec![HashMap::new()],
         }
@@ -196,8 +210,13 @@ const fn placeholder_function() -> IrFunction {
     }
 }
 
-fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrModule) {
-    let mut r = FnResolver::new(symbols, module);
+fn resolve_function(
+    func: &mut IrFunction,
+    symbols: &ModuleSymbols,
+    module: &IrModule,
+    errors: &mut Vec<CompilerError>,
+) {
+    let mut r = FnResolver::new(symbols, module, errors);
     for param in &mut func.params {
         let id = r.fresh();
         param.binding_id = id;
@@ -211,8 +230,13 @@ fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrM
     }
 }
 
-fn resolve_module_let(l: &mut IrLet, symbols: &ModuleSymbols, module: &IrModule) {
-    let mut r = FnResolver::new(symbols, module);
+fn resolve_module_let(
+    l: &mut IrLet,
+    symbols: &ModuleSymbols,
+    module: &IrModule,
+    errors: &mut Vec<CompilerError>,
+) {
+    let mut r = FnResolver::new(symbols, module, errors);
     resolve_expr(&mut l.value, &mut r);
 }
 
@@ -223,8 +247,20 @@ fn resolve_module_let(l: &mut IrLet, symbols: &ModuleSymbols, module: &IrModule)
 fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
     match expr {
         IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => {}
-        IrExpr::Reference { path, target, .. } => {
+        IrExpr::Reference { path, target, ty } => {
             *target = resolve_path(path, r);
+            // Promote a remaining `Unresolved` to a typed
+            // `UndefinedReference` error — but only when the upstream
+            // didn't already mark the reference's type as `Error`,
+            // which is how lowering signals "I already pushed a
+            // CompilerError for this site". Without the gate we'd
+            // double-count any unbound name.
+            if matches!(target, ReferenceTarget::Unresolved) && !matches!(ty, ResolvedType::Error) {
+                r.errors.push(CompilerError::UndefinedReference {
+                    name: path.join("::"),
+                    span: crate::location::Span::default(),
+                });
+            }
         }
         IrExpr::LetRef {
             name, binding_id, ..

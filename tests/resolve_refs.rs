@@ -368,6 +368,71 @@ fn nested_module_struct_registered_with_qualified_name() -> TestResult {
 }
 
 #[test]
+fn unresolved_path_with_concrete_type_emits_undefined_reference() -> TestResult {
+    // Hand-build an IrModule where a Reference's `path` doesn't match any
+    // module symbol and whose `ty` isn't already `Error`. The pass must
+    // surface a `CompilerError::UndefinedReference` instead of silently
+    // leaving `Unresolved` in place.
+    use formalang::ast::PrimitiveType;
+    use formalang::ir::{IrFunction, ResolvedType};
+
+    let mut module = IrModule::default();
+    module.functions.push(IrFunction {
+        name: "f".to_string(),
+        generic_params: vec![],
+        params: vec![],
+        return_type: Some(ResolvedType::Primitive(PrimitiveType::I32)),
+        body: Some(IrExpr::Reference {
+            path: vec!["definitely_not_defined".to_string()],
+            target: ReferenceTarget::Unresolved,
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
+        }),
+        extern_abi: None,
+        attributes: vec![],
+        doc: None,
+    });
+    module.rebuild_indices();
+    let mut pass = formalang::ir::ResolveReferencesPass::new();
+    let result = pass.run(module);
+    let errors = result.err().ok_or("pass should have errored")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::error::CompilerError::UndefinedReference { name, .. } if name == "definitely_not_defined"))
+    {
+        return Err(format!("expected UndefinedReference, got {errors:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
+    // When the upstream has already pushed an error and signalled that
+    // by setting `ty: ResolvedType::Error`, the resolve pass must NOT
+    // emit a second error for the same site.
+    use formalang::ir::{IrFunction, ResolvedType};
+
+    let mut module = IrModule::default();
+    module.functions.push(IrFunction {
+        name: "f".to_string(),
+        generic_params: vec![],
+        params: vec![],
+        return_type: None,
+        body: Some(IrExpr::Reference {
+            path: vec!["upstream_already_errored".to_string()],
+            target: ReferenceTarget::Unresolved,
+            ty: ResolvedType::Error,
+        }),
+        extern_abi: None,
+        attributes: vec![],
+        doc: None,
+    });
+    module.rebuild_indices();
+    let mut pass = formalang::ir::ResolveReferencesPass::new();
+    pass.run(module).map_err(|e| format!("{e:?}"))?;
+    Ok(())
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();
