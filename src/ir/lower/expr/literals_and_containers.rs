@@ -254,29 +254,52 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// Lower `expr` with the appropriate expected-type slot set so a
+    /// closure literal nested inside `expected` picks up its param types
+    /// from the annotation. A direct closure forwards via
+    /// `expected_closure_type`; a container forwards via
+    /// `expected_value_type` so the next layer can peel and recurse.
+    fn lower_with_expected(&mut self, expr: &Expr, expected: Option<&ResolvedType>) -> IrExpr {
+        match expected {
+            Some(t @ ResolvedType::Closure { .. }) => {
+                let saved = self.expected_closure_type.take();
+                self.expected_closure_type = Some(t.clone());
+                let lowered = self.lower_expr(expr);
+                self.expected_closure_type = saved;
+                lowered
+            }
+            Some(
+                t @ (ResolvedType::Array(_)
+                | ResolvedType::Tuple(_)
+                | ResolvedType::Dictionary { .. }),
+            ) => {
+                let saved = self.expected_value_type.take();
+                self.expected_value_type = Some(t.clone());
+                let lowered = self.lower_expr(expr);
+                self.expected_value_type = saved;
+                lowered
+            }
+            _ => self.lower_expr(expr),
+        }
+    }
+
     pub(super) fn lower_array_expr(&mut self, elements: &[Expr]) -> IrExpr {
         // If the surrounding context supplies an expected aggregate type
         // (e.g. a destructuring let `let [f]: [I32 -> I32] = [|x| x]`),
-        // pass the element type down to each element's lowering as
-        // `expected_closure_type`. Without this, un-annotated closure
-        // params lower to `ResolvedType::Error`.
+        // pass the element type down to each element's lowering. A
+        // direct `Closure` element forwards via `expected_closure_type`;
+        // a nested container (`Array`/`Tuple`/`Dictionary`) forwards via
+        // `expected_value_type` so the next layer can peel and continue
+        // the search. Without this, un-annotated closure params nested
+        // inside container-of-container annotations lower to
+        // `ResolvedType::Error`.
         let elem_expected: Option<ResolvedType> = match self.expected_value_type.take() {
             Some(ResolvedType::Array(inner)) => Some(*inner),
             _ => None,
         };
         let lowered: Vec<IrExpr> = elements
             .iter()
-            .map(|e| {
-                if matches!(elem_expected, Some(ResolvedType::Closure { .. })) {
-                    let saved = self.expected_closure_type.take();
-                    self.expected_closure_type.clone_from(&elem_expected);
-                    let lowered = self.lower_expr(e);
-                    self.expected_closure_type = saved;
-                    lowered
-                } else {
-                    self.lower_expr(e)
-                }
-            })
+            .map(|e| self.lower_with_expected(e, elem_expected.as_ref()))
             .collect();
         // Empty array literal: type element as `Never` ("no values yet").
         // Matches `nil`'s representation as `Optional(Never)` and lets
@@ -295,7 +318,9 @@ impl IrLowerer<'_> {
     pub(super) fn lower_tuple_expr(&mut self, fields: &[(crate::ast::Ident, Expr)]) -> IrExpr {
         // Like `lower_array_expr`, propagate per-field expected types to
         // closure-literal field values when a destructuring let supplies
-        // the aggregate annotation.
+        // the aggregate annotation. Nested-container fields forward via
+        // `expected_value_type` so a `(a: [I32 -> I32])` annotation
+        // reaches the closure inside the array literal.
         let expected_fields: Option<Vec<(String, ResolvedType)>> =
             match self.expected_value_type.take() {
                 Some(ResolvedType::Tuple(ts)) => Some(ts),
@@ -308,15 +333,7 @@ impl IrLowerer<'_> {
                     .as_ref()
                     .and_then(|ts| ts.iter().find(|(name, _)| *name == n.name))
                     .map(|(_, t)| t.clone());
-                let lowered_e = if matches!(expected_field_ty, Some(ResolvedType::Closure { .. })) {
-                    let saved = self.expected_closure_type.take();
-                    self.expected_closure_type = expected_field_ty;
-                    let l = self.lower_expr(e);
-                    self.expected_closure_type = saved;
-                    l
-                } else {
-                    self.lower_expr(e)
-                };
+                let lowered_e = self.lower_with_expected(e, expected_field_ty.as_ref());
                 (n.name.clone(), lowered_e)
             })
             .collect();
@@ -335,7 +352,10 @@ impl IrLowerer<'_> {
         // `Dictionary { value_ty }` to closure-literal entry values
         // when a destructuring let / annotated context supplies one.
         // Without this, `let d: [String: I32 -> I32] = ["k": |x| x]`
-        // produces a closure with `params: [(Let, "x", Error)]`.
+        // produces a closure with `params: [(Let, "x", Error)]`. A
+        // nested-container `value_ty` (e.g. `[I32 -> I32]`) is forwarded
+        // via `expected_value_type` so the inner array can peel and
+        // continue down to the closure.
         let value_expected: Option<ResolvedType> = match self.expected_value_type.take() {
             Some(ResolvedType::Dictionary { value_ty, .. }) => Some(*value_ty),
             _ => None,
@@ -343,15 +363,7 @@ impl IrLowerer<'_> {
         let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
             .iter()
             .map(|(k, v)| {
-                let lowered_v = if matches!(value_expected, Some(ResolvedType::Closure { .. })) {
-                    let saved = self.expected_closure_type.take();
-                    self.expected_closure_type.clone_from(&value_expected);
-                    let l = self.lower_expr(v);
-                    self.expected_closure_type = saved;
-                    l
-                } else {
-                    self.lower_expr(v)
-                };
+                let lowered_v = self.lower_with_expected(v, value_expected.as_ref());
                 (self.lower_expr(k), lowered_v)
             })
             .collect();
