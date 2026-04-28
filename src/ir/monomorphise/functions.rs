@@ -422,7 +422,13 @@ fn rewrite_call_paths_expr(
     for child in iter_expr_children_mut(expr) {
         rewrite_call_paths_expr(child, fn_mapping, generic_fn_names, snapshot);
     }
-    if let IrExpr::FunctionCall { path, args, ty } = expr {
+    if let IrExpr::FunctionCall {
+        path,
+        function_id: _,
+        args,
+        ty,
+    } = expr
+    {
         let Some(last) = path.last() else { return };
         if !generic_fn_names.contains(last) {
             return;

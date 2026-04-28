@@ -251,8 +251,14 @@ impl ConversionState {
                     .collect(),
                 ty,
             },
-            IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
+            IrExpr::FunctionCall {
                 path,
+                function_id,
+                args,
+                ty,
+            } => IrExpr::FunctionCall {
+                path,
+                function_id,
                 args: args
                     .into_iter()
                     .map(|(label, value)| (label, self.process(value, ctx)))

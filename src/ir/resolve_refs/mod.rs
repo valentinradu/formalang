@@ -128,7 +128,7 @@ mod walkers;
 
 use lookups::{lookup_method_idx, struct_field_idx};
 use symbols::ModuleSymbols;
-use walkers::{resolve_block_stmt, resolve_match_arm, resolve_path};
+use walkers::{module_prefix_of, resolve_block_stmt, resolve_match_arm, resolve_path};
 
 /// Whether a binding was introduced as a function parameter or as a
 /// function-local `let` (or for-loop / match-arm / closure parameter,
@@ -149,6 +149,13 @@ struct FnResolver<'a> {
     /// its `Err` return when non-empty so callers see a real
     /// `CompilerError` rather than silent `Unresolved` placeholders.
     errors: &'a mut Vec<CompilerError>,
+    /// Module prefix of the function being resolved (extracted from
+    /// the qualified `IrFunction.name`, e.g. `"foo"` for
+    /// `"foo::caller"`). Used to bias single-segment function-call
+    /// resolution to the local module so intra-module calls win over
+    /// same-named top-level functions, matching lexical scope.
+    /// Empty string for top-level functions.
+    module_prefix: String,
     next_id: u32,
     /// Stack of name → (`BindingId`, kind) frames. Each block / for /
     /// match-arm / closure body pushes a frame; lookup walks
@@ -161,11 +168,13 @@ impl<'a> FnResolver<'a> {
         symbols: &'a ModuleSymbols,
         module: &'a IrModule,
         errors: &'a mut Vec<CompilerError>,
+        module_prefix: String,
     ) -> Self {
         Self {
             symbols,
             module,
             errors,
+            module_prefix,
             next_id: 0,
             scopes: vec![HashMap::new()],
         }
@@ -218,7 +227,8 @@ fn resolve_function(
     module: &IrModule,
     errors: &mut Vec<CompilerError>,
 ) {
-    let mut r = FnResolver::new(symbols, module, errors);
+    let prefix = module_prefix_of(&func.name);
+    let mut r = FnResolver::new(symbols, module, errors, prefix);
     for param in &mut func.params {
         let id = r.fresh();
         param.binding_id = id;
@@ -238,7 +248,8 @@ fn resolve_module_let(
     module: &IrModule,
     errors: &mut Vec<CompilerError>,
 ) {
-    let mut r = FnResolver::new(symbols, module, errors);
+    let prefix = module_prefix_of(&l.name);
+    let mut r = FnResolver::new(symbols, module, errors, prefix);
     resolve_expr(&mut l.value, &mut r);
 }
 
@@ -271,7 +282,15 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
                 *binding_id = id;
             }
         }
-        IrExpr::FunctionCall { args, .. } => {
+        IrExpr::FunctionCall {
+            path,
+            function_id,
+            args,
+            ..
+        } => {
+            if function_id.is_none() {
+                *function_id = walkers::resolve_function_call_id(path, r);
+            }
             for (_, arg) in args {
                 resolve_expr(arg, r);
             }

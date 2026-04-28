@@ -27,6 +27,8 @@ fn find_closure(expr: &IrExpr) -> Option<&IrExpr> {
             IrExpr::Array { elements, .. } => elements.first().and_then(find_closure),
             other => find_closure(other),
         },
+        IrExpr::Array { elements, .. } => elements.iter().find_map(find_closure),
+        IrExpr::DictLiteral { entries, .. } => entries.iter().find_map(|(_, v)| find_closure(v)),
         IrExpr::Tuple { fields, .. } => fields.iter().find_map(|(_, e)| find_closure(e)),
         IrExpr::StructInst { fields, .. } => fields.iter().find_map(|(_, _, e)| find_closure(e)),
         _ => None,
@@ -90,6 +92,34 @@ fn dict_literal_threads_closure_annotation_to_entry_value() -> TestResult {
     };
     let (_, value_expr) = entries.first().ok_or("no entries")?;
     assert_closure_param_is_i32(value_expr, "dict")
+}
+
+#[test]
+fn array_of_dict_threads_closure_annotation() -> TestResult {
+    // Nested container: `[[String: I32 -> I32]]` — array element is a
+    // dictionary whose value is a closure. The annotation must reach
+    // the inner closure literal through *two* container layers, not
+    // stop at the array boundary.
+    let module = compile_to_ir(r#"pub let [d]: [[String: I32 -> I32]] = [["k": |x| x]]"#)
+        .map_err(|e| format!("{e:?}"))?;
+    let d = module.lets.iter().find(|l| l.name == "d").ok_or("no d")?;
+    assert_closure_param_is_i32(&d.value, "array<dict<closure>>")
+}
+
+#[test]
+fn dict_of_array_threads_closure_annotation() -> TestResult {
+    let module = compile_to_ir(r#"pub let m: [String: [I32 -> I32]] = ["k": [|x| x]]"#)
+        .map_err(|e| format!("{e:?}"))?;
+    let m = module.lets.iter().find(|l| l.name == "m").ok_or("no m")?;
+    assert_closure_param_is_i32(&m.value, "dict<array<closure>>")
+}
+
+#[test]
+fn tuple_of_array_threads_closure_annotation() -> TestResult {
+    let module = compile_to_ir("pub let t: (a: [I32 -> I32]) = (a: [|x| x])")
+        .map_err(|e| format!("{e:?}"))?;
+    let t = module.lets.iter().find(|l| l.name == "t").ok_or("no t")?;
+    assert_closure_param_is_i32(&t.value, "tuple<array<closure>>")
 }
 
 #[test]

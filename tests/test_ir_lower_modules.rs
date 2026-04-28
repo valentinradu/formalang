@@ -2558,6 +2558,7 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
 
     let expr = IrExpr::FunctionCall {
         path: vec!["math".to_string(), "add".to_string()],
+        function_id: None,
         args: vec![
             (
                 Some("a".to_string()),
