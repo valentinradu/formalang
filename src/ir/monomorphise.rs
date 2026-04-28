@@ -45,10 +45,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::CompilerError;
+use crate::ast::PrimitiveType;
 use crate::ir::{
     EnumId, GenericBase, ImportedKind, IrBlockStatement, IrEnum, IrExpr, IrField, IrFunction,
-    IrGenericParam, IrImpl, IrModule, IrStruct, IrTrait, PrimitiveType, ResolvedType, StructId,
-    TraitId,
+    IrGenericParam, IrImpl, IrModule, IrStruct, IrTrait, ResolvedType, StructId, TraitId,
 };
 use crate::location::Span;
 use crate::pipeline::IrPass;

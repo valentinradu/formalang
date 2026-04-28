@@ -19,5 +19,4 @@
 960 src/semantic/inference.rs
 905 src/parser/defs.rs
 884 src/ir/fold.rs
-884 src/ir/mod.rs
 631 src/lexer/token.rs
