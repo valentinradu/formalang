@@ -25,7 +25,11 @@ expression: "(make_adder_body, format_tag_value)"
                         path: [
                             "n",
                         ],
-                        target: Unresolved,
+                        target: Param(
+                            BindingId(
+                                0,
+                            ),
+                        ),
                         ty: Primitive(
                             I32,
                         ),

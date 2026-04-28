@@ -25,7 +25,11 @@ expression: "(make_curried_body, outer_lifted_body)"
                         path: [
                             "n",
                         ],
-                        target: Unresolved,
+                        target: Param(
+                            BindingId(
+                                0,
+                            ),
+                        ),
                         ty: Primitive(
                             I32,
                         ),
@@ -83,7 +87,11 @@ expression: "(make_curried_body, outer_lifted_body)"
                         path: [
                             "x",
                         ],
-                        target: Unresolved,
+                        target: Param(
+                            BindingId(
+                                1,
+                            ),
+                        ),
                         ty: Primitive(
                             I32,
                         ),
@@ -94,11 +102,26 @@ expression: "(make_curried_body, outer_lifted_body)"
                     FieldIdx(
                         1,
                     ),
-                    Reference {
-                        path: [
-                            "n",
-                        ],
-                        target: Unresolved,
+                    FieldAccess {
+                        object: Reference {
+                            path: [
+                                "__env",
+                            ],
+                            target: Param(
+                                BindingId(
+                                    0,
+                                ),
+                            ),
+                            ty: Struct(
+                                StructId(
+                                    0,
+                                ),
+                            ),
+                        },
+                        field: "n",
+                        field_idx: FieldIdx(
+                            0,
+                        ),
                         ty: Primitive(
                             I32,
                         ),

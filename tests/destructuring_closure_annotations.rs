@@ -78,6 +78,21 @@ fn struct_destructuring_threads_closure_annotation() -> TestResult {
 }
 
 #[test]
+fn dict_literal_threads_closure_annotation_to_entry_value() -> TestResult {
+    // `let d: [String : I32 -> I32] = ["k": |x| x]` — the closure
+    // entry's parameter type must come from the annotation's
+    // `value_ty`, not fall through to `ResolvedType::Error`.
+    let module = compile_to_ir(r#"pub let d: [String: I32 -> I32] = ["k": |x| x]"#)
+        .map_err(|e| format!("{e:?}"))?;
+    let d = module.lets.iter().find(|l| l.name == "d").ok_or("no d")?;
+    let IrExpr::DictLiteral { entries, .. } = &d.value else {
+        return Err(format!("expected DictLiteral, got {:?}", d.value).into());
+    };
+    let (_, value_expr) = entries.first().ok_or("no entries")?;
+    assert_closure_param_is_i32(value_expr, "dict")
+}
+
+#[test]
 fn array_destructuring_preserves_param_convention() -> TestResult {
     // `mut x` annotation on the closure param survives even when the
     // declared type comes from the let annotation.

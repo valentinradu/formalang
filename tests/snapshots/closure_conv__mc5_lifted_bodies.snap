@@ -9,9 +9,9 @@ expression: lifted_bodies
             path: [
                 "t",
             ],
-            target: Local(
+            target: Param(
                 BindingId(
-                    0,
+                    1,
                 ),
             ),
             ty: Primitive(
@@ -25,7 +25,7 @@ expression: lifted_bodies
                 path: [
                     "x",
                 ],
-                target: Local(
+                target: Param(
                     BindingId(
                         1,
                     ),
@@ -40,7 +40,11 @@ expression: lifted_bodies
                     path: [
                         "__env",
                     ],
-                    target: Unresolved,
+                    target: Param(
+                        BindingId(
+                            0,
+                        ),
+                    ),
                     ty: Struct(
                         StructId(
                             1,

@@ -56,10 +56,16 @@ impl ConversionState {
         let env_fields = captures
             .iter()
             .enumerate()
-            .map(|(i, (_bid, name, _convention, capture_ty))| {
+            .map(|(i, (outer_bid, name, _convention, capture_ty))| {
+                // The synthesized env-field Reference must carry the
+                // capture's outer `BindingId` as its `target`,
+                // otherwise the `BindingId`-based capture detection in
+                // `process` doesn't recognise the ref as captured and
+                // skips the rewrite. `Local` vs `Param` doesn't matter
+                // here — `is_captured` only inspects the id.
                 let raw_ref = IrExpr::Reference {
                     path: vec![name.clone()],
-                    target: crate::ir::ReferenceTarget::Unresolved,
+                    target: crate::ir::ReferenceTarget::Local(*outer_bid),
                     ty: capture_ty.clone(),
                 };
                 #[expect(

@@ -288,7 +288,16 @@ impl IrPass for ClosureConversionPass {
                 .collect());
         }
 
-        Ok(module)
+        // The walk synthesised `Reference { path: ["__env"], target:
+        // Unresolved, … }` nodes inside every lifted function body —
+        // they couldn't be resolved during the walk because `__env`
+        // is a parameter of the lifted function being created in the
+        // same step. Run `ResolveReferencesPass` once more so those
+        // references pick up their resolved `Param` target. The pass
+        // is idempotent on the rest of the module, so this is just
+        // one extra walk (cheap) without disturbing already-resolved
+        // sites.
+        crate::ir::ResolveReferencesPass::new().run(module)
     }
 }
 

@@ -37,7 +37,7 @@ Block {
             path: [
                 "x",
             ],
-            target: Local(
+            target: Param(
                 BindingId(
                     1,
                 ),

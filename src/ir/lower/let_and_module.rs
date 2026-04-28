@@ -51,7 +51,26 @@ impl IrLowerer<'_> {
             .as_ref()
             .map(|t| self.lower_type(t))
             .filter(|t| matches!(t, ResolvedType::Closure { .. }));
+        // Aggregate annotations (Array / Tuple / Dictionary) flow
+        // down via `expected_value_type` so the array / tuple / dict
+        // literal lowerings can propagate the inner type to closure-
+        // literal entry values. Same mechanism as the destructuring
+        // let path; see `lower_array_destructuring_let`.
+        let saved_expected = self.expected_value_type.take();
+        self.expected_value_type = let_binding
+            .type_annotation
+            .as_ref()
+            .map(|t| self.lower_type(t))
+            .filter(|t| {
+                matches!(
+                    t,
+                    ResolvedType::Array(_)
+                        | ResolvedType::Tuple(_)
+                        | ResolvedType::Dictionary { .. }
+                )
+            });
         let mut value = self.lower_expr(&let_binding.value);
+        self.expected_value_type = saved_expected;
         self.expected_closure_type = saved_closure;
         self.current_function_return_type = saved_return_type;
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
@@ -159,6 +178,15 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn lower_function(&mut self, f: &FunctionDef) {
+        // Qualify function names declared inside `mod foo { … }` so
+        // external callers (`foo::add`) can resolve via the joined-
+        // name lookup that `ResolveReferencesPass` uses for
+        // multi-segment paths. Top-level functions stay bare.
+        let registered_name = if self.current_module_prefix.is_empty() {
+            f.name.name.clone()
+        } else {
+            format!("{}::{}", self.current_module_prefix, f.name.name)
+        };
         let generic_params = self.lower_generic_params(&f.generics);
         self.generic_scopes.push(generic_params.clone());
         let params: Vec<IrFunctionParam> = f
@@ -207,9 +235,9 @@ impl IrLowerer<'_> {
         self.generic_scopes.pop();
 
         if let Err(e) = self.module.add_function(
-            f.name.name.clone(),
+            registered_name.clone(),
             IrFunction {
-                name: f.name.name.clone(),
+                name: registered_name.clone(),
                 generic_params,
                 params,
                 return_type,
@@ -225,8 +253,16 @@ impl IrLowerer<'_> {
             // with the enclosing nested module. add_function only
             // returns Ok when a new id was allocated, so looking up by
             // name picks up that new id.
-            if let Some(id) = self.module.function_id(&f.name.name) {
+            if let Some(id) = self.module.function_id(&registered_name) {
                 node.functions.push(id);
+                // Register the bare (unqualified) name as an alias so
+                // intra-module calls (`add()` from inside `mod foo`)
+                // continue to resolve. `or_insert`-style: top-level
+                // definitions registered first win the bare name; a
+                // module function with the same bare name is reachable
+                // only via its qualified path.
+                self.module
+                    .add_function_alias_if_absent(f.name.name.clone(), id);
             }
         }
     }

@@ -26,7 +26,7 @@ expression: lifted
             },
             IrFunctionParam {
                 binding_id: BindingId(
-                    0,
+                    1,
                 ),
                 name: "t",
                 external_label: None,
@@ -49,9 +49,9 @@ expression: lifted
                 path: [
                     "t",
                 ],
-                target: Local(
+                target: Param(
                     BindingId(
-                        0,
+                        1,
                     ),
                 ),
                 ty: Primitive(
@@ -87,7 +87,7 @@ expression: lifted
             },
             IrFunctionParam {
                 binding_id: BindingId(
-                    0,
+                    1,
                 ),
                 name: "x",
                 external_label: None,
@@ -111,7 +111,7 @@ expression: lifted
                     path: [
                         "x",
                     ],
-                    target: Local(
+                    target: Param(
                         BindingId(
                             1,
                         ),
@@ -126,7 +126,11 @@ expression: lifted
                         path: [
                             "__env",
                         ],
-                        target: Unresolved,
+                        target: Param(
+                            BindingId(
+                                0,
+                            ),
+                        ),
                         ty: Struct(
                             StructId(
                                 1,

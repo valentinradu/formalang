@@ -13,7 +13,9 @@
 )]
 
 use formalang::compile_to_ir;
-use formalang::ir::{walk_expr_children, walk_module, IrExpr, IrModule, IrVisitor, ResolvedType};
+use formalang::ir::{
+    walk_expr_children, walk_module, IrExpr, IrModule, IrVisitor, ReferenceTarget, ResolvedType,
+};
 use formalang::Pipeline;
 
 struct ErrorCounter(usize);
@@ -32,6 +34,24 @@ fn count_error_types(m: &IrModule) -> usize {
     c.0
 }
 
+struct UnresolvedTargetCounter(usize);
+impl IrVisitor for UnresolvedTargetCounter {
+    fn visit_expr(&mut self, expr: &IrExpr) {
+        if let IrExpr::Reference { target, .. } = expr {
+            if matches!(target, ReferenceTarget::Unresolved) {
+                self.0 = self.0.saturating_add(1);
+            }
+        }
+        walk_expr_children(self, expr);
+    }
+}
+
+fn count_unresolved_targets(m: &IrModule) -> usize {
+    let mut c = UnresolvedTargetCounter(0);
+    walk_module(&mut c, m);
+    c.0
+}
+
 #[test]
 fn complete_fv_has_no_error_types_through_the_full_pipeline() {
     let source = include_str!("fixtures/complete.fv");
@@ -40,4 +60,14 @@ fn complete_fv_has_no_error_types_through_the_full_pipeline() {
 
     let m = Pipeline::for_codegen().run(module).expect("full pipeline");
     assert_eq!(count_error_types(&m), 0, "after Pipeline::for_codegen()");
+    // After the full pipeline, every `IrExpr::Reference` (including
+    // the synthesised `__env` refs inside lifted closure bodies)
+    // must carry a resolved `ReferenceTarget`. `Unresolved` here is
+    // a regression: backends keying on `target` would emit broken
+    // code or fail their own `UndefinedReference` validation.
+    assert_eq!(
+        count_unresolved_targets(&m),
+        0,
+        "after Pipeline::for_codegen()"
+    );
 }
