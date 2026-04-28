@@ -8,6 +8,19 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Cap rust-lld's internal thread parallelism. lld parallelises
+  # within a single link invocation (`llvm::parallelFor` over
+  # sections); on the standard ubuntu-latest runner (4 cores,
+  # ~7 GB RAM) the default `--threads=auto` spawns 4 mapping threads
+  # per invocation, and even one in-flight link can mmap enough rlib
+  # / output-binary pages to push the kernel into reclaiming a page
+  # mid-read. The thread that loses its mmap dies with
+  # `signal 7 [Bus error]`, surfacing as an intermittent "flake".
+  # Single-threaded link is roughly 20-40% slower per invocation but
+  # caps peak in-flight mappings to 1 × number-of-parallel-cargo-jobs.
+  # Combined with `cargo test --jobs 2` below, total link parallelism
+  # is 2 — comfortably fits memory.
+  RUSTFLAGS: -C link-arg=-Wl,--threads=1
 
 jobs:
   test:
