@@ -9,5 +9,3 @@
 1915 src/ir/lower/expr.rs
 1774 src/semantic/mod.rs
 1740 src/ir/lower/mod.rs
-1471 src/ir/dce.rs
-1068 src/ir/closure_conv.rs
