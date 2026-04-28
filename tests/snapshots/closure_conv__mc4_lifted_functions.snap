@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 63
 expression: lifted
 ---
 [
@@ -8,6 +9,9 @@ expression: lifted
         generic_params: [],
         params: [
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "__env",
                 external_label: None,
                 ty: Some(
@@ -21,6 +25,9 @@ expression: lifted
                 convention: Let,
             },
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "t",
                 external_label: None,
                 ty: Some(
@@ -42,6 +49,7 @@ expression: lifted
                 path: [
                     "t",
                 ],
+                target: Unresolved,
                 ty: Primitive(
                     String,
                 ),
@@ -58,6 +66,9 @@ expression: lifted
         generic_params: [],
         params: [
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "__env",
                 external_label: None,
                 ty: Some(
@@ -71,6 +82,9 @@ expression: lifted
                 convention: Let,
             },
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "x",
                 external_label: None,
                 ty: Some(
@@ -93,6 +107,7 @@ expression: lifted
                     path: [
                         "x",
                     ],
+                    target: Unresolved,
                     ty: Primitive(
                         I32,
                     ),
@@ -103,6 +118,7 @@ expression: lifted
                         path: [
                             "__env",
                         ],
+                        target: Unresolved,
                         ty: Struct(
                             StructId(
                                 1,

@@ -78,6 +78,7 @@ pub(super) fn env_field_access(
     IrExpr::FieldAccess {
         object: Box::new(IrExpr::Reference {
             path: vec![ENV_PARAM_NAME.to_string()],
+            target: crate::ir::ReferenceTarget::Unresolved,
             ty: env_ty.cloned().unwrap_or(ResolvedType::Error),
         }),
         field,

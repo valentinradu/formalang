@@ -1,6 +1,6 @@
 //! Block-level IR statement types: `IrBlockStatement` and `IrMatchArm`.
 
-use super::{expr::IrExpr, ResolvedType};
+use super::{expr::IrExpr, BindingId, ResolvedType, VariantIdx};
 
 /// A statement within a block expression.
 #[expect(
@@ -11,7 +11,11 @@ use super::{expr::IrExpr, ResolvedType};
 pub enum IrBlockStatement {
     /// Let binding: `let x = expr` or `let mut x = expr`
     Let {
-        /// Binding name
+        /// Per-function-unique identifier assigned by
+        /// `ResolveReferencesPass`. Lowering emits `BindingId(0)` and the
+        /// pass overwrites it.
+        binding_id: BindingId,
+        /// Binding name (preserved for diagnostics).
         name: String,
         /// Whether the binding is mutable
         mutable: bool,
@@ -41,11 +45,13 @@ impl IrBlockStatement {
     {
         match self {
             Self::Let {
+                binding_id,
                 name,
                 mutable,
                 ty,
                 value,
             } => Self::Let {
+                binding_id,
                 name,
                 mutable,
                 ty,
@@ -67,13 +73,23 @@ impl IrBlockStatement {
 )]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrMatchArm {
-    /// Variant name being matched (empty string for wildcard)
+    /// Variant name being matched (empty string for wildcard); preserved
+    /// alongside [`Self::variant_idx`] for diagnostics.
     pub variant: String,
+
+    /// Position of the matched variant in the scrutinee enum's `variants`
+    /// vector. Lowering emits `VariantIdx(0)` and `ResolveReferencesPass`
+    /// overwrites it.
+    pub variant_idx: VariantIdx,
 
     /// Whether this is a wildcard pattern (`_`)
     pub is_wildcard: bool,
 
-    /// Bindings for associated data: `(name, type)`
+    /// Bindings for associated data: `(name, type)`. (A per-arm
+    /// [`BindingId`] is introduced for each binding by
+    /// `ResolveReferencesPass` via a side-table; threading it into the
+    /// tuple shape is tracked as a follow-up that will land alongside
+    /// the bindings-aware backend work.)
     pub bindings: Vec<(String, ResolvedType)>,
 
     /// Body expression

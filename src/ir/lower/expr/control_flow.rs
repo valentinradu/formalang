@@ -87,6 +87,7 @@ impl IrLowerer<'_> {
                         ast::Pattern::Variant { name, .. } => name.name.clone(),
                         ast::Pattern::Wildcard => String::new(),
                     },
+                    variant_idx: crate::ir::VariantIdx(0),
                     is_wildcard: matches!(&arm.pattern, ast::Pattern::Wildcard),
                     bindings,
                     body,
@@ -122,6 +123,7 @@ impl IrLowerer<'_> {
 
         let statements: Vec<IrBlockStatement> = match pattern {
             BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
+                binding_id: crate::ir::BindingId(0),
                 name: ident.name.clone(),
                 mutable,
                 ty: ir_ty,
@@ -148,6 +150,7 @@ impl IrLowerer<'_> {
                 mutable,
                 ty,
                 value,
+                ..
             } = s
             {
                 let resolved = ty.clone().unwrap_or_else(|| value.ty().clone());
@@ -189,6 +192,7 @@ impl IrLowerer<'_> {
                     mutable,
                     ty,
                     value,
+                    ..
                 } = &s
                 {
                     let resolved = ty.clone().unwrap_or_else(|| value.ty().clone());
@@ -231,6 +235,7 @@ impl IrLowerer<'_> {
                 let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
                 match pattern {
                     BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
+                        binding_id: crate::ir::BindingId(0),
                         name: ident.name.clone(),
                         mutable: *mutable,
                         ty: ir_ty,
@@ -288,6 +293,7 @@ impl IrLowerer<'_> {
                         ty: ResolvedType::Primitive(PrimitiveType::I32),
                     };
                     IrBlockStatement::Let {
+                        binding_id: crate::ir::BindingId(0),
                         name,
                         mutable,
                         ty: Some(elem_ty.clone()),
@@ -318,6 +324,7 @@ impl IrLowerer<'_> {
                     .map_or_else(|| field_name.clone(), |a| a.name.clone());
                 let field_ty = self.get_field_type_from_resolved(ir_value.ty(), &field_name);
                 IrBlockStatement::Let {
+                    binding_id: crate::ir::BindingId(0),
                     name: binding_name,
                     mutable,
                     ty: Some(field_ty.clone()),
@@ -369,6 +376,7 @@ impl IrLowerer<'_> {
                         |(n, t)| (n.clone(), t.clone()),
                     );
                     IrBlockStatement::Let {
+                        binding_id: crate::ir::BindingId(0),
                         name,
                         mutable,
                         ty: Some(ty.clone()),

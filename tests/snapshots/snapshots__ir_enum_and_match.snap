@@ -48,6 +48,9 @@ IrModule {
             generic_params: [],
             params: [
                 IrFunctionParam {
+                    binding_id: BindingId(
+                        0,
+                    ),
                     name: "s",
                     external_label: None,
                     ty: Some(
@@ -72,6 +75,7 @@ IrModule {
                         path: [
                             "s",
                         ],
+                        target: Unresolved,
                         ty: Enum(
                             EnumId(
                                 0,
@@ -81,6 +85,9 @@ IrModule {
                     arms: [
                         IrMatchArm {
                             variant: "active",
+                            variant_idx: VariantIdx(
+                                0,
+                            ),
                             is_wildcard: false,
                             bindings: [],
                             body: Literal {
@@ -100,6 +107,9 @@ IrModule {
                         },
                         IrMatchArm {
                             variant: "inactive",
+                            variant_idx: VariantIdx(
+                                0,
+                            ),
                             is_wildcard: false,
                             bindings: [],
                             body: Literal {
@@ -119,6 +129,9 @@ IrModule {
                         },
                         IrMatchArm {
                             variant: "pending",
+                            variant_idx: VariantIdx(
+                                0,
+                            ),
                             is_wildcard: false,
                             bindings: [
                                 (
@@ -132,6 +145,7 @@ IrModule {
                                 path: [
                                     "since",
                                 ],
+                                target: Unresolved,
                                 ty: Primitive(
                                     I32,
                                 ),

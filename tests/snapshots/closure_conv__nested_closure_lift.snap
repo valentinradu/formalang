@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 290
 expression: "(make_curried_body, outer_lifted_body)"
 ---
 (
@@ -21,6 +22,7 @@ expression: "(make_curried_body, outer_lifted_body)"
                         path: [
                             "n",
                         ],
+                        target: Unresolved,
                         ty: Primitive(
                             I32,
                         ),
@@ -75,6 +77,7 @@ expression: "(make_curried_body, outer_lifted_body)"
                         path: [
                             "x",
                         ],
+                        target: Unresolved,
                         ty: Primitive(
                             I32,
                         ),
@@ -87,6 +90,7 @@ expression: "(make_curried_body, outer_lifted_body)"
                             path: [
                                 "__env",
                             ],
+                            target: Unresolved,
                             ty: Struct(
                                 StructId(
                                     0,

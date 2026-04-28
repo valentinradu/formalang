@@ -80,6 +80,7 @@ impl IrLowerer<'_> {
                 let ty = self.resolve_impl_self_type(&impl_name);
                 return IrExpr::Reference {
                     path: path_strs,
+                    target: crate::ir::ReferenceTarget::Unresolved,
                     ty,
                 };
             }
@@ -101,6 +102,7 @@ impl IrLowerer<'_> {
                 if let Some(ty) = self.string_to_resolved_type(&let_type) {
                     return IrExpr::LetRef {
                         name: name.clone(),
+                        binding_id: crate::ir::BindingId(0),
                         ty,
                     };
                 }
@@ -112,6 +114,7 @@ impl IrLowerer<'_> {
                     .map_or_else(|| ResolvedType::Error, |l| l.value.ty().clone());
                 return IrExpr::LetRef {
                     name: name.clone(),
+                    binding_id: crate::ir::BindingId(0),
                     ty,
                 };
             }
@@ -151,6 +154,7 @@ impl IrLowerer<'_> {
         };
         IrExpr::Reference {
             path: path_strs,
+            target: crate::ir::ReferenceTarget::Unresolved,
             ty,
         }
     }

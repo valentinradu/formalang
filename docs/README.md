@@ -20,3 +20,4 @@ backends via the plugin system.
 ### Proposed work
 
 - [Numeric-literal precision](developer/numeric_literal_precision.md) - replace `NumberLiteral.value: f64` with a discriminated union so integer literals round-trip exactly
+- [Resolve-references pass](developer/resolve_references_pass.md) - new IR pass that turns `path: Vec<String>` / `name: String` into typed IDs (`FunctionId`, `BindingId`, `FieldIdx`, …)

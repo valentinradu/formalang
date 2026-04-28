@@ -310,6 +310,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .into_iter()
                 .map(|arm| crate::ir::IrMatchArm {
                     variant: arm.variant,
+                    variant_idx: crate::ir::VariantIdx(0),
                     is_wildcard: arm.is_wildcard,
                     bindings: arm.bindings,
                     body: eliminate_dead_code_expr(arm.body),

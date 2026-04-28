@@ -34,6 +34,7 @@ mod imports;
 mod lower;
 mod module;
 mod monomorphise;
+mod resolve_refs;
 mod resolved_type;
 mod types;
 mod visitor;
@@ -43,13 +44,17 @@ pub use closure_conv::ClosureConversionPass;
 pub use dce::{
     eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
 };
-pub use expr::{DispatchKind, IrExpr};
+pub use expr::{DispatchKind, IrExpr, ReferenceTarget};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
-pub use ids::{EnumId, FunctionId, ImplId, StructId, TraitId};
+pub use ids::{
+    BindingId, EnumId, FieldIdx, FunctionId, ImplId, LetId, MethodIdx, StructId, TraitId,
+    VariantIdx,
+};
 pub use imports::{ImportedKind, IrImport, IrImportItem};
 pub use lower::lower_to_ir;
 pub use module::{IrModule, IrModuleNode};
 pub use monomorphise::MonomorphisePass;
+pub use resolve_refs::ResolveReferencesPass;
 pub use resolved_type::{GenericBase, ResolvedType};
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,

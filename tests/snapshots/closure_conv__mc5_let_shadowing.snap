@@ -6,6 +6,9 @@ expression: lifted_body
 Block {
     statements: [
         Let {
+            binding_id: BindingId(
+                0,
+            ),
             name: "n",
             mutable: false,
             ty: Some(
@@ -34,6 +37,7 @@ Block {
             path: [
                 "x",
             ],
+            target: Unresolved,
             ty: Primitive(
                 I32,
             ),
@@ -43,6 +47,7 @@ Block {
             path: [
                 "n",
             ],
+            target: Unresolved,
             ty: Primitive(
                 I32,
             ),

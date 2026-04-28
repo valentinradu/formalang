@@ -151,6 +151,7 @@ impl ConstantFolder {
                     .into_iter()
                     .map(|arm| crate::ir::IrMatchArm {
                         variant: arm.variant,
+                        variant_idx: crate::ir::VariantIdx(0),
                         is_wildcard: arm.is_wildcard,
                         bindings: arm.bindings,
                         body: self.fold_expr(arm.body),

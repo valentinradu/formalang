@@ -311,6 +311,7 @@ impl IrLowerer<'_> {
             .params
             .iter()
             .map(|p| IrFunctionParam {
+                binding_id: crate::ir::BindingId(0),
                 name: p.name.name.clone(),
                 external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
@@ -385,6 +386,7 @@ impl IrLowerer<'_> {
             .params
             .iter()
             .map(|p| IrFunctionParam {
+                binding_id: crate::ir::BindingId(0),
                 name: p.name.name.clone(),
                 external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
@@ -458,6 +460,7 @@ impl IrLowerer<'_> {
             .params
             .iter()
             .map(|p| IrFunctionParam {
+                binding_id: crate::ir::BindingId(0),
                 name: p.name.name.clone(),
                 external_label: p.external_label.as_ref().map(|l| l.name.clone()),
                 ty: p.ty.as_ref().map(|t| self.lower_type(t)),
