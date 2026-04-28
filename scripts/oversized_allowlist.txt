@@ -17,5 +17,4 @@
 1063 src/reporting.rs
 1019 src/semantic/symbol_table.rs
 960 src/semantic/inference.rs
-905 src/parser/defs.rs
 631 src/lexer/token.rs
