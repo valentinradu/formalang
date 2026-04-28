@@ -279,7 +279,7 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
         } => {
             remap_expr(scrutinee, remap);
             for arm in arms {
-                for (_, t) in &mut arm.bindings {
+                for (_, _, t) in &mut arm.bindings {
                     remap_type(t, remap);
                 }
                 remap_expr(&mut arm.body, remap);

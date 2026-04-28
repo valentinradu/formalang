@@ -221,7 +221,7 @@ fn collect_free_refs(
             collect_free_refs(scrutinee, bound, out, seen);
             for arm in arms {
                 let mut inner = bound.clone();
-                for (name, _) in &arm.bindings {
+                for (name, _, _) in &arm.bindings {
                     inner.insert(name.clone());
                 }
                 collect_free_refs(&arm.body, &inner, out, seen);

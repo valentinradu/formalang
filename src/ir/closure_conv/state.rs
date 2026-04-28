@@ -293,7 +293,7 @@ impl ConversionState {
 
     fn process_match_arm(&mut self, arm: IrMatchArm, ctx: &CaptureCtx) -> IrMatchArm {
         let mut inner_ctx = ctx.clone();
-        for (name, _) in &arm.bindings {
+        for (name, _, _) in &arm.bindings {
             inner_ctx.bind(name.clone());
         }
         IrMatchArm {
