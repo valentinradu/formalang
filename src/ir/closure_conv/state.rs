@@ -253,12 +253,14 @@ impl ConversionState {
             IrExpr::MethodCall {
                 receiver,
                 method,
+                method_idx,
                 args,
                 dispatch,
                 ty,
             } => IrExpr::MethodCall {
                 receiver: Box::new(self.process(*receiver, ctx)),
                 method,
+                method_idx,
                 args: args
                     .into_iter()
                     .map(|(label, value)| (label, self.process(value, ctx)))

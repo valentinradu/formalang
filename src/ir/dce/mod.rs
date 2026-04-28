@@ -329,12 +329,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         IrExpr::MethodCall {
             receiver,
             method,
+            method_idx,
             args,
             dispatch,
             ty,
         } => IrExpr::MethodCall {
             receiver: Box::new(eliminate_dead_code_expr(*receiver)),
             method,
+            method_idx,
             args: args
                 .into_iter()
                 .map(|(name, e)| (name, eliminate_dead_code_expr(e)))

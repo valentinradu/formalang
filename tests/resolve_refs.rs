@@ -10,7 +10,9 @@
 )]
 
 use formalang::compile_to_ir;
-use formalang::ir::{FieldIdx, IrBlockStatement, IrExpr, IrModule, ReferenceTarget, VariantIdx};
+use formalang::ir::{
+    FieldIdx, IrBlockStatement, IrExpr, IrModule, MethodIdx, ReferenceTarget, VariantIdx,
+};
 use formalang::IrPass;
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -313,6 +315,30 @@ fn enum_inst_variant_idx_resolves() -> TestResult {
     };
     if *variant_idx != VariantIdx(1) {
         return Err(format!("expected VariantIdx(1), got {variant_idx:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
+fn method_call_static_dispatch_resolves_method_idx() -> TestResult {
+    // Two methods on the impl; calling the second one should resolve
+    // its `method_idx` to position 1.
+    let module = resolved(
+        r"
+        pub struct Counter { n: I32 }
+        impl Counter {
+            fn first(self) -> I32 { 1 }
+            fn second(self) -> I32 { 2 }
+        }
+        pub fn pick(c: Counter) -> I32 { c.second() }
+        ",
+    )?;
+    let body = function_body(&module, "pick").ok_or("no body")?;
+    let IrExpr::MethodCall { method_idx, .. } = body else {
+        return Err(format!("expected MethodCall, got {body:?}").into());
+    };
+    if *method_idx != MethodIdx(1) {
+        return Err(format!("expected MethodIdx(1), got {method_idx:?}").into());
     }
     Ok(())
 }
