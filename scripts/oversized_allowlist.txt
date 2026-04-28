@@ -23,4 +23,3 @@
 736 src/parser/exprs.rs
 728 src/semantic/sem_type.rs
 631 src/lexer/token.rs
-574 src/semantic/type_resolution.rs
