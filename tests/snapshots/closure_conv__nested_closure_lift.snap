@@ -94,22 +94,11 @@ expression: "(make_curried_body, outer_lifted_body)"
                     FieldIdx(
                         1,
                     ),
-                    FieldAccess {
-                        object: Reference {
-                            path: [
-                                "__env",
-                            ],
-                            target: Unresolved,
-                            ty: Struct(
-                                StructId(
-                                    0,
-                                ),
-                            ),
-                        },
-                        field: "n",
-                        field_idx: FieldIdx(
-                            0,
-                        ),
+                    Reference {
+                        path: [
+                            "n",
+                        ],
+                        target: Unresolved,
                         ty: Primitive(
                             I32,
                         ),

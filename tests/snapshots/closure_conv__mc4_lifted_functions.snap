@@ -49,7 +49,11 @@ expression: lifted
                 path: [
                     "t",
                 ],
-                target: Unresolved,
+                target: Local(
+                    BindingId(
+                        0,
+                    ),
+                ),
                 ty: Primitive(
                     String,
                 ),
@@ -107,7 +111,11 @@ expression: lifted
                     path: [
                         "x",
                     ],
-                    target: Unresolved,
+                    target: Local(
+                        BindingId(
+                            1,
+                        ),
+                    ),
                     ty: Primitive(
                         I32,
                     ),
