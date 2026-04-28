@@ -16,5 +16,4 @@
 1068 src/ir/closure_conv.rs
 1063 src/reporting.rs
 1019 src/semantic/symbol_table.rs
-960 src/semantic/inference.rs
 631 src/lexer/token.rs
