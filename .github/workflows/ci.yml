@@ -35,8 +35,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # Cap parallelism at 2 jobs.
+      #
+      # The workspace produces ~44 integration-test binaries; each is
+      # statically linked with the full crate + dependency rlib set.
+      # On the standard ubuntu-latest runner (4 cores, ~7 GB RAM,
+      # ~14 GB ephemeral disk), default `cargo test` runs `ld` in 4
+      # parallel processes and each `ld` mmaps the rlib set
+      # independently. When peak memory exceeds the page cache budget
+      # the kernel evicts mapped pages and `ld` dies with
+      # `signal 7 [Bus error]` — visibly intermittent, easy to
+      # mistake for a flake. `--jobs 2` halves peak memory; trade is
+      # ~30–50% slower compile but reliably green.
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --jobs 2
 
   lint:
     name: Lint
