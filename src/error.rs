@@ -1,3 +1,4 @@
+use crate::ast::PrimitiveType;
 use crate::location::Span;
 use thiserror::Error;
 
@@ -337,6 +338,16 @@ pub enum CompilerError {
     /// which invariant failed so it can be reported and fixed.
     #[error("Internal compiler error: {detail}")]
     InternalError { detail: String, span: Span },
+
+    /// An integer literal does not fit in its declared (or default) target
+    /// primitive — e.g. `2147483648I32` exceeds `i32::MAX`, or an unsuffixed
+    /// `9_999_999_999` exceeds the `I32` default.
+    #[error("Integer literal {written} does not fit in {target:?}")]
+    NumericOverflow {
+        written: String,
+        target: PrimitiveType,
+        span: Span,
+    },
 }
 
 impl CompilerError {
@@ -405,7 +416,8 @@ impl CompilerError {
             | Self::TooManyDefinitions { span, .. }
             | Self::VisibilityViolation { span, .. }
             | Self::ClosureCaptureEscapesLocalBinding { span, .. }
-            | Self::InternalError { span, .. } => *span,
+            | Self::InternalError { span, .. }
+            | Self::NumericOverflow { span, .. } => *span,
         }
     }
 }

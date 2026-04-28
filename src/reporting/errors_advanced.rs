@@ -476,13 +476,9 @@ pub(super) fn internal_error<'a>(
     span: Span,
     detail: &'a str,
 ) -> ReportBuilder<'a> {
-    // Audit2 B32: subdivide the catch-all internal-error code by
-    // looking at the leading subsystem prefix on `detail`.
-    // Push sites already include a prefix (e.g. "IR lowering:",
-    // "monomorphise:", "registration lookup ...") so we reuse
-    // those without changing 21 call sites. E999 stays as the
-    // generic fall-through for anything that doesn't carry a
-    // recognised prefix.
+    // `detail` push sites use subsystem prefixes (e.g. "IR lowering:",
+    // "monomorphise:", "registration lookup ...") so the code dispatch is
+    // reusable without changing every call site. E999 falls through.
     let code = super::internal_codes::internal_error_code(detail);
     Report::build(ReportKind::Error, filename, span.start.offset)
         .with_code(code)

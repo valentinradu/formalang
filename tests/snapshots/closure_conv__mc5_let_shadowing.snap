@@ -1,5 +1,6 @@
 ---
 source: tests/closure_conv.rs
+assertion_line: 629
 expression: lifted_body
 ---
 Block {
@@ -15,7 +16,9 @@ Block {
             value: Literal {
                 value: Number(
                     NumberLiteral {
-                        value: 100.0,
+                        value: Integer(
+                            100,
+                        ),
                         suffix: None,
                         kind: Integer,
                     },

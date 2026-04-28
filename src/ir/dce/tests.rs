@@ -26,8 +26,8 @@ fn test_eliminate_constant_true_branch() -> Result<(), Box<dyn std::error::Error
         ..
     } = expr
     {
-        if (n.value - 1.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 1, got {}", n.value).into());
+        if (n.value.as_f64() - 1.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 1, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected literal 1, got {expr:?}").into());
@@ -59,8 +59,8 @@ fn test_eliminate_constant_false_branch() -> Result<(), Box<dyn std::error::Erro
         ..
     } = expr
     {
-        if (n.value - 2.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 2, got {}", n.value).into());
+        if (n.value.as_f64() - 2.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 2, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected literal 2, got {expr:?}").into());
@@ -183,8 +183,8 @@ fn test_nested_dead_code_elimination() -> Result<(), Box<dyn std::error::Error>>
         ..
     } = expr
     {
-        if (n.value - 2.0).abs() >= f64::EPSILON {
-            return Err(format!("Expected 2, got {}", n.value).into());
+        if (n.value.as_f64() - 2.0).abs() >= f64::EPSILON {
+            return Err(format!("Expected 2, got {}", n.value.as_f64()).into());
         }
     } else {
         return Err(format!("Expected literal 2, got {expr:?}").into());

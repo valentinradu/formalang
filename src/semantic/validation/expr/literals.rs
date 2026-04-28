@@ -3,7 +3,7 @@
 
 use super::super::super::module_resolver::ModuleResolver;
 use super::super::super::SemanticAnalyzer;
-use crate::ast::{Expr, File};
+use crate::ast::{Expr, File, Literal, NumberLiteral, NumberValue, PrimitiveType};
 use crate::error::CompilerError;
 use crate::location::Span;
 
@@ -55,6 +55,44 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
+        }
+    }
+
+    /// Validate that an integer-syntax numeric literal fits in its target
+    /// primitive (suffix when present, otherwise the `I32` integer default).
+    /// `I64`-suffixed literals get full `i64` range; `F32`/`F64`-suffixed
+    /// integer literals are accepted (cast at backend time, existing
+    /// behaviour). Float-syntax payloads are not range-checked here.
+    pub(in crate::semantic) fn validate_numeric_literal(&mut self, lit: &Literal, span: Span) {
+        let Literal::Number(n) = lit else {
+            return;
+        };
+        let NumberLiteral { value, .. } = *n;
+        let NumberValue::Integer(v) = value else {
+            return;
+        };
+        let target = n.primitive_type();
+        let in_range = match target {
+            PrimitiveType::I32 => i32::try_from(v).is_ok(),
+            PrimitiveType::I64 => i64::try_from(v).is_ok(),
+            // Float-typed integer literals cast at backend time; non-numeric
+            // primitives can't be reached for a `Number` literal in well-typed
+            // programs, but treat them as in-range so this validator only ever
+            // emits the integer-overflow diagnostic.
+            PrimitiveType::F32
+            | PrimitiveType::F64
+            | PrimitiveType::String
+            | PrimitiveType::Boolean
+            | PrimitiveType::Path
+            | PrimitiveType::Regex
+            | PrimitiveType::Never => true,
+        };
+        if !in_range {
+            self.errors.push(CompilerError::NumericOverflow {
+                written: v.to_string(),
+                target,
+                span,
+            });
         }
     }
 

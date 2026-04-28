@@ -449,3 +449,19 @@ pub(super) fn module_read_error<'a>(
             error
         )))
 }
+
+pub(super) fn numeric_overflow<'a>(
+    filename: &'a str,
+    span: Span,
+    written: &'a str,
+    target: crate::ast::PrimitiveType,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E0801")
+        .with_message(format!(
+            "integer literal {written} does not fit in {target:?}"
+        ))
+        .with_label(label(filename, span).with_message("value out of range for target type"))
+        .with_help(format!(
+            "use the {target:?} suffix only on values within its range"
+        ))
+}
