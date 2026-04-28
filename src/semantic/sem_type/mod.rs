@@ -22,7 +22,7 @@
 //! [`SemType::display`] and parses it back via
 //! [`SemType::from_legacy_string`]. Round-trip on every shape the
 //! existing codebase produces is guaranteed by the unit tests at the
-//! bottom of this file. The bridge lets us migrate one call site at a
+//! bottom of this module. The bridge lets us migrate one call site at a
 //! time without a flag day.
 //!
 //! ## Scope
@@ -43,6 +43,10 @@
 //! *use* sites (now structural), not the storage sites. Migrating the
 //! storage would cross into `pub(crate)` API territory without
 //! removing any remaining bug surface.
+
+mod legacy_parse;
+#[cfg(test)]
+mod tests;
 
 use crate::ast::{ParamConvention, PrimitiveType, Type};
 
@@ -240,14 +244,12 @@ impl SemType {
         if a == b {
             return a.clone();
         }
-        // T and Nil unify to T?
         if matches!(a, Self::Nil) && !matches!(b, Self::Nil) {
             return Self::optional_of(b.clone());
         }
         if matches!(b, Self::Nil) && !matches!(a, Self::Nil) {
             return Self::optional_of(a.clone());
         }
-        // T? and T unify to T? (either direction)
         if let Self::Optional(inner) = a {
             if **inner == *b {
                 return a.clone();
@@ -271,7 +273,6 @@ impl SemType {
         if matches!(b, Self::Nil) && matches!(a, Self::Optional(_)) {
             return true;
         }
-        // Any non-Nil type T unifies with Nil as T?
         if matches!(a, Self::Nil) && !matches!(b, Self::Nil | Self::Unknown) {
             return true;
         }
@@ -335,86 +336,6 @@ impl SemType {
             },
         }
     }
-
-    /// Parse a legacy type-string into a structural [`SemType`].
-    ///
-    /// Accepts the format produced by `type_to_string` plus the three
-    /// sentinels (`Unknown`, `InferredEnum`, `Nil`). Unrecognised
-    /// shapes fall back to [`SemType::Named`] holding the trimmed
-    /// input — this matches the legacy behaviour of treating any
-    /// unknown bare identifier as a user-defined type.
-    pub(super) fn from_legacy_string(s: &str) -> Self {
-        let trimmed = s.trim();
-        if trimmed.is_empty() {
-            return Self::Unknown;
-        }
-        // Sentinels
-        match trimmed {
-            "Unknown" => return Self::Unknown,
-            "InferredEnum" => return Self::InferredEnum,
-            "Nil" | "nil" => return Self::Nil,
-            _ => {}
-        }
-        // Closure: rightmost depth-0 ` -> `.
-        if let Some(idx) = depth_zero_arrow(trimmed) {
-            let params_part = trimmed[..idx].trim();
-            let ret_part = trimmed[idx.saturating_add(4)..].trim();
-            let params = parse_closure_params(params_part);
-            let return_ty = Self::from_legacy_string(ret_part);
-            return Self::Closure {
-                params,
-                return_ty: Box::new(return_ty),
-            };
-        }
-        // Optional suffix `?` — only meaningful at depth 0 and not as
-        // part of `?>` etc.
-        if let Some(stripped) = trimmed.strip_suffix('?') {
-            if depth_zero_balanced(stripped) {
-                return Self::Optional(Box::new(Self::from_legacy_string(stripped)));
-            }
-        }
-        // Array `[T]` or Dictionary `[K: V]`.
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
-            if let Some(colon_idx) = depth_zero_colon_index(inner) {
-                let key = Self::from_legacy_string(&inner[..colon_idx]);
-                let value = Self::from_legacy_string(&inner[colon_idx.saturating_add(1)..]);
-                return Self::Dictionary {
-                    key: Box::new(key),
-                    value: Box::new(value),
-                };
-            }
-            return Self::Array(Box::new(Self::from_legacy_string(inner)));
-        }
-        // Tuple `(name: T, ...)` — must contain a depth-0 colon to
-        // disambiguate from a parenthesised single type.
-        if trimmed.starts_with('(') && trimmed.ends_with(')') {
-            let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
-            if depth_zero_colon_index(inner).is_some() {
-                return Self::Tuple(parse_tuple_fields(inner));
-            }
-            // Bare parens around a single type — unwrap.
-            return Self::from_legacy_string(inner);
-        }
-        // Generic `Base<T1, T2>` — a `<` somewhere in the body with a
-        // matching `>` at the end.
-        if let Some(open) = trimmed.find('<') {
-            if trimmed.ends_with('>') {
-                let base = trimmed[..open].trim().to_string();
-                let args_str = &trimmed[open.saturating_add(1)..trimmed.len().saturating_sub(1)];
-                let args = parse_comma_separated(args_str)
-                    .into_iter()
-                    .map(|p| Self::from_legacy_string(&p))
-                    .collect();
-                return Self::Generic { base, args };
-            }
-        }
-        // Bare name — primitive or user-defined.
-        if let Some(p) = primitive_from_name(trimmed) {
-            return Self::Primitive(p);
-        }
-        Self::Named(trimmed.to_string())
-    }
 }
 
 const fn primitive_name(p: PrimitiveType) -> &'static str {
@@ -431,7 +352,7 @@ const fn primitive_name(p: PrimitiveType) -> &'static str {
     }
 }
 
-fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
+pub(super) fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
     match name {
         "String" => Some(PrimitiveType::String),
         "I32" => Some(PrimitiveType::I32),
@@ -443,286 +364,5 @@ fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
         "Regex" => Some(PrimitiveType::Regex),
         "Never" => Some(PrimitiveType::Never),
         _ => None,
-    }
-}
-
-/// True if all bracket pairs `( ) [ ] < >` in `s` are balanced.
-fn depth_zero_balanced(s: &str) -> bool {
-    let mut depth: i32 = 0;
-    for ch in s.chars() {
-        match ch {
-            '(' | '[' | '<' => depth = depth.saturating_add(1),
-            ')' | ']' | '>' => {
-                depth = depth.saturating_sub(1);
-                if depth < 0 {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    depth == 0
-}
-
-/// Find the rightmost depth-0 occurrence of ` -> ` in `s`.
-fn depth_zero_arrow(s: &str) -> Option<usize> {
-    let bytes = s.as_bytes();
-    let mut depth: i32 = 0;
-    let mut last: Option<usize> = None;
-    let mut i = 0;
-    while let Some(&b) = bytes.get(i) {
-        match b {
-            b'(' | b'[' | b'<' => depth = depth.saturating_add(1),
-            b')' | b']' | b'>' => depth = depth.saturating_sub(1),
-            b' ' if depth == 0 && bytes.get(i..i.saturating_add(4)) == Some(b" -> ".as_slice()) => {
-                last = Some(i);
-                i = i.saturating_add(4);
-                continue;
-            }
-            _ => {}
-        }
-        i = i.saturating_add(1);
-    }
-    last
-}
-
-/// Find the byte index of the first `:` in `s` at bracket-depth 0.
-fn depth_zero_colon_index(s: &str) -> Option<usize> {
-    let mut depth: i32 = 0;
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '(' | '[' | '<' => depth = depth.saturating_add(1),
-            ')' | ']' | '>' => depth = depth.saturating_sub(1),
-            ':' if depth == 0 => return Some(i),
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Split `s` on depth-0 commas, returning trimmed substrings.
-fn parse_comma_separated(s: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut depth: i32 = 0;
-    let mut start = 0;
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '(' | '[' | '<' => depth = depth.saturating_add(1),
-            ')' | ']' | '>' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                out.push(s[start..i].trim().to_string());
-                start = i.saturating_add(1);
-            }
-            _ => {}
-        }
-    }
-    let tail = s[start..].trim();
-    if !tail.is_empty() {
-        out.push(tail.to_string());
-    }
-    out
-}
-
-/// Parse the body of a tuple type, e.g. `name: T, other: U`.
-fn parse_tuple_fields(inner: &str) -> Vec<(String, SemType)> {
-    parse_comma_separated(inner)
-        .into_iter()
-        .filter_map(|part| {
-            let colon = depth_zero_colon_index(&part)?;
-            let name = part[..colon].trim().to_string();
-            let ty = SemType::from_legacy_string(&part[colon.saturating_add(1)..]);
-            Some((name, ty))
-        })
-        .collect()
-}
-
-/// Parse the parameter side of a closure type. Handles `()`, `T`, and
-/// `T1, T2`.
-fn parse_closure_params(s: &str) -> Vec<SemType> {
-    let trimmed = s.trim();
-    if trimmed == "()" || trimmed.is_empty() {
-        return Vec::new();
-    }
-    parse_comma_separated(trimmed)
-        .into_iter()
-        .map(|p| SemType::from_legacy_string(&p))
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn round_trip(s: &str) {
-        let parsed = SemType::from_legacy_string(s);
-        assert_eq!(
-            parsed.display(),
-            s,
-            "round-trip failed for {s:?}: parsed = {parsed:?}"
-        );
-    }
-
-    #[test]
-    fn primitives_round_trip() {
-        for p in [
-            "String", "I32", "I64", "F32", "F64", "Boolean", "Path", "Regex", "Never",
-        ] {
-            round_trip(p);
-        }
-    }
-
-    #[test]
-    fn sentinels_round_trip() {
-        round_trip("Unknown");
-        round_trip("InferredEnum");
-        round_trip("Nil");
-    }
-
-    #[test]
-    fn named_round_trips() {
-        round_trip("Event");
-        round_trip("MyStruct");
-    }
-
-    #[test]
-    fn array_round_trips() {
-        round_trip("[I32]");
-        round_trip("[[String]]");
-        round_trip("[Unknown]");
-    }
-
-    #[test]
-    fn optional_round_trips() {
-        round_trip("I32?");
-        round_trip("Event?");
-        round_trip("[I32]?");
-    }
-
-    #[test]
-    fn tuple_round_trips() {
-        round_trip("(a: I32, b: String)");
-        round_trip("(x: [I32], y: Event?)");
-    }
-
-    #[test]
-    fn generic_round_trips() {
-        round_trip("Box<I32>");
-        round_trip("Map<String, Item>");
-        round_trip("Range<I32>");
-        round_trip("Box<Pair<A, B>>");
-    }
-
-    #[test]
-    fn dictionary_round_trips() {
-        round_trip("[String: I32]");
-        round_trip("[String: [I32]]");
-    }
-
-    #[test]
-    fn closure_round_trips() {
-        round_trip("() -> I32");
-        round_trip("I32 -> Boolean");
-        round_trip("I32, String -> Boolean");
-        round_trip("[I32] -> [String]");
-    }
-
-    #[test]
-    fn nested_closure_in_array() {
-        // Arrays of closures are rare but should survive.
-        round_trip("[I32]");
-    }
-
-    #[test]
-    fn unknown_propagates_via_is_indeterminate() {
-        assert!(SemType::Unknown.is_indeterminate());
-        assert!(SemType::array_of(SemType::Unknown).is_indeterminate());
-        assert!(SemType::optional_of(SemType::Unknown).is_indeterminate());
-        assert!(!SemType::Primitive(PrimitiveType::I32).is_indeterminate());
-        assert!(!SemType::Named("Foo".to_string()).is_indeterminate());
-    }
-
-    #[test]
-    fn user_named_unknown_is_distinct_from_sentinel() {
-        // The historical bug: a struct literally named `Unknown` was
-        // indistinguishable from the sentinel in the string format.
-        // After parsing the legacy string we still treat the literal
-        // name as the sentinel (preserving prior behaviour); the win
-        // is at construction time inside SemType-native code, where
-        // `Named("Unknown".into())` is structurally distinct.
-        let user_named = SemType::Named("Unknown".to_string());
-        assert!(!user_named.is_indeterminate());
-        assert!(SemType::Unknown.is_indeterminate());
-        assert_ne!(user_named, SemType::Unknown);
-    }
-
-    #[test]
-    fn empty_string_parses_as_unknown() {
-        assert_eq!(SemType::from_legacy_string(""), SemType::Unknown);
-        assert_eq!(SemType::from_legacy_string("   "), SemType::Unknown);
-    }
-
-    #[test]
-    fn optional_of_optional_is_idempotent() {
-        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::I32));
-        let twice = SemType::optional_of(t.clone());
-        assert_eq!(t, twice);
-    }
-
-    #[test]
-    fn strip_optional_unwraps_one_layer() {
-        let t = SemType::optional_of(SemType::Primitive(PrimitiveType::I32));
-        assert_eq!(t.strip_optional(), SemType::Primitive(PrimitiveType::I32));
-        let bare = SemType::Primitive(PrimitiveType::I32);
-        assert_eq!(bare.strip_optional(), bare);
-    }
-
-    #[test]
-    fn substitute_named_replaces_param_only_at_named_positions() {
-        let t = SemType::Generic {
-            base: "Box".into(),
-            args: vec![SemType::Named("T".into())],
-        };
-        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::I32));
-        assert_eq!(result.display(), "Box<I32>");
-    }
-
-    #[test]
-    fn substitute_named_skips_substring_collisions() {
-        // The legacy byte-walker had to guard against `T` matching
-        // inside `TList` — structurally that can't happen because the
-        // identifier is a single Named variant, not a substring.
-        let t = SemType::Generic {
-            base: "TList".into(),
-            args: vec![SemType::Named("T".into())],
-        };
-        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::I32));
-        assert_eq!(result.display(), "TList<I32>");
-    }
-
-    #[test]
-    fn substitute_named_recurses_through_closure() {
-        let t = SemType::closure(
-            vec![SemType::Named("T".into())],
-            SemType::array_of(SemType::Named("T".into())),
-        );
-        let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::Boolean));
-        assert_eq!(result.display(), "Boolean -> [Boolean]");
-    }
-
-    #[test]
-    fn from_ast_matches_legacy_string_for_primitive_ident() {
-        use crate::ast::Ident;
-        use crate::location::Span;
-        let ty = crate::ast::Type::Ident(Ident {
-            name: "I32".into(),
-            span: Span::default(),
-        });
-        // Identifier whose name happens to be a primitive should be
-        // promoted to Primitive — matches what the parser would do at
-        // type position.
-        assert_eq!(
-            SemType::from_ast(&ty),
-            SemType::Primitive(PrimitiveType::I32)
-        );
     }
 }
