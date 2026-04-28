@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 186
 expression: module
 ---
 IrModule {
@@ -43,6 +44,9 @@ IrModule {
                     name: "area",
                     params: [
                         IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
                             name: "self",
                             external_label: None,
                             ty: None,
@@ -86,6 +90,9 @@ IrModule {
                     generic_params: [],
                     params: [
                         IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
                             name: "self",
                             external_label: None,
                             ty: None,

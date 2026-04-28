@@ -549,6 +549,7 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
     use formalang::ResolvedType;
 
     let stmt = IrBlockStatement::Let {
+        binding_id: formalang::ir::BindingId(0),
         name: "x".to_string(),
         mutable: false,
         ty: None,
@@ -1519,6 +1520,7 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
     }
 
     let stmt = IrBlockStatement::Let {
+        binding_id: formalang::ir::BindingId(0),
         name: "x".to_string(),
         mutable: false,
         ty: None,
@@ -2505,6 +2507,7 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
         arms: vec![
             IrMatchArm {
                 variant: "a".to_string(),
+                variant_idx: formalang::ir::VariantIdx(0),
                 is_wildcard: false,
                 bindings: vec![],
                 body: IrExpr::Literal {
@@ -2514,6 +2517,7 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
             },
             IrMatchArm {
                 variant: "b".to_string(),
+                variant_idx: formalang::ir::VariantIdx(0),
                 is_wildcard: false,
                 bindings: vec![],
                 body: IrExpr::Literal {
@@ -2854,6 +2858,7 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
 
     let expr = IrExpr::Block {
         statements: vec![IrBlockStatement::Let {
+            binding_id: formalang::ir::BindingId(0),
             name: "a".to_string(),
             mutable: false,
             ty: None,

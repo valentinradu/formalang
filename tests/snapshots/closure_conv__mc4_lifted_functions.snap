@@ -9,6 +9,9 @@ expression: lifted
         generic_params: [],
         params: [
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "__env",
                 external_label: None,
                 ty: Some(
@@ -22,6 +25,9 @@ expression: lifted
                 convention: Let,
             },
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "t",
                 external_label: None,
                 ty: Some(
@@ -60,6 +66,9 @@ expression: lifted
         generic_params: [],
         params: [
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "__env",
                 external_label: None,
                 ty: Some(
@@ -73,6 +82,9 @@ expression: lifted
                 convention: Let,
             },
             IrFunctionParam {
+                binding_id: BindingId(
+                    0,
+                ),
                 name: "x",
                 external_label: None,
                 ty: Some(

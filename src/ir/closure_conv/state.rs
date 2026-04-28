@@ -108,11 +108,19 @@ impl ConversionState {
                 }
                 IrExpr::Reference { path, target, ty }
             }
-            IrExpr::LetRef { name, ty } => {
+            IrExpr::LetRef {
+                name,
+                binding_id,
+                ty,
+            } => {
                 if ctx.is_captured(&name) {
                     return env_field_access(name, ty, ctx.env_ty());
                 }
-                IrExpr::LetRef { name, ty }
+                IrExpr::LetRef {
+                    name,
+                    binding_id,
+                    ty,
+                }
             }
 
             IrExpr::Closure {
@@ -290,6 +298,7 @@ impl ConversionState {
         }
         IrMatchArm {
             variant: arm.variant,
+            variant_idx: crate::ir::VariantIdx(0),
             is_wildcard: arm.is_wildcard,
             bindings: arm.bindings,
             body: self.process(arm.body, &inner_ctx),
@@ -323,6 +332,7 @@ impl ConversionState {
     ) -> IrBlockStatement {
         match stmt {
             IrBlockStatement::Let {
+                binding_id,
                 name,
                 mutable,
                 ty,
@@ -331,6 +341,7 @@ impl ConversionState {
                 let new_value = self.process(value, ctx);
                 ctx.bind(name.clone());
                 IrBlockStatement::Let {
+                    binding_id,
                     name,
                     mutable,
                     ty,

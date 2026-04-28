@@ -168,7 +168,7 @@ fn collect_free_refs(
                 }
             }
         }
-        IrExpr::LetRef { name, ty } => {
+        IrExpr::LetRef { name, ty, .. } => {
             if !bound.contains(name) && seen.insert(name.clone()) {
                 out.push((name.clone(), ty.clone()));
             }

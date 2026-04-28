@@ -192,14 +192,22 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Reference to a module-level let binding: `primaryColor`, `headingFont`
+    /// Reference to a function-local `let` binding by name.
     ///
-    /// This is a specialized form of reference for accessing module-level
-    /// constants and computed values. Code generators should use this to
-    /// emit appropriate constant references in the target language.
+    /// This is the function-scope counterpart to [`Self::Reference`] —
+    /// when lowering encounters a single-segment path that resolves to a
+    /// `let` introduced inside the current function, it emits `LetRef`
+    /// instead of `Reference`. (Module-scope `let`s use
+    /// [`Self::Reference`] with [`ReferenceTarget::ModuleLet`] after
+    /// `ResolveReferencesPass`.)
     LetRef {
-        /// The name of the let binding
+        /// The name of the let binding (preserved for diagnostics).
         name: String,
+        /// Per-function-unique binding identifier — paired with the
+        /// `BindingId` on the introducing
+        /// [`super::IrBlockStatement::Let`]. Lowering emits
+        /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
+        binding_id: BindingId,
         /// Resolved type of the binding
         ty: ResolvedType,
     },

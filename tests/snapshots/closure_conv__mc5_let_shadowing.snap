@@ -6,6 +6,9 @@ expression: lifted_body
 Block {
     statements: [
         Let {
+            binding_id: BindingId(
+                0,
+            ),
             name: "n",
             mutable: false,
             ty: Some(

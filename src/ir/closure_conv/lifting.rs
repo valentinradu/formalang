@@ -92,6 +92,7 @@ fn build_lifted_function(
     body: IrExpr,
 ) -> IrFunction {
     let env_param = IrFunctionParam {
+        binding_id: crate::ir::BindingId(0),
         name: ENV_PARAM_NAME.to_string(),
         external_label: None,
         ty: Some(ResolvedType::Struct(env_struct_id)),
@@ -103,6 +104,7 @@ fn build_lifted_function(
     params.push(env_param);
     for (convention, param_name, param_ty) in closure_params {
         params.push(IrFunctionParam {
+            binding_id: crate::ir::BindingId(0),
             name: param_name.clone(),
             external_label: None,
             ty: Some(param_ty.clone()),

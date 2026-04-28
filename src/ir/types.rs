@@ -331,6 +331,14 @@ impl IrFunction {
 )]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IrFunctionParam {
+    /// Per-function-unique binding identifier — paired with the
+    /// `BindingId` carried on uses of this parameter
+    /// ([`super::IrExpr::Reference`] with
+    /// [`super::ReferenceTarget::Param`] or
+    /// [`super::IrExpr::LetRef`]). Lowering emits `BindingId(0)` and
+    /// `ResolveReferencesPass` overwrites it.
+    pub binding_id: super::BindingId,
+
     /// Parameter name
     pub name: String,
 
