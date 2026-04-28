@@ -24,6 +24,7 @@
 //! assert_eq!(module.structs[0].name, "User");
 //! ```
 
+mod block;
 mod closure_conv;
 mod dce;
 mod expr;
@@ -33,11 +34,12 @@ mod monomorphise;
 mod types;
 mod visitor;
 
+pub use block::{IrBlockStatement, IrMatchArm};
 pub use closure_conv::ClosureConversionPass;
 pub use dce::{
     eliminate_dead_code, eliminate_dead_code_expr, DeadCodeEliminationPass, DeadCodeEliminator,
 };
-pub use expr::{DispatchKind, IrBlockStatement, IrExpr, IrMatchArm};
+pub use expr::{DispatchKind, IrExpr};
 pub use fold::{fold_constants, ConstantFolder, ConstantFoldingPass};
 pub use lower::lower_to_ir;
 pub use monomorphise::MonomorphisePass;

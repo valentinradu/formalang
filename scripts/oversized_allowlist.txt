@@ -19,11 +19,10 @@
 960 src/semantic/inference.rs
 905 src/parser/defs.rs
 884 src/ir/fold.rs
-882 src/ir/mod.rs
+884 src/ir/mod.rs
 736 src/parser/exprs.rs
 728 src/semantic/sem_type.rs
 631 src/lexer/token.rs
 574 src/semantic/type_resolution.rs
 560 src/parser/span.rs
 555 src/semantic/queries.rs
-502 src/ir/expr.rs
