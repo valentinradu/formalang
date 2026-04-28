@@ -98,7 +98,7 @@ pub trait IrPass {
     /// state accumulated during that call persists if the same pass is
     /// reused for a subsequent invocation. Stateful passes that should not
     /// carry state between runs must reset themselves at the top of `run`,
-    /// or recreate the pass between invocations. (Audit2 B28.)
+    /// or recreate the pass between invocations.
     ///
     /// # Errors
     ///
@@ -176,7 +176,7 @@ impl<E: std::error::Error> std::fmt::Display for PipelineError<E> {
 }
 
 impl<E: std::error::Error + 'static> std::error::Error for PipelineError<E> {
-    /// Audit2 B25: expose the *first* `CompilerError` from `PassErrors`
+    /// expose the *first* `CompilerError` from `PassErrors`
     /// as the chain source, mirroring the `BackendError` arm. Walking
     /// `e.source()` previously stopped at `PassErrors`, hiding the
     /// underlying compile diagnostic from generic error-chain printers

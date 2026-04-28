@@ -110,7 +110,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             .zip(impl_non_self.iter())
                             .any(|(req, imp)| req.convention != imp.convention);
 
-                    // Audit finding #15: also compare parameter *types*.
+                    // also compare parameter *types*.
                     // Previously only arity and conventions were checked, so
                     // an impl could return `fn foo(x: Int)` for a trait
                     // method declared `fn foo(x: String)` without error.
@@ -169,12 +169,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Collect the methods declared directly in a trait (not inherited ones).
     ///
-    /// Each `impl Trait for Struct` block must provide only the methods
-    /// declared directly in that trait. Inherited methods from composed
-    /// traits are expected to be covered by separate impl blocks for those
-    /// base traits — this is a deliberate design choice documented in the
-    /// language reference, not a gap. See audit finding #16 (closed as
-    /// "design is intentional").
+    /// Each `impl Trait for Struct` provides only the methods declared
+    /// directly in that trait. Methods inherited from composed traits are
+    /// covered by separate impl blocks for those base traits — this is a
+    /// deliberate design choice documented in the language reference.
     fn collect_all_trait_methods(
         &self,
         trait_name: &str,
@@ -399,7 +397,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check if two type strings are compatible.
     ///
     /// Handles exact matches and `.variant(...)` inferred enum syntax.
-    /// Audit findings #4 and #27 closed: neither side gets a wildcard
+    /// neither side gets a wildcard
     /// "Unknown" pass any more. Inference now resolves match-arm
     /// pattern bindings and impl-static / enum-constructor calls, so
     /// `Unknown` in inference output is genuinely an error signal.
@@ -494,7 +492,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
 /// If `ty` is the shape `[T]`, return `T`. Rejects `[K: V]` (dictionary).
 ///
-/// Audit2 B17: depth-tracks brackets so a nested array of dicts
+/// depth-tracks brackets so a nested array of dicts
 /// `[[K: V]]` is recognised as an array and returns `[K: V]`.
 fn strip_array_shape(ty: &str) -> Option<&str> {
     super::strip_array_type(ty)

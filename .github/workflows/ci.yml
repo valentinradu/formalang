@@ -56,6 +56,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: File-size ceiling (≤500 LOC, ratchet via allowlist)
+        run: ./scripts/check_file_sizes.sh
+
   audit:
     name: Security audit
     runs-on: ubuntu-latest

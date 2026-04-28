@@ -1,0 +1,7 @@
+# Files temporarily exceeding the 500-LOC ceiling enforced by
+# scripts/check_file_sizes.sh. Each row caps the file at its current size;
+# the script fails if the file grows. Remove a row once the file is split
+# below 500. Goal: empty file.
+#
+# Format: <max_lines> <path-relative-to-repo-root>
+

@@ -67,7 +67,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // type dependencies: `enum E { V(T) }` depends on T.
                         // Without this arm, cycles through enum variants
                         // (struct A { x: B } / enum B { V(A) }) escape
-                        // detection. See audit finding #17.
+                        // detection.
                         let enum_name = enum_def.name.name.clone();
                         type_spans.insert(enum_name.clone(), enum_def.span);
                         for variant in &enum_def.variants {

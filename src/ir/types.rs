@@ -36,7 +36,7 @@ pub struct IrLet {
     /// The bound expression
     pub value: IrExpr,
 
-    /// Joined `///` doc comments preceding this binding. Audit #51.
+    /// Joined `///` doc comments preceding this binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }
@@ -70,7 +70,7 @@ pub struct IrStruct {
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 
-    /// Joined `///` doc comments preceding this struct. Audit #51.
+    /// Joined `///` doc comments preceding this struct.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }
@@ -102,7 +102,7 @@ pub struct IrTrait {
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 
-    /// Joined `///` doc comments preceding this trait. Audit #51.
+    /// Joined `///` doc comments preceding this trait.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }
@@ -163,7 +163,7 @@ pub struct IrEnum {
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
 
-    /// Joined `///` doc comments preceding this enum. Audit #51.
+    /// Joined `///` doc comments preceding this enum.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }
@@ -310,7 +310,7 @@ pub struct IrFunction {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attributes: Vec<crate::ast::FunctionAttribute>,
 
-    /// Joined `///` doc comments preceding this function. Audit #51.
+    /// Joined `///` doc comments preceding this function.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
 }
@@ -338,7 +338,7 @@ pub struct IrFunctionParam {
     /// `fn foo(label name: T)`. `None` when the parameter has no
     /// distinct external label. Preserved so label-based calling
     /// conventions (Swift, Kotlin) can emit the call-site name
-    /// distinct from the body-side name. Audit finding #39.
+    /// distinct from the body-side name.
     pub external_label: Option<String>,
 
     /// Parameter type (None for `self` parameter - type is inferred from impl block)
@@ -375,7 +375,7 @@ pub struct IrField {
     /// Default value expression, if any
     pub default: Option<IrExpr>,
 
-    /// Joined `///` doc comments preceding this field. Audit2 B2.
+    /// Joined `///` doc comments preceding this field.
     pub doc: Option<String>,
 
     /// Capture / passing convention for this field.
