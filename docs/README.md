@@ -16,8 +16,3 @@ backends via the plugin system.
 - [Architecture Overview](developer/architecture.md) - System design and compiler pipeline
 - [AST Reference](developer/ast.md) - Abstract Syntax Tree for tooling
 - [IR Reference](developer/ir.md) - Intermediate Representation for code generation
-
-### Proposed work
-
-- [Numeric-literal precision](developer/numeric_literal_precision.md) - replace `NumberLiteral.value: f64` with a discriminated union so integer literals round-trip exactly
-- [Resolve-references pass](developer/resolve_references_pass.md) - new IR pass that turns `path: Vec<String>` / `name: String` into typed IDs (`FunctionId`, `BindingId`, `FieldIdx`, …)
