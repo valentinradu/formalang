@@ -474,11 +474,22 @@ fn resolve_path(path: &[String], r: &FnResolver<'_>) -> ReferenceTarget {
         if let Some(target) = r.symbols.by_name.get(single) {
             return target.clone();
         }
-    } else if let [first, ..] = path {
-        // Multi-segment path: try the first segment as a module-scope
-        // symbol; leave nested-module / external resolution as a follow-up.
-        if let Some(target) = r.symbols.by_name.get(first) {
+    } else if !path.is_empty() {
+        // Multi-segment path. Items in `mod foo { struct Bar }` are
+        // registered in the flat `IrModule.{structs, enums, …}` vectors
+        // under the qualified name `"foo::Bar"`. Join the path segments
+        // and look up directly. If the join doesn't match, fall back to
+        // probing the first segment so we still resolve the reference
+        // root (the trailing segments may be field accesses the AST
+        // collapses into the same path).
+        let joined = path.join("::");
+        if let Some(target) = r.symbols.by_name.get(&joined) {
             return target.clone();
+        }
+        if let Some(first) = path.first() {
+            if let Some(target) = r.symbols.by_name.get(first) {
+                return target.clone();
+            }
         }
     }
     ReferenceTarget::Unresolved

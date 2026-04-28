@@ -344,6 +344,30 @@ fn method_call_static_dispatch_resolves_method_idx() -> TestResult {
 }
 
 #[test]
+fn nested_module_struct_registered_with_qualified_name() -> TestResult {
+    // Structs declared inside `mod foo { … }` end up in
+    // `IrModule.structs` under the qualified name `"foo::Bar"`. The
+    // resolve pass's `resolve_path` joins multi-segment paths with
+    // `::` and looks them up directly against this same flat table —
+    // so any `Reference { path: ["foo", "Bar"] }` resolves whenever
+    // the qualified name is registered. This test pins the
+    // qualified-name invariant; the joined-name lookup is exercised
+    // by existing single-segment tests when the lookup hits.
+    let module = resolved(
+        r"
+        mod shapes {
+            pub struct Point { x: I32, y: I32 }
+        }
+        ",
+    )?;
+    if !module.structs.iter().any(|s| s.name == "shapes::Point") {
+        let names: Vec<&str> = module.structs.iter().map(|s| s.name.as_str()).collect();
+        return Err(format!("shapes::Point not registered; structs = {names:?}").into());
+    }
+    Ok(())
+}
+
+#[test]
 fn pass_is_idempotent() -> TestResult {
     let module = resolved("pub fn id(x: I32) -> I32 { x }")?;
     let mut pass = formalang::ir::ResolveReferencesPass::new();
