@@ -20,5 +20,4 @@
 905 src/parser/defs.rs
 884 src/ir/fold.rs
 884 src/ir/mod.rs
-736 src/parser/exprs.rs
 631 src/lexer/token.rs

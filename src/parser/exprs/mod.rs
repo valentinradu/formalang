@@ -1,13 +1,15 @@
 // Expression parsers
 
+mod literals;
+mod operators;
+mod patterns;
+
+pub(super) use patterns::match_arm_parser;
+
 use chumsky::input::ValueInput;
-use chumsky::pratt::{infix, left, postfix, prefix};
 use chumsky::prelude::*;
 
-use crate::ast::{
-    BinaryOperator, BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention,
-    Pattern, UnaryOperator,
-};
+use crate::ast::{BlockStatement, ClosureParam, Expr, Ident, Literal, ParamConvention};
 use crate::lexer::Token;
 
 use super::block_statements_to_expr;
@@ -17,8 +19,6 @@ use super::ident_parser;
 use super::invocation_target_parser;
 use super::span_from_simple;
 use super::types::type_parser;
-
-type MethodCallArgs = Vec<(Option<Ident>, Expr)>;
 
 /// Parse an expression
 #[expect(
@@ -31,28 +31,7 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     recursive(|expr| {
-        // Literals — each chumsky branch produces a raw `Literal`, and the
-        // outer `map_with` attaches the span from the token range so
-        // diagnostics and LSP hover can point at the correct location.
-        let literal_value = choice((
-            select! { Token::String(s) => Literal::String(s) },
-            select! { Token::Number(n) => Literal::Number(n) },
-            select! { Token::Regex(s) => {
-                if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
-                    Literal::Regex { pattern, flags }
-                } else {
-                    Literal::Regex { pattern: String::new(), flags: String::new() }
-                }
-            }},
-            select! { Token::Path(p) => Literal::Path(p) },
-            just(Token::True).to(Literal::Boolean(true)),
-            just(Token::False).to(Literal::Boolean(false)),
-            just(Token::Nil).to(Literal::Nil),
-        ));
-        let literal = literal_value.map_with(|value, e| Expr::Literal {
-            value,
-            span: span_from_simple(e.span()),
-        });
+        let literal = literals::literal_parser();
 
         // Helper to parse invocation arguments: either named (name: expr) or positional (expr)
         // Returns Vec<(Option<Ident>, Expr)> where Some(name) is named, None is positional
@@ -504,233 +483,7 @@ where
         ))
         .labelled("expression");
 
-        // Binary operators with precedence using pratt parser
-        atom.pratt((
-            // Unary operators (highest precedence: 9)
-            prefix(9, just(Token::Minus), |_, operand, e| Expr::UnaryOp {
-                op: UnaryOperator::Neg,
-                operand: Box::new(operand),
-                span: span_from_simple(e.span()),
-            }),
-            prefix(9, just(Token::Bang), |_, operand, e| Expr::UnaryOp {
-                op: UnaryOperator::Not,
-                operand: Box::new(operand),
-                span: span_from_simple(e.span()),
-            }),
-            // Multiplication, division, modulo (highest precedence: 6)
-            infix(left(6), just(Token::Star), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Mul,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(6), just(Token::Slash), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Div,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(6), just(Token::Percent), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Mod,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Addition and subtraction (precedence: 5)
-            infix(left(5), just(Token::Plus), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Add,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(5), just(Token::Minus), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Sub,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Comparison operators (precedence: 4)
-            infix(left(4), just(Token::Lt), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Lt,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(4), just(Token::Gt), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Gt,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(4), just(Token::Le), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Le,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(4), just(Token::Ge), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Ge,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Equality operators (precedence: 3)
-            infix(left(3), just(Token::EqEq), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Eq,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            infix(left(3), just(Token::Ne), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Ne,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Logical AND (precedence: 2)
-            infix(left(2), just(Token::And), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::And,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Logical OR (precedence: 1)
-            infix(left(1), just(Token::Or), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Or,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Range (precedence: 0, lowest - so arithmetic binds tighter)
-            infix(left(0), just(Token::DotDot), |l, _, r, e| Expr::BinaryOp {
-                left: Box::new(l),
-                op: BinaryOperator::Range,
-                right: Box::new(r),
-                span: span_from_simple(e.span()),
-            }),
-            // Dictionary/array access: expr[key] (precedence: 10, higher than unary)
-            postfix(
-                10,
-                expr.clone()
-                    .delimited_by(just(Token::LBracket), just(Token::RBracket)),
-                |dict, key, e| Expr::DictAccess {
-                    dict: Box::new(dict),
-                    key: Box::new(key),
-                    span: span_from_simple(e.span()),
-                },
-            ),
-            // Method call: expr.method(arg1, arg2, ...) (precedence: 11, highest)
-            // Must come before field access since it's more specific
-            // Uses invocation_args to handle both named and positional arguments
-            postfix(
-                11,
-                just(Token::Dot)
-                    .ignore_then(ident_parser())
-                    .then(invocation_args.clone()),
-                |receiver, (method, args): (Ident, MethodCallArgs), e| Expr::MethodCall {
-                    receiver: Box::new(receiver),
-                    method,
-                    args,
-                    span: span_from_simple(e.span()),
-                },
-            ),
-            // Field access: expr.field (precedence: 10, higher than unary)
-            // Note: This handles general field access like foo.bar.baz or self.field
-            // Enum instantiation Type.variant(args) is parsed as an atom, so won't conflict
-            postfix(
-                10,
-                just(Token::Dot).ignore_then(ident_parser()),
-                |object, field, e| {
-                    // Convert object to a reference path and extend it with the field
-                    match object {
-                        Expr::Reference { mut path, .. } => {
-                            // Extend existing reference path
-                            path.push(field);
-                            Expr::Reference {
-                                path,
-                                span: span_from_simple(e.span()),
-                            }
-                        }
-                        Expr::Literal { .. }
-                        | Expr::Invocation { .. }
-                        | Expr::EnumInstantiation { .. }
-                        | Expr::InferredEnumInstantiation { .. }
-                        | Expr::Array { .. }
-                        | Expr::Tuple { .. }
-                        | Expr::BinaryOp { .. }
-                        | Expr::UnaryOp { .. }
-                        | Expr::ForExpr { .. }
-                        | Expr::IfExpr { .. }
-                        | Expr::MatchExpr { .. }
-                        | Expr::Group { .. }
-                        | Expr::DictLiteral { .. }
-                        | Expr::DictAccess { .. }
-                        | Expr::FieldAccess { .. }
-                        | Expr::ClosureExpr { .. }
-                        | Expr::LetExpr { .. }
-                        | Expr::MethodCall { .. }
-                        | Expr::Block { .. } => {
-                            // For non-reference expressions (e.g., -chord, (a+b)),
-                            // use FieldAccess to preserve the base expression
-                            Expr::FieldAccess {
-                                object: Box::new(object),
-                                field,
-                                span: span_from_simple(e.span()),
-                            }
-                        }
-                    }
-                },
-            ),
-        ))
+
+        operators::apply_operators(atom, expr.clone(), invocation_args.clone())
     })
-}
-
-/// Parse a match arm: pattern: expr
-pub(super) fn match_arm_parser<'tokens, I>(
-    expr: impl Parser<'tokens, I, Expr, extra::Err<Rich<'tokens, Token>>> + Clone,
-) -> impl Parser<'tokens, I, MatchArm, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    pattern_parser()
-        .then_ignore(just(Token::Colon))
-        .then(expr)
-        .map_with(|(pattern, body), e| MatchArm {
-            pattern,
-            body,
-            span: span_from_simple(e.span()),
-        })
-        .labelled("match arm (pattern: expression)")
-}
-
-/// Parse a pattern: variant or variant(binding1, binding2) or .variant or .variant(binding1, binding2) or _
-pub(super) fn pattern_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Pattern, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    // Wildcard pattern: _
-    let wildcard = just(Token::Underscore).to(Pattern::Wildcard);
-
-    // Variant pattern: .variant or .variant(bindings) or variant or variant(bindings)
-    let variant = choice((
-        // Short form: .variant or .variant(bindings)
-        just(Token::Dot).ignore_then(ident_parser()),
-        // Full form: variant or variant(bindings)
-        ident_parser(),
-    ))
-    .then(
-        ident_parser()
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .collect()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
-            .or_not(),
-    )
-    .map(|(name, bindings)| Pattern::Variant {
-        name,
-        bindings: bindings.unwrap_or_default(),
-    });
-
-    choice((wildcard, variant))
 }
