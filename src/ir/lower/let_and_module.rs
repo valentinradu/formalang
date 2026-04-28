@@ -255,14 +255,6 @@ impl IrLowerer<'_> {
             // name picks up that new id.
             if let Some(id) = self.module.function_id(&registered_name) {
                 node.functions.push(id);
-                // Register the bare (unqualified) name as an alias so
-                // intra-module calls (`add()` from inside `mod foo`)
-                // continue to resolve. `or_insert`-style: top-level
-                // definitions registered first win the bare name; a
-                // module function with the same bare name is reachable
-                // only via its qualified path.
-                self.module
-                    .add_function_alias_if_absent(f.name.name.clone(), id);
             }
         }
     }

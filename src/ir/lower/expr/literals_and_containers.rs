@@ -33,6 +33,10 @@ impl IrLowerer<'_> {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "three branches (struct / external / function) each with their own arg-lowering plumbing — splitting hides the contract"
+    )]
     pub(super) fn lower_invocation(
         &mut self,
         path: &[crate::ast::Ident],
@@ -125,15 +129,35 @@ impl IrLowerer<'_> {
             }
         } else {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
-            // look up the function's expected parameter
-            // types so a closure literal passed as an argument
-            // (`fn apply(f: I32 -> I32) ... apply(x -> x + 1)`)
-            // lowers with `x: I32` instead of `ResolvedType::Error`.
-            // Falls back to None when the function isn't in the IR yet
-            // (forward reference) or the argument can't be matched by
-            // name to a parameter.
             let fn_name = path_strs.last().map_or("", std::string::String::as_str);
-            let expected_param_tys = self.lookup_function_param_types(fn_name);
+            // Resolve the call to a `FunctionId` first — module-aware
+            // for single-segment calls (try the current `mod`'s
+            // qualified form, fall back to bare); joined-name lookup
+            // for multi-segment. Cross-module / forward-reference
+            // cases stay `None` and `ResolveReferencesPass` finishes
+            // the job.
+            let function_id = if path_strs.len() == 1 {
+                self.find_function_in_scope(fn_name)
+            } else {
+                self.module
+                    .function_id(&path_strs.join("::"))
+                    .or_else(|| self.find_function_in_scope(fn_name))
+            };
+            // Derive expected param types from the resolved id
+            // (covers cross-module qualified calls correctly), or
+            // fall back to scanning by bare name for forward
+            // references.
+            let expected_param_tys: Vec<(String, ResolvedType)> = function_id
+                .and_then(|id| self.module.functions.get(id.0 as usize))
+                .map_or_else(
+                    || self.lookup_function_param_types(fn_name),
+                    |f| {
+                        f.params
+                            .iter()
+                            .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
+                            .collect()
+                    },
+                );
             let lowered_args: Vec<(Option<String>, IrExpr)> = args
                 .iter()
                 .enumerate()
@@ -146,9 +170,16 @@ impl IrLowerer<'_> {
                     (name_opt.as_ref().map(|n| n.name.clone()), lowered)
                 })
                 .collect();
-            let ty = self.resolve_function_return_type(fn_name, &lowered_args);
+            // Return type lookup uses the same id when available; the
+            // legacy bare-name lookup is the fallback for forward
+            // refs.
+            let ty = function_id
+                .and_then(|id| self.module.functions.get(id.0 as usize))
+                .and_then(|f| f.return_type.clone())
+                .unwrap_or_else(|| self.resolve_function_return_type(fn_name, &lowered_args));
             IrExpr::FunctionCall {
                 path: path_strs,
+                function_id,
                 args: lowered_args,
                 ty,
             }

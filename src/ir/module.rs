@@ -322,15 +322,6 @@ impl IrModule {
         Ok(id)
     }
 
-    /// Register an additional name → id mapping for an existing
-    /// function only if `name` is not already in the index. Used to
-    /// expose qualified-name functions under their bare last-segment
-    /// for intra-module calls without shadowing same-named top-level
-    /// definitions.
-    pub(crate) fn add_function_alias_if_absent(&mut self, name: String, id: FunctionId) {
-        self.function_names.entry(name).or_insert(id);
-    }
-
     /// Rebuild the name-to-ID index maps from the current definition lists.
     ///
     /// Call this after any [`IrPass`] that adds, removes, or reorders

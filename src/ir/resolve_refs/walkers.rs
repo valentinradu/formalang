@@ -4,7 +4,40 @@
 
 use super::lookups::match_variant_idx;
 use super::{resolve_expr, BindingKind, FnResolver};
-use crate::ir::{IrBlockStatement, IrMatchArm, ReferenceTarget, ResolvedType, VariantIdx};
+use crate::ir::{
+    FunctionId, IrBlockStatement, IrMatchArm, ReferenceTarget, ResolvedType, VariantIdx,
+};
+
+/// Extract the module prefix of a qualified IR name. For
+/// `"foo::bar::baz"` returns `"foo::bar"`; for a bare `"baz"`
+/// returns `""`.
+pub(super) fn module_prefix_of(qualified_name: &str) -> String {
+    qualified_name
+        .rsplit_once("::")
+        .map_or_else(String::new, |(prefix, _)| prefix.to_string())
+}
+
+/// Late-bind a `FunctionCall` to a `FunctionId`. Single-segment
+/// paths first try the enclosing module's qualified form (so
+/// intra-module calls resolve to the local definition), falling back
+/// to bare. Multi-segment paths use the joined name as-written
+/// (matches the qualified registration of nested-module functions).
+pub(super) fn resolve_function_call_id(path: &[String], r: &FnResolver<'_>) -> Option<FunctionId> {
+    if path.len() == 1 {
+        let bare = path.first().map(String::as_str).unwrap_or_default();
+        let qualified = if r.module_prefix.is_empty() {
+            None
+        } else {
+            Some(format!("{}::{}", r.module_prefix, bare))
+        };
+        qualified
+            .as_deref()
+            .and_then(|q| r.module.function_id(q))
+            .or_else(|| r.module.function_id(bare))
+    } else {
+        r.module.function_id(&path.join("::"))
+    }
+}
 
 pub(super) fn resolve_block_stmt(stmt: &mut IrBlockStatement, r: &mut FnResolver<'_>) {
     match stmt {

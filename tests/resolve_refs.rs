@@ -474,37 +474,68 @@ fn closure_capture_binding_id_points_at_outer_introducing_binding() -> TestResul
 }
 
 #[test]
-fn nested_module_function_qualifies_and_resolves() -> TestResult {
-    // Two invariants pinned:
-    //  1. A function declared inside `mod foo { … }` is registered
-    //     in `IrModule.functions` under the qualified name
-    //     `"foo::add"`.
-    //  2. The bare last segment is also reachable via `function_id`
-    //     so intra-module calls keep resolving.
+fn cross_module_qualified_call_resolves_to_function_id() -> TestResult {
+    // External callers use the qualified path (`math::double`); the
+    // pass joins the segments and looks up the result in the symbol
+    // table. The matching `IrExpr::FunctionCall.function_id` must
+    // come back populated so backends dispatch directly.
     let module = resolved(
         r"
         mod math {
             pub fn double(x: I32) -> I32 { x * 2 }
         }
+        pub fn run() -> I32 { math::double(7) }
         ",
     )?;
-    let qualified = module
-        .functions
-        .iter()
-        .find(|f| f.name == "math::double")
-        .ok_or("math::double not registered")?;
-    let id_via_qualified = module
+    let qualified_id = module
         .function_id("math::double")
-        .ok_or("function_id(math::double) failed")?;
-    let id_via_bare = module
-        .function_id("double")
-        .ok_or("function_id(double) alias missing")?;
-    if id_via_qualified != id_via_bare {
+        .ok_or("math::double not registered")?;
+    if module.function_id("double").is_some() {
+        return Err("bare `double` should not be in the global symbol table".into());
+    }
+    let body = function_body(&module, "run").ok_or("no run body")?;
+    let IrExpr::FunctionCall { function_id, .. } = body else {
+        return Err(format!("expected FunctionCall, got {body:?}").into());
+    };
+    if *function_id != Some(qualified_id) {
         return Err(
-            format!("qualified id {id_via_qualified:?} != bare alias {id_via_bare:?}").into(),
+            format!("expected function_id Some({qualified_id:?}), got {function_id:?}").into(),
         );
     }
-    let _ = qualified;
+    Ok(())
+}
+
+#[test]
+fn intra_module_call_does_not_resolve_to_top_level_collision() -> TestResult {
+    // Both top-level `add` and `mod math { fn add }` exist. A call
+    // to `add(7)` from inside `math::caller` must lexically resolve
+    // to `math::add`, not to the top-level `add`.
+    let module = resolved(
+        r"
+        pub fn add(x: I32) -> I32 { x }
+        mod math {
+            pub fn add(x: I32) -> I32 { x * 2 }
+            pub fn caller() -> I32 { add(7) }
+        }
+        ",
+    )?;
+    let math_add_id = module
+        .function_id("math::add")
+        .ok_or("math::add not registered")?;
+    let top_add_id = module.function_id("add").ok_or("top-level add missing")?;
+    if math_add_id == top_add_id {
+        return Err("math::add and top-level add share an id — broken registration".into());
+    }
+    let body = function_body(&module, "math::caller").ok_or("no caller body")?;
+    let IrExpr::FunctionCall { function_id, .. } = body else {
+        return Err(format!("expected FunctionCall, got {body:?}").into());
+    };
+    if *function_id != Some(math_add_id) {
+        return Err(format!(
+            "intra-module call resolved to {function_id:?}, expected math::add ({math_add_id:?})"
+        )
+        .into());
+    }
     Ok(())
 }
 

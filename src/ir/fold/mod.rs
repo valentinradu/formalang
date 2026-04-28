@@ -95,8 +95,14 @@ impl ConstantFolder {
                     .collect(),
                 ty,
             },
-            IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
+            IrExpr::FunctionCall {
                 path,
+                function_id,
+                args,
+                ty,
+            } => IrExpr::FunctionCall {
+                path,
+                function_id,
                 args: args
                     .into_iter()
                     .map(|(name, expr)| (name, self.fold_expr(expr)))

@@ -202,14 +202,27 @@ impl IrLowerer<'_> {
     /// isn't yet in the IR (forward reference) — in that case we fall
     /// back to `Unknown` for closure-literal params, same as before.
     pub(super) fn lookup_function_param_types(&self, fn_name: &str) -> Vec<(String, ResolvedType)> {
-        if let Some(f) = self.module.functions.iter().find(|f| f.name == fn_name) {
-            return f
-                .params
+        // Match the same module-aware resolution `find_function_in_scope`
+        // uses so a call from inside `mod foo { fn caller() { add(...) } }`
+        // gets `foo::add`'s declared params (not a same-named top-level
+        // function's, which lexical scoping says doesn't apply here).
+        let f = if self.current_module_prefix.is_empty() {
+            self.module.functions.iter().find(|f| f.name == fn_name)
+        } else {
+            let qualified = format!("{}::{}", self.current_module_prefix, fn_name);
+            self.module
+                .functions
+                .iter()
+                .find(|f| f.name == qualified)
+                .or_else(|| self.module.functions.iter().find(|f| f.name == fn_name))
+        };
+        f.map(|f| {
+            f.params
                 .iter()
                 .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
-                .collect();
-        }
-        Vec::new()
+                .collect()
+        })
+        .unwrap_or_default()
     }
 
     /// pick the expected parameter type for arg

@@ -187,6 +187,21 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
+    /// Look up a function by its source-level (single-segment) name
+    /// using module-aware resolution: when called from inside
+    /// `mod foo { … }`, prefer `"foo::name"` so intra-module calls
+    /// resolve to the local definition; fall back to the bare name
+    /// for top-level functions.
+    pub(super) fn find_function_in_scope(&self, name: &str) -> Option<crate::ir::FunctionId> {
+        if !self.current_module_prefix.is_empty() {
+            let qualified = format!("{}::{}", self.current_module_prefix, name);
+            if let Some(id) = self.module.function_id(&qualified) {
+                return Some(id);
+            }
+        }
+        self.module.function_id(name)
+    }
+
     /// Look up a local binding's resolved type by name from the innermost
     /// scope outwards.
     pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {

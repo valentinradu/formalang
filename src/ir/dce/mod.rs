@@ -318,8 +318,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .collect(),
             ty,
         },
-        IrExpr::FunctionCall { path, args, ty } => IrExpr::FunctionCall {
+        IrExpr::FunctionCall {
             path,
+            function_id,
+            args,
+            ty,
+        } => IrExpr::FunctionCall {
+            path,
+            function_id,
             args: args
                 .into_iter()
                 .map(|(name, e)| (name, eliminate_dead_code_expr(e)))

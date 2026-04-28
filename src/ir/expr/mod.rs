@@ -294,8 +294,19 @@ pub enum IrExpr {
 
     /// Function call: `sin(angle: x)` or `builtin::math::sin(angle: x)`
     FunctionCall {
-        /// Function path (e.g., `["builtin", "math", "sin"]`)
+        /// Function path (e.g., `["builtin", "math", "sin"]`) —
+        /// preserved alongside [`Self::FunctionCall::function_id`]
+        /// for diagnostics and as a fallback when resolution fails
+        /// (e.g. cross-module call where the target lives in another
+        /// `IrModule` not yet linked).
         path: Vec<String>,
+        /// Resolved target function id. `None` when the path is
+        /// genuinely external (cross-module) or when lowering /
+        /// `ResolveReferencesPass` couldn't bind it. Backends key on
+        /// this id to dispatch directly without re-walking
+        /// `IrModule.functions` and without inferring scope from the
+        /// caller's module prefix.
+        function_id: Option<FunctionId>,
         /// Arguments: (`optional_parameter_name`, value)
         /// Some(name) for named args, None for positional args
         args: Vec<(Option<String>, Self)>,
