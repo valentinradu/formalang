@@ -274,7 +274,7 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
         CompilerError::NumericOverflow {
             written, target, ..
-        } => errors_advanced::numeric_overflow(filename, span, written, *target),
+        } => errors::numeric_overflow(filename, span, written, *target),
     }
 }
 

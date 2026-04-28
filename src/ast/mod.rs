@@ -28,6 +28,7 @@
 
 mod definitions;
 mod expressions;
+mod numbers;
 mod types;
 
 #[cfg(test)]
@@ -43,8 +44,9 @@ pub use definitions::{
 };
 pub use expressions::{
     ArrayPatternElement, BindingPattern, BlockStatement, ClosureParam, Expr, Literal, MatchArm,
-    NumberLiteral, NumberSourceKind, NumberValue, NumericSuffix, Pattern, StructPatternField,
+    Pattern, StructPatternField,
 };
+pub use numbers::{NumberLiteral, NumberSourceKind, NumberValue, NumericSuffix};
 pub use types::{
     AttributeAnnotation, ExternAbi, FunctionAttribute, GenericConstraint, GenericParam, TupleField,
     Type,
