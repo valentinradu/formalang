@@ -12,8 +12,6 @@
 1740 src/ir/lower/mod.rs
 1471 src/ir/dce.rs
 1256 src/semantic/node_finder.rs
-1084 src/ast/mod.rs
 1068 src/ir/closure_conv.rs
-1063 src/reporting.rs
 1019 src/semantic/symbol_table.rs
 631 src/lexer/token.rs
