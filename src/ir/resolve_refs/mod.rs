@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use crate::error::CompilerError;
 use crate::ir::{
     BindingId, FieldIdx, IrBlockStatement, IrExpr, IrFunction, IrLet, IrMatchArm, IrModule,
-    ReferenceTarget, ResolvedType, VariantIdx,
+    MethodIdx, ReferenceTarget, ResolvedType, VariantIdx,
 };
 use crate::pipeline::IrPass;
 
@@ -69,40 +69,58 @@ impl IrPass for ResolveReferencesPass {
     }
 
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
-        // Snapshot the module-level symbol table before mutating bodies. The
-        // pass needs `&module` for variant_idx lookups while it mutates
-        // bodies, so we detach the mutable collections, walk them in
-        // isolation, then reattach.
+        // Snapshot the module-level symbol table; the resolver also reads
+        // structs / enums / traits / impls during expression rewriting to
+        // look up field / variant / method indices.
         let symbols = ModuleSymbols::build(&module);
 
-        // Detach the bodies that need rewriting. Each detached collection
-        // is processed against the still-attached parts of `module` (used
-        // for variant_idx lookup against `module.enums`).
+        // Functions / module-lets can be detached and walked freely against
+        // the rest of `module`. For impl methods we need `module.impls`
+        // visible during the walk (so `lookup_method_idx` works), so we
+        // extract one method body at a time via `std::mem::take` instead
+        // of detaching the whole impls vec.
         let mut functions = std::mem::take(&mut module.functions);
-        let mut impls = std::mem::take(&mut module.impls);
         let mut lets = std::mem::take(&mut module.lets);
 
         for func in &mut functions {
             resolve_function(func, &symbols, &module);
         }
-        for imp in &mut impls {
-            for func in &mut imp.functions {
-                resolve_function(func, &symbols, &module);
+        module.functions = functions;
+        // Method bodies are extracted one-at-a-time via mem::replace so
+        // `module.impls` stays attached for `lookup_method_idx` reads
+        // during the body walk. Indexing is loop-bound by construction;
+        // `.get_mut(...).unwrap_or_else(unreachable!())` would be the
+        // panic-free spelling but clippy's `unreachable` ban turns that
+        // into an `internal_error_type` push for an invariant the
+        // surrounding pass has just established. The tighter form is
+        // strictly safer.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "indices come from the bounds of the just-read .len() calls"
+        )]
+        for impl_idx in 0..module.impls.len() {
+            for fn_idx in 0..module.impls[impl_idx].functions.len() {
+                let mut taken = std::mem::replace(
+                    &mut module.impls[impl_idx].functions[fn_idx],
+                    placeholder_function(),
+                );
+                resolve_function(&mut taken, &symbols, &module);
+                module.impls[impl_idx].functions[fn_idx] = taken;
             }
         }
         for l in &mut lets {
             resolve_module_let(l, &symbols, &module);
         }
-
-        module.functions = functions;
-        module.impls = impls;
         module.lets = lets;
 
         Ok(module)
     }
 }
 
+mod lookups;
 mod symbols;
+
+use lookups::{lookup_method_idx, match_variant_idx, struct_field_idx};
 use symbols::ModuleSymbols;
 
 /// Whether a binding was introduced as a function parameter or as a
@@ -165,6 +183,19 @@ impl<'a> FnResolver<'a> {
     }
 }
 
+const fn placeholder_function() -> IrFunction {
+    IrFunction {
+        name: String::new(),
+        generic_params: Vec::new(),
+        params: Vec::new(),
+        return_type: None,
+        body: None,
+        extern_abi: None,
+        attributes: Vec::new(),
+        doc: None,
+    }
+}
+
 fn resolve_function(func: &mut IrFunction, symbols: &ModuleSymbols, module: &IrModule) {
     let mut r = FnResolver::new(symbols, module);
     for param in &mut func.params {
@@ -207,7 +238,17 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
                 resolve_expr(arg, r);
             }
         }
-        IrExpr::MethodCall { receiver, args, .. } => {
+        IrExpr::MethodCall {
+            receiver,
+            method,
+            method_idx,
+            dispatch,
+            args,
+            ..
+        } => {
+            if let Some(idx) = lookup_method_idx(dispatch, method, r.module) {
+                *method_idx = MethodIdx(idx);
+            }
             resolve_expr(receiver, r);
             for (_, arg) in args {
                 resolve_expr(arg, r);
@@ -420,36 +461,6 @@ fn resolve_match_arm(arm: &mut IrMatchArm, scrutinee_ty: &ResolvedType, r: &mut 
     }
     resolve_expr(&mut arm.body, r);
     r.pop_scope();
-}
-
-fn struct_field_idx(ty: &ResolvedType, field: &str, module: &IrModule) -> Option<u32> {
-    let &ResolvedType::Struct(sid) = ty else {
-        return None;
-    };
-    let s = module.get_struct(sid)?;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "field count is bounded upstream"
-    )]
-    s.fields
-        .iter()
-        .position(|f| f.name == field)
-        .map(|i| i as u32)
-}
-
-fn match_variant_idx(scrutinee_ty: &ResolvedType, variant: &str, module: &IrModule) -> Option<u32> {
-    let &ResolvedType::Enum(enum_id) = scrutinee_ty else {
-        return None;
-    };
-    let e = module.get_enum(enum_id)?;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "variant count is bounded upstream"
-    )]
-    e.variants
-        .iter()
-        .position(|v| v.name == variant)
-        .map(|i| i as u32)
 }
 
 fn resolve_path(path: &[String], r: &FnResolver<'_>) -> ReferenceTarget {

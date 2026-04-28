@@ -2610,6 +2610,7 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
             ty: num_ty.clone(),
         }),
         method: "scale".to_string(),
+        method_idx: formalang::ir::MethodIdx(0),
         args: vec![(
             Some("factor".to_string()),
             IrExpr::Literal {

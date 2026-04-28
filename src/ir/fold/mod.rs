@@ -106,12 +106,14 @@ impl ConstantFolder {
             IrExpr::MethodCall {
                 receiver,
                 method,
+                method_idx,
                 args,
                 dispatch,
                 ty,
             } => IrExpr::MethodCall {
                 receiver: Box::new(self.fold_expr(*receiver)),
                 method,
+                method_idx,
                 args: args
                     .into_iter()
                     .map(|(name, expr)| (name, self.fold_expr(expr)))

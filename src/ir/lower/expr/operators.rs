@@ -188,6 +188,7 @@ impl IrLowerer<'_> {
         IrExpr::MethodCall {
             receiver: Box::new(receiver_ir),
             method: method_name.to_string(),
+            method_idx: crate::ir::MethodIdx(0),
             args: lowered_args,
             dispatch,
             ty,
