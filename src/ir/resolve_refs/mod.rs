@@ -423,6 +423,7 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
         }
         IrExpr::For {
             var,
+            var_binding_id,
             collection,
             body,
             ..
@@ -430,6 +431,7 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             resolve_expr(collection, r);
             r.push_scope();
             let id = r.fresh();
+            *var_binding_id = id;
             r.bind(var.clone(), id, BindingKind::Local);
             resolve_expr(body, r);
             r.pop_scope();

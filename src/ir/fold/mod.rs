@@ -145,12 +145,14 @@ impl ConstantFolder {
             IrExpr::For {
                 var,
                 var_ty,
+                var_binding_id,
                 collection,
                 body,
                 ty,
             } => IrExpr::For {
                 var,
                 var_ty,
+                var_binding_id,
                 collection: Box::new(self.fold_expr(*collection)),
                 body: Box::new(self.fold_expr(*body)),
                 ty,

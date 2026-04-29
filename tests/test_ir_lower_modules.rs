@@ -2451,6 +2451,7 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
     let expr = IrExpr::For {
         var: "x".to_string(),
         var_ty: num_ty.clone(),
+        var_binding_id: formalang::ir::BindingId(0),
         collection: Box::new(IrExpr::Array {
             elements: vec![
                 IrExpr::Literal {

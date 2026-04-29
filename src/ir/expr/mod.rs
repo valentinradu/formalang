@@ -274,6 +274,11 @@ pub enum IrExpr {
         var: String,
         /// Loop variable type
         var_ty: ResolvedType,
+        /// Per-function-unique binding identifier for the loop
+        /// variable — paired with the [`Self::LetRef::binding_id`] on
+        /// references to `var` inside `body`. Lowering emits
+        /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
+        var_binding_id: BindingId,
         /// Collection being iterated (must be Array)
         collection: Box<Self>,
         /// Loop body

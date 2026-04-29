@@ -222,6 +222,7 @@ impl ConversionState {
             IrExpr::For {
                 var,
                 var_ty,
+                var_binding_id,
                 collection,
                 body,
                 ty,
@@ -234,6 +235,7 @@ impl ConversionState {
                 IrExpr::For {
                     var,
                     var_ty,
+                    var_binding_id,
                     collection: Box::new(new_collection),
                     body: Box::new(new_body),
                     ty,

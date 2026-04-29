@@ -290,12 +290,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
         IrExpr::For {
             var,
             var_ty,
+            var_binding_id,
             collection,
             body,
             ty,
         } => IrExpr::For {
             var,
             var_ty,
+            var_binding_id,
             collection: Box::new(eliminate_dead_code_expr(*collection)),
             body: Box::new(eliminate_dead_code_expr(*body)),
             ty,

@@ -56,6 +56,7 @@ impl IrLowerer<'_> {
         IrExpr::For {
             var: var.name.clone(),
             var_ty,
+            var_binding_id: crate::ir::BindingId(0),
             collection: Box::new(collection_ir),
             body: Box::new(body_ir.clone()),
             ty: ResolvedType::Array(Box::new(body_ir.ty().clone())),
