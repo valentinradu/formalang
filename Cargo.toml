@@ -1,6 +1,6 @@
 [package]
 name = "formalang"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 edition = "2021"
 # pin a minimum supported Rust version so downstream
 # users can detect toolchain incompatibility before a noisy build
