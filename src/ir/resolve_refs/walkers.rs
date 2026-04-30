@@ -2,8 +2,9 @@
 //! the `resolve_path` driver. Pulled out of `mod.rs` to keep the
 //! main pass file under the 500-LOC ceiling.
 
+use super::expr::resolve_expr;
 use super::lookups::match_variant_idx;
-use super::{resolve_expr, BindingKind, FnResolver};
+use super::{BindingKind, FnResolver};
 use crate::ir::{
     FunctionId, IrBlockStatement, IrMatchArm, ReferenceTarget, ResolvedType, VariantIdx,
 };

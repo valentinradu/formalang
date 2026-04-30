@@ -1,6 +1,7 @@
 use super::*;
 use crate::ast::Literal;
 use crate::compile_to_ir;
+use crate::ir::IrExpr;
 
 #[test]
 fn test_eliminate_constant_true_branch() -> Result<(), Box<dyn std::error::Error>> {
