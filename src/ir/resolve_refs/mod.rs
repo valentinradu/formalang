@@ -295,6 +295,12 @@ fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
                 resolve_expr(arg, r);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            resolve_expr(closure, r);
+            for (_, arg) in args {
+                resolve_expr(arg, r);
+            }
+        }
         IrExpr::MethodCall {
             receiver,
             method,

@@ -528,6 +528,12 @@ fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::i
                 visit(v);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            visit(closure);
+            for (_, v) in args {
+                visit(v);
+            }
+        }
         IrExpr::MethodCall { receiver, args, .. } => {
             visit(receiver);
             for (_, v) in args {
@@ -630,4 +636,77 @@ fn mc5_let_shadowing_blocks_env_rewrite() {
         .find_map(|f| f.body.as_ref())
         .expect("at least one lifted closure body");
     insta::assert_debug_snapshot!("mc5_let_shadowing", lifted_body);
+}
+
+/// Closure-application — `f(x)` where `f` is a closure-typed local
+/// binding. Lowers to [`IrExpr::CallClosure`] targeting the binding
+/// rather than [`IrExpr::FunctionCall`].
+#[test]
+fn closure_invocation_lowers_to_call_closure() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub fn run() -> I32 {
+            let f: I32 -> I32 = |x: I32| x + 1
+            f(5)
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let body = module
+        .functions
+        .iter()
+        .find(|f| f.name == "run")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("run body")?;
+    let IrExpr::Block { result, .. } = body else {
+        return Err(format!("expected Block, got {body:?}").into());
+    };
+    let IrExpr::CallClosure { closure, args, .. } = result.as_ref() else {
+        return Err(format!("expected CallClosure, got {result:?}").into());
+    };
+    if args.len() != 1 {
+        return Err(format!("expected 1 arg, got {}", args.len()).into());
+    }
+    let IrExpr::LetRef { name, .. } = closure.as_ref() else {
+        return Err(format!("expected LetRef closure, got {closure:?}").into());
+    };
+    if name != "f" {
+        return Err(format!("expected closure name 'f', got '{name}'").into());
+    }
+    Ok(())
+}
+
+/// Closure-application survives the closure-conversion pass: the
+/// `LetRef` inside [`IrExpr::CallClosure`] still points at the let
+/// binding, which now holds an [`IrExpr::ClosureRef`] value.
+#[test]
+fn closure_invocation_survives_closure_conv() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub fn run() -> I32 {
+            let f: I32 -> I32 = |x: I32| x + 1
+            f(5)
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
+    let converted = ClosureConversionPass::new()
+        .run(module)
+        .map_err(|e| format!("closure conversion: {e:?}"))?;
+    let body = converted
+        .functions
+        .iter()
+        .find(|f| f.name == "run")
+        .and_then(|f| f.body.as_ref())
+        .ok_or("run body")?;
+    let IrExpr::Block { result, .. } = body else {
+        return Err(format!("expected Block post-conversion, got {body:?}").into());
+    };
+    let IrExpr::CallClosure { closure, args, .. } = result.as_ref() else {
+        return Err(format!("expected CallClosure post-conversion, got {result:?}").into());
+    };
+    if args.len() != 1 {
+        return Err(format!("expected 1 arg, got {}", args.len()).into());
+    }
+    // closure stays a LetRef; the let binding holds the ClosureRef.
+    if !matches!(closure.as_ref(), IrExpr::LetRef { .. }) {
+        return Err(format!("expected LetRef closure post-conversion, got {closure:?}").into());
+    }
+    Ok(())
 }

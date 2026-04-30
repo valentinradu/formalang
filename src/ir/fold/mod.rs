@@ -109,6 +109,14 @@ impl ConstantFolder {
                     .collect(),
                 ty,
             },
+            IrExpr::CallClosure { closure, args, ty } => IrExpr::CallClosure {
+                closure: Box::new(self.fold_expr(*closure)),
+                args: args
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.fold_expr(expr)))
+                    .collect(),
+                ty,
+            },
             IrExpr::MethodCall {
                 receiver,
                 method,

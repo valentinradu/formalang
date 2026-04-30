@@ -155,6 +155,12 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
                 walk_expr_types(a, visit);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            walk_expr_types(closure, visit);
+            for (_, a) in args {
+                walk_expr_types(a, visit);
+            }
+        }
         IrExpr::MethodCall { receiver, args, .. } => {
             walk_expr_types(receiver, visit);
             for (_, a) in args {
@@ -388,6 +394,15 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
         }
         IrExpr::FunctionCall { args, ty, .. } => {
             visit(ty);
+            for (_, a) in args {
+                walk_expr_types_mut_inner(a, visit);
+            }
+        }
+        IrExpr::CallClosure {
+            closure, args, ty, ..
+        } => {
+            visit(ty);
+            walk_expr_types_mut_inner(closure, visit);
             for (_, a) in args {
                 walk_expr_types_mut_inner(a, visit);
             }

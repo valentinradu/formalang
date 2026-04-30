@@ -267,6 +267,14 @@ impl ConversionState {
                     .collect(),
                 ty,
             },
+            IrExpr::CallClosure { closure, args, ty } => IrExpr::CallClosure {
+                closure: Box::new(self.process(*closure, ctx)),
+                args: args
+                    .into_iter()
+                    .map(|(label, value)| (label, self.process(value, ctx)))
+                    .collect(),
+                ty,
+            },
             IrExpr::MethodCall {
                 receiver,
                 method,

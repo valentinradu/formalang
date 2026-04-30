@@ -290,6 +290,12 @@ fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
                 remap_expr(e, remap);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            remap_expr(closure, remap);
+            for (_, e) in args {
+                remap_expr(e, remap);
+            }
+        }
         IrExpr::MethodCall {
             receiver,
             args,

@@ -127,6 +127,8 @@ impl IrLowerer<'_> {
                 fields: named_fields,
                 ty: external_ty,
             }
+        } else if let Some(call) = self.try_lower_closure_invocation(path, args) {
+            call
         } else {
             let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
             let fn_name = path_strs.last().map_or("", std::string::String::as_str);
@@ -184,6 +186,63 @@ impl IrLowerer<'_> {
                 ty,
             }
         }
+    }
+
+    /// Detect when an `Invocation` whose path is a single segment
+    /// resolves to a closure-typed local binding rather than a top-
+    /// level function, and lower it as [`IrExpr::CallClosure`]
+    /// targeting that binding.
+    ///
+    /// Returns `None` when the path doesn't refer to a closure-typed
+    /// local — the caller falls through to the regular
+    /// [`IrExpr::FunctionCall`] path.
+    fn try_lower_closure_invocation(
+        &mut self,
+        path: &[crate::ast::Ident],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> Option<IrExpr> {
+        let [ident] = path else {
+            return None;
+        };
+        let name = &ident.name;
+        let local_ty = self.lookup_local_binding(name)?.clone();
+        let ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } = &local_ty
+        else {
+            return None;
+        };
+        let return_ty = (**return_ty).clone();
+        let expected_param_tys: Vec<(String, ResolvedType)> = param_tys
+            .iter()
+            .enumerate()
+            .map(|(i, (_, ty))| (format!("__closure_arg_{i}"), ty.clone()))
+            .collect();
+        let lowered_args: Vec<(Option<String>, IrExpr)> = args
+            .iter()
+            .enumerate()
+            .map(|(i, (arg_name, expr))| {
+                let saved_closure = self.expected_closure_type.take();
+                self.expected_closure_type = Self::expected_arg_closure_ty(
+                    &expected_param_tys,
+                    i,
+                    arg_name.as_ref(),
+                );
+                let lowered = self.lower_expr(expr);
+                self.expected_closure_type = saved_closure;
+                (arg_name.as_ref().map(|n| n.name.clone()), lowered)
+            })
+            .collect();
+        Some(IrExpr::CallClosure {
+            closure: Box::new(IrExpr::LetRef {
+                name: name.clone(),
+                binding_id: crate::ir::BindingId(0),
+                ty: local_ty,
+            }),
+            args: lowered_args,
+            ty: return_ty,
+        })
     }
 
     pub(super) fn lower_enum_instantiation(

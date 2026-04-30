@@ -319,6 +319,43 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
+    /// Indirect call of a closure-typed value: `f(x)` where `f` is a
+    /// closure-typed local binding (a parameter, a `let`, a struct
+    /// field, ...). The `closure` sub-expression evaluates to a
+    /// closure value (post-conversion: an [`Self::ClosureRef`] or any
+    /// expression that produces one); its lifted top-level function is
+    /// invoked indirectly with the captured environment + the explicit
+    /// arguments.
+    ///
+    /// Lowering only emits this variant after a path resolves to a
+    /// closure-typed binding rather than a top-level function (see the
+    /// AST→IR lowering of [`crate::ast::Expr::Invocation`]). For
+    /// statically-known top-level calls, [`Self::FunctionCall`] is
+    /// still produced.
+    ///
+    /// The closure-conversion pass walks into `closure` like any other
+    /// sub-expression — it does not need to rewrite the call site,
+    /// since the call shape is already "closure value + args".
+    /// Backends that target indirect-call ABIs (e.g. `WebAssembly`'s
+    /// `call_indirect`) read the funcref and env pointer out of the
+    /// closure value at the call site.
+    CallClosure {
+        /// Expression producing the closure value being invoked.
+        /// Typically an [`Self::LetRef`] / [`Self::Reference`] /
+        /// [`Self::FieldAccess`] whose type is
+        /// [`ResolvedType::Closure`].
+        closure: Box<Self>,
+        /// Arguments: `(optional_parameter_name, value)`. Mirrors
+        /// [`Self::FunctionCall::args`]; closures don't currently
+        /// carry parameter names so the optional name is always
+        /// `None` after lowering, but the structure is kept for
+        /// consistency.
+        args: Vec<(Option<String>, Self)>,
+        /// Resolved return type — the `return_ty` from the closure's
+        /// [`ResolvedType::Closure`] type.
+        ty: ResolvedType,
+    },
+
     /// Method call: `self.fill.sample(coords)`
     MethodCall {
         /// Receiver expression

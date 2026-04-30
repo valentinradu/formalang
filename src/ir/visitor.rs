@@ -185,6 +185,10 @@ pub fn walk_expr<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
 /// Walk all children of an expression.
 ///
 /// This is called by the default `visit_expr` implementation.
+#[expect(
+    clippy::too_many_lines,
+    reason = "exhaustive walk over every IrExpr variant; splitting hides which variants have which children"
+)]
 pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr) {
     match expr {
         IrExpr::Tuple { fields, .. } => {
@@ -247,6 +251,13 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
         }
 
         IrExpr::FunctionCall { args, .. } => {
+            for (_, arg) in args {
+                walk_expr(visitor, arg);
+            }
+        }
+
+        IrExpr::CallClosure { closure, args, .. } => {
+            walk_expr(visitor, closure);
             for (_, arg) in args {
                 walk_expr(visitor, arg);
             }

@@ -28,6 +28,7 @@ impl IrExpr {
             | Self::For { ty, .. }
             | Self::Match { ty, .. }
             | Self::FunctionCall { ty, .. }
+            | Self::CallClosure { ty, .. }
             | Self::MethodCall { ty, .. }
             | Self::Closure { ty, .. }
             | Self::ClosureRef { ty, .. }
@@ -55,6 +56,7 @@ impl IrExpr {
             | Self::For { ty, .. }
             | Self::Match { ty, .. }
             | Self::FunctionCall { ty, .. }
+            | Self::CallClosure { ty, .. }
             | Self::MethodCall { ty, .. }
             | Self::Closure { ty, .. }
             | Self::ClosureRef { ty, .. }
@@ -92,6 +94,7 @@ impl IrExpr {
             | Self::For { .. }
             | Self::Match { .. }
             | Self::FunctionCall { .. }
+            | Self::CallClosure { .. }
             | Self::MethodCall { .. }
             | Self::Closure { .. }
             | Self::ClosureRef { .. }

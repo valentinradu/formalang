@@ -87,6 +87,12 @@ pub(super) fn walk_expr(expr: &IrExpr, visit: &mut impl FnMut(&IrExpr)) {
                 walk_expr(e, visit);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            walk_expr(closure, visit);
+            for (_, e) in args {
+                walk_expr(e, visit);
+            }
+        }
         IrExpr::MethodCall { receiver, args, .. } => {
             walk_expr(receiver, visit);
             for (_, e) in args {
@@ -178,6 +184,12 @@ pub(super) fn iter_expr_children_mut(expr: &mut IrExpr) -> Vec<&mut IrExpr> {
             out.push(result.as_mut());
         }
         IrExpr::FunctionCall { args, .. } => {
+            for (_, e) in args {
+                out.push(e);
+            }
+        }
+        IrExpr::CallClosure { closure, args, .. } => {
+            out.push(closure.as_mut());
             for (_, e) in args {
                 out.push(e);
             }

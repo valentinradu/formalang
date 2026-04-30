@@ -263,6 +263,7 @@ fn test_no_fold_non_constant() -> Result<(), Box<dyn std::error::Error>> {
         | IrExpr::For { .. }
         | IrExpr::Match { .. }
         | IrExpr::FunctionCall { .. }
+        | IrExpr::CallClosure { .. }
         | IrExpr::MethodCall { .. }
         | IrExpr::Closure { .. }
         | IrExpr::ClosureRef { .. }

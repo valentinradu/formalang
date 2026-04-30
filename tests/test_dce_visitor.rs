@@ -917,6 +917,7 @@ impl IrVisitor for ExprCollector {
             IrExpr::For { .. } => "For",
             IrExpr::Match { .. } => "Match",
             IrExpr::FunctionCall { .. } => "FunctionCall",
+            IrExpr::CallClosure { .. } => "CallClosure",
             IrExpr::MethodCall { .. } => "MethodCall",
             IrExpr::DictLiteral { .. } => "DictLiteral",
             IrExpr::DictAccess { .. } => "DictAccess",

@@ -412,6 +412,9 @@ fn expr_has_closure(expr: &IrExpr) -> bool {
             scrutinee, arms, ..
         } => expr_has_closure(scrutinee) || arms.iter().any(|arm| expr_has_closure(&arm.body)),
         IrExpr::FunctionCall { args, .. } => args.iter().any(|(_, v)| expr_has_closure(v)),
+        IrExpr::CallClosure { closure, args, .. } => {
+            expr_has_closure(closure) || args.iter().any(|(_, v)| expr_has_closure(v))
+        }
         IrExpr::MethodCall { receiver, args, .. } => {
             expr_has_closure(receiver) || args.iter().any(|(_, v)| expr_has_closure(v))
         }

@@ -244,6 +244,12 @@ fn collect_free_refs(
                 collect_free_refs(a, bound, out, seen);
             }
         }
+        IrExpr::CallClosure { closure, args, .. } => {
+            collect_free_refs(closure, bound, out, seen);
+            for (_, a) in args {
+                collect_free_refs(a, bound, out, seen);
+            }
+        }
         IrExpr::MethodCall { receiver, args, .. } => {
             collect_free_refs(receiver, bound, out, seen);
             for (_, a) in args {

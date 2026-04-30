@@ -164,6 +164,15 @@ impl DeadCodeEliminator<'_> {
                     self.mark_used_in_expr(arg);
                 }
             }
+            IrExpr::CallClosure {
+                closure, args, ty, ..
+            } => {
+                self.mark_used_in_type(ty);
+                self.mark_used_in_expr(closure);
+                for (_, arg) in args {
+                    self.mark_used_in_expr(arg);
+                }
+            }
             IrExpr::MethodCall {
                 receiver,
                 args,

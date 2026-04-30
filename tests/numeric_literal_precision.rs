@@ -35,6 +35,7 @@ fn walk_for_literal(expr: &IrExpr) -> Option<Literal> {
         | IrExpr::For { .. }
         | IrExpr::Match { .. }
         | IrExpr::FunctionCall { .. }
+        | IrExpr::CallClosure { .. }
         | IrExpr::MethodCall { .. }
         | IrExpr::Closure { .. }
         | IrExpr::ClosureRef { .. }

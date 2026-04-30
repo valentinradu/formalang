@@ -2442,6 +2442,7 @@ impl IrVisitor for ExprCounter {
                 self.reference_count = self.reference_count.saturating_add(1);
             }
             IrExpr::FunctionCall { .. }
+            | IrExpr::CallClosure { .. }
             | IrExpr::MethodCall { .. }
             | IrExpr::DictLiteral { .. }
             | IrExpr::DictAccess { .. }
