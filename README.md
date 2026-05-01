@@ -31,7 +31,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.0.1-beta"
+formalang = "0.0.2-beta"
 ```
 
 Compile a source string:
@@ -42,7 +42,7 @@ use formalang::compile_to_ir;
 let source = r#"
     pub struct User {
         name: String,
-        age: Number
+        age: I32
     }
 "#;
 
@@ -58,26 +58,34 @@ println!("{}", module.structs[0].name); // User
 
 ```rust
 let text: String = "hello"
-let count: Number = 42
+let count: I32 = 42
+let big: I64 = 9_223_372_036_854_775_807
+let ratio: F64 = 3.14
+let small: F32 = 0.5F32          // type-suffix pins literal precision
 let flag: Boolean = true
 let logo: Path = /assets/logo.svg
 let pattern: Regex = r/[a-z]+/i
 let nothing: String? = nil       // optional; any type can be made optional with ?
 ```
 
+Numeric primitives are width-tagged: `I32`, `I64`, `F32`, `F64`. Unsuffixed
+integer literals default to `I32`; unsuffixed float literals default to
+`F64`. Suffix syntax is uppercase and adjacent to the digits (`42I64`,
+`3.14F32`).
+
 ### Structs
 
 ```rust
 pub struct Point {
-    x: Number,
-    y: Number
+    x: I32,
+    y: I32
 }
 
 pub struct User {
     name: String,
     email: String,
     nickname: String?,       // optional field
-    mut score: Number        // mutable field
+    mut score: I32        // mutable field
 }
 
 // Instantiate with named arguments
@@ -89,11 +97,11 @@ let u = User(name: "Alice", email: "alice@example.com", nickname: nil, score: 0)
 
 ```rust
 pub struct Counter {
-    value: Number
+    value: I32
 }
 
 impl Counter {
-    fn increment(self) -> Number {
+    fn increment(self) -> I32 {
         self.value + 1
     }
 
@@ -109,12 +117,12 @@ Every function parameter has a convention controlling how the argument is receiv
 
 ```rust
 // default: immutable; the callee reads the value
-fn area(radius: Number) -> Number {
+fn area(radius: I32) -> I32 {
     radius * radius
 }
 
 // mut: callee may mutate; argument binding must be let mut
-fn bump(mut n: Number) -> Number {
+fn bump(mut n: I32) -> I32 {
     n
 }
 
@@ -125,8 +133,8 @@ fn consume(sink label: String) -> String {
 
 // Self conventions work the same way
 impl Counter {
-    fn view(self) -> Number { self.value }         // default (immutable self)
-    fn increment(mut self) -> Number { self.value } // mut self
+    fn view(self) -> I32 { self.value }         // default (immutable self)
+    fn increment(mut self) -> I32 { self.value } // mut self
 }
 ```
 
@@ -141,20 +149,20 @@ pub trait Named {
 
 pub trait Shape {
     color: String
-    fn area(self) -> Number
+    fn area(self) -> I32
 }
 
 // Declare conformance
 pub struct Circle {
     name: String,
     color: String,
-    radius: Number
+    radius: I32
 }
 
 impl Named for Circle {}            // fields checked against struct definition
 
 impl Shape for Circle {
-    fn area(self) -> Number {
+    fn area(self) -> I32 {
         self.radius * self.radius   // simplified
     }
 }
@@ -176,7 +184,7 @@ pub enum Status {
 
 pub enum Message {
     text(content: String)
-    image(url: String, size: Number)
+    image(url: String, size: I32)
     quit
 }
 
@@ -190,8 +198,8 @@ let m: Message = .text(content: "hello")
 ```rust
 let x = 42
 let name: String = "Alice"
-pub let MAX: Number = 100
-let mut counter: Number = 0    // mutable binding
+pub let MAX: I32 = 100
+let mut counter: I32 = 0    // mutable binding
 ```
 
 ### Arrays, Dictionaries, Tuples
@@ -199,10 +207,10 @@ let mut counter: Number = 0    // mutable binding
 ```rust
 // Arrays
 let tags: [String] = ["a", "b", "c"]
-let matrix: [[Number]] = [[1, 2], [3, 4]]
+let matrix: [[I32]] = [[1, 2], [3, 4]]
 
 // Dictionaries
-let config: [String: Number] = ["timeout": 30, "retries": 3]
+let config: [String: I32] = ["timeout": 30, "retries": 3]
 let empty: [String: Boolean] = [:]
 
 // Tuples (all fields must be named)
@@ -241,13 +249,13 @@ Closure types describe a callable shape; closure expressions construct one. Both
 pub enum Event {
     pressed,
     textChanged(value: String),
-    resized(width: Number, height: Number)
+    resized(width: I32, height: I32)
 }
 
 pub struct Button<E> {
     onPress:  () -> E,                  // no parameters
     onChange: String -> E,              // single parameter
-    onResize: Number, Number -> E,      // multiple parameters
+    onResize: I32, I32 -> E,      // multiple parameters
     onSubmit: (String -> E)?            // optional closure
 }
 ```
@@ -261,15 +269,15 @@ let onChange = x -> .textChanged(value: x)
 let onResize = w, h -> .resized(width: w, height: h)
 
 // Pipe form (Rust-style); accepts explicit parameter types
-let increment = |n: Number| n + 1
-let combine   = |x: Number, y: Number| x + y
+let increment = |n: I32| n + 1
+let combine   = |x: I32, y: I32| x + y
 ```
 
 Closures capture values from their surrounding scope. The `ClosureConversionPass` lifts each closure into a top-level function plus a synthetic env struct, so backends only ever consume named functions.
 
 ```rust
-fn make_adder(sink n: Number) -> Number -> Number {
-    |x: Number| x + n           // captures n
+fn make_adder(sink n: I32) -> I32 -> I32 {
+    |x: I32| x + n           // captures n
 }
 
 let add5 = make_adder(n: 5)
@@ -279,7 +287,7 @@ Closure parameters carry the same conventions as regular function parameters (`m
 
 ```rust
 pub struct Form<E> {
-    onScale:   mut Number -> E,     // caller must pass a mutable binding
+    onScale:   mut I32 -> E,     // caller must pass a mutable binding
     onConsume: sink String -> E     // caller's binding is moved
 }
 ```
@@ -298,11 +306,11 @@ pub struct Pair<A, B> {
     second: B
 }
 
-pub trait Layout { width: Number }
+pub trait Layout { width: I32 }
 
 pub struct Container<T: Layout> {   // constrained type parameter
     items: [T],
-    gap: Number
+    gap: I32
 }
 
 pub enum Result<T, E> {
@@ -311,7 +319,7 @@ pub enum Result<T, E> {
 }
 
 let b = Box<String>(value: "hello")
-let r: Result<String, Number> = .ok(value: "success")
+let r: Result<String, I32> = .ok(value: "success")
 ```
 
 ### Destructuring
@@ -334,7 +342,7 @@ let (content) = some_text_message
 ```rust
 // Inline module
 pub mod geometry {
-    pub struct Point { x: Number, y: Number }
+    pub struct Point { x: I32, y: I32 }
     pub enum Direction { north, south, east, west }
 }
 
@@ -362,8 +370,8 @@ extern fn connect(url: String) -> Connection
 extern fn log(message: String)
 
 extern impl Canvas {
-    fn width(self) -> Number
-    fn height(self) -> Number
+    fn width(self) -> I32
+    fn height(self) -> I32
     fn clear(self)
 }
 ```
@@ -371,9 +379,9 @@ extern impl Canvas {
 ### Function overloading
 
 ```rust
-fn format(value: Number) -> String { "number" }
+fn format(value: I32) -> String { "number" }
 fn format(value: String) -> String { "string" }
-fn format(value: Number, precision: Number) -> String { "precise" }
+fn format(value: I32, precision: I32) -> String { "precise" }
 ```
 
 The compiler resolves overloads by the named-argument label set. Ambiguous or unresolvable calls are compile errors.

@@ -1,6 +1,6 @@
 # IR Reference
 
-**Last Updated**: 2026-04-26
+**Last Updated**: 2026-05-01
 
 This document provides a complete reference for the FormaLang Intermediate
 Representation (IR). The IR is the recommended output for building code
@@ -78,7 +78,7 @@ The `SymbolTable` (built by the semantic analyzer) and the `IrModule`
 (produced by IR lowering) carry overlapping definitions by design:
 
 - `SymbolTable` keys everything by **name** and stores types as **strings**
-  (e.g. `"User"`, `"[Number]?"`). It is the authoritative view for the
+  (e.g. `"User"`, `"[I32]?"`). It is the authoritative view for the
   validation passes and for LSP-style tooling that operates at the source
   level.
 - `IrModule` keys everything by **typed IDs** (`StructId`, `TraitId`,
@@ -99,7 +99,7 @@ use formalang::compile_to_ir;
 let source = r#"
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 "#;
 
@@ -377,7 +377,7 @@ names, resolved types use IDs that directly reference definitions.
 
 ```rust
 pub enum ResolvedType {
-    /// Primitive type (String, Number, Boolean, Path, Regex)
+    /// Primitive type (String, I32, I64, F32, F64, Boolean, Path, Regex, Never)
     Primitive(PrimitiveType),
 
     /// Reference to a struct definition
@@ -402,7 +402,7 @@ pub enum ResolvedType {
     /// Named tuple type: (name1: T1, name2: T2)
     Tuple(Vec<(String, ResolvedType)>),
 
-    /// Generic type instantiation: Box<String> or Option<Number>
+    /// Generic type instantiation: Box<String> or Option<I32>
     Generic {
         /// The generic struct or enum being instantiated.
         base: GenericBase,
@@ -463,24 +463,28 @@ pub enum GenericBase {
 | FormaLang Type | ResolvedType |
 | -------------- | ------------ |
 | `String` | `Primitive(PrimitiveType::String)` |
-| `Number` | `Primitive(PrimitiveType::Number)` |
+| `I32` / `I64` | `Primitive(PrimitiveType::I32)` / `Primitive(PrimitiveType::I64)` |
+| `F32` / `F64` | `Primitive(PrimitiveType::F32)` / `Primitive(PrimitiveType::F64)` |
 | `Boolean` | `Primitive(PrimitiveType::Boolean)` |
+| `Path` | `Primitive(PrimitiveType::Path)` |
+| `Regex` | `Primitive(PrimitiveType::Regex)` |
+| `Never` | `Primitive(PrimitiveType::Never)` |
 | `User` (local struct) | `Struct(StructId(n))` |
 | `Named` (local trait) | `Trait(TraitId(n))` |
 | `Status` (local enum) | `Enum(EnumId(n))` |
 | `[String]` | `Array(Box::new(Primitive(String)))` |
-| `0..10` | `Range(Box::new(Primitive(Number)))` |
+| `0..10` | `Range(Box::new(Primitive(I32)))` |
 | `String?` | `Optional(Box::new(Primitive(String)))` |
-| `[[Number]]` | `Array(Box::new(Array(Box::new(Primitive(Number)))))` |
+| `[[I32]]` | `Array(Box::new(Array(Box::new(Primitive(I32)))))` |
 | `Box<String>` | `Generic { base: GenericBase::Struct(StructId(n)), args: [Primitive(String)] }` |
-| `Option<Number>` | `Generic { base: GenericBase::Enum(EnumId(n)), args: [Primitive(Number)] }` |
-| `(x: Number, y: Number)` | `Tuple(vec![("x", Primitive(Number)), ("y", Primitive(Number))])` |
+| `Option<I32>` | `Generic { base: GenericBase::Enum(EnumId(n)), args: [Primitive(I32)] }` |
+| `(x: I32, y: I32)` | `Tuple(vec![("x", Primitive(I32)), ("y", Primitive(I32))])` |
 | `T` (in generic) | `TypeParam("T")` |
 | `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
 | `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
-| `[String: Number]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(Number) }` |
-| `String, Number -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(Number))], return_ty: Primitive(Boolean) }` |
-| `mut Number -> Boolean` | `Closure { param_tys: [(Mut, Primitive(Number))], return_ty: Primitive(Boolean) }` |
+| `[String: I32]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(I32) }` |
+| `String, I32 -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(I32))], return_ty: Primitive(Boolean) }` |
+| `mut I32 -> Boolean` | `Closure { param_tys: [(Mut, Primitive(I32))], return_ty: Primitive(Boolean) }` |
 | `sink String -> Boolean` | `Closure { param_tys: [(Sink, Primitive(String))], return_ty: Primitive(Boolean) }` |
 
 ### Display Names
@@ -494,7 +498,7 @@ impl ResolvedType {
 // Example usage
 let ty = &field.ty;
 println!("Field type: {}", ty.display_name(&module));
-// Output: "[String]" or "User" or "Box<Number>"
+// Output: "[String]" or "User" or "Box<I32>"
 ```
 
 ## Definition Types
@@ -510,7 +514,7 @@ pub struct IrStruct {
     pub visibility: Visibility,
 
     /// Traits implemented by this struct, with optional generic-trait
-    /// args (`impl Container<Number> for Foo` → entry with non-empty
+    /// args (`impl Container<I32> for Foo` → entry with non-empty
     /// args). Empty args means a non-generic trait.
     pub traits: Vec<IrTraitRef>,
 
@@ -679,7 +683,7 @@ pub struct IrGenericParam {
     /// Trait constraints. Each entry carries the constrained trait
     /// id plus zero or more concrete arg types — empty when the
     /// trait isn't generic (`T: Container`), populated for
-    /// generic-trait constraints (`T: Container<Number>`).
+    /// generic-trait constraints (`T: Container<I32>`).
     pub constraints: Vec<IrTraitRef>,
 }
 ```
@@ -710,51 +714,151 @@ impl IrTraitRef {
 Every expression carries its resolved type in the `ty` field. This eliminates
 the need for code generators to re-infer types.
 
+Several expression variants also carry **typed-id payloads**
+(`ReferenceTarget`, `BindingId`, `FieldIdx`, `VariantIdx`, `MethodIdx`,
+`FunctionId`, `DispatchKind`). Lowering emits placeholder `0`-valued ids
+for these slots and the optional `ResolveReferencesPass` rewrites them.
+Backends that consume integer-indexed code (wasm, JVM, native) should
+run that pass; backends that re-walk the module by name can skip it.
+
+### ReferenceTarget
+
+Identifies what an `IrExpr::Reference` resolves to. Pre-resolve, every
+reference carries `Unresolved`; `ResolveReferencesPass` rewrites it to
+the matching variant. Backends dispatch on the variant directly without
+re-walking module symbol tables. The original `path` is preserved
+alongside for diagnostics.
+
+```rust
+pub enum ReferenceTarget {
+    /// A standalone function (resolved against `IrModule::functions`).
+    Function(FunctionId),
+    /// A struct definition used as a value or type.
+    Struct(StructId),
+    /// An enum definition.
+    Enum(EnumId),
+    /// A trait definition.
+    Trait(TraitId),
+    /// A module-scope `let` binding.
+    ModuleLet(LetId),
+    /// A function-local `let` binding (introduced by `IrBlockStatement::Let`).
+    Local(BindingId),
+    /// A function parameter (introduced by `IrFunctionParam`).
+    Param(BindingId),
+    /// A reference into another module that has not yet been linked
+    /// (cross-module linking is per-backend).
+    External {
+        module_path: Vec<String>,
+        name: String,
+        kind: ImportedKind,
+    },
+    /// Pre-`ResolveReferencesPass` placeholder; backends should never see it.
+    Unresolved,
+}
+```
+
+### DispatchKind
+
+How a method call should be dispatched.
+
+```rust
+pub enum DispatchKind {
+    /// Direct call on a known concrete type — no runtime lookup needed.
+    Static {
+        impl_id: ImplId,
+    },
+    /// Trait method call through a generic type parameter or trait object.
+    /// Monomorphisation devirtualises these on concrete receivers; surviving
+    /// `Virtual` calls require a vtable in the target.
+    Virtual {
+        trait_id: TraitId,
+        method_name: String,
+    },
+}
+```
+
 ### IrExpr
 
 ```rust
 pub enum IrExpr {
-    /// Literal value (string, number, boolean, etc.)
+    /// Literal value: string, number, boolean, regex, path, nil
     Literal {
         value: Literal,
         ty: ResolvedType,
     },
 
-    /// Struct instantiation: User(name: "Alice", age: 30)
+    /// Struct instantiation: `User(name: "Alice", age: 30)`
     StructInst {
+        /// `None` for external structs — read `ty` instead.
         struct_id: Option<StructId>,
+        /// Generic type args (e.g., `[String]` for `Box<String>`).
         type_args: Vec<ResolvedType>,
-        fields: Vec<(String, IrExpr)>,
+        /// Fields: `(name, field_idx, value)`. `field_idx` is the position
+        /// in the target `IrStruct.fields`; lowering emits `FieldIdx(0)`
+        /// and `ResolveReferencesPass` overwrites it.
+        fields: Vec<(String, FieldIdx, IrExpr)>,
         ty: ResolvedType,
     },
 
-    /// Enum variant instantiation: Status.active or .active
+    /// Enum variant instantiation: `Status::Active` or `.Active`
     EnumInst {
         enum_id: Option<EnumId>,
         variant: String,
-        fields: Vec<(String, IrExpr)>,
+        /// Variant index in the target `IrEnum.variants`.
+        variant_idx: VariantIdx,
+        /// Associated data: `(name, field_idx, value)`.
+        fields: Vec<(String, FieldIdx, IrExpr)>,
         ty: ResolvedType,
     },
 
-    /// Array literal: [1, 2, 3]
+    /// Array literal: `[1, 2, 3]`
     Array {
         elements: Vec<IrExpr>,
         ty: ResolvedType,
     },
 
-    /// Tuple literal: (x: 1, y: 2)
+    /// Tuple literal: `(x: 1, y: 2)`
     Tuple {
         fields: Vec<(String, IrExpr)>,
         ty: ResolvedType,
     },
 
-    /// Variable or field reference
+    /// Variable or field reference.
     Reference {
+        /// Original source path (preserved for diagnostics).
         path: Vec<String>,
+        /// Resolved target. `Unresolved` pre-`ResolveReferencesPass`.
+        target: ReferenceTarget,
         ty: ResolvedType,
     },
 
-    /// Binary operation: a + b, x == y, p && q
+    /// `self.field` reference within an impl block.
+    SelfFieldRef {
+        field: String,
+        /// Position in the impl's struct's `fields`.
+        field_idx: FieldIdx,
+        ty: ResolvedType,
+    },
+
+    /// Field access on an arbitrary expression: `(a + b).len`.
+    FieldAccess {
+        object: Box<IrExpr>,
+        field: String,
+        field_idx: FieldIdx,
+        ty: ResolvedType,
+    },
+
+    /// Reference to a function-local `let` binding by name.
+    /// Module-scope `let`s use `Reference` with `ReferenceTarget::ModuleLet`.
+    LetRef {
+        name: String,
+        /// Per-function-unique id, paired with the introducing
+        /// `IrBlockStatement::Let::binding_id`.
+        binding_id: BindingId,
+        ty: ResolvedType,
+    },
+
+    /// Binary operation: `a + b`, `x == y`, `p && q`.
     BinaryOp {
         left: Box<IrExpr>,
         op: BinaryOperator,
@@ -762,7 +866,14 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Conditional expression: if cond { a } else { b }
+    /// Unary operation: `-x`, `!flag`.
+    UnaryOp {
+        op: UnaryOperator,
+        operand: Box<IrExpr>,
+        ty: ResolvedType,
+    },
+
+    /// Conditional expression: `if cond { a } else { b }`.
     If {
         condition: Box<IrExpr>,
         then_branch: Box<IrExpr>,
@@ -770,43 +881,126 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// For loop: for item in items { body }
+    /// For loop: `for item in items { body }`.
     For {
         var: String,
         var_ty: ResolvedType,
+        /// Per-function-unique id for the loop variable, paired with
+        /// `LetRef::binding_id` on references to `var` inside `body`.
+        var_binding_id: BindingId,
         collection: Box<IrExpr>,
         body: Box<IrExpr>,
+        /// `Array(body_type)`.
         ty: ResolvedType,
     },
 
-    /// Match expression: match x { A => ..., B => ... }
+    /// Match expression: `match x { A => ..., B => ... }`.
     Match {
         scrutinee: Box<IrExpr>,
         arms: Vec<IrMatchArm>,
         ty: ResolvedType,
     },
 
-    /// Closure expression: x, y -> x + y
-    ///
-    /// Each element of `params` is `(convention, name, type)`.
-    /// Convention constrains the **caller** — `Mut` requires mutable arg,
-    /// `Sink` consumes the caller's binding.
-    ///
-    /// `captures` lists every free variable the closure body
-    /// references that's bound in an enclosing scope, with the
-    /// outer binding's `ParamConvention` (`Let` for plain immutable
-    /// captures) and resolved type. Backends can use this to emit
-    /// capture-environment structs or reject closures that capture
-    /// values whose lifetime the target language can't express.
-    Closure {
-        params: Vec<(ParamConvention, String, ResolvedType)>,
-        captures: Vec<(String, ParamConvention, ResolvedType)>,
-        body: Box<IrExpr>,
-        ty: ResolvedType,    // ResolvedType::Closure { param_tys, return_ty }
+    /// Direct call to a top-level function: `sin(angle: x)` or
+    /// `builtin::math::sin(angle: x)`. For closure-typed locals, see
+    /// `CallClosure`.
+    FunctionCall {
+        /// Function path (preserved for diagnostics and as a fallback
+        /// when resolution fails — e.g. cross-module calls).
+        path: Vec<String>,
+        /// Resolved target. `None` for genuinely external paths or when
+        /// resolution couldn't bind. Backends key on this id to dispatch
+        /// directly without re-walking `IrModule.functions`.
+        function_id: Option<FunctionId>,
+        /// `(optional_parameter_name, value)`.
+        args: Vec<(Option<String>, IrExpr)>,
+        ty: ResolvedType,
     },
 
-    // ... (additional variants: FunctionCall, MethodCall, FieldAccess,
-    //      SelfFieldRef, LetRef, DictLiteral, DictAccess, UnaryOp, Block)
+    /// Indirect call of a closure-typed value: `f(x)` where `f` is a
+    /// closure-typed local (parameter, `let`, struct field, ...).
+    /// Lowering emits this when a path resolves to a closure-typed
+    /// binding rather than a top-level function.
+    CallClosure {
+        /// Expression producing the closure value (typically a `LetRef`,
+        /// `Reference`, `FieldAccess`, or post-conversion `ClosureRef`).
+        closure: Box<IrExpr>,
+        /// Closures don't currently carry parameter names, so the optional
+        /// name is always `None`; the structure mirrors `FunctionCall::args`.
+        args: Vec<(Option<String>, IrExpr)>,
+        /// `return_ty` from the closure type.
+        ty: ResolvedType,
+    },
+
+    /// Method call: `self.fill.sample(coords)`.
+    MethodCall {
+        receiver: Box<IrExpr>,
+        method: String,
+        /// Method position: index into the impl's `functions` for `Static`,
+        /// or into the trait's `methods` for `Virtual`.
+        method_idx: MethodIdx,
+        args: Vec<(Option<String>, IrExpr)>,
+        dispatch: DispatchKind,
+        ty: ResolvedType,
+    },
+
+    /// Closure expression: `|x: f32, y: f32| x + y`.
+    ///
+    /// Convention on each parameter constrains the **caller** of the
+    /// closure (`Mut` requires a mutable argument; `Sink` moves it).
+    ///
+    /// `captures` lists every free variable referenced by the body that's
+    /// bound in an enclosing scope. Each capture entry is
+    /// `(outer_binding_id, name, capture_mode, resolved_type)`. The mode
+    /// mirrors the outer binding's `ParamConvention` (or `Let` for plain
+    /// immutable captures) so backends can choose copy/move/reference/sink
+    /// semantics. Capture entries are deduplicated by name and ordered by
+    /// the first reference encountered during the body walk. Both `params`
+    /// and `captures` carry `BindingId`s assigned by `ResolveReferencesPass`.
+    Closure {
+        params: Vec<(ParamConvention, BindingId, String, ResolvedType)>,
+        captures: Vec<(BindingId, String, ParamConvention, ResolvedType)>,
+        body: Box<IrExpr>,
+        /// `ResolvedType::Closure { param_tys, return_ty }`.
+        ty: ResolvedType,
+    },
+
+    /// Reference to a lifted closure: a top-level function paired with a
+    /// runtime environment value carrying its captures.
+    ///
+    /// Produced by `ClosureConversionPass`. After that pass runs, every
+    /// `IrExpr::Closure` has been replaced by a `ClosureRef` whose
+    /// `funcref` names the lifted top-level function (its first parameter
+    /// is the env struct, followed by the original closure parameters)
+    /// and whose `env_struct` is an expression constructing the
+    /// corresponding capture-environment `IrStruct`. Backends can render
+    /// this as a function-pointer / environment pair (e.g. `funcref` +
+    /// `call_indirect` in WebAssembly).
+    ClosureRef {
+        funcref: Vec<String>,
+        env_struct: Box<IrExpr>,
+        ty: ResolvedType,
+    },
+
+    /// Dictionary literal: `["key": value, ...]`.
+    DictLiteral {
+        entries: Vec<(IrExpr, IrExpr)>,
+        ty: ResolvedType,
+    },
+
+    /// Dictionary access: `dict["key"]` or `dict[index]`.
+    DictAccess {
+        dict: Box<IrExpr>,
+        key: Box<IrExpr>,
+        ty: ResolvedType,
+    },
+
+    /// Block expression: `{ let x = 1; let y = 2; x + y }`.
+    Block {
+        statements: Vec<IrBlockStatement>,
+        result: Box<IrExpr>,
+        ty: ResolvedType,
+    },
 }
 ```
 
@@ -816,7 +1010,7 @@ The `ty` field is guaranteed correct after lowering:
 
 | Expression | Type |
 | ---------- | ---- |
-| `Literal { value: Number(_), .. }` | `Primitive(Number)` |
+| `Literal { value: Number(_), .. }` | `Primitive(I32 / I64 / F32 / F64)` — picked from the literal's suffix or source-syntax default (integer → `I32`, float → `F64`) |
 | `Literal { value: String(_), .. }` | `Primitive(String)` |
 | `Literal { value: Boolean(_), .. }` | `Primitive(Boolean)` |
 | `BinaryOp { op: Add/Sub/Mul/Div/Mod, .. }` | Same as operands |
@@ -852,14 +1046,55 @@ match ty {
 
 ```rust
 pub struct IrMatchArm {
-    /// Variant name being matched
+    /// Variant name being matched (empty for wildcard); preserved
+    /// alongside `variant_idx` for diagnostics.
     pub variant: String,
 
-    /// Bindings for associated data: (name, type)
-    pub bindings: Vec<(String, ResolvedType)>,
+    /// Position of the matched variant in the scrutinee enum's `variants`
+    /// vector. Lowering emits `VariantIdx(0)` and `ResolveReferencesPass`
+    /// overwrites it.
+    pub variant_idx: VariantIdx,
+
+    /// Whether this is a wildcard (`_`).
+    pub is_wildcard: bool,
+
+    /// Bindings for associated data: `(name, binding_id, type)`. Each
+    /// `binding_id` is a fresh per-function id introduced by the arm —
+    /// backends key on it to reach the slot the arm writes the payload
+    /// into. Lowering emits `BindingId(0)` and `ResolveReferencesPass`
+    /// overwrites it.
+    pub bindings: Vec<(String, BindingId, ResolvedType)>,
 
     /// Body expression
     pub body: IrExpr,
+}
+```
+
+### IrBlockStatement
+
+Statements inside an `IrExpr::Block`.
+
+```rust
+pub enum IrBlockStatement {
+    /// Let binding: `let x = expr` or `let mut x = expr`.
+    Let {
+        /// Per-function-unique id paired with `LetRef::binding_id` on
+        /// references inside the block. Lowering emits `BindingId(0)`
+        /// and `ResolveReferencesPass` overwrites it.
+        binding_id: BindingId,
+        name: String,
+        mutable: bool,
+        ty: Option<ResolvedType>,
+        value: IrExpr,
+    },
+    /// Assignment: `x = expr`.
+    Assign {
+        /// Variable or field path being written.
+        target: IrExpr,
+        value: IrExpr,
+    },
+    /// Expression evaluated for its side effects.
+    Expr(IrExpr),
 }
 ```
 
@@ -1139,7 +1374,7 @@ assert_eq!(counter.enum_count, 1);
 ```formalang
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 ```
 
@@ -1160,7 +1395,7 @@ IrModule
     |   |   +-- default: None
     |   +-- [1] IrField
     |       +-- name: "age"
-    |       +-- ty: Primitive(Number)
+    |       +-- ty: Primitive(I32)
     |       +-- mutable: false
     |       +-- optional: false
     |       +-- default: None
@@ -1213,7 +1448,7 @@ pub trait Named {
 
 pub struct User: Named {
     name: String,
-    age: Number
+    age: I32
 }
 ```
 
@@ -1239,7 +1474,7 @@ IrModule
     +-- traits: [TraitId(0)]        // <-- linked to Named trait
     +-- fields:
     |   +-- [0] IrField { name: "name", ty: Primitive(String), ... }
-    |   +-- [1] IrField { name: "age", ty: Primitive(Number), ... }
+    |   +-- [1] IrField { name: "age", ty: Primitive(I32), ... }
     +-- generic_params: []
 ```
 
@@ -1333,15 +1568,15 @@ IrModule
 
 ```formalang
 pub struct Counter {
-    count: Number
+    count: I32
 }
 
 impl Counter {
-    fn increment(self) -> Number {
+    fn increment(self) -> I32 {
         self.count + 1
     }
 
-    fn reset(mut self) -> Number {
+    fn reset(mut self) -> I32 {
         0
     }
 }
@@ -1355,7 +1590,7 @@ IrModule
 |   +-- name: "Counter"
 
 |   +-- fields:
-|       +-- [0] IrField { name: "count", ty: Primitive(Number) }
+|       +-- [0] IrField { name: "count", ty: Primitive(I32) }
 |
 +-- impls[0]: IrImpl
     +-- target: ImplTarget::Struct(StructId(0))
@@ -1364,19 +1599,19 @@ IrModule
         |   +-- name: "increment"
         
         |   +-- params: [IrFunctionParam { name: "self", ty: None, convention: Let }]
-        |   +-- return_type: Some(Primitive(Number))
+        |   +-- return_type: Some(Primitive(I32))
         |   +-- body: Some(IrExpr::BinaryOp {
-        |           left: IrExpr::Reference { path: ["self", "count"], ty: Primitive(Number) },
+        |           left: IrExpr::Reference { path: ["self", "count"], ty: Primitive(I32) },
         |           op: Add,
-        |           right: IrExpr::Literal { value: Number(1.0), ty: Primitive(Number) },
-        |           ty: Primitive(Number)
+        |           right: IrExpr::Literal { value: Number(NumberLiteral { value: NumberValue::Integer(1), .. }), ty: Primitive(I32) },
+        |           ty: Primitive(I32)
         |       })
         +-- [1] IrFunction
             +-- name: "reset"
         
             +-- params: [IrFunctionParam { name: "self", ty: None, convention: Mut }]
-            +-- return_type: Some(Primitive(Number))
-            +-- body: Some(IrExpr::Literal { value: Number(0.0), ty: Primitive(Number) })
+            +-- return_type: Some(Primitive(I32))
+            +-- body: Some(IrExpr::Literal { value: Number(NumberLiteral { value: NumberValue::Integer(0), .. }), ty: Primitive(I32) })
 ```
 
 ### Match Expression
@@ -1386,7 +1621,7 @@ IrModule
 ```formalang
 pub enum Option {
     none,
-    some(value: Number)
+    some(value: I32)
 }
 
 pub fn describe(opt: Option) -> String {
@@ -1414,22 +1649,35 @@ IrModule
     |   +-- [0] IrFunctionParam { name: "opt", ty: Some(Enum(EnumId(0))), convention: Let }
     +-- return_type: Some(Primitive(String))
     +-- body: Some(IrExpr::Match {
-            scrutinee: IrExpr::Reference { path: ["opt"], ty: Enum(EnumId(0)) },
+            scrutinee: IrExpr::Reference {
+                path: ["opt"],
+                target: ReferenceTarget::Param(BindingId(0)),
+                ty: Enum(EnumId(0))
+            },
             arms: [
                 IrMatchArm {
                     variant: "none",
+                    variant_idx: VariantIdx(0),
+                    is_wildcard: false,
                     bindings: [],
                     body: IrExpr::Literal { value: String("Nothing"), ty: Primitive(String) }
                 },
                 IrMatchArm {
                     variant: "some",
-                    bindings: [("value", Primitive(Number))],
+                    variant_idx: VariantIdx(1),
+                    is_wildcard: false,
+                    bindings: [("value", BindingId(1), Primitive(I32))],
                     body: IrExpr::Literal { value: String("Got value"), ty: Primitive(String) }
                 }
             ],
             ty: Primitive(String)
         })
 ```
+
+> **Note**: typed-id values like `BindingId`, `VariantIdx`, `FieldIdx`,
+> `MethodIdx`, and the `target` field on `Reference` are populated by
+> `ResolveReferencesPass`. Pre-pass (raw lowering output), they carry
+> `0` / `Unresolved` placeholders.
 
 ### For Expression
 
@@ -1454,8 +1702,17 @@ IrModule
     +-- body: Some(IrExpr::For {
             var: "tag",
             var_ty: Primitive(String),
-            collection: IrExpr::Reference { path: ["tags"], ty: Array(Primitive(String)) },
-            body: IrExpr::Reference { path: ["tag"], ty: Primitive(String) },
+            var_binding_id: BindingId(1),
+            collection: IrExpr::Reference {
+                path: ["tags"],
+                target: ReferenceTarget::Param(BindingId(0)),
+                ty: Array(Primitive(String))
+            },
+            body: IrExpr::LetRef {
+                name: "tag",
+                binding_id: BindingId(1),
+                ty: Primitive(String)
+            },
             ty: Array(Primitive(String))
         })
 ```
@@ -1491,7 +1748,8 @@ impl<'a> TypeScriptGenerator<'a> {
         match ty {
             ResolvedType::Primitive(p) => match p {
                 PrimitiveType::String => "string".to_string(),
-                PrimitiveType::Number => "number".to_string(),
+                PrimitiveType::I32 | PrimitiveType::I64 |
+                PrimitiveType::F32 | PrimitiveType::F64 => "number".to_string(),
                 PrimitiveType::Boolean => "boolean".to_string(),
                 PrimitiveType::Path => "string".to_string(),
                 PrimitiveType::Regex => "RegExp".to_string(),
@@ -1656,7 +1914,7 @@ pub trait Named {
 
 pub struct User: Named {
     name: String,
-    age: Number,
+    age: I32,
     email: String?
 }
 

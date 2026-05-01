@@ -55,10 +55,10 @@ Control export visibility with the `pub` keyword:
 pub struct User { name: String }
 pub trait Named { name: String }
 pub enum Status { active, inactive }
-pub let MAX_USERS: Number = 100
+pub let MAX_USERS: I32 = 100
 
 // Private - module-local only (default)
-struct Internal { id: Number }
+struct Internal { id: I32 }
 trait Helper { key: String }
 enum State { ready, processing }
 let secret_key: String = "xyz"
@@ -84,12 +84,42 @@ fn       self
 ```formalang
 pub struct Primitives {
   text: String,           // Text data
-  count: Number,          // Numeric values (int or float)
+  count: I32,             // 32-bit signed integer
+  amount: F64,            // 64-bit IEEE 754 float
   active: Boolean,        // true or false
   logo: Path,             // File/resource paths
   pattern: Regex          // Regular expressions
 }
 ```
+
+### Numeric Types
+
+FormaLang has four width-tagged numeric primitives instead of a single
+generic `Number` type. Backends emit native instructions directly without
+guessing precision.
+
+| Type  | Range / shape                        |
+| ----- | ------------------------------------ |
+| `I32` | 32-bit signed integer (default for unsuffixed integer literals) |
+| `I64` | 64-bit signed integer                |
+| `F32` | 32-bit IEEE 754 float                |
+| `F64` | 64-bit IEEE 754 float (default for unsuffixed float literals) |
+
+Numeric literals can carry an uppercase suffix to pin the type at the
+literal site:
+
+```formalang
+let a = 42        // I32 (integer-syntax default)
+let b = 42I64     // I64
+let c = 3.14      // F64 (float-syntax default)
+let d = 3.14F32   // F32
+
+let big: I64 = 9_223_372_036_854_775_807
+let tiny: F32 = 0.5F32
+```
+
+Suffix range checks happen at compile time; literals that don't fit
+their declared / suffixed type are a compile error.
 
 ### Never Type
 
@@ -107,9 +137,9 @@ Arrays hold multiple values of the same type:
 ```formalang
 pub struct Collections {
   names: [String],             // Variable-length array of strings
-  scores: [Number],            // Variable-length array of numbers
+  scores: [I32],               // Variable-length array of integers
   flags: [Boolean],            // Variable-length array of booleans
-  matrix: [[Number]],          // Nested arrays
+  matrix: [[I32]],          // Nested arrays
   users: [User],               // Array of custom types
 }
 
@@ -149,24 +179,24 @@ Key-value mappings using bracket syntax with colon:
 
 ```formalang
 pub struct AppConfig {
-  settings: [String: Number],        // String keys to Number values
-  scores: [Number: String],          // Number keys to String values
+  settings: [String: I32],        // String keys to I32 values
+  scores: [I32: String],          // I32 keys to String values
   cache: [String: User],             // String keys to custom types
   assets: [Path: String]             // Path keys to String values
 }
 
 // Dictionary literals (string keys must be quoted)
-pub let settings: [String: Number] = ["timeout": 30, "maxRetries": 3]
-pub let scores: [Number: String] = [100: "perfect", 95: "excellent"]
+pub let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
+pub let scores: [I32: String] = [100: "perfect", 95: "excellent"]
 pub let assets: [Path: String] = [/logo.svg: "icon", /bg.png: "background"]
 pub let empty: [String: Boolean] = [:]
 ```
 
 **Rules**:
 
-- Keys can be any compiler-supported type (String, Number, Path, enum, etc.)
+- Keys can be any compiler-supported type (String, I32, Path, enum, etc.)
 - String keys must be quoted in literals: `["key": value]`
-- Number keys are unquoted: `[42: value]`
+- Numeric keys are unquoted: `[42: value]`
 - Path keys use path literal syntax: `[/path: value]`
 - Empty dict: `[:]`
 - No destructuring support for dictionaries
@@ -177,8 +207,8 @@ Named tuples group related values with field names:
 
 ```formalang
 pub struct Config {
-  person: (name: String, age: Number),
-  point: (x: Number, y: Number),
+  person: (name: String, age: I32),
+  point: (x: I32, y: I32),
   nested: (user: (first: String, last: String), active: Boolean)
 }
 
@@ -217,10 +247,10 @@ pub struct Controls<E> {
   onChange: String -> E,
 
   // Multiple parameters (comma-separated, no parens needed)
-  onResize: Number, Number -> E,
+  onResize: I32, I32 -> E,
 
   // mut parameter — caller must pass a mutable binding
-  onScale: mut Number -> E,
+  onScale: mut I32 -> E,
 
   // sink parameter — caller's binding is consumed (moved)
   onSubmit: sink String -> E,
@@ -239,10 +269,10 @@ pub struct Controls<E> {
 | -------------------- | ------------------- | ------------------------------ |
 | None                 | `() -> T`           | `() -> Event`                  |
 | One (default)        | `T -> U`            | `String -> Event`              |
-| One (mut)            | `mut T -> U`        | `mut Number -> Event`          |
+| One (mut)            | `mut T -> U`        | `mut I32 -> Event`          |
 | One (sink)           | `sink T -> U`       | `sink String -> Event`         |
-| Multiple             | `T, U -> V`         | `Number, Number -> Point`      |
-| Mixed conventions    | `mut T, sink U -> V`| `mut Number, sink String -> V` |
+| Multiple             | `T, U -> V`         | `I32, I32 -> Point`      |
+| Mixed conventions    | `mut T, sink U -> V`| `mut I32, sink String -> V` |
 
 **Rules**:
 
@@ -261,7 +291,7 @@ Box<T>                      // Single type parameter
 Pair<A, B>                  // Multiple type parameters
 Container<T: Layout>        // With trait constraint
 Widget<T: Render + Click>   // Multiple trait constraints
-Result<String, Number>      // Instantiated generic
+Result<String, I32>      // Instantiated generic
 ```
 
 See [Generics](#generics) section for details.
@@ -277,22 +307,22 @@ Structs define data types:
 ```formalang
 // Basic struct
 pub struct Point {
-  x: Number,
-  y: Number
+  x: I32,
+  y: I32
 }
 
 // With optional fields
 pub struct User {
   name: String,
   email: String,
-  age: Number,
+  age: I32,
   verified: Boolean,
   nickname: String?
 }
 
 // With mutable fields
 pub struct Counter {
-  mut count: Number,    // Mutable field (can be updated)
+  mut count: I32,    // Mutable field (can be updated)
   label: String         // Immutable field
 }
 
@@ -309,7 +339,7 @@ pub struct Pair<A, B> {
 // Generic with constraints
 pub struct Container<T: Layout> {
   items: [T],
-  gap: Number
+  gap: I32
 }
 ```
 
@@ -322,11 +352,11 @@ Impl blocks add methods to a struct (inherent impl) or declare trait conformance
 
 ```formalang
 pub struct Counter {
-  value: Number
+  value: I32
 }
 
 impl Counter {
-  fn increment(self) -> Number {
+  fn increment(self) -> I32 {
     self.value + 1
   }
 
@@ -349,8 +379,8 @@ pub trait Named {
 // Fields and methods
 pub trait Shape {
   color: String
-  fn area(self) -> Number
-  fn perimeter(self) -> Number
+  fn area(self) -> I32
+  fn perimeter(self) -> I32
 }
 
 // Methods only
@@ -361,7 +391,7 @@ pub trait Drawable {
 
 // Trait composition (inheritance)
 pub trait Entity: Named + Identifiable {
-  createdAt: Number
+  createdAt: I32
 }
 
 // Generic trait
@@ -392,7 +422,7 @@ pub trait Drawable {
 
 pub struct Circle {
   name: String,
-  radius: Number
+  radius: I32
 }
 
 // Declare conformance (fields are checked against struct definition)
@@ -410,7 +440,7 @@ Trait composition requires a separate impl block for each trait in the hierarchy
 
 ```formalang
 pub trait Base {
-  fn id(self) -> Number
+  fn id(self) -> I32
 }
 
 pub trait Extended: Base {
@@ -418,11 +448,11 @@ pub trait Extended: Base {
 }
 
 pub struct Item {
-  value: Number
+  value: I32
 }
 
 impl Base for Item {
-  fn id(self) -> Number {
+  fn id(self) -> I32 {
     self.value
   }
 }
@@ -480,14 +510,14 @@ pub trait Container<T> {
 }
 
 pub struct Box {
-  value: Number
+  value: I32
 }
 
-impl Container<Number> for Box {
-  fn get(self) -> Number { self.value }
+impl Container<I32> for Box {
+  fn get(self) -> I32 { self.value }
 }
 
-fn unwrap<T: Container<Number>>(b: T) -> Number {
+fn unwrap<T: Container<I32>>(b: T) -> I32 {
   b.get()
 }
 ```
@@ -510,7 +540,7 @@ generic definitions remain in the IR.
 - Function return type: `fn make() -> Trait` ✗
 - Let annotation: `let x: Trait = ...` ✗
 - Struct/enum field: `field: Trait` ✗
-- Closure params/return: `(x: Trait) -> Number` ✗
+- Closure params/return: `(x: Trait) -> I32` ✗
 
 ### Enum Definitions
 
@@ -527,8 +557,8 @@ pub enum Status {
 // With associated data (named parameters)
 pub enum Message {
   text(content: String)
-  image(url: String, size: Number)
-  video(url: String, duration: Number)
+  image(url: String, size: I32)
+  video(url: String, duration: I32)
 }
 
 // Generic enum
@@ -545,7 +575,7 @@ pub enum Option<T> {
 // Enum instantiation (leading dot notation)
 pub let status1: Status = .pending
 pub let msg1: Message = .text(content: "Hello")
-pub let result1: Result<String, Number> = .ok(value: "success")
+pub let result1: Result<String, I32> = .ok(value: "success")
 ```
 
 ### Extern Declarations
@@ -559,12 +589,12 @@ methods to a struct, and `extern fn` for standalone host-provided functions.
 **Extern function** — a bodyless function provided by the host:
 
 ```formalang
-extern fn create_canvas(width: Number, height: Number) -> Canvas
+extern fn create_canvas(width: I32, height: I32) -> Canvas
 extern fn connect(url: String) -> Connection
 extern fn log(message: String)
 
-extern "C" fn read(fd: Number) -> Number
-extern "system" fn GetTickCount() -> Number
+extern "C" fn read(fd: I32) -> I32
+extern "system" fn GetTickCount() -> I32
 ```
 
 A bare `extern fn` defaults to the C calling convention. Specify
@@ -575,11 +605,11 @@ parse time.
 **Extern impl** — host-provided methods on a struct:
 
 ```formalang
-struct Canvas { width: Number, height: Number }
+struct Canvas { width: I32, height: I32 }
 
 extern impl Canvas {
-  fn get_width(self) -> Number
-  fn get_height(self) -> Number
+  fn get_width(self) -> I32
+  fn get_height(self) -> I32
   fn clear(self)
 }
 ```
@@ -595,7 +625,7 @@ extern impl Canvas {
 Top-level functions with a body:
 
 ```formalang
-fn add(a: Number, b: Number) -> Number {
+fn add(a: I32, b: I32) -> I32 {
   a + b
 }
 
@@ -604,7 +634,7 @@ pub fn greet(name: String) -> String {
 }
 
 // No return type (returns unit)
-fn log_value(value: Number) {
+fn log_value(value: I32) {
   value
 }
 
@@ -622,8 +652,8 @@ unchanged. Multiple prefixes can stack and combine freely with
 `pub` and `extern`.
 
 ```formalang
-inline fn fast_add(a: Number, b: Number) -> Number { a + b }
-no_inline fn dont_inline_me() -> Number { 42 }
+inline fn fast_add(a: I32, b: I32) -> I32 { a + b }
+no_inline fn dont_inline_me() -> I32 { 42 }
 cold fn rare_error_path() { 0 }
 
 pub cold extern fn abort() -> Never
@@ -648,12 +678,12 @@ controls how the callee may use the value:
 
 ```formalang
 // Default — immutable parameter
-fn read(x: Number) -> Number {
+fn read(x: I32) -> I32 {
   x
 }
 
 // mut — callee may mutate; argument must be let mut at call site
-fn bump(mut score: Number) -> Number {
+fn bump(mut score: I32) -> I32 {
   score
 }
 
@@ -667,16 +697,16 @@ The same conventions apply to `self` in impl methods:
 
 ```formalang
 impl Counter {
-  fn value(self) -> Number { self.count }       // immutable self
-  fn increment(mut self) -> Number { self.count } // mutable self
-  fn destroy(sink self) -> Number { self.count }  // consuming self
+  fn value(self) -> I32 { self.count }       // immutable self
+  fn increment(mut self) -> I32 { self.count } // mutable self
+  fn destroy(sink self) -> I32 { self.count }  // consuming self
 }
 ```
 
 Call sites are transparent — no extra syntax required:
 
 ```formalang
-let mut n: Number = 0
+let mut n: I32 = 0
 let result = bump(n)   // n is let mut, so it satisfies mut convention
 ```
 
@@ -684,13 +714,13 @@ Closure parameters carry the same conventions. The convention constrains the **c
 
 ```formalang
 // Closure type with mut parameter — callers must pass a mutable binding
-let scale: mut Number -> Number = mut n -> n
+let scale: mut I32 -> I32 = mut n -> n
 
-let mut x: Number = 10
-let _r: Number = scale(x)   // ok: x is mutable
+let mut x: I32 = 10
+let _r: I32 = scale(x)   // ok: x is mutable
 
-let y: Number = 5
-let _s: Number = scale(y)   // error: MutabilityMismatch — y is immutable
+let y: I32 = 5
+let _s: I32 = scale(y)   // error: MutabilityMismatch — y is immutable
 
 // Closure type with sink parameter — callers give up the binding
 let consume: sink String -> String = sink s -> s
@@ -716,11 +746,13 @@ let multiline = """
   string literal
 """
 
-// Number literals
-let integer = 42
-let negative = -17
-let float = 3.14
-let with_underscore = 1_000_000
+// Numeric literals (see Numeric Types for suffixes and defaults)
+let integer = 42                     // I32
+let negative = -17                   // I32
+let float = 3.14                     // F64
+let with_underscore = 1_000_000      // I32
+let wide: I64 = 9_223_372_036_854_775_807
+let tagged = 3.14F32                 // F32 via suffix
 
 // Boolean literals
 let yes = true
@@ -735,7 +767,7 @@ let numbers = [1, 2, 3, 4, 5]
 let empty: [String] = []
 
 // Dictionary literals
-let settings: [String: Number] = ["timeout": 30, "maxRetries": 3]
+let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
 let emptyDict: [String: Boolean] = [:]
 
 // Path literals
@@ -756,15 +788,15 @@ Closures are pure, single-expression functions:
 ```formalang
 pub enum Event {
   textChanged(value: String),
-  resized(width: Number, height: Number),
+  resized(width: I32, height: I32),
   submit
 }
 
 pub struct Form<E> {
   onChange: String -> E,
-  onResize: Number, Number -> E,
+  onResize: I32, I32 -> E,
   onSubmit: () -> E,
-  onScale: mut Number -> E,
+  onScale: mut I32 -> E,
   onConsume: sink String -> E
 }
 
@@ -813,7 +845,7 @@ impl Form {
 #### Struct Instantiation
 
 ```formalang
-pub struct Point { x: Number, y: Number }
+pub struct Point { x: I32, y: I32 }
 
 // Basic instantiation
 pub let point = Point(x: 10, y: 20)
@@ -827,7 +859,7 @@ pub let user = User(
 
 // Generic instantiation with type arguments
 pub let box_str = Box<String>(value: "hello")
-pub let pair = Pair<Number, Boolean>(first: 42, second: true)
+pub let pair = Pair<I32, Boolean>(first: 42, second: true)
 
 // Type inference (type arguments optional when inferrable)
 pub let box_inferred = Box(value: "inferred as String")
@@ -845,8 +877,8 @@ let msg1: Message = .text(content: "Hello")
 let msg2: Message = .image(url: /pic.jpg, size: 1024)
 
 // Generic enum
-let result1: Result<String, Number> = .ok(value: "success")
-let result2: Result<String, Number> = .error(err: 404)
+let result1: Result<String, I32> = .ok(value: "success")
+let result2: Result<String, I32> = .error(err: 404)
 ```
 
 ### Field Access
@@ -871,7 +903,7 @@ pub let [x, ...rest] = items        // x="first", rest=["second", "third", "four
 pub let [_, second, ...] = items    // Skip first, get second, ignore rest
 
 // Struct destructuring (by field name)
-pub struct User { name: String, age: Number }
+pub struct User { name: String, age: I32 }
 pub let user = User(name: "Alice", age: 30)
 pub let {name, age} = user          // name="Alice", age=30
 pub let {name as username} = user   // Rename: username="Alice"
@@ -1074,7 +1106,7 @@ match status {
 // With data binding (named parameters)
 pub enum Message {
   text(content: String)
-  image(url: String, size: Number)
+  image(url: String, size: I32)
 }
 
 match message {
@@ -1099,15 +1131,15 @@ The compiler selects the right overload at each call site.
 **Mode A — named-argument label set match** (exact label set determines the overload):
 
 ```formalang
-fn format(value: Number) -> String { "number" }
+fn format(value: I32) -> String { "number" }
 fn format(value: String) -> String { "string" }
-fn format(value: Number, precision: Number) -> String { "precise" }
+fn format(value: I32, precision: I32) -> String { "precise" }
 ```
 
 **Mode B — first-positional-arg type match** (when call has no labels):
 
 ```formalang
-fn process(Number) -> String { "number" }
+fn process(I32) -> String { "number" }
 fn process(String) -> String { "string" }
 ```
 
@@ -1139,12 +1171,12 @@ pub struct Pair<A, B> {
 
 // With constraints
 pub trait Layout {
-  width: Number
+  width: I32
 }
 
 pub struct Container<T: Layout> {
   items: [T],
-  gap: Number
+  gap: I32
 }
 
 // Multiple constraints
@@ -1164,7 +1196,7 @@ pub trait Collection<T> {
 }
 
 pub trait Comparable<T> {
-  fn compare(self, other: T) -> Number
+  fn compare(self, other: T) -> I32
 }
 ```
 
@@ -1187,18 +1219,18 @@ pub enum Option<T> {
 ```formalang
 // With explicit type arguments
 pub let string_box = Box<String>(value: "hello")
-pub let number_box = Box<Number>(value: 42)
-pub let pair = Pair<Number, Boolean>(first: 42, second: true)
+pub let number_box = Box<I32>(value: 42)
+pub let pair = Pair<I32, Boolean>(first: 42, second: true)
 
 // Type inference (when inferrable)
 pub let inferred_box = Box(value: "inferred as String")
 pub let inferred_pair = Pair(first: 10, second: true)
 
 // Generic enums
-pub let success: Result<String, Number> = .ok(value: "success")
-pub let failure: Result<String, Number> = .error(err: 404)
-pub let maybe: Option<Number> = .some(value: 42)
-pub let nothing: Option<Number> = .none
+pub let success: Result<String, I32> = .ok(value: "success")
+pub let failure: Result<String, I32> = .error(err: 404)
+pub let maybe: Option<I32> = .some(value: 42)
+pub let nothing: Option<I32> = .none
 ```
 
 ### Type Constraints
@@ -1364,7 +1396,7 @@ does not break existing consumers at the API boundary.
 
 **Type System**:
 
-- Primitive types (`String`, `Number`, `Boolean`, `Path`, `Regex`, `Never`)
+- Primitive types (`String`, `I32`, `Boolean`, `Path`, `Regex`, `Never`)
 - Array types (`[Type]`)
 - Dictionary types (`[KeyType: ValueType]`)
 - Optional types (`Type?`)

@@ -1,6 +1,6 @@
 # AST Reference
 
-**Last Updated**: 2026-04-26
+**Last Updated**: 2026-05-01
 
 This document provides a complete reference for the FormaLang Abstract Syntax Tree (AST). The AST represents the syntactic structure of FormaLang source files and is useful for tooling, syntax analysis, and source-level transforms.
 
@@ -22,7 +22,7 @@ use formalang::compile_with_analyzer;
 let source = r#"
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 "#;
 
@@ -249,7 +249,7 @@ pub struct ImplDef {
 ```
 
 `trait_args` carries the concrete type arguments when the impl
-instantiates a generic trait (`impl Container<Number> for Box`).
+instantiates a generic trait (`impl Container<I32> for Box`).
 Empty for non-generic traits and inherent impls.
 
 #### FnDef
@@ -452,8 +452,8 @@ pub enum GenericConstraint {
 ```
 
 The `args` slot carries concrete type arguments when the constraint
-references a generic trait — `<T: Container<Number>>` parses with
-`args = [Number]`. Empty `args` means a non-generic trait bound.
+references a generic trait — `<T: Container<I32>>` parses with
+`args = [I32]`. Empty `args` means a non-generic trait bound.
 
 ### Type System
 
@@ -489,10 +489,14 @@ pub enum Type {
 ```rust
 pub enum PrimitiveType {
     String,
-    Number,
+    I32,
+    I64,
+    F32,
+    F64,
     Boolean,
     Path,
     Regex,
+    /// Uninhabited type — has no values.
     Never,
 }
 ```
@@ -669,13 +673,43 @@ pub struct ClosureParam {
 ```rust
 pub enum Literal {
     String(String),
-    Number(f64),
+    /// Numeric literal: see `NumberLiteral` for the carried payload.
+    Number(NumberLiteral),
     Boolean(bool),
     Regex { pattern: String, flags: String },
     Path(String),
     Nil,
-    // Note: integer types (i32, u32) and GPU numeric types are not primitive
-    // literals in FormaLang — use Number for all numeric values
+}
+```
+
+#### NumberLiteral
+
+Discriminated payload for a numeric literal — preserves the exact
+integer digits as `i128` (so `i64`-and-narrower targets round-trip
+without precision loss) or the float bits as `f64`. Carries the
+optional source-level type suffix and the integer-vs-float source-
+syntax kind so later passes can pick the resolved primitive without
+re-running inference.
+
+```rust
+pub struct NumberLiteral {
+    pub value: NumberValue,
+    pub suffix: Option<NumericSuffix>,
+    pub kind: NumberSourceKind,
+}
+
+pub enum NumberValue {
+    Integer(i128),  // integer-syntax literals: 42, 1_000, 0xFF
+    Float(f64),     // float-syntax literals: 3.14, 1e5
+}
+
+pub enum NumericSuffix {
+    I32, I64, F32, F64,  // uppercase suffix: 42I64, 3.14F32
+}
+
+pub enum NumberSourceKind {
+    Integer,  // unsuffixed default → I32
+    Float,    // unsuffixed default → F64
 }
 ```
 
@@ -805,7 +839,7 @@ pub struct StructPatternField {
 ```formalang
 pub struct User {
     name: String,
-    age: Number
+    age: I32
 }
 ```
 
@@ -828,7 +862,7 @@ File
             └── [1] StructField
                 ├── mutable: false
                 ├── name: "age"
-                ├── ty: Type::Primitive(Number)
+                ├── ty: Type::Primitive(I32)
                 ├── optional: false
                 └── default: None
 ```
@@ -926,11 +960,11 @@ File
 
 ```formalang
 pub struct Counter {
-    count: Number
+    count: I32
 }
 
 impl Counter {
-    fn increment(self) -> Number {
+    fn increment(self) -> I32 {
         self.count + 1
     }
 
@@ -961,7 +995,7 @@ File
             ├── [0] FnDef
             │   ├── name: "increment"
             │   ├── params: [FnParam { convention: Let, external_label: None, name: "self", ty: None }]
-            │   ├── return_type: Some(Type::Primitive(Number))
+            │   ├── return_type: Some(Type::Primitive(I32))
             │   └── body: Expr::BinaryOp { ... }
             └── [1] FnDef
                 ├── name: "display"
@@ -1087,8 +1121,8 @@ Expr::ForExpr
 **FormaLang source:**
 
 ```formalang
-let add = |x: Number, y: Number| x + y
-let scale: mut Number -> Number = mut n -> n
+let add = |x: I32, y: I32| x + y
+let scale: mut I32 -> I32 = mut n -> n
 ```
 
 **AST structure:**
@@ -1098,15 +1132,15 @@ Statement::Let                          // let add = ...
 ├── pattern: BindingPattern::Simple("add")
 └── value: Expr::ClosureExpr
     ├── params:
-    │   ├── [0] ClosureParam { convention: Let, name: "x", ty: Some(Number) }
-    │   └── [1] ClosureParam { convention: Let, name: "y", ty: Some(Number) }
+    │   ├── [0] ClosureParam { convention: Let, name: "x", ty: Some(I32) }
+    │   └── [1] ClosureParam { convention: Let, name: "y", ty: Some(I32) }
     └── body: Expr::BinaryOp { op: Add, ... }
 
-Statement::Let                          // let scale: mut Number -> Number = ...
+Statement::Let                          // let scale: mut I32 -> I32 = ...
 ├── pattern: BindingPattern::Simple("scale")
 ├── type_annotation: Some(Type::Closure {
-│       params: [(Mut, Number)],
-│       ret: Number
+│       params: [(Mut, I32)],
+│       ret: I32
 │   })
 └── value: Expr::ClosureExpr
     ├── params:
