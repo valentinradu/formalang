@@ -200,30 +200,162 @@ ergonomic story), and offer a `compile_to_ir_separate(...)` variant
 that surfaces the multi-module shape (Direction B) for backends that
 want true separate compilation. The choice belongs to the call site.
 
-## Open questions for whichever direction
+---
 
-1. **Symbol naming under Direction A.** How are imported items
-   re-named in the entry-point's flat tables? Two struct fields can
-   share a name across modules; the qualified name needs to be
-   stable, parseable, and not collide with user-chosen names.
-2. **`IrImport.source_file` semantics post-inline.** Does the field
-   stay populated for diagnostic / source-attribution tooling, or
-   does the inline pass clear it?
-3. **Cyclic imports.** Already rejected at semantic time; the
-   inlining pass needs a topological walk so the cycle check fires
-   before the clone work begins.
-4. **Public-surface promotion.** When a private struct in module A
-   is referenced by a public function in module B's import set, what
-   happens to its visibility post-inline? Inline-time visibility
-   normalisation needs a defined rule.
-5. **`module.modules` after inline.** Does the `IrModuleNode` tree
-   continue to mirror the source `mod` hierarchy across inlined
-   imports? Useful for tools that want to introspect; meaningless
-   for codegen.
-6. **Direction B's `Pipeline` semantics.** `MonomorphisePass` /
-   `DeadCodeEliminationPass` / `ClosureConversionPass` are written
-   against one `IrModule` today. Each needs a multi-module variant
-   (or cross-module driver) before Direction B can ship.
+## Plan
+
+**Chosen direction:** A — inline imports into the entry-point
+`IrModule` so `External` becomes a transient, never-reaching-codegen
+artifact. Direction B's `CompiledProgram` shape is deferred until a
+backend actually needs separate compilation; nothing in the plan
+forecloses adding it later as a hybrid escape hatch.
+
+### Current state of the relevant code
+
+- `compile_to_ir_with_resolver` ([`src/lib.rs:193`](../../src/lib.rs))
+  lowers only the entry-point AST and returns its `IrModule` —
+  imported modules' IR is never produced.
+- The semantic analyzer's `module_cache`
+  ([`src/semantic/mod.rs:94`](../../src/semantic/mod.rs)) caches
+  `(File, SymbolTable)` per imported `PathBuf`, not IR.
+- `MonomorphisePass::with_imports`
+  ([`src/ir/monomorphise/mod.rs:92`](../../src/ir/monomorphise/mod.rs))
+  accepts `HashMap<Vec<String>, IrModule>` but the public API never
+  populates it.
+- `specialise_external_instantiations`
+  ([`src/ir/monomorphise/external.rs:84`](../../src/ir/monomorphise/external.rs))
+  clones imported structs/enums into the entry module — but only
+  when `type_args` is non-empty (i.e. generics). Non-generic
+  `External` references are untouched.
+- IrModule names already carry `::`-qualified segments for nested
+  source modules ([`src/ir/module.rs:95`](../../src/ir/module.rs) doc
+  comment). The lexer rejects `::` inside identifiers, so the
+  separator is already reserved — answers the design's open question
+  on naming for free.
+
+### Steps
+
+1. **Build per-import `IrModule`s in `compile_to_ir_with_resolver`.**
+   After semantic analysis, walk `analyzer.module_cache()` and call
+   `ir::lower_to_ir(&file, &symbols)` for each entry to produce one
+   `IrModule` per imported source file. Resolve each entry's
+   `module_path: Vec<String>` from the entry module's `imports[*]`
+   (the analyzer already records the `source_file` → `module_path`
+   mapping via `IrImport.source_file`). Collect into
+   `HashMap<Vec<String>, IrModule>`.
+   *Files:* `src/lib.rs`, possibly a small helper in `src/ir/mod.rs`.
+
+2. **Generalise `specialise_external_instantiations` to non-generics.**
+   Drop the `if !type_args.is_empty()` gate at
+   [`external.rs:42`](../../src/ir/monomorphise/external.rs) so the
+   collector enqueues every `External` regardless of arity. In
+   `specialise_external`, when `args.is_empty()`, skip substitution
+   but still clone-and-rename the source struct/enum into the local
+   module under its qualified name (`module::path::Name`), with
+   `mangle_external_name` falling back to the bare qualified form
+   when no type arguments are present.
+   Extend the dispatch branch (currently only structs and enums) to
+   also handle imported **traits** — trait references can appear in
+   bounds and impls.
+
+3. **Inline imported functions, impls, and lets.**
+   New module `src/ir/monomorphise/external_items.rs` (or extension
+   of `external.rs`). Walk imported `IrModule`s for every `pub fn`,
+   `pub let`, and `impl` block reachable from the entry module's
+   `External` references (transitive closure via the same worklist
+   pattern). Clone each into the local tables under qualified names;
+   add a parallel `rewrite_external_function_references` /
+   `rewrite_external_let_references` walker (mirroring the existing
+   `rewrite_external_references` for types) that updates call-sites
+   and value-references.
+   Hook this between Phase 1a (specialise types) and Phase 1b
+   (generic instantiation collection) inside `MonomorphisePass::run`.
+
+   **Cycle guard (defence in depth).** The pass maintains an
+   `in_progress: HashSet<Vec<String>>` of module paths currently
+   being cloned. If the worklist tries to enter a path already in
+   `in_progress`, return `InternalError { detail: "monomorphise:
+   cyclic import .." }`. Semantic analysis already rejects cycles;
+   this catches a regression in that contract before it becomes a
+   miscompile.
+
+4. **Merge `IrModuleNode` trees.**
+   For each imported `IrModule`, splice its `modules: Vec<IrModuleNode>`
+   into the entry module's tree under a path matching the import's
+   `module_path`. If the entry already has a node along the path
+   (e.g. nested local `mod foo { ... }` plus `use foo::bar::Helper`
+   touching the same `foo`), merge child lists rather than
+   duplicating. The flat per-type vectors stay authoritative; this
+   tree update is purely informational, ignored by codegen, consumed
+   by source-introspection tools.
+
+5. **Wire the populated `imported_modules` into the public pipeline.**
+   In `compile_to_ir_with_resolver`, after `lower_to_ir`, run
+   ```rust
+   Pipeline::new()
+       .pass(MonomorphisePass::default().with_imports(imports_map))
+       .run(module)
+   ```
+   Single-file `compile_to_ir` keeps its current shape (empty imports
+   map → no inlining work, fast path preserved).
+
+6. **Tests.**
+   Add a two-file integration test (`tests/integration_cross_module.rs`):
+   `main.fv` calls a non-generic function from `helper.fv` and reads
+   a non-generic struct field. Assert the resulting IR has the
+   helper's struct + function inlined under qualified names and
+   contains zero `ResolvedType::External` references.
+   Add a cycle-guard regression test that constructs an
+   `imported_modules` map with a manufactured cycle and asserts the
+   pass returns the `InternalError { detail: "monomorphise: cyclic
+   import .." }` (the semantic-rejection contract is tested
+   separately).
+   Update existing IR-snapshot tests that currently observe `External`
+   surviving (the design note flags this as a known consequence).
+
+7. **Documentation.**
+   Update `docs/developer/ir.md` to state that `External` is a
+   transient IR type which never reaches the backend post-`MonomorphisePass`.
+   Update the doc-comments on `compile_to_ir_with_resolver` to
+   describe the inlining behaviour. Note in `IrImport`'s doc-comment
+   that the field stays populated for source-attribution tooling.
+
+### Resolved open questions
+
+1. **Symbol naming.** Qualified `module::path::Name` form. `::` is
+   already reserved by the lexer and already used by the lowerer for
+   nested-module type names; the same convention extends to inlined
+   imports.
+2. **`IrImport.source_file` post-inline.** Stays populated. Backends
+   ignore it; diagnostic / source-attribution tools rely on it.
+3. **Cyclic imports.** Still rejected at semantic time **and**
+   defence-in-depth at the IR layer: the inline pass tracks the
+   in-progress import path on its worklist and errors with
+   `InternalError { detail: "monomorphise: cyclic import .." }` if a
+   module re-enters before its clone completes. The semantic
+   rejection is the contract; the IR guard catches a regression in
+   that contract instead of silently producing miscompiled output.
+4. **Visibility post-inline.** Automatic — the IR has no
+   public/private split (visibility is enforced at semantic time
+   only); all inlined definitions are simply module-local.
+5. **`module.modules` after inline.** Keep mirroring source `mod`
+   hierarchy across inlined imports. Codegen ignores it; tools that
+   introspect the source-module tree get a complete picture.
+6. **Pipeline semantics.** N/A under Direction A — single `IrModule`
+   throughout. `MonomorphisePass` / `DeadCodeEliminationPass` /
+   `ClosureConversionPass` keep their current single-module
+   contracts unchanged.
+
+### Exit criteria
+
+- `compile_to_ir_with_resolver` returns an `IrModule` whose IR
+  contains zero `ResolvedType::External` references after the
+  pipeline runs.
+- formawasm Phase 4 R2 (`~/projects/formawasm`) lowers a two-file
+  program with cross-module struct + function references end-to-end;
+  layout planner / type mapper / expression lowering no longer reject
+  with `NotYetSupported { kind: "External(..)" }`.
+- This plan file is deleted as part of the implementing PR.
 
 ## Status in the formawasm backend
 
