@@ -4,7 +4,7 @@
 
 use crate::ast::{Expr, Literal, PrimitiveType};
 use crate::ir::lower::IrLowerer;
-use crate::ir::{IrExpr, ResolvedType};
+use crate::ir::{IrExpr, IrFunctionParam, ResolvedType};
 use std::collections::HashMap;
 
 impl IrLowerer<'_> {
@@ -160,7 +160,7 @@ impl IrLowerer<'_> {
                             .collect()
                     },
                 );
-            let lowered_args: Vec<(Option<String>, IrExpr)> = args
+            let mut lowered_args: Vec<(Option<String>, IrExpr)> = args
                 .iter()
                 .enumerate()
                 .map(|(i, (name_opt, expr))| {
@@ -172,6 +172,44 @@ impl IrLowerer<'_> {
                     (name_opt.as_ref().map(|n| n.name.clone()), lowered)
                 })
                 .collect();
+            // DP-2: substitute defaults for missing args. If the
+            // resolved callee has more non-self params than the call
+            // provided, append cloned default IRs for the trailing
+            // positions. The validator (DP-1) has already accepted
+            // arity ∈ [required, total]; here we materialise the
+            // missing positions so the IR's args list always matches
+            // the callee's arity.
+            //
+            // Limitation: defaults that reference earlier parameters
+            // (e.g. `fn f(x, y = x + 1)`) carry IR with stale binding
+            // ids referring to the callee's params. The let-wrapper
+            // for those is tracked as DP follow-up; this commit
+            // handles defaults that don't reference other params.
+            if let Some(func_id) = function_id {
+                if let Some(func) = self.module.functions.get(func_id.0 as usize) {
+                    let non_self_params: Vec<&IrFunctionParam> =
+                        func.params.iter().filter(|p| p.name != "self").collect();
+                    let want = non_self_params.len();
+                    if lowered_args.len() < want {
+                        let any_labeled = lowered_args.iter().any(|(l, _)| l.is_some());
+                        for param in non_self_params.iter().skip(lowered_args.len()) {
+                            if let Some(default) = &param.default {
+                                let label = if any_labeled {
+                                    Some(param.name.clone())
+                                } else {
+                                    None
+                                };
+                                lowered_args.push((label, default.clone()));
+                            } else {
+                                // No default and arity mismatch: validator
+                                // should have rejected. Stop appending so
+                                // we don't desynchronise on garbage.
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             // Return type lookup uses the same id when available; the
             // legacy bare-name lookup is the fallback for forward
             // refs.
