@@ -620,6 +620,30 @@ extern impl Canvas {
 - Extern functions and extern impl methods have no body
 - A struct can have both a regular `impl` block and an `extern impl` block
 
+**Extern impl on primitive types** — host-provided methods on built-in
+types like `String`, `I32`, `F64`:
+
+```formalang
+extern impl String {
+  fn len(self) -> I32
+  fn slice(self, start: I32, end: I32) -> String
+}
+
+extern impl I32 {
+  fn abs(self) -> I32
+}
+```
+
+The compiler ships a prelude (`src/prelude.fv`) declaring the v1
+String surface — `len`, `is_empty`, `slice`, `starts_with`,
+`contains`, `byte_at` — so `s.len()` works on any String value
+without an explicit `use`. Backends bind these as host-provided
+extern functions through their existing extern-binding paths
+(wasm component imports, JS runtime bindings, etc.).
+
+`s[i]` for a `String` receiver desugars to `s.byte_at(i)` at IR
+lowering, so backends only see standard `MethodCall` shapes.
+
 ### Function Definitions
 
 Top-level functions with a body:
