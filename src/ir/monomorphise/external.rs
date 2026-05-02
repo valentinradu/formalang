@@ -12,7 +12,7 @@ use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
 use crate::ir::{
     DispatchKind, FunctionId, GenericBase, ImplId, ImplTarget, ImportedKind, IrBlockStatement,
-    IrExpr, IrModule, IrTrait, ResolvedType,
+    IrExpr, IrModule, IrModuleNode, IrTrait, ResolvedType,
 };
 use crate::location::Span;
 
@@ -517,6 +517,107 @@ fn rewrite_external_type(
         | ResolvedType::TypeParam(_)
         | ResolvedType::Error => {}
     }
+}
+
+/// Phase 2a: merge each imported module's `IrModuleNode` tree into
+/// the entry module's `modules` tree under the import's `module_path`.
+///
+/// For each imported module at path `["a", "b"]`, walks/creates
+/// `entry.modules` to find or create node `"a"`, then under it node
+/// `"b"`. Populates the deepest node with id references to the
+/// cloned items: walks `imported.{structs, traits, enums, functions}`
+/// and looks up each by qualified name in the entry module to get
+/// the local id.
+///
+/// `IrLet` ids aren't included in `IrModuleNode` (no field exists for
+/// lets in the tree node), so they're tracked only via the flat
+/// `IrModule.lets` after inlining.
+///
+/// Existing tree nodes along the path get merged with the imported
+/// items rather than replaced — entries from local `mod foo {...}`
+/// declarations and from imported modules sharing a name coexist.
+///
+/// Codegen ignores this tree (the flat per-type vectors remain
+/// authoritative); source-introspection tools consume it for the
+/// complete cross-module picture.
+pub(super) fn merge_imported_module_trees(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    for (path, imported) in imported_modules {
+        if path.is_empty() {
+            continue;
+        }
+        let prefix = qualified_name(path, "");
+
+        // Build a leaf node carrying ids for the imported module's
+        // top-level items, looked up by qualified name in entry.
+        let mut leaf = IrModuleNode::default();
+        for s in &imported.structs {
+            let q = format!("{prefix}{}", s.name);
+            if let Some(id) = module.struct_id(&q) {
+                leaf.structs.push(id);
+            }
+        }
+        for t in &imported.traits {
+            let q = format!("{prefix}{}", t.name);
+            if let Some(id) = module.trait_id(&q) {
+                leaf.traits.push(id);
+            }
+        }
+        for e in &imported.enums {
+            let q = format!("{prefix}{}", e.name);
+            if let Some(id) = module.enum_id(&q) {
+                leaf.enums.push(id);
+            }
+        }
+        for f in &imported.functions {
+            let q = format!("{prefix}{}", f.name);
+            if let Some(id) = module.function_id(&q) {
+                leaf.functions.push(id);
+            }
+        }
+
+        // Splice the leaf under `path` in entry's modules tree,
+        // creating intermediate nodes and merging on name overlap.
+        splice_module_node(&mut module.modules, path, leaf);
+    }
+}
+
+fn splice_module_node(
+    parent_nodes: &mut Vec<IrModuleNode>,
+    path: &[String],
+    leaf: IrModuleNode,
+) {
+    let Some((head, rest)) = path.split_first() else {
+        return;
+    };
+    if rest.is_empty() {
+        // Last segment: find or create node with this name; merge.
+        if let Some(existing) = parent_nodes.iter_mut().find(|n| &n.name == head) {
+            existing.structs.extend(leaf.structs);
+            existing.traits.extend(leaf.traits);
+            existing.enums.extend(leaf.enums);
+            existing.functions.extend(leaf.functions);
+            existing.modules.extend(leaf.modules);
+        } else {
+            let mut node = leaf;
+            node.name.clone_from(head);
+            parent_nodes.push(node);
+        }
+        return;
+    }
+    // Intermediate segment: find or create node, recurse.
+    let idx = if let Some(idx) = parent_nodes.iter().position(|n| &n.name == head) {
+        idx
+    } else {
+        parent_nodes.push(IrModuleNode {
+            name: head.clone(),
+            ..Default::default()
+        });
+        parent_nodes.len().saturating_sub(1)
+    };
+    splice_module_node(&mut parent_nodes[idx].modules, rest, leaf);
 }
 
 /// Defence-in-depth cycle detection over the imported-module import

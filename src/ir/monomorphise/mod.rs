@@ -66,8 +66,8 @@ use compact::{
 };
 use external::{
     detect_import_cycle, inline_imported_functions, inline_imported_impls, inline_imported_lets,
-    qualify_imported_paths, remap_imported_body_ids, rewrite_external_references,
-    specialise_external_instantiations,
+    merge_imported_module_trees, qualify_imported_paths, remap_imported_body_ids,
+    rewrite_external_references, specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -182,6 +182,10 @@ impl IrPass for MonomorphisePass {
             // greet()` resolve correctly to the cloned `helper::greet`
             // via the qualified-name lookup in ResolveReferencesPass.
             qualify_imported_paths(&mut module, &self.imported_modules);
+            // Phase 2a: splice each imported module's IrModuleNode
+            // tree into the entry's modules tree under the import's
+            // module_path, populating with translated local ids.
+            merge_imported_module_trees(&mut module, &self.imported_modules);
         }
 
         // Phase 1: collect every `Generic { base, args }` instantiation in
