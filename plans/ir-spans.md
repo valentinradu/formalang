@@ -310,16 +310,26 @@ One commit landed on `dwarf-spans-design`:
 ### Remaining work
 
 The bulk of the plan — adding `pub span: IrSpan` to every IR shape
-and wiring the lowerer — is the every-node sweep. It's pervasive:
+and wiring the lowerer — is the every-node sweep. **Refined scope
+estimate (verified by counting construction sites): ~900+ sites
+need explicit `span` field additions.** None of the data structs
+derive `Default` so each site requires the explicit field. This
+is multi-day mechanical work, not a single-session refactor.
 
-1. **Add `span: IrSpan` to every IR shape.** Every variant of
-   `IrExpr`, every struct (`IrFunction`, `IrStruct`, `IrEnum`,
-   `IrField`, `IrImpl`, `IrLet`, `IrTrait`, `IrEnumVariant`,
-   `IrFunctionParam`). All marked
-   `#[serde(default, skip_serializing_if = "IrSpan::is_default")]`.
+1. **Add `span: IrSpan` to every IR shape.**
+   - **Data structs (89 construction sites total):** `IrFunction`
+     (17), `IrStruct` (11), plus `IrEnum`, `IrEnumVariant`,
+     `IrField`, `IrImpl`, `IrLet`, `IrTrait`, `IrFunctionParam`,
+     `IrFunctionSig`.
+   - **`IrExpr` variants (~800+ construction sites across 25+
+     variants):** `Literal`, `Reference`, `FunctionCall`,
+     `MethodCall`, `BinaryOp` alone account for 326 sites.
+   - All field additions marked
+     `#[serde(default, skip_serializing_if = "IrSpan::is_default")]`
+     so existing serialised IR continues to round-trip.
 2. **Lowerer plumbing.** Replace `IrLowerer.current_span: Span` with
-   `current_ir_span: IrSpan`, including a `current_file: FileId`
-   field. Update every IR-construction site in `src/ir/lower/` to
+   `current_ir_span: IrSpan` (including a `current_file: FileId`
+   field). Update every IR-construction site in `src/ir/lower/` to
    thread the current span through.
 3. **Synthesised-node spans.** Closure conversion, monomorphisation
    `specialise.rs`/`external.rs`, synthetic let-bindings — each
@@ -331,10 +341,16 @@ and wiring the lowerer — is the every-node sweep. It's pervasive:
    `file_table` registers every imported source.
 5. **Tests + documentation** per plan steps 7 and 8.
 
-Roughly 8-12 commits to complete; each touches many files due to
-the every-IR-node nature. SP-1's foundation is the prerequisite —
-all of the above can now reference `IrSpan` and `FileId` without
-forward-declaring them.
+**Recommended approach for the sweep:** scripted `sed`-style edits
+on `IrExpr` variant constructors (since they share consistent
+shapes), then per-shape commits for the data structs (one commit
+per struct, 10-20 sites each), then the lowerer plumbing as a
+final commit. Synthesised-node spans and cross-module integration
+follow naturally once the data fields exist.
+
+SP-1's foundation is the prerequisite — `IrSpan` and `FileId` are
+exported so subsequent commits can use them without forward
+declarations.
 
 ## Status in the formawasm backend
 
