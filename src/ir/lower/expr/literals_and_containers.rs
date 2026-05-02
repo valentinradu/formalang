@@ -4,8 +4,83 @@
 
 use crate::ast::{Expr, Literal, PrimitiveType};
 use crate::ir::lower::IrLowerer;
-use crate::ir::{IrExpr, IrFunctionParam, ResolvedType};
-use std::collections::HashMap;
+use crate::ir::{IrBlockStatement, IrExpr, IrFunctionParam, ResolvedType};
+use std::collections::{HashMap, HashSet};
+
+/// True if `expr` (or any sub-expression) is an `IrExpr::Reference`
+/// with a single-segment path matching one of `names`. Used to
+/// decide whether a substituted default needs the let-wrapper that
+/// binds preceding non-defaulted params to the call-site values.
+fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
+    match expr {
+        IrExpr::Reference { path, .. } => path
+            .first()
+            .is_some_and(|seg| names.contains(seg.as_str())),
+        IrExpr::LetRef { name, .. } => names.contains(name.as_str()),
+        IrExpr::BinaryOp { left, right, .. } => {
+            expr_references_any_name(left, names) || expr_references_any_name(right, names)
+        }
+        IrExpr::UnaryOp { operand, .. } => expr_references_any_name(operand, names),
+        IrExpr::FieldAccess { object, .. } => expr_references_any_name(object, names),
+        IrExpr::FunctionCall { args, .. } | IrExpr::MethodCall { args, .. } => {
+            args.iter().any(|(_, a)| expr_references_any_name(a, names))
+        }
+        IrExpr::CallClosure { closure, args, .. } => {
+            expr_references_any_name(closure, names)
+                || args.iter().any(|(_, a)| expr_references_any_name(a, names))
+        }
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_references_any_name(condition, names)
+                || expr_references_any_name(then_branch, names)
+                || else_branch
+                    .as_deref()
+                    .is_some_and(|e| expr_references_any_name(e, names))
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_references_any_name(scrutinee, names)
+                || arms
+                    .iter()
+                    .any(|arm| expr_references_any_name(&arm.body, names))
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            statements.iter().any(|s| match s {
+                IrBlockStatement::Let { value, .. } => expr_references_any_name(value, names),
+                IrBlockStatement::Assign { target, value } => {
+                    expr_references_any_name(target, names) || expr_references_any_name(value, names)
+                }
+                IrBlockStatement::Expr(e) => expr_references_any_name(e, names),
+            }) || expr_references_any_name(result, names)
+        }
+        IrExpr::Array { elements, .. } => {
+            elements.iter().any(|e| expr_references_any_name(e, names))
+        }
+        IrExpr::Tuple { fields, .. } => fields.iter().any(|(_, e)| expr_references_any_name(e, names)),
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            fields.iter().any(|(_, _, e)| expr_references_any_name(e, names))
+        }
+        IrExpr::DictLiteral { entries, .. } => entries
+            .iter()
+            .any(|(k, v)| expr_references_any_name(k, names) || expr_references_any_name(v, names)),
+        IrExpr::DictAccess { dict, key, .. } => {
+            expr_references_any_name(dict, names) || expr_references_any_name(key, names)
+        }
+        IrExpr::For {
+            collection, body, ..
+        } => expr_references_any_name(collection, names) || expr_references_any_name(body, names),
+        IrExpr::Closure { body, .. } => expr_references_any_name(body, names),
+        IrExpr::ClosureRef { env_struct, .. } => expr_references_any_name(env_struct, names),
+        IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => false,
+    }
+}
 
 impl IrLowerer<'_> {
     /// resolve a `ResolvedType` to its enum
@@ -172,28 +247,39 @@ impl IrLowerer<'_> {
                     (name_opt.as_ref().map(|n| n.name.clone()), lowered)
                 })
                 .collect();
-            // DP-2: substitute defaults for missing args. If the
-            // resolved callee has more non-self params than the call
-            // provided, append cloned default IRs for the trailing
-            // positions. The validator (DP-1) has already accepted
-            // arity ∈ [required, total]; here we materialise the
-            // missing positions so the IR's args list always matches
-            // the callee's arity.
-            //
-            // Limitation: defaults that reference earlier parameters
-            // (e.g. `fn f(x, y = x + 1)`) carry IR with stale binding
-            // ids referring to the callee's params. The let-wrapper
-            // for those is tracked as DP follow-up; this commit
-            // handles defaults that don't reference other params.
+            // DP-2 / DP-4: substitute defaults for missing args.
+            // Append cloned default IRs for the trailing missing
+            // positions. If any substituted default references a
+            // preceding non-defaulted param by name, wrap the entire
+            // FunctionCall in a Block whose Let statements bind those
+            // param names to the explicit args (so the default's
+            // Reference resolves via path lookup to the new binding,
+            // not to the callee's stale binding-id, and side-effects
+            // in the explicit args don't duplicate).
+            let mut needs_let_wrapper = false;
+            let mut wrapper_param_names: Vec<String> = Vec::new();
+            let mut wrapper_param_types: Vec<Option<ResolvedType>> = Vec::new();
             if let Some(func_id) = function_id {
                 if let Some(func) = self.module.functions.get(func_id.0 as usize) {
-                    let non_self_params: Vec<&IrFunctionParam> =
-                        func.params.iter().filter(|p| p.name != "self").collect();
+                    let non_self_params: Vec<IrFunctionParam> = func
+                        .params
+                        .iter()
+                        .filter(|p| p.name != "self")
+                        .cloned()
+                        .collect();
                     let want = non_self_params.len();
                     if lowered_args.len() < want {
                         let any_labeled = lowered_args.iter().any(|(l, _)| l.is_some());
+                        let preceding_names: HashSet<String> = non_self_params
+                            .iter()
+                            .take(lowered_args.len())
+                            .map(|p| p.name.clone())
+                            .collect();
                         for param in non_self_params.iter().skip(lowered_args.len()) {
                             if let Some(default) = &param.default {
+                                if expr_references_any_name(default, &preceding_names) {
+                                    needs_let_wrapper = true;
+                                }
                                 let label = if any_labeled {
                                     Some(param.name.clone())
                                 } else {
@@ -201,10 +287,13 @@ impl IrLowerer<'_> {
                                 };
                                 lowered_args.push((label, default.clone()));
                             } else {
-                                // No default and arity mismatch: validator
-                                // should have rejected. Stop appending so
-                                // we don't desynchronise on garbage.
                                 break;
+                            }
+                        }
+                        if needs_let_wrapper {
+                            for param in non_self_params.iter().take(preceding_names.len()) {
+                                wrapper_param_names.push(param.name.clone());
+                                wrapper_param_types.push(param.ty.clone());
                             }
                         }
                     }
@@ -217,11 +306,52 @@ impl IrLowerer<'_> {
                 .and_then(|id| self.module.functions.get(id.0 as usize))
                 .and_then(|f| f.return_type.clone())
                 .unwrap_or_else(|| self.resolve_function_return_type(fn_name, &lowered_args));
-            IrExpr::FunctionCall {
-                path: path_strs,
-                function_id,
-                args: lowered_args,
-                ty,
+
+            if needs_let_wrapper {
+                // Build let bindings for each preceding non-defaulted
+                // param. Move the explicit lowered_args[i] into the
+                // let value; replace the call-site arg with a
+                // Reference to the binding name. The default's
+                // Reference{path:[name]} resolves to the let-binding
+                // post-ResolveReferencesPass.
+                let mut statements = Vec::with_capacity(wrapper_param_names.len());
+                for (i, name) in wrapper_param_names.iter().enumerate() {
+                    let value = std::mem::replace(
+                        &mut lowered_args[i].1,
+                        IrExpr::Reference {
+                            path: vec![name.clone()],
+                            target: crate::ir::ReferenceTarget::Unresolved,
+                            ty: wrapper_param_types[i]
+                                .clone()
+                                .unwrap_or(ResolvedType::Error),
+                        },
+                    );
+                    statements.push(IrBlockStatement::Let {
+                        binding_id: crate::ir::BindingId(0),
+                        name: name.clone(),
+                        mutable: false,
+                        ty: wrapper_param_types[i].clone(),
+                        value,
+                    });
+                }
+                let call = IrExpr::FunctionCall {
+                    path: path_strs,
+                    function_id,
+                    args: lowered_args,
+                    ty: ty.clone(),
+                };
+                IrExpr::Block {
+                    statements,
+                    result: Box::new(call),
+                    ty,
+                }
+            } else {
+                IrExpr::FunctionCall {
+                    path: path_strs,
+                    function_id,
+                    args: lowered_args,
+                    ty,
+                }
             }
         }
     }
