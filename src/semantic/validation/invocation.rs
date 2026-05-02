@@ -311,7 +311,33 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .filter(|overload| self.overload_matches(overload, &call_labels, args, file))
                     .collect();
 
-                match matching.len() {
+                // DP-3: most-specific wins under defaults. When several
+                // overloads pass the broadened arity check, prefer the
+                // one whose `non_self_count - args.len()` is smallest
+                // (i.e., fewest default values fired). Ties at the same
+                // gap fall through to the existing ambiguous-call path.
+                let min_gap: Option<usize> = matching
+                    .iter()
+                    .map(|overload| {
+                        let non_self =
+                            overload.params.iter().filter(|p| p.name.name != "self").count();
+                        non_self.saturating_sub(args.len())
+                    })
+                    .min();
+                let most_specific: Vec<_> = match min_gap {
+                    Some(g) => matching
+                        .iter()
+                        .copied()
+                        .filter(|overload| {
+                            let non_self =
+                                overload.params.iter().filter(|p| p.name.name != "self").count();
+                            non_self.saturating_sub(args.len()) == g
+                        })
+                        .collect(),
+                    None => matching.clone(),
+                };
+
+                match most_specific.len() {
                     0 => {
                         self.errors.push(CompilerError::NoMatchingOverload {
                             function: name.rsplit("::").next().unwrap_or(name).to_string(),
@@ -320,7 +346,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     1 => {
                         // Resolved to a unique overload — check mut param mutability
-                        if let Some(info) = matching.first() {
+                        if let Some(info) = most_specific.first() {
                             let params = info.params.clone();
                             self.validate_mut_param_args(&params, args, span, file);
                         }
