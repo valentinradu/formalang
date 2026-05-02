@@ -291,6 +291,59 @@ mechanism, no synthetic impls, no built-in registry.
   bindings return correct values.
 - This plan file deleted by the implementing PR.
 
+---
+
+## Implementation progress
+
+Five commits landed on `string-builtins-design`:
+
+- **SB-1** (`71e093f`): Add `ImplTarget::Primitive(PrimitiveType)`
+  variant to the IR; patch all exhaustive matches across
+  `dce/remap.rs`, `dce/tests.rs`, `lower/definitions.rs`,
+  `lower/expr/helpers.rs`, `monomorphise/compact.rs`,
+  `monomorphise/rewrite.rs`, plus two integration tests. Add
+  `IrImpl::primitive()` accessor.
+- **SB-2 / SB-3 (semantic)** (`53c62cb`): IR lowering recognises
+  `extern impl <PrimitiveName>` (bare type names like `String`,
+  `I32`) via `primitive_from_name` helper and emits
+  `ImplTarget::Primitive`. Semantic `method_exists_on_type` gains a
+  primitive branch — receiver types matching `is_primitive_name`
+  walk impl blocks targeting that primitive name.
+- **SB-4 (prelude)** (`2289cd8`): Ship `src/prelude.fv` with the v1
+  String surface: `len`, `is_empty`, `slice`, `starts_with`,
+  `contains`, `byte_at`. Embedded via `include_str!` and prepended
+  to user source at `compile_with_analyzer_and_resolver`.
+- **SB-5** (`bbbf7d6`): `s[i]` for String receivers desugars in
+  `lower_dict_access` to `IrExpr::MethodCall { method: "byte_at" }`
+  pointing at the prelude impl. Backends see only method calls.
+
+### Remaining work
+
+1. **Source-span fidelity for prelude.** Prepending the prelude
+   shifts all user-source spans by the prelude's byte length. Error
+   messages and IDE tooling show off-by-prelude-bytes line numbers.
+   Cleaner fix: parse prelude separately and merge IR (no source
+   concatenation).
+2. **`self` parameter typing on primitive impls.** `IrFunctionParam.ty`
+   is `None` for `self` today; for primitive impls the resolver
+   should infer `Primitive(receiver_type)` for body type-checking.
+   Lowerer / type-checker may need adjustments.
+3. **ResolveReferencesPass primitive-aware method lookup.** The
+   pass's `lookup_method_idx` walks impls — verify it correctly
+   handles `ImplTarget::Primitive` lookups for receiver types.
+4. **Tests and documentation** per plan steps 7 and 8. Integration
+   tests covering the six methods + `s[i]`. Update
+   `docs/user/formalang.md` Extern Declarations section.
+5. **formawasm Phase 5 #2 (separate repo).** Wire the six runtime
+   helpers (`__str_len`, `__str_slice`, etc.) via the existing
+   `wasmtime::component::Linker` path. Tracked in formawasm's PLAN.
+
+What's already shipped (SB-1 through SB-5) covers the common case:
+a FormaLang program calling `s.len()`, `s.slice(...)`, etc., and
+`s[i]` compiles end-to-end with backends seeing standard
+`IrExpr::MethodCall` shapes. The prelude is automatic — no `use`
+needed.
+
 ## Status in the formawasm backend
 
 Phase 5 #2 was queued for `len` + `slice` as in-module helpers but
