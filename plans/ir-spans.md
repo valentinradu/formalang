@@ -306,51 +306,53 @@ One commit landed on `dwarf-spans-design`:
   `IrModule.file_table: Vec<PathBuf>` (real files at id 1+), plus
   `file_path(FileId)` and `register_file(PathBuf)` accessors.
   Exported `FileId` and `IrSpan` via `crate::ir`.
+- **SP-2** (`abb720d`): `pub span: IrSpan` field added to every data
+  struct: `IrLet`, `IrStruct`, `IrTrait`, `IrFunctionSig`, `IrEnum`,
+  `IrEnumVariant`, `IrImpl`, `IrFunction`, `IrFunctionParam`,
+  `IrField`. All marked `#[serde(default, skip_serializing_if =
+  "IrSpan::is_default")]`. All 89 construction sites in
+  `src/ir/{closure_conv, lower, resolve_refs}` and tests patched
+  with `crate::ir::IrSpan::default()`. Backends can now read
+  `IrFunction.span`, `IrStruct.span`, etc. — currently default
+  values until the lowerer plumbing populates them.
 
 ### Remaining work
 
-The bulk of the plan — adding `pub span: IrSpan` to every IR shape
-and wiring the lowerer — is the every-node sweep. **Refined scope
-estimate (verified by counting construction sites): ~900+ sites
-need explicit `span` field additions.** None of the data structs
-derive `Default` so each site requires the explicit field. This
-is multi-day mechanical work, not a single-session refactor.
+Foundation (SP-1) and data-struct sweep (SP-2) landed. The bulk of
+the remaining work is the IrExpr variant sweep + lowerer plumbing.
 
-1. **Add `span: IrSpan` to every IR shape.**
-   - **Data structs (89 construction sites total):** `IrFunction`
-     (17), `IrStruct` (11), plus `IrEnum`, `IrEnumVariant`,
-     `IrField`, `IrImpl`, `IrLet`, `IrTrait`, `IrFunctionParam`,
-     `IrFunctionSig`.
-   - **`IrExpr` variants (~800+ construction sites across 25+
-     variants):** `Literal`, `Reference`, `FunctionCall`,
-     `MethodCall`, `BinaryOp` alone account for 326 sites.
-   - All field additions marked
-     `#[serde(default, skip_serializing_if = "IrSpan::is_default")]`
-     so existing serialised IR continues to round-trip.
-2. **Lowerer plumbing.** Replace `IrLowerer.current_span: Span` with
-   `current_ir_span: IrSpan` (including a `current_file: FileId`
-   field). Update every IR-construction site in `src/ir/lower/` to
-   thread the current span through.
+1. **`IrExpr` variant span fields (~800 construction sites across
+   ~22 variants).** Each variant (`Literal`, `Reference`,
+   `FunctionCall`, `MethodCall`, `BinaryOp`, `UnaryOp`, `If`, `For`,
+   `Match`, `Block`, `Closure`, `ClosureRef`, `Array`, `Tuple`,
+   `StructInst`, `EnumInst`, `DictLiteral`, `DictAccess`,
+   `FieldAccess`, `LetRef`, `SelfFieldRef`, `CallClosure`) needs
+   its own `span: IrSpan` field, plus its construction sites
+   patched. `Literal`, `Reference`, `FunctionCall`, `MethodCall`,
+   `BinaryOp` alone account for 326 sites. Recommended approach:
+   scripted Python over `cargo check` error output to mass-patch
+   construction sites.
+2. **Lowerer plumbing.** Replace `IrLowerer.current_span: Span`
+   with `current_ir_span: IrSpan` (including a `current_file:
+   FileId` field). Update every IR-construction site in
+   `src/ir/lower/` to populate the new `span` fields from
+   `current_ir_span` instead of `IrSpan::default()`. Both data-
+   struct construction (89 sites SP-2 already patched with
+   `IrSpan::default()`) and IrExpr variants need this.
 3. **Synthesised-node spans.** Closure conversion, monomorphisation
    `specialise.rs`/`external.rs`, synthetic let-bindings — each
-   carry the originating expression's span (per the resolved Q1
-   answer in this plan).
+   carry the originating expression's span (per resolved Q1).
 4. **Cross-module integration.** When the cross-module-codegen plan
    inlines imported items, each clone keeps its originating span
-   with the imported file's `FileId`. The entry module's
-   `file_table` registers every imported source.
-5. **Tests + documentation** per plan steps 7 and 8.
+   with the imported file's `FileId`; entry's `file_table` registers
+   every imported source.
+5. **Tests + documentation.**
 
-**Recommended approach for the sweep:** scripted `sed`-style edits
-on `IrExpr` variant constructors (since they share consistent
-shapes), then per-shape commits for the data structs (one commit
-per struct, 10-20 sites each), then the lowerer plumbing as a
-final commit. Synthesised-node spans and cross-module integration
-follow naturally once the data fields exist.
-
-SP-1's foundation is the prerequisite — `IrSpan` and `FileId` are
-exported so subsequent commits can use them without forward
-declarations.
+SP-1 + SP-2 give backends the ability to ANCHOR DWARF
+`DW_TAG_subprogram` / source-map function-entry / JVM
+LineNumberTable function-entry sections against `IrFunction.span`,
+`IrStruct.span`, etc. Per-expression line-table emission requires
+the IrExpr variant work.
 
 ## Status in the formawasm backend
 
