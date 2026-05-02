@@ -80,13 +80,11 @@ pub fn compile_with_analyzer_and_resolver<R>(
 where
     R: semantic::module_resolver::ModuleResolver,
 {
-    // Prepend the compiler-shipped prelude so its `extern impl
-    // <Primitive>` declarations are visible to every program without
-    // an explicit `use`. The prelude has no `use` statements and no
-    // bodies — its IR contribution is bodyless extern impls only.
-    let combined = format!("{PRELUDE_SOURCE}\n{source}");
-    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(&combined);
-    let parse_result = parse_file_with_source(&tokens, &combined).map_err(|errors| {
+    // Parse the user source first — its spans stay 0-based on the
+    // user's bytes, so error messages and IDE tooling report the
+    // correct line/column.
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
+    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
@@ -101,10 +99,37 @@ where
             return Err(all);
         }
     };
+
+    // Parse the compiler-shipped prelude separately, then prepend its
+    // top-level statements to the user file. User-source spans are
+    // preserved; only prelude statements carry prelude-relative spans
+    // (which the lowerer flags via FileId::SYNTHETIC if/when file-id
+    // wiring is enabled).
+    let prelude_file = parse_prelude_file()?;
+    let mut merged_statements = prelude_file.statements;
+    merged_statements.append(&mut file.statements);
+    file.statements = merged_statements;
+
     let mut analyzer =
         SemanticAnalyzer::new_with_file(resolver, std::path::PathBuf::from("<root>"));
     analyzer.analyze_and_classify(&mut file)?;
     Ok((file, analyzer))
+}
+
+/// Parse the compiler-shipped prelude (`src/prelude.fv`) into a `File`
+/// AST. The prelude is fixed source so its parse should always
+/// succeed; surface any unexpected failure as `CompilerError`.
+fn parse_prelude_file() -> Result<File, Vec<CompilerError>> {
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(PRELUDE_SOURCE);
+    if !lex_errors.is_empty() {
+        return Err(lex_errors);
+    }
+    parse_file_with_source(&tokens, PRELUDE_SOURCE).map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
+            .collect::<Vec<_>>()
+    })
 }
 
 /// Compile to IR, formatting errors as a human-readable report on failure.
