@@ -415,15 +415,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let param_label_set: Vec<&str> = param_labels.iter().map(String::as_str).collect();
             call_label_set == param_label_set
         } else if none_labeled && args.is_empty() {
-            // Zero-arg call: match only zero-arg overloads.
-            // Without context-type disambiguation (e.g., from a let annotation),
-            // multiple zero-arg overloads will be reported as AmbiguousCall by the
-            // caller. This is the scope-limited behavior — see Fix 6 notes.
-            params.iter().filter(|p| p.name.name != "self").count() == 0
+            // Zero-arg call: matches a zero-required-arg overload. With
+            // default values, an overload with all defaults (e.g.
+            // `fn f(x: I32 = 0)`) also matches a zero-arg call.
+            // Without context-type disambiguation (e.g., from a let
+            // annotation), multiple zero-required-arg overloads will be
+            // reported as AmbiguousCall by the caller.
+            let required = params
+                .iter()
+                .filter(|p| p.name.name != "self" && p.default.is_none())
+                .count();
+            required == 0
         } else if none_labeled && !args.is_empty() {
-            // Mode B: arity check first, then match by first-argument type
+            // Mode B: arity range check first, then match by first-argument type.
+            // Defaults broaden the acceptable arity to [required, total].
             let non_self_count = params.iter().filter(|p| p.name.name != "self").count();
-            if args.len() != non_self_count {
+            let required = params
+                .iter()
+                .filter(|p| p.name.name != "self" && p.default.is_none())
+                .count();
+            if args.len() < required || args.len() > non_self_count {
                 return false;
             }
 

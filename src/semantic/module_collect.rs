@@ -286,6 +286,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 external_label: p.external_label.clone(),
                 name: p.name.clone(),
                 ty: p.ty.clone(),
+                default: p.default.clone(),
             })
             .collect();
 

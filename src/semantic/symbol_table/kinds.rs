@@ -123,6 +123,11 @@ pub struct ParamInfo {
     pub external_label: Option<crate::ast::Ident>,
     pub name: crate::ast::Ident,
     pub ty: Option<Type>,
+    /// Default value expression. `Some` when the parameter is declared with
+    /// `name: Type = default_expr`. Default values must be positional from
+    /// the right (no parameter without a default may follow one with a
+    /// default, except `self`).
+    pub default: Option<crate::ast::Expr>,
 }
 
 /// Information about a standalone function
