@@ -65,8 +65,8 @@ use compact::{
     drop_specialised_generic_impls,
 };
 use external::{
-    inline_imported_functions, inline_imported_impls, rewrite_external_references,
-    specialise_external_instantiations,
+    inline_imported_functions, inline_imported_impls, inline_imported_lets,
+    rewrite_external_references, specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -136,6 +136,10 @@ impl IrPass for MonomorphisePass {
             // is now in the local module. Method signatures and bodies
             // have their types externalised the same way as functions.
             inline_imported_impls(&mut module, &self.imported_modules);
+            // Phase 1d: inline imported pub `let`s under qualified
+            // names. Initialiser expressions have their types
+            // externalised the same way as function bodies.
+            inline_imported_lets(&mut module, &self.imported_modules);
             // Re-run Phase 1a so any External references introduced by
             // the inlined function / impl-method bodies (types they
             // reference that the entry module didn't directly mention)

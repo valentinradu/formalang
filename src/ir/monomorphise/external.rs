@@ -529,6 +529,42 @@ fn qualified_name(module_path: &[String], name: &str) -> String {
     out
 }
 
+/// Phase 1d: inline every imported pub `let` into the current module
+/// under a qualified name. The clone has its `ty` and the `value`
+/// expression's embedded ResolvedTypes externalised so the next
+/// worklist iteration of [`specialise_external_instantiations`] picks
+/// up any types they reference.
+///
+/// `IrLet` carries explicit visibility; non-public lets are skipped
+/// (cross-module access to them is rejected at semantic time anyway).
+///
+/// Body **id-references** in the `value` expression stay in the imported
+/// id-space. A follow-up commit walks all cloned bodies and remaps.
+pub(super) fn inline_imported_lets(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    for (module_path, imported) in imported_modules {
+        for let_binding in &imported.lets {
+            if !let_binding.visibility.is_public() {
+                continue;
+            }
+            let qualified = qualified_name(module_path, &let_binding.name);
+            if module.has_let(&qualified) {
+                continue;
+            }
+
+            let mut clone = let_binding.clone();
+            clone.name.clone_from(&qualified);
+            externalise_imported_refs(&mut clone.ty, imported, module_path);
+            walk_expr_types_mut(&mut clone.value, &mut |ty| {
+                externalise_imported_refs(ty, imported, module_path);
+            });
+            module.add_let(clone);
+        }
+    }
+}
+
 /// Phase 1c: inline every imported impl block whose target type is now
 /// present in the local module (its struct or enum has already been
 /// cloned by Phase 1a).
