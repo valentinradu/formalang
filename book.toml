@@ -1,0 +1,32 @@
+[book]
+title = "FormaLang Documentation"
+authors = ["Valentin Radu"]
+description = "Reference documentation for FormaLang — a statically typed, declarative language for embedding in Rust applications."
+language = "en"
+multilingual = false
+src = "docs"
+
+[output.html]
+theme = "theme"
+additional-css = ["theme/custom.css"]
+additional-js = ["theme/formalang-hljs.js"]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
+no-section-label = true
+git-repository-url = "https://github.com/valentinradu/formalang"
+edit-url-template = "https://github.com/valentinradu/formalang/edit/main/{path}"
+site-url = "/docs/"
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 25
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3

@@ -1,0 +1,96 @@
+/*
+ * Catppuccin Mocha override for mdBook.
+ *
+ * mdBook scopes its color variables under per-theme classes
+ * (.light, .rust, .coal, .navy, .ayu). We re-declare every theme
+ * with the same Mocha palette so the picker is a no-op — and the
+ * picker itself is hidden in chrome.css.
+ *
+ * Palette: https://catppuccin.com/palette
+ */
+
+:root {
+    /* Catppuccin Mocha — single source of truth for the whole site. */
+    --ctp-rosewater: #f5e0dc;
+    --ctp-flamingo:  #f2cdcd;
+    --ctp-pink:      #f5c2e7;
+    --ctp-mauve:     #cba6f7;
+    --ctp-red:       #f38ba8;
+    --ctp-maroon:    #eba0ac;
+    --ctp-peach:     #fab387;
+    --ctp-yellow:    #f9e2af;
+    --ctp-green:     #a6e3a1;
+    --ctp-teal:      #94e2d5;
+    --ctp-sky:       #89dceb;
+    --ctp-sapphire:  #74c7ec;
+    --ctp-blue:      #89b4fa;
+    --ctp-lavender:  #b4befe;
+    --ctp-text:      #cdd6f4;
+    --ctp-subtext1:  #bac2de;
+    --ctp-subtext0:  #a6adc8;
+    --ctp-overlay2:  #9399b2;
+    --ctp-overlay1:  #7f849c;
+    --ctp-overlay0:  #6c7086;
+    --ctp-surface2:  #585b70;
+    --ctp-surface1:  #45475a;
+    --ctp-surface0:  #313244;
+    --ctp-base:      #1e1e2e;
+    --ctp-mantle:    #181825;
+    --ctp-crust:     #11111b;
+
+    /* ─── Structural variables (chrome.css / general.css read these) ─── */
+    --sidebar-width: 300px;
+    --sidebar-resize-indicator-width: 8px;
+    --sidebar-resize-indicator-space: 2px;
+    --page-padding: 15px;
+    --content-max-width: 820px;
+    --menu-bar-height: 50px;
+    --mono-font: "JetBrains Mono", "SFMono-Regular", Consolas,
+                 "Liberation Mono", Menlo, monospace;
+    --code-font-size: 0.875em;
+}
+
+/* Apply Mocha to every built-in theme so the dropdown is a no-op. */
+.light, .rust, .coal, .navy, .ayu {
+    --bg:                          var(--ctp-base);
+    --fg:                          var(--ctp-text);
+
+    --sidebar-bg:                  var(--ctp-mantle);
+    --sidebar-fg:                  var(--ctp-text);
+    --sidebar-non-existant:        var(--ctp-overlay0);
+    --sidebar-active:              var(--ctp-mauve);
+    --sidebar-spacer:              var(--ctp-surface0);
+
+    --scrollbar:                   var(--ctp-surface1);
+
+    --icons:                       var(--ctp-overlay1);
+    --icons-hover:                 var(--ctp-mauve);
+
+    --links:                       var(--ctp-blue);
+
+    --inline-code-color:           var(--ctp-peach);
+
+    --theme-popup-bg:              var(--ctp-surface0);
+    --theme-popup-border:          var(--ctp-surface2);
+    --theme-hover:                 var(--ctp-surface1);
+
+    --quote-bg:                    var(--ctp-surface0);
+    --quote-border:                var(--ctp-mauve);
+
+    --warning-border:              var(--ctp-peach);
+
+    --table-border-color:          var(--ctp-surface1);
+    --table-header-bg:             var(--ctp-surface0);
+    --table-alternate-bg:          var(--ctp-mantle);
+
+    --searchbar-border-color:      var(--ctp-surface2);
+    --searchbar-bg:                var(--ctp-surface0);
+    --searchbar-fg:                var(--ctp-text);
+    --searchbar-shadow-color:      var(--ctp-crust);
+    --searchresults-header-fg:     var(--ctp-subtext1);
+    --searchresults-border-color:  var(--ctp-surface1);
+    --searchresults-li-bg:         var(--ctp-surface0);
+    --search-mark-bg:              var(--ctp-yellow);
+
+    --color-scheme:                dark;
+}

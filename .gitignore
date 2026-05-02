@@ -22,3 +22,9 @@ target
 
 .DS_Store
 .claude/worktrees/
+
+# mdBook output + Pages staging
+/book/
+/_site/
+/website/styles.css
+/website/docs
