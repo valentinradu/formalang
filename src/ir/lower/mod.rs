@@ -61,6 +61,32 @@ pub fn lower_to_ir(ast: &File, symbols: &SymbolTable) -> Result<IrModule, Vec<Co
     Ok(lowerer.module)
 }
 
+/// Lower an AST to IR with a known source file path.
+///
+/// The path is registered in `IrModule.file_table` as the entry-point
+/// file (id 1, since id 0 is reserved for synthetic nodes), and the
+/// lowerer seeds `current_file` with that id so every lowered IR node
+/// carries a non-synthetic `IrSpan.file`.
+///
+/// Use this entry point when emitting DWARF / source maps / line tables —
+/// the resulting `IrModule` lets backends resolve every node's span
+/// to a real file path via `IrModule.file_path(span.file)`.
+///
+/// # Errors
+///
+/// Same as [`lower_to_ir`]: returns the IR-lowering error list on
+/// failure.
+pub fn lower_to_ir_with_path(
+    ast: &File,
+    symbols: &SymbolTable,
+    path: std::path::PathBuf,
+) -> Result<IrModule, Vec<CompilerError>> {
+    let mut lowerer = IrLowerer::new(symbols);
+    lowerer.current_file = lowerer.module.register_file(path);
+    lowerer.lower_file(ast)?;
+    Ok(lowerer.module)
+}
+
 /// Internal state for the lowering pass.
 struct IrLowerer<'a> {
     pub(super) module: IrModule,

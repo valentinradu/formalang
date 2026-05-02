@@ -52,7 +52,7 @@ pub use ids::{
     VariantIdx,
 };
 pub use imports::{ImportedKind, IrImport, IrImportItem};
-pub use lower::lower_to_ir;
+pub use lower::{lower_to_ir, lower_to_ir_with_path};
 pub use module::{IrModule, IrModuleNode};
 pub use monomorphise::MonomorphisePass;
 pub use resolve_refs::ResolveReferencesPass;
