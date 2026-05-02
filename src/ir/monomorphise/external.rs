@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
-use crate::ir::{GenericBase, ImportedKind, IrModule, ResolvedType};
+use crate::ir::{GenericBase, ImportedKind, IrModule, IrTrait, ResolvedType};
 use crate::location::Span;
 
 use super::specialise::{substitute_type, type_suffix};
@@ -39,9 +39,12 @@ fn collect_external_from_type(ty: &ResolvedType, out: &mut HashSet<ExternalInsta
             for a in type_args {
                 collect_external_from_type(a, out);
             }
-            if !type_args.is_empty() {
-                out.insert((module_path.clone(), name.clone(), type_args.clone()));
-            }
+            // Both generic instantiations (non-empty type_args) and
+            // non-generic references (empty type_args) are collected so
+            // each gets cloned into the local module under a qualified
+            // name. Cross-module Direction A: External is transient and
+            // never reaches the backend.
+            out.insert((module_path.clone(), name.clone(), type_args.clone()));
         }
         ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
             collect_external_from_type(inner, out);
@@ -147,7 +150,7 @@ fn specialise_external(
             .zip(args.iter())
             .map(|(p, a)| (p.name.clone(), a.clone()))
             .collect();
-        let mangled = mangle_external_name(name, args, module);
+        let mangled = mangle_external_name(name, args, module_path, module);
         let mut spec = source.clone();
         spec.name.clone_from(&mangled);
         spec.generic_params.clear();
@@ -185,7 +188,7 @@ fn specialise_external(
             .zip(args.iter())
             .map(|(p, a)| (p.name.clone(), a.clone()))
             .collect();
-        let mangled = mangle_external_name(name, args, module);
+        let mangled = mangle_external_name(name, args, module_path, module);
         let mut spec = source.clone();
         spec.name.clone_from(&mangled);
         spec.generic_params.clear();
@@ -209,6 +212,8 @@ fn specialise_external(
         }
         let new_id = module.add_enum(mangled, spec)?;
         Ok((ResolvedType::Enum(new_id), discovered.into_iter().collect()))
+    } else if let Some(source) = imported.traits.iter().find(|t| t.name == *name) {
+        specialise_external_trait(module, imported, source, module_path, name, args)
     } else {
         Err(CompilerError::InternalError {
             detail: format!(
@@ -219,22 +224,128 @@ fn specialise_external(
     }
 }
 
-/// Build a unique mangled name for an external specialisation. Mirrors
-/// `mangle_name` but tags the source module so cross-module collisions
-/// stay distinct.
-fn mangle_external_name(name: &str, args: &[ResolvedType], module: &IrModule) -> String {
-    let mut out = name.to_string();
-    for a in args {
-        out.push_str("__");
-        type_suffix(a, &mut out);
+#[expect(
+    clippy::result_large_err,
+    reason = "CompilerError is large by design; errors are aggregated at the pass boundary"
+)]
+fn specialise_external_trait(
+    module: &mut IrModule,
+    imported: &IrModule,
+    source: &IrTrait,
+    module_path: &[String],
+    name: &str,
+    args: &[ResolvedType],
+) -> Result<(ResolvedType, Vec<ExternalInstantiation>), CompilerError> {
+    if source.generic_params.len() != args.len() {
+        return Err(CompilerError::GenericArityMismatch {
+            name: name.to_string(),
+            expected: source.generic_params.len(),
+            actual: args.len(),
+            span: Span::default(),
+        });
     }
-    if module.struct_id(&out).is_none() && module.enum_id(&out).is_none() {
+    let subs: HashMap<String, ResolvedType> = source
+        .generic_params
+        .iter()
+        .zip(args.iter())
+        .map(|(p, a)| (p.name.clone(), a.clone()))
+        .collect();
+    let mangled = mangle_external_name(name, args, module_path, module);
+    let mut spec = source.clone();
+    spec.name.clone_from(&mangled);
+    spec.generic_params.clear();
+    // Trait field types (associated constants / consts on traits) and
+    // method signature types both need their imported-id refs externalised
+    // and any type-param refs substituted, mirroring the struct/enum loops.
+    for field in &mut spec.fields {
+        externalise_imported_refs(&mut field.ty, imported, module_path);
+        substitute_type(&mut field.ty, &subs);
+        if let Some(expr) = &mut field.default {
+            walk_expr_types_mut(expr, &mut |ty| {
+                externalise_imported_refs(ty, imported, module_path);
+                substitute_type(ty, &subs);
+            });
+        }
+    }
+    for sig in &mut spec.methods {
+        for param in &mut sig.params {
+            // `self` params have `ty: None` and inherit from the impl
+            // block; they need no rewriting here.
+            if let Some(ty) = &mut param.ty {
+                externalise_imported_refs(ty, imported, module_path);
+                substitute_type(ty, &subs);
+            }
+        }
+        if let Some(rt) = &mut sig.return_type {
+            externalise_imported_refs(rt, imported, module_path);
+            substitute_type(rt, &subs);
+        }
+    }
+    let mut discovered: HashSet<ExternalInstantiation> = HashSet::new();
+    for field in &spec.fields {
+        collect_external_from_type(&field.ty, &mut discovered);
+    }
+    for sig in &spec.methods {
+        for param in &sig.params {
+            if let Some(ty) = &param.ty {
+                collect_external_from_type(ty, &mut discovered);
+            }
+        }
+        if let Some(rt) = &sig.return_type {
+            collect_external_from_type(rt, &mut discovered);
+        }
+    }
+    let new_id = module.add_trait(mangled, spec)?;
+    Ok((ResolvedType::Trait(new_id), discovered.into_iter().collect()))
+}
+
+/// Build a unique mangled name for an external specialisation.
+///
+/// - **Generic** instantiations keep the historical `Name__TypeArgs` shape so
+///   existing snapshots / consumers (`Helper__I32`, etc.) are unchanged.
+/// - **Non-generic** clones use the qualified `module::path::Name` form to
+///   avoid colliding with user-chosen local names. The lexer rejects `::`
+///   inside identifiers, so this form is unreachable from source.
+fn mangle_external_name(
+    name: &str,
+    args: &[ResolvedType],
+    module_path: &[String],
+    module: &IrModule,
+) -> String {
+    let mut out = if args.is_empty() {
+        let mut qualified = String::with_capacity(
+            module_path.iter().map(String::len).sum::<usize>()
+                + module_path.len() * 2
+                + name.len(),
+        );
+        for segment in module_path {
+            qualified.push_str(segment);
+            qualified.push_str("::");
+        }
+        qualified.push_str(name);
+        qualified
+    } else {
+        let mut s = name.to_string();
+        for a in args {
+            s.push_str("__");
+            type_suffix(a, &mut s);
+        }
+        s
+    };
+    if module.struct_id(&out).is_none()
+        && module.enum_id(&out).is_none()
+        && module.trait_id(&out).is_none()
+    {
         return out;
     }
+    let base = std::mem::take(&mut out);
     let mut n: u32 = 2;
     loop {
-        let candidate = format!("{out}#{n}");
-        if module.struct_id(&candidate).is_none() && module.enum_id(&candidate).is_none() {
+        let candidate = format!("{base}#{n}");
+        if module.struct_id(&candidate).is_none()
+            && module.enum_id(&candidate).is_none()
+            && module.trait_id(&candidate).is_none()
+        {
             return candidate;
         }
         n = n.saturating_add(1);
@@ -361,11 +472,11 @@ fn rewrite_external_type(
             for a in type_args.iter_mut() {
                 rewrite_external_type(a, mapping);
             }
-            if !type_args.is_empty() {
-                let key = (module_path.clone(), name.clone(), type_args.clone());
-                if let Some(new_ty) = mapping.get(&key) {
-                    *ty = new_ty.clone();
-                }
+            // Both generic and non-generic externals are eligible; the
+            // collection step now enqueues both.
+            let key = (module_path.clone(), name.clone(), type_args.clone());
+            if let Some(new_ty) = mapping.get(&key) {
+                *ty = new_ty.clone();
             }
         }
         ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
