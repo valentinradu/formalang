@@ -317,32 +317,38 @@ Five commits landed on `string-builtins-design`:
   `lower_dict_access` to `IrExpr::MethodCall { method: "byte_at" }`
   pointing at the prelude impl. Backends see only method calls.
 
+- **SB-6 (tests + docs)** (`8a09502`): Integration tests for prelude
+  load, `s.len()` → MethodCall, `s[0]` → byte_at desugaring,
+  `extern impl I32`. `docs/user/formalang.md` extern-impl section
+  expanded with the v1 prelude surface.
+- **SB-7 (prelude span fidelity)** (`3c540e2`): Parse prelude
+  separately and merge AST instead of source-prepending. User
+  spans stay 0-based on user bytes; prelude spans are
+  prelude-relative. Eliminates the ~22-byte span shift.
+- **SB-8 (primitive dispatch)** (`bbf4212`): `resolve_dispatch_kind`
+  recognises `ResolvedType::Primitive(_)` receivers and looks up
+  `ImplTarget::Primitive(prim)` impls. `s.len()` lowers to
+  `MethodCall { dispatch: Static { impl_id: <prelude impl> } }`.
+  `lookup_method_idx` in ResolveReferencesPass works without
+  changes (indexes into module.impls agnostic of impl target).
+
 ### Remaining work
 
-1. **Source-span fidelity for prelude.** Prepending the prelude
-   shifts all user-source spans by the prelude's byte length. Error
-   messages and IDE tooling show off-by-prelude-bytes line numbers.
-   Cleaner fix: parse prelude separately and merge IR (no source
-   concatenation).
-2. **`self` parameter typing on primitive impls.** `IrFunctionParam.ty`
-   is `None` for `self` today; for primitive impls the resolver
-   should infer `Primitive(receiver_type)` for body type-checking.
-   Lowerer / type-checker may need adjustments.
-3. **ResolveReferencesPass primitive-aware method lookup.** The
-   pass's `lookup_method_idx` walks impls — verify it correctly
-   handles `ImplTarget::Primitive` lookups for receiver types.
-4. **Tests and documentation** per plan steps 7 and 8. Integration
-   tests covering the six methods + `s[i]`. Update
-   `docs/user/formalang.md` Extern Declarations section.
-5. **formawasm Phase 5 #2 (separate repo).** Wire the six runtime
+1. **`self` parameter typing on primitive impls.**
+   `IrFunctionParam.ty` is `None` for `self` today; for primitive
+   impls the resolver should infer `Primitive(receiver_type)` for
+   body type-checking. Today's pure-extern surface (bodyless
+   methods) sidesteps this — bodies don't need `self` typed. Once
+   non-extern primitive impls land, this needs revisiting.
+2. **formawasm Phase 5 #2 (separate repo).** Wire the six runtime
    helpers (`__str_len`, `__str_slice`, etc.) via the existing
    `wasmtime::component::Linker` path. Tracked in formawasm's PLAN.
 
-What's already shipped (SB-1 through SB-5) covers the common case:
-a FormaLang program calling `s.len()`, `s.slice(...)`, etc., and
-`s[i]` compiles end-to-end with backends seeing standard
-`IrExpr::MethodCall` shapes. The prelude is automatic — no `use`
-needed.
+The plan is otherwise substantively complete. SB-1 through SB-8
+cover the full path: ImplTarget::Primitive variant in IR, parser
+acceptance, semantic dispatch, prelude shipping with correct
+spans, primitive method dispatch, `s[i]` desugaring, integration
+tests, and end-user docs.
 
 ## Status in the formawasm backend
 
