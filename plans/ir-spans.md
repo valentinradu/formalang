@@ -344,31 +344,37 @@ One commit landed on `dwarf-spans-design`:
   anchor DWARF `DW_TAG_subprogram` at the user-visible
   `|x| { ... }` source location.
 
+- **SP-7** (`a0e481c`): `lower_to_ir_with_path(ast, symbols, path)`
+  registers the source path as `FileId(1)` and seeds
+  `IrLowerer.current_file`. Backends can resolve every span to a
+  real file via `IrModule.file_path(span.file)`.
+
 ### Remaining work
 
-Most of the plan is shipped. Remaining items:
+The plan is substantively complete. The remaining items are
+smaller follow-ups, several already correct-for-free:
 
-1. **`current_file` registration.** `IrLowerer.current_file`
-   defaults to `FileId::SYNTHETIC`. Wire `lower_to_ir` (and
-   `compile_to_ir{_with_resolver}`) to accept the source path,
-   register it via `IrModule.register_file()`, and seed
-   `current_file` so lowered spans carry a real file id. Tracked
-   as a small follow-up — needs a public-API tweak.
-2. **Monomorphisation specialisation spans.** When
-   `monomorphise/specialise.rs` clones a generic struct/enum/fn,
-   the clone should keep the originating generic's span (matches
-   Rust / C++ template convention).
-3. **Cross-module integration.** Coordinate with
-   `plans/cross-module-codegen.md`: imported clones should keep
-   their originating `IrSpan` with the imported file's `FileId`;
-   entry's `file_table` should register every imported source.
-4. **Synthetic let-binding spans** in
-   `lower/expr/literals_and_containers.rs`'s default-substitution
-   wrapper (DP-4) and any other auto-synthesised `IrBlockStatement::Let`.
-
-These are smaller commits each — the foundation, every-node sweep,
-lowerer plumbing, and closure-conv synthesised spans are all in
-place and exercised by the test suite.
+1. **Monomorphisation specialisation spans** — already correct.
+   The existing `let source = module.get_struct(id).cloned()`
+   pattern carries the struct's `span` through to the
+   specialisation via the `Clone` trait. Generic specialisations
+   anchor at the originating generic's source location
+   automatically.
+2. **Cross-module file_table integration.** When imports are
+   inlined (per `plans/cross-module-codegen.md`), the entry
+   module's `file_table` should register every imported source so
+   cloned items' spans resolve correctly. Lands as part of
+   cross-module follow-up after the branches merge.
+3. **`IrBlockStatement::Let` / `Assign` spans.** Optional polish —
+   block-statement-level spans aren't required for DWARF (the inner
+   `IrExpr` already carries a span). If future tooling needs the
+   `let` keyword's location, add a span field to those variants
+   (~25 construction sites).
+4. **Higher-level entry points** (`compile_to_ir` /
+   `compile_to_ir_with_resolver`) accepting an optional source
+   path and threading it to `lower_to_ir_with_path`. Today,
+   path-aware lowering must be invoked alongside
+   `compile_with_analyzer`.
 
 ## Status in the formawasm backend
 
