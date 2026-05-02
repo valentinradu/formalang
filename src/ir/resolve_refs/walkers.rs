@@ -89,6 +89,19 @@ pub(super) fn resolve_path(path: &[String], r: &FnResolver<'_>) -> ReferenceTarg
                 BindingKind::Local => ReferenceTarget::Local(id),
             };
         }
+        // Try the enclosing module's qualified form first, mirroring
+        // resolve_function_call_id. This makes intra-module references
+        // resolve to the right qualified item — both for nested local
+        // modules (`mod inner { fn foo }` referenced as `foo` from
+        // within `inner`) and for cloned imported items (helper.fv's
+        // body referencing `compute_y` after cloning to entry under
+        // `helper::compute_y`).
+        if !r.module_prefix.is_empty() {
+            let qualified = format!("{}::{}", r.module_prefix, single);
+            if let Some(target) = r.symbols.by_name.get(&qualified) {
+                return target.clone();
+            }
+        }
         if let Some(target) = r.symbols.by_name.get(single) {
             return target.clone();
         }

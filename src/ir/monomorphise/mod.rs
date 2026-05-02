@@ -66,7 +66,7 @@ use compact::{
 };
 use external::{
     inline_imported_functions, inline_imported_impls, inline_imported_lets,
-    rewrite_external_references, specialise_external_instantiations,
+    remap_imported_body_ids, rewrite_external_references, specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -105,6 +105,9 @@ impl IrPass for MonomorphisePass {
 
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         let mut errors = Vec::new();
+        // Tracks (imported_module_path, imported_impl_idx) → local_impl_idx
+        // for the body-id remap pass. Populated by Phase 1c.
+        let mut impl_clone_remap: HashMap<(Vec<String>, u32), u32> = HashMap::new();
 
         // Phase 1a: clone each imported `External` (generic or non-generic)
         // into the current module under a qualified name. Phase 2 uses the
@@ -135,7 +138,7 @@ impl IrPass for MonomorphisePass {
             // Phase 1c: inline imported impl blocks whose target type
             // is now in the local module. Method signatures and bodies
             // have their types externalised the same way as functions.
-            inline_imported_impls(&mut module, &self.imported_modules);
+            inline_imported_impls(&mut module, &self.imported_modules, &mut impl_clone_remap);
             // Phase 1d: inline imported pub `let`s under qualified
             // names. Initialiser expressions have their types
             // externalised the same way as function bodies.
@@ -150,6 +153,14 @@ impl IrPass for MonomorphisePass {
                 Ok(more) => external_mapping.extend(more),
                 Err(mut e) => errors.append(&mut e),
             }
+            // Phase 1e: walk every cloned item's body and translate
+            // `FunctionCall.function_id` and
+            // `DispatchKind::Static.impl_id` references from each
+            // imported module's id-space into the entry module's
+            // id-space. `Reference.target` stays Unresolved (lowering
+            // emitted it that way; ResolveReferencesPass will rebind
+            // via the qualified-name path).
+            remap_imported_body_ids(&mut module, &self.imported_modules, &impl_clone_remap);
         }
 
         // Phase 1: collect every `Generic { base, args }` instantiation in
