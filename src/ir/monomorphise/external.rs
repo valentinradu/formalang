@@ -675,6 +675,283 @@ pub(super) fn remap_imported_body_ids(
     }
 }
 
+/// Phase 1f: qualify bare-name paths in `FunctionCall` and `Reference`
+/// expressions where the name matches a cloned imported item.
+///
+/// At lowering time, an entry-module call `greet()` after `use
+/// helper::greet` produces `FunctionCall { path: ["greet"],
+/// function_id: None }`. After Phases 1b–1e the cloned function is
+/// named `"helper::greet"` in the entry module; the bare path
+/// `["greet"]` doesn't resolve. This pass walks every expression in
+/// the module and rewrites bare paths to the qualified form when:
+///
+/// - The bare name matches exactly one cloned imported item; AND
+/// - It does not match a local entry-module item (locals win).
+///
+/// Cloned items' bodies are walked too — they may reference items
+/// from their *own* module's imports (e.g. helper.fv has `use
+/// other::compute` and the cloned helper body references `compute`).
+/// For those, the per-item context (which imports apply) is the
+/// imported module's import set, not the entry's. Today this pass
+/// uses a single global candidate set built from `imported_modules`'
+/// own qualified-clone names — it doesn't consult helper.imports
+/// individually. That covers the common case (one module imports
+/// another and uses it directly) but not the chained case (helper
+/// imports other, helper's body references other's items).
+pub(super) fn qualify_imported_paths(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    if imported_modules.is_empty() {
+        return;
+    }
+    // Build a bare-name → qualified-name map of cloned import items.
+    // Skip names that have multiple qualifiers (would be ambiguous).
+    let mut bare_to_qualified: HashMap<String, String> = HashMap::new();
+    let mut ambiguous: HashSet<String> = HashSet::new();
+    for path in imported_modules.keys() {
+        for func in &module.functions {
+            if let Some(stripped) = strip_qualified_prefix(&func.name, path) {
+                register_qualified(stripped, &func.name, &mut bare_to_qualified, &mut ambiguous);
+            }
+        }
+        for s in &module.structs {
+            if let Some(stripped) = strip_qualified_prefix(&s.name, path) {
+                register_qualified(stripped, &s.name, &mut bare_to_qualified, &mut ambiguous);
+            }
+        }
+        for e in &module.enums {
+            if let Some(stripped) = strip_qualified_prefix(&e.name, path) {
+                register_qualified(stripped, &e.name, &mut bare_to_qualified, &mut ambiguous);
+            }
+        }
+        for t in &module.traits {
+            if let Some(stripped) = strip_qualified_prefix(&t.name, path) {
+                register_qualified(stripped, &t.name, &mut bare_to_qualified, &mut ambiguous);
+            }
+        }
+        for l in &module.lets {
+            if let Some(stripped) = strip_qualified_prefix(&l.name, path) {
+                register_qualified(stripped, &l.name, &mut bare_to_qualified, &mut ambiguous);
+            }
+        }
+    }
+    // Drop ambiguous bare names.
+    for name in &ambiguous {
+        bare_to_qualified.remove(name);
+    }
+    // Subtract any entry-module local items — their bare name should
+    // continue to resolve locally, not get qualified to an import.
+    for func in &module.functions {
+        if !func.name.contains("::") {
+            bare_to_qualified.remove(&func.name);
+        }
+    }
+    for s in &module.structs {
+        if !s.name.contains("::") {
+            bare_to_qualified.remove(&s.name);
+        }
+    }
+    for e in &module.enums {
+        if !e.name.contains("::") {
+            bare_to_qualified.remove(&e.name);
+        }
+    }
+    for t in &module.traits {
+        if !t.name.contains("::") {
+            bare_to_qualified.remove(&t.name);
+        }
+    }
+    for l in &module.lets {
+        if !l.name.contains("::") {
+            bare_to_qualified.remove(&l.name);
+        }
+    }
+
+    if bare_to_qualified.is_empty() {
+        return;
+    }
+
+    // Walk every body and qualify single-segment paths whose name
+    // matches a candidate.
+    for func in &mut module.functions {
+        if let Some(body) = &mut func.body {
+            qualify_paths_in_expr(body, &bare_to_qualified);
+        }
+    }
+    for impl_block in &mut module.impls {
+        for method in &mut impl_block.functions {
+            if let Some(body) = &mut method.body {
+                qualify_paths_in_expr(body, &bare_to_qualified);
+            }
+        }
+    }
+    for let_binding in &mut module.lets {
+        qualify_paths_in_expr(&mut let_binding.value, &bare_to_qualified);
+    }
+}
+
+fn strip_qualified_prefix<'a>(name: &'a str, path: &[String]) -> Option<&'a str> {
+    let mut prefix_len = 0usize;
+    for seg in path {
+        prefix_len += seg.len() + 2; // +2 for "::"
+    }
+    if name.len() <= prefix_len {
+        return None;
+    }
+    let prefix = qualified_name(path, "");
+    name.strip_prefix(&prefix)
+}
+
+fn register_qualified(
+    bare: &str,
+    qualified: &str,
+    out: &mut HashMap<String, String>,
+    ambiguous: &mut HashSet<String>,
+) {
+    // Skip nested-module clones (`helper::utils::Foo` from helper has
+    // bare = "utils::Foo" — multi-segment; not what we're matching).
+    if bare.contains("::") {
+        return;
+    }
+    match out.get(bare) {
+        Some(existing) if existing != qualified => {
+            ambiguous.insert(bare.to_string());
+        }
+        Some(_) => {}
+        None => {
+            out.insert(bare.to_string(), qualified.to_string());
+        }
+    }
+}
+
+fn qualify_paths_in_expr(expr: &mut IrExpr, bare_to_qualified: &HashMap<String, String>) {
+    match expr {
+        IrExpr::FunctionCall {
+            path, function_id, ..
+        } => {
+            if function_id.is_none() && path.len() == 1 {
+                if let Some(qualified) = bare_to_qualified.get(&path[0]) {
+                    *path = qualified.split("::").map(String::from).collect();
+                }
+            }
+        }
+        IrExpr::Reference { path, target, .. } => {
+            // Only qualify when target is still Unresolved — preserve
+            // any explicitly-set target (locals, params, already-resolved
+            // items).
+            if matches!(target, crate::ir::ReferenceTarget::Unresolved) && path.len() == 1 {
+                if let Some(qualified) = bare_to_qualified.get(&path[0]) {
+                    *path = qualified.split("::").map(String::from).collect();
+                }
+            }
+        }
+        _ => {}
+    }
+    // Recurse into children using the same descent as remap_expr_ids.
+    match expr {
+        IrExpr::BinaryOp { left, right, .. } => {
+            qualify_paths_in_expr(left, bare_to_qualified);
+            qualify_paths_in_expr(right, bare_to_qualified);
+        }
+        IrExpr::UnaryOp { operand, .. } => qualify_paths_in_expr(operand, bare_to_qualified),
+        IrExpr::Array { elements, .. } => {
+            for e in elements {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::DictLiteral { entries, .. } => {
+            for (k, v) in entries {
+                qualify_paths_in_expr(k, bare_to_qualified);
+                qualify_paths_in_expr(v, bare_to_qualified);
+            }
+        }
+        IrExpr::DictAccess { dict, key, .. } => {
+            qualify_paths_in_expr(dict, bare_to_qualified);
+            qualify_paths_in_expr(key, bare_to_qualified);
+        }
+        IrExpr::FieldAccess { object, .. } => qualify_paths_in_expr(object, bare_to_qualified),
+        IrExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            qualify_paths_in_expr(condition, bare_to_qualified);
+            qualify_paths_in_expr(then_branch, bare_to_qualified);
+            if let Some(eb) = else_branch {
+                qualify_paths_in_expr(eb, bare_to_qualified);
+            }
+        }
+        IrExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            qualify_paths_in_expr(scrutinee, bare_to_qualified);
+            for arm in arms {
+                qualify_paths_in_expr(&mut arm.body, bare_to_qualified);
+            }
+        }
+        IrExpr::For {
+            collection, body, ..
+        } => {
+            qualify_paths_in_expr(collection, bare_to_qualified);
+            qualify_paths_in_expr(body, bare_to_qualified);
+        }
+        IrExpr::Block {
+            statements, result, ..
+        } => {
+            for stmt in statements {
+                match stmt {
+                    IrBlockStatement::Let { value, .. } => {
+                        qualify_paths_in_expr(value, bare_to_qualified)
+                    }
+                    IrBlockStatement::Assign { target, value, .. } => {
+                        qualify_paths_in_expr(target, bare_to_qualified);
+                        qualify_paths_in_expr(value, bare_to_qualified);
+                    }
+                    IrBlockStatement::Expr(e) => qualify_paths_in_expr(e, bare_to_qualified),
+                }
+            }
+            qualify_paths_in_expr(result, bare_to_qualified);
+        }
+        IrExpr::FunctionCall { args, .. } => {
+            for (_, e) in args {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::CallClosure { closure, args, .. } => {
+            qualify_paths_in_expr(closure, bare_to_qualified);
+            for (_, e) in args {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::MethodCall { receiver, args, .. } => {
+            qualify_paths_in_expr(receiver, bare_to_qualified);
+            for (_, e) in args {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::Tuple { fields, .. } => {
+            for (_, e) in fields {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+            for (_, _, e) in fields {
+                qualify_paths_in_expr(e, bare_to_qualified);
+            }
+        }
+        IrExpr::Closure { body, .. } => qualify_paths_in_expr(body, bare_to_qualified),
+        IrExpr::ClosureRef { env_struct, .. } => {
+            qualify_paths_in_expr(env_struct, bare_to_qualified)
+        }
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::LetRef { .. } => {}
+    }
+}
+
 /// Walk an expression tree and apply id remaps for FunctionCall.function_id
 /// and DispatchKind::Static.impl_id.
 fn remap_expr_ids(expr: &mut IrExpr, maps: &ItemMaps) {

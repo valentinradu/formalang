@@ -65,7 +65,7 @@ use compact::{
     drop_specialised_generic_impls,
 };
 use external::{
-    inline_imported_functions, inline_imported_impls, inline_imported_lets,
+    inline_imported_functions, inline_imported_impls, inline_imported_lets, qualify_imported_paths,
     remap_imported_body_ids, rewrite_external_references, specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
@@ -161,6 +161,12 @@ impl IrPass for MonomorphisePass {
             // emitted it that way; ResolveReferencesPass will rebind
             // via the qualified-name path).
             remap_imported_body_ids(&mut module, &self.imported_modules, &impl_clone_remap);
+            // Phase 1f: qualify single-segment paths in entry-side
+            // FunctionCall/Reference expressions where the bare name
+            // matches a cloned imported item. Lets `use helper::greet;
+            // greet()` resolve correctly to the cloned `helper::greet`
+            // via the qualified-name lookup in ResolveReferencesPass.
+            qualify_imported_paths(&mut module, &self.imported_modules);
         }
 
         // Phase 1: collect every `Generic { base, args }` instantiation in
