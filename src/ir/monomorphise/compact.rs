@@ -81,6 +81,8 @@ pub(super) fn drop_specialised_generic_impls(
                 .get(id.0 as usize)
                 .copied()
                 .is_none_or(|slot| slot.is_some()),
+            // Primitive impls don't carry an id-remappable target.
+            crate::ir::ImplTarget::Primitive(_) => true,
         })
         .collect();
     let mut new_index: Vec<Option<usize>> = Vec::with_capacity(keep.len());
@@ -284,6 +286,8 @@ pub(super) fn apply_remaps(
                     span: Span::default(),
                 }),
             },
+            // Primitive impls have no struct/enum id to remap.
+            crate::ir::ImplTarget::Primitive(_) => {}
         }
         if let Some(tr) = &mut imp.trait_ref {
             remap_trait_id_in_place(&mut tr.trait_id, &mut errors);

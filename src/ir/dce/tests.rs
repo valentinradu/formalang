@@ -284,7 +284,7 @@ mod removal_tests {
                     let e = optimized.get_enum(id).unwrap();
                     assert_ne!(e.name, "Unused");
                 }
-                crate::ir::ImplTarget::Struct(_) => {}
+                crate::ir::ImplTarget::Struct(_) | crate::ir::ImplTarget::Primitive(_) => {}
             }
         }
     }

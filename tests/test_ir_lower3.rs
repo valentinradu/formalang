@@ -193,6 +193,9 @@ fn test_lower_enum_impl_targets_enum_id() -> Result<(), Box<dyn std::error::Erro
         ImplTarget::Struct(_) => {
             return Err("impl Shape lowered to a Struct target instead of Enum".into())
         }
+        ImplTarget::Primitive(_) => {
+            return Err("impl Shape lowered to a Primitive target instead of Enum".into())
+        }
     }
     Ok(())
 }

@@ -660,7 +660,7 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     // There must be at least one impl targeting the specialised struct.
     let has_impl = result.impls.iter().any(|imp| match imp.target {
         formalang::ir::ImplTarget::Struct(id) => id == spec_id,
-        formalang::ir::ImplTarget::Enum(_) => false,
+        formalang::ir::ImplTarget::Enum(_) | formalang::ir::ImplTarget::Primitive(_) => false,
     });
     if !has_impl {
         return Err(format!(
@@ -692,6 +692,9 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
                     )
                     .into());
                 }
+            }
+            formalang::ir::ImplTarget::Primitive(_) => {
+                // Primitive impls have no struct/enum id to dangle.
             }
         }
     }

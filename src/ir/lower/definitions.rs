@@ -407,6 +407,8 @@ impl IrLowerer<'_> {
                 .get_enum(id)
                 .map(|e| e.generic_params.clone())
                 .unwrap_or_default(),
+            // Primitive impls have no generic params on the target.
+            ImplTarget::Primitive(_) => Vec::new(),
         };
         for target_param in target_params {
             if let Some(existing) = scope.iter_mut().find(|q| q.name == target_param.name) {

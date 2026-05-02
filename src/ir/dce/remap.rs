@@ -68,12 +68,16 @@ pub(super) fn remove_unused_definitions(
             .retain(|_| iter.next().copied().flatten().is_some());
     }
 
-    // Drop impls that target a removed struct or enum.
+    // Drop impls that target a removed struct or enum. Primitive
+    // impls (`extern impl String { ... }`) are always retained — they
+    // don't carry an id that DCE could remove, and the prelude needs
+    // them for source-level method dispatch.
     module.impls.retain(|impl_block| {
         use crate::ir::ImplTarget;
         match impl_block.target {
             ImplTarget::Struct(id) => remap.struct_of(id).is_some(),
             ImplTarget::Enum(id) => remap.enum_of(id).is_some(),
+            ImplTarget::Primitive(_) => true,
         }
     });
 
@@ -426,6 +430,9 @@ fn remap_module(module: &mut IrModule, remap: &IdRemap) {
                 if let Some(new) = remap.enum_of(*id) {
                     *id = new;
                 }
+            }
+            crate::ir::ImplTarget::Primitive(_) => {
+                // Primitive receivers carry no struct/enum id to remap.
             }
         }
         for f in &mut i.functions {

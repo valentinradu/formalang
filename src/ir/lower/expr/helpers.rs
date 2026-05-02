@@ -201,6 +201,7 @@ impl IrLowerer<'_> {
                 let matches_target = match impl_block.target {
                     crate::ir::ImplTarget::Struct(id) => Some(id) == target_struct_id,
                     crate::ir::ImplTarget::Enum(id) => Some(id) == target_enum_id,
+                    crate::ir::ImplTarget::Primitive(_) => false,
                 };
                 if !matches_target {
                     continue;

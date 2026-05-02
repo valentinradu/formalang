@@ -174,6 +174,8 @@ pub(super) fn specialise_impls(
         let base = match imp.target {
             crate::ir::ImplTarget::Struct(id) => GenericBase::Struct(id),
             crate::ir::ImplTarget::Enum(id) => GenericBase::Enum(id),
+            // Primitive impls aren't generic; nothing to specialise.
+            crate::ir::ImplTarget::Primitive(_) => continue,
         };
         let Some(specs) = by_base.get(&base) else {
             continue;
@@ -428,6 +430,9 @@ fn devirtualise_expr(expr: &mut IrExpr, impls: &[IrImpl]) {
                 && imp.trait_id() == Some(virt_trait_id)
                 && imp.functions.iter().any(|f| f.name == method_name_owned)
         }
+        // Primitive impls don't carry a GenericBase target — no
+        // virtual-to-static devirtualisation applies.
+        crate::ir::ImplTarget::Primitive(_) => false,
     }) {
         let new_impl_id = ImplId(u32::try_from(impl_idx).unwrap_or(u32::MAX));
         *dispatch = DispatchKind::Static {

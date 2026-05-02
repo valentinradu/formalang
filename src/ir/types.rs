@@ -182,7 +182,12 @@ pub struct IrEnumVariant {
     pub fields: Vec<IrField>,
 }
 
-/// Target of an impl block - either a struct or enum.
+/// Target of an impl block.
+///
+/// `Primitive(PrimitiveType)` is reserved for `extern impl <Primitive> { ... }`
+/// blocks (e.g., the compiler-shipped prelude's `extern impl String`),
+/// where the language injects host-provided behaviour onto a primitive
+/// receiver type. Non-extern impls on primitives are not allowed today.
 #[expect(
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
@@ -193,6 +198,10 @@ pub enum ImplTarget {
     Struct(StructId),
     /// Impl for an enum
     Enum(EnumId),
+    /// Impl for a primitive receiver (e.g. `extern impl String`,
+    /// `extern impl I32`). Only valid in `extern impl` blocks; non-
+    /// extern impls on primitives are rejected at semantic time.
+    Primitive(crate::ast::PrimitiveType),
 }
 
 /// An impl block in the IR.
@@ -243,7 +252,7 @@ impl IrImpl {
     pub const fn struct_id(&self) -> Option<StructId> {
         match self.target {
             ImplTarget::Struct(id) => Some(id),
-            ImplTarget::Enum(_) => None,
+            ImplTarget::Enum(_) | ImplTarget::Primitive(_) => None,
         }
     }
 
@@ -251,8 +260,17 @@ impl IrImpl {
     #[must_use]
     pub const fn enum_id(&self) -> Option<EnumId> {
         match self.target {
-            ImplTarget::Struct(_) => None,
+            ImplTarget::Struct(_) | ImplTarget::Primitive(_) => None,
             ImplTarget::Enum(id) => Some(id),
+        }
+    }
+
+    /// Get the primitive receiver if this impl is on a primitive.
+    #[must_use]
+    pub const fn primitive(&self) -> Option<crate::ast::PrimitiveType> {
+        match self.target {
+            ImplTarget::Primitive(p) => Some(p),
+            ImplTarget::Struct(_) | ImplTarget::Enum(_) => None,
         }
     }
 }
