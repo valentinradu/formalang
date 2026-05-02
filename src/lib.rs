@@ -224,9 +224,20 @@ pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
 
 /// Compile `FormaLang` source code to IR with a custom module resolver.
 ///
+/// Runs [`ir::MonomorphisePass`] after lowering with an `imports_map` built
+/// from the analyzer's per-import IR cache, so generic `External` references
+/// to imported types are specialised into local clones before the IR is
+/// returned. Non-generic `External` references stay opaque until the
+/// cross-module inline pass extends to them (see
+/// `plans/cross-module-codegen.md`).
+///
+/// Single-file consumers should prefer [`compile_to_ir`] — that path skips
+/// the pipeline since there are no imports to inline.
+///
 /// # Errors
 ///
-/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
+/// Returns a vector of [`CompilerError`] if compilation, IR lowering, or
+/// monomorphisation fails.
 pub fn compile_to_ir_with_resolver<R>(
     source: &str,
     resolver: R,
@@ -235,5 +246,23 @@ where
     R: semantic::module_resolver::ModuleResolver,
 {
     let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
-    ir::lower_to_ir(&ast, analyzer.symbols())
+    let module = ir::lower_to_ir(&ast, analyzer.symbols())?;
+
+    // Build the imports map keyed by logical module path (matching
+    // `ResolvedType::External::module_path`). Each entry pairs a path with
+    // the cached IR of the module that path resolves to. Driven off the
+    // entry-point module's `imports[*]`: only modules that actually
+    // contributed at least one symbol are forwarded to the pass.
+    let imported_ir = analyzer.imported_ir_modules();
+    let mut imports_map: std::collections::HashMap<Vec<String>, IrModule> =
+        std::collections::HashMap::with_capacity(module.imports.len());
+    for imp in &module.imports {
+        if let Some(ir_mod) = imported_ir.get(&imp.source_file) {
+            imports_map.insert(imp.module_path.clone(), ir_mod.clone());
+        }
+    }
+
+    Pipeline::new()
+        .pass(ir::MonomorphisePass::default().with_imports(imports_map))
+        .run(module)
 }
