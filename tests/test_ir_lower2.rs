@@ -653,7 +653,7 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "items")
         .ok_or("items")?;
-    let IrExpr::Array { elements, ty } = &binding.value else {
+    let IrExpr::Array { elements, ty, .. } = &binding.value else {
         return Err(format!("Expected Array, got {:?}", binding.value).into());
     };
     if !elements.is_empty() {

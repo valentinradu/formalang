@@ -319,13 +319,16 @@ fn test_fold_float_eq_signed_zero() -> Result<(), Box<dyn std::error::Error>> {
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: number_ty.clone(),
+            span: crate::ir::IrSpan::default(),
         }),
         op: BinaryOperator::Eq,
         right: Box::new(IrExpr::Literal {
             value: Literal::Number((-0.0_f64).into()),
             ty: number_ty,
+            span: crate::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        span: crate::ir::IrSpan::default(),
     };
     let result = folder.fold_expr(expression);
     if let IrExpr::Literal {
@@ -350,13 +353,16 @@ fn test_fold_float_eq_nan() -> Result<(), Box<dyn std::error::Error>> {
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(f64::NAN.into()),
             ty: number_ty.clone(),
+            span: crate::ir::IrSpan::default(),
         }),
         op: BinaryOperator::Eq,
         right: Box::new(IrExpr::Literal {
             value: Literal::Number(f64::NAN.into()),
             ty: number_ty,
+            span: crate::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        span: crate::ir::IrSpan::default(),
     };
     let result = folder.fold_expr(expression);
     if let IrExpr::Literal {

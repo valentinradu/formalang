@@ -46,6 +46,7 @@ impl IrLowerer<'_> {
             Expr::Literal { value: lit, .. } => IrExpr::Literal {
                 value: lit.clone(),
                 ty: Self::literal_type(lit),
+                span: crate::ir::IrSpan::default(),
             },
             Expr::Invocation {
                 path,
@@ -109,6 +110,7 @@ impl IrLowerer<'_> {
                     field: field.name.clone(),
                     field_idx: crate::ir::FieldIdx(0),
                     ty,
+                    span: crate::ir::IrSpan::default(),
                 }
             }
             Expr::MethodCall {

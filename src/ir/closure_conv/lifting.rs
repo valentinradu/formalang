@@ -67,6 +67,7 @@ impl ConversionState {
                     path: vec![name.clone()],
                     target: crate::ir::ReferenceTarget::Local(*outer_bid),
                     ty: capture_ty.clone(),
+                    span: crate::ir::IrSpan::default(),
                 };
                 #[expect(
                     clippy::cast_possible_truncation,
@@ -82,12 +83,14 @@ impl ConversionState {
             type_args: Vec::new(),
             fields: env_fields,
             ty: ResolvedType::Struct(env_id),
+            span: crate::ir::IrSpan::default(),
         };
 
         IrExpr::ClosureRef {
             funcref: vec![func_name],
             env_struct: Box::new(env_inst),
             ty: closure_ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 }

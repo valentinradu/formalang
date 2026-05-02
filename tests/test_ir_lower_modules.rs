@@ -556,12 +556,16 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
         value: IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
     };
 
     let mapped = stmt.map_exprs(|_e| IrExpr::Literal {
         value: Literal::Number(99.0.into()),
         ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+        span: formalang::ir::IrSpan::default(),
     });
 
     if let IrBlockStatement::Let { value, .. } = mapped {
@@ -592,10 +596,14 @@ fn ir_block_statement_map_exprs_assign() -> Result<(), Box<dyn std::error::Error
         target: IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
         value: IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
     };
 
@@ -623,11 +631,15 @@ fn ir_block_statement_map_exprs_expr() -> Result<(), Box<dyn std::error::Error>>
     let stmt = IrBlockStatement::Expr(IrExpr::Literal {
         value: Literal::Boolean(false),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+
+        span: formalang::ir::IrSpan::default(),
     });
 
     let mapped = stmt.map_exprs(|_e| IrExpr::Literal {
         value: Literal::Boolean(true),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+
+        span: formalang::ir::IrSpan::default(),
     });
 
     if let IrBlockStatement::Expr(IrExpr::Literal {
@@ -660,16 +672,24 @@ fn dce_eliminate_dead_code_expr_constant_true_if() -> Result<(), Box<dyn std::er
         condition: Box::new(IrExpr::Literal {
             value: Literal::Boolean(true),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         then_branch: Box::new(IrExpr::Literal {
             value: Literal::Number(10.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
             value: Literal::Number(20.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         })),
         ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let result = eliminate_dead_code_expr(expr);
@@ -699,16 +719,24 @@ fn dce_eliminate_dead_code_expr_constant_false_if() -> Result<(), Box<dyn std::e
         condition: Box::new(IrExpr::Literal {
             value: Literal::Boolean(false),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         then_branch: Box::new(IrExpr::Literal {
             value: Literal::Number(10.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
             value: Literal::Number(20.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         })),
         ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let result = eliminate_dead_code_expr(expr);
@@ -739,13 +767,19 @@ fn dce_eliminate_dead_code_expr_no_else_false_preserved() -> Result<(), Box<dyn 
         condition: Box::new(IrExpr::Literal {
             value: Literal::Boolean(false),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         then_branch: Box::new(IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         else_branch: None,
         ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     // false condition with no else: can't eliminate, keep as-is
@@ -770,13 +804,19 @@ fn dce_eliminate_dead_code_expr_binary_op_passthrough() -> Result<(), Box<dyn st
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(3.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
             value: Literal::Number(4.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     // DCE doesn't fold constants, just preserves BinaryOp
@@ -1464,13 +1504,19 @@ fn visitor_walk_expr_visits_sub_expressions() -> Result<(), Box<dyn std::error::
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         op: BinaryOperator::Add,
         right: Box::new(IrExpr::Literal {
             value: Literal::Number(2.0.into()),
             ty: ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -1527,6 +1573,8 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
         value: IrExpr::Literal {
             value: Literal::Number(42.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
     };
 
@@ -1560,10 +1608,14 @@ fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn
         target: IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
         value: IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         },
     };
 
@@ -2406,16 +2458,24 @@ fn visitor_walk_expr_visits_if_branches() -> Result<(), Box<dyn std::error::Erro
         condition: Box::new(IrExpr::Literal {
             value: Literal::Boolean(true),
             ty: bool_ty,
+
+            span: formalang::ir::IrSpan::default(),
         }),
         then_branch: Box::new(IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         else_branch: Some(Box::new(IrExpr::Literal {
             value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         })),
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2457,19 +2517,29 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
                 IrExpr::Literal {
                     value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
                 IrExpr::Literal {
                     value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             ],
             ty: ResolvedType::Array(Box::new(num_ty.clone())),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Array(Box::new(num_ty)),
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2504,6 +2574,8 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
         scrutinee: Box::new(IrExpr::Literal {
             value: Literal::Number(1.0.into()),
             ty: num_ty,
+
+            span: formalang::ir::IrSpan::default(),
         }),
         arms: vec![
             IrMatchArm {
@@ -2514,6 +2586,8 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
                 body: IrExpr::Literal {
                     value: Literal::String("x".to_string()),
                     ty: str_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             },
             IrMatchArm {
@@ -2524,10 +2598,14 @@ fn visitor_walk_expr_visits_match_arms() -> Result<(), Box<dyn std::error::Error
                 body: IrExpr::Literal {
                     value: Literal::String("y".to_string()),
                     ty: str_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             },
         ],
         ty: str_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2566,6 +2644,8 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
                 IrExpr::Literal {
                     value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             ),
             (
@@ -2573,10 +2653,14 @@ fn visitor_walk_expr_visits_function_call_args() -> Result<(), Box<dyn std::erro
                 IrExpr::Literal {
                     value: Literal::Number(2.0.into()),
                     ty: num_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             ),
         ],
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2610,6 +2694,8 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
         receiver: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         method: "scale".to_string(),
         method_idx: formalang::ir::MethodIdx(0),
@@ -2618,6 +2704,8 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
             IrExpr::Literal {
                 value: Literal::Number(2.0.into()),
                 ty: num_ty.clone(),
+
+                span: formalang::ir::IrSpan::default(),
             },
         )],
         dispatch: DispatchKind::Virtual {
@@ -2625,6 +2713,8 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
             method_name: "scale".to_string(),
         },
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2659,16 +2749,22 @@ fn visitor_walk_expr_visits_dict_literal_entries() -> Result<(), Box<dyn std::er
             IrExpr::Literal {
                 value: Literal::String("key".to_string()),
                 ty: str_ty.clone(),
+
+                span: formalang::ir::IrSpan::default(),
             },
             IrExpr::Literal {
                 value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
+
+                span: formalang::ir::IrSpan::default(),
             },
         )],
         ty: ResolvedType::Dictionary {
             key_ty: Box::new(str_ty),
             value_ty: Box::new(num_ty),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2704,6 +2800,8 @@ fn visitor_walk_expr_visits_dict_access() -> Result<(), Box<dyn std::error::Erro
             key_ty: Box::new(str_ty.clone()),
             value_ty: Box::new(num_ty.clone()),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let expr = IrExpr::DictAccess {
@@ -2711,8 +2809,12 @@ fn visitor_walk_expr_visits_dict_access() -> Result<(), Box<dyn std::error::Erro
         key: Box::new(IrExpr::Literal {
             value: Literal::String("k".to_string()),
             ty: str_ty,
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2753,11 +2855,15 @@ fn visitor_walk_expr_visits_closure_body() -> Result<(), Box<dyn std::error::Err
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(42.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Closure {
             param_tys: vec![(ParamConvention::Let, num_ty.clone())],
             return_ty: Box::new(num_ty),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2790,10 +2896,14 @@ fn visitor_walk_expr_field_access_child() -> Result<(), Box<dyn std::error::Erro
         object: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         field: "x".to_string(),
         field_idx: formalang::ir::FieldIdx(0),
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2831,8 +2941,12 @@ fn visitor_walk_expr_unary_op_child() -> Result<(), Box<dyn std::error::Error>> 
         operand: Box::new(IrExpr::Literal {
             value: Literal::Number(5.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2874,13 +2988,19 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
             value: IrExpr::Literal {
                 value: Literal::Number(1.0.into()),
                 ty: num_ty.clone(),
+
+                span: formalang::ir::IrSpan::default(),
             },
         }],
         result: Box::new(IrExpr::Literal {
             value: Literal::Number(2.0.into()),
             ty: num_ty.clone(),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         ty: num_ty,
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2924,9 +3044,13 @@ fn visitor_walk_expr_enum_inst_fields() -> Result<(), Box<dyn std::error::Error>
             IrExpr::Literal {
                 value: Literal::Number(3.0.into()),
                 ty: num_ty,
+
+                span: formalang::ir::IrSpan::default(),
             },
         )],
         ty: ResolvedType::TypeParam("E".to_string()),
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);
@@ -2988,6 +3112,8 @@ fn visitor_walk_block_statement_expr_variant() -> Result<(), Box<dyn std::error:
     let stmt = IrBlockStatement::Expr(IrExpr::Literal {
         value: Literal::Number(1.0.into()),
         ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+        span: formalang::ir::IrSpan::default(),
     });
 
     let mut counter = ExprCounter(0);
@@ -3031,6 +3157,8 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
                 IrExpr::Literal {
                     value: Literal::Number(1.0.into()),
                     ty: num_ty.clone(),
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             ),
             (
@@ -3039,10 +3167,14 @@ fn visitor_walk_struct_inst_fields() -> Result<(), Box<dyn std::error::Error>> {
                 IrExpr::Literal {
                     value: Literal::Number(2.0.into()),
                     ty: num_ty,
+
+                    span: formalang::ir::IrSpan::default(),
                 },
             ),
         ],
         ty: ResolvedType::TypeParam("S".to_string()),
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = LiteralCounter(0);

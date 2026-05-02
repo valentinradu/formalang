@@ -97,9 +97,11 @@ pub(super) fn env_field_access(
             path: vec![ENV_PARAM_NAME.to_string()],
             target: crate::ir::ReferenceTarget::Unresolved,
             ty: env_ty.cloned().unwrap_or(ResolvedType::Error),
+            span: crate::ir::IrSpan::default(),
         }),
         field,
         field_idx: crate::ir::FieldIdx(0),
         ty,
+        span: crate::ir::IrSpan::default(),
     }
 }

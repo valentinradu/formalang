@@ -427,6 +427,7 @@ fn rewrite_call_paths_expr(
         function_id: _,
         args,
         ty,
+        ..
     } = expr
     {
         let Some(last) = path.last() else { return };

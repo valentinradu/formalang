@@ -149,6 +149,7 @@ impl IrLowerer<'_> {
             captures: captures_with_mode,
             body: Box::new(body_ir),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 }

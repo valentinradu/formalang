@@ -11,11 +11,13 @@ fn unit_closure_expr() -> IrExpr {
         body: Box::new(IrExpr::Literal {
             value: Literal::Boolean(true),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+            span: crate::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Closure {
             param_tys: Vec::new(),
             return_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Boolean)),
         },
+        span: crate::ir::IrSpan::default(),
     }
 }
 
@@ -30,6 +32,7 @@ fn expr_has_closure_finds_nested_closure_in_block() {
         statements: Vec::new(),
         result: Box::new(unit_closure_expr()),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        span: crate::ir::IrSpan::default(),
     };
     assert!(expr_has_closure(&block));
 }
@@ -43,8 +46,10 @@ fn expr_has_closure_returns_false_for_closure_ref() {
         env_struct: Box::new(IrExpr::Literal {
             value: Literal::Boolean(true),
             ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+            span: crate::ir::IrSpan::default(),
         }),
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        span: crate::ir::IrSpan::default(),
     };
     assert!(!expr_has_closure(&closure_ref));
 }

@@ -2183,7 +2183,7 @@ fn test_lower_tuple_expression() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if let formalang::ir::IrExpr::Tuple { fields, ty } = expr {
+    if let formalang::ir::IrExpr::Tuple { fields, ty, .. } = expr {
         if fields.len() != 2 {
             return Err(format!("expected {:?} but got {:?}", 2, fields.len()).into());
         }

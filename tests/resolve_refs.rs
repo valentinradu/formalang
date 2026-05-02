@@ -386,6 +386,8 @@ fn unresolved_path_with_concrete_type_emits_undefined_reference() -> TestResult 
             path: vec!["definitely_not_defined".to_string()],
             target: ReferenceTarget::Unresolved,
             ty: ResolvedType::Primitive(PrimitiveType::I32),
+
+            span: formalang::ir::IrSpan::default(),
         }),
         extern_abi: None,
         attributes: vec![],
@@ -422,6 +424,8 @@ fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
             path: vec!["upstream_already_errored".to_string()],
             target: ReferenceTarget::Unresolved,
             ty: ResolvedType::Error,
+
+            span: formalang::ir::IrSpan::default(),
         }),
         extern_abi: None,
         attributes: vec![],

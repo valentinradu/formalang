@@ -98,7 +98,9 @@ impl ConversionState {
     )]
     pub(super) fn process(&mut self, expr: IrExpr, ctx: &CaptureCtx) -> IrExpr {
         match expr {
-            IrExpr::Reference { path, target, ty } => {
+            IrExpr::Reference {
+                path, target, ty, ..
+            } => {
                 if let crate::ir::ReferenceTarget::Local(id)
                 | crate::ir::ReferenceTarget::Param(id) = target
                 {
@@ -114,12 +116,18 @@ impl ConversionState {
                         return env_field_access(name, ty, ctx.env_ty());
                     }
                 }
-                IrExpr::Reference { path, target, ty }
+                IrExpr::Reference {
+                    path,
+                    target,
+                    ty,
+                    span: crate::ir::IrSpan::default(),
+                }
             }
             IrExpr::LetRef {
                 name,
                 binding_id,
                 ty,
+                ..
             } => {
                 if ctx.is_captured(binding_id) {
                     return env_field_access(name, ty, ctx.env_ty());
@@ -128,6 +136,8 @@ impl ConversionState {
                     name,
                     binding_id,
                     ty,
+
+                    span: crate::ir::IrSpan::default(),
                 }
             }
 
@@ -136,17 +146,25 @@ impl ConversionState {
                 captures,
                 body,
                 ty,
+                ..
             } => self.lift_closure(&params, &captures, *body, ty, ctx),
 
-            IrExpr::Literal { value, ty } => IrExpr::Literal { value, ty },
+            IrExpr::Literal { value, ty, .. } => IrExpr::Literal {
+                value,
+                ty,
+                span: crate::ir::IrSpan::default(),
+            },
             IrExpr::SelfFieldRef {
                 field,
                 field_idx,
                 ty,
+                ..
             } => IrExpr::SelfFieldRef {
                 field,
                 field_idx,
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
 
             IrExpr::StructInst {
@@ -154,11 +172,14 @@ impl ConversionState {
                 type_args,
                 fields,
                 ty,
+                ..
             } => IrExpr::StructInst {
                 struct_id,
                 type_args,
                 fields: self.process_indexed_fields(fields, ctx),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::EnumInst {
                 enum_id,
@@ -166,58 +187,78 @@ impl ConversionState {
                 variant_idx,
                 fields,
                 ty,
+                ..
             } => IrExpr::EnumInst {
                 enum_id,
                 variant,
                 variant_idx,
                 fields: self.process_indexed_fields(fields, ctx),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::Tuple { fields, ty } => IrExpr::Tuple {
+            IrExpr::Tuple { fields, ty, .. } => IrExpr::Tuple {
                 fields: self.process_named_fields(fields, ctx),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::Array { elements, ty } => IrExpr::Array {
+            IrExpr::Array { elements, ty, .. } => IrExpr::Array {
                 elements: elements.into_iter().map(|e| self.process(e, ctx)).collect(),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::FieldAccess {
                 object,
                 field,
                 field_idx,
                 ty,
+                ..
             } => IrExpr::FieldAccess {
                 object: Box::new(self.process(*object, ctx)),
                 field,
                 field_idx,
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::BinaryOp {
                 left,
                 op,
                 right,
                 ty,
+                ..
             } => IrExpr::BinaryOp {
                 left: Box::new(self.process(*left, ctx)),
                 op,
                 right: Box::new(self.process(*right, ctx)),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::UnaryOp { op, operand, ty } => IrExpr::UnaryOp {
+            IrExpr::UnaryOp {
+                op, operand, ty, ..
+            } => IrExpr::UnaryOp {
                 op,
                 operand: Box::new(self.process(*operand, ctx)),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::If {
                 condition,
                 then_branch,
                 else_branch,
                 ty,
+                ..
             } => IrExpr::If {
                 condition: Box::new(self.process(*condition, ctx)),
                 then_branch: Box::new(self.process(*then_branch, ctx)),
                 else_branch: else_branch.map(|e| Box::new(self.process(*e, ctx))),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::For {
                 var,
@@ -226,6 +267,7 @@ impl ConversionState {
                 collection,
                 body,
                 ty,
+                ..
             } => {
                 // No `inner_ctx.bind(var)` needed: BindingId-based
                 // detection inherently distinguishes the for-loop
@@ -239,12 +281,15 @@ impl ConversionState {
                     collection: Box::new(new_collection),
                     body: Box::new(new_body),
                     ty,
+
+                    span: crate::ir::IrSpan::default(),
                 }
             }
             IrExpr::Match {
                 scrutinee,
                 arms,
                 ty,
+                ..
             } => IrExpr::Match {
                 scrutinee: Box::new(self.process(*scrutinee, ctx)),
                 arms: arms
@@ -252,12 +297,15 @@ impl ConversionState {
                     .map(|arm| self.process_match_arm(arm, ctx))
                     .collect(),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::FunctionCall {
                 path,
                 function_id,
                 args,
                 ty,
+                ..
             } => IrExpr::FunctionCall {
                 path,
                 function_id,
@@ -266,14 +314,20 @@ impl ConversionState {
                     .map(|(label, value)| (label, self.process(value, ctx)))
                     .collect(),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::CallClosure { closure, args, ty } => IrExpr::CallClosure {
+            IrExpr::CallClosure {
+                closure, args, ty, ..
+            } => IrExpr::CallClosure {
                 closure: Box::new(self.process(*closure, ctx)),
                 args: args
                     .into_iter()
                     .map(|(label, value)| (label, self.process(value, ctx)))
                     .collect(),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::MethodCall {
                 receiver,
@@ -282,6 +336,7 @@ impl ConversionState {
                 args,
                 dispatch,
                 ty,
+                ..
             } => IrExpr::MethodCall {
                 receiver: Box::new(self.process(*receiver, ctx)),
                 method,
@@ -292,33 +347,43 @@ impl ConversionState {
                     .collect(),
                 dispatch,
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::DictLiteral { entries, ty } => IrExpr::DictLiteral {
+            IrExpr::DictLiteral { entries, ty, .. } => IrExpr::DictLiteral {
                 entries: entries
                     .into_iter()
                     .map(|(k, v)| (self.process(k, ctx), self.process(v, ctx)))
                     .collect(),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
-            IrExpr::DictAccess { dict, key, ty } => IrExpr::DictAccess {
+            IrExpr::DictAccess { dict, key, ty, .. } => IrExpr::DictAccess {
                 dict: Box::new(self.process(*dict, ctx)),
                 key: Box::new(self.process(*key, ctx)),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
             IrExpr::Block {
                 statements,
                 result,
                 ty,
+                ..
             } => self.process_block(statements, *result, ty, ctx),
 
             IrExpr::ClosureRef {
                 funcref,
                 env_struct,
                 ty,
+                ..
             } => IrExpr::ClosureRef {
                 funcref,
                 env_struct: Box::new(self.process(*env_struct, ctx)),
                 ty,
+
+                span: crate::ir::IrSpan::default(),
             },
         }
     }
@@ -375,6 +440,8 @@ impl ConversionState {
             statements: new_stmts,
             result: Box::new(new_result),
             ty,
+
+            span: crate::ir::IrSpan::default(),
         }
     }
 

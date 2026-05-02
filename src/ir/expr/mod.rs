@@ -102,6 +102,9 @@ pub enum IrExpr {
         value: Literal,
         /// Resolved type of this literal
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Struct instantiation: `User(name: "Alice", age: 30)`
@@ -118,6 +121,9 @@ pub enum IrExpr {
         fields: Vec<(String, FieldIdx, Self)>,
         /// Resolved type (the struct type or External)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Enum variant instantiation: `Status::Active` or `.Active`
@@ -137,6 +143,9 @@ pub enum IrExpr {
         fields: Vec<(String, FieldIdx, Self)>,
         /// Resolved type (the enum type or External)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Array literal: `[1, 2, 3]`
@@ -145,6 +154,9 @@ pub enum IrExpr {
         elements: Vec<Self>,
         /// Resolved type: `Array(element_type)`
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Tuple literal: `(x: 1, y: 2)`
@@ -153,6 +165,9 @@ pub enum IrExpr {
         fields: Vec<(String, Self)>,
         /// Resolved type: `Tuple(fields)`
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Variable or field reference: `user` or `user.name`
@@ -168,6 +183,9 @@ pub enum IrExpr {
         target: ReferenceTarget,
         /// Resolved type of the referenced value
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Reference to a field on `self` within an impl block: `self.color`
@@ -194,6 +212,9 @@ pub enum IrExpr {
         field_idx: FieldIdx,
         /// Resolved type of the field
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Field access on arbitrary expressions: `(-chord).y`, `(a + b).len`
@@ -212,6 +233,9 @@ pub enum IrExpr {
         field_idx: FieldIdx,
         /// Resolved type of the field
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Reference to a function-local `let` binding by name.
@@ -232,6 +256,9 @@ pub enum IrExpr {
         binding_id: BindingId,
         /// Resolved type of the binding
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Binary operation: `a + b`, `x == y`, `p && q`
@@ -244,6 +271,9 @@ pub enum IrExpr {
         right: Box<Self>,
         /// Resolved type (operand type for arithmetic, Boolean for comparison/logical)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Unary operation: `-x`, `!flag`
@@ -254,6 +284,9 @@ pub enum IrExpr {
         operand: Box<Self>,
         /// Resolved type (operand type for negation, Boolean for logical not)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Conditional expression: `if cond { a } else { b }`
@@ -266,6 +299,9 @@ pub enum IrExpr {
         else_branch: Option<Box<Self>>,
         /// Resolved type (same as branches)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// For loop: `for item in items { body }`
@@ -285,6 +321,9 @@ pub enum IrExpr {
         body: Box<Self>,
         /// Resolved type: `Array(body_type)`
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Match expression: `match x { A => ..., B => ... }`
@@ -295,6 +334,9 @@ pub enum IrExpr {
         arms: Vec<IrMatchArm>,
         /// Resolved type (same as arm bodies)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Function call: `sin(angle: x)` or `builtin::math::sin(angle: x)`
@@ -317,6 +359,9 @@ pub enum IrExpr {
         args: Vec<(Option<String>, Self)>,
         /// Resolved return type
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Indirect call of a closure-typed value: `f(x)` where `f` is a
@@ -354,6 +399,9 @@ pub enum IrExpr {
         /// Resolved return type — the `return_ty` from the closure's
         /// [`ResolvedType::Closure`] type.
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Method call: `self.fill.sample(coords)`
@@ -375,6 +423,9 @@ pub enum IrExpr {
         dispatch: DispatchKind,
         /// Resolved return type
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
@@ -407,6 +458,9 @@ pub enum IrExpr {
         body: Box<Self>,
         /// Resolved type: `Closure { param_tys, return_ty }`
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Reference to a lifted closure: a top-level function paired with
@@ -437,6 +491,9 @@ pub enum IrExpr {
         /// Resolved type: same closure type carried by the original
         /// [`Self::Closure`] node (`Closure { param_tys, return_ty }`).
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Dictionary literal: `["key": value, "key2": value2]`
@@ -445,6 +502,9 @@ pub enum IrExpr {
         entries: Vec<(Self, Self)>,
         /// Resolved type: `Dictionary { key_ty, value_ty }`
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Dictionary access: `dict["key"]` or `dict[index]`
@@ -455,6 +515,9 @@ pub enum IrExpr {
         key: Box<Self>,
         /// Resolved type: the value type of the dictionary
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 
     /// Block expression: `{ let x = 1; let y = 2; x + y }`
@@ -468,5 +531,8 @@ pub enum IrExpr {
         result: Box<Self>,
         /// Resolved type (same as result expression)
         ty: ResolvedType,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
 }

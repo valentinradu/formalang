@@ -37,6 +37,7 @@ impl IrLowerer<'_> {
             op,
             right: Box::new(right_ir),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -50,6 +51,7 @@ impl IrLowerer<'_> {
             op,
             operand: Box::new(operand_ir),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -68,6 +70,7 @@ impl IrLowerer<'_> {
                 field: field_name.clone(),
                 field_idx: crate::ir::FieldIdx(0),
                 ty,
+                span: crate::ir::IrSpan::default(),
             };
         }
 
@@ -83,6 +86,7 @@ impl IrLowerer<'_> {
                     path: path_strs,
                     target: crate::ir::ReferenceTarget::Unresolved,
                     ty,
+                    span: crate::ir::IrSpan::default(),
                 };
             }
         }
@@ -105,6 +109,7 @@ impl IrLowerer<'_> {
                         name: name.clone(),
                         binding_id: crate::ir::BindingId(0),
                         ty,
+                        span: crate::ir::IrSpan::default(),
                     };
                 }
                 let ty = self
@@ -117,6 +122,7 @@ impl IrLowerer<'_> {
                     name: name.clone(),
                     binding_id: crate::ir::BindingId(0),
                     ty,
+                    span: crate::ir::IrSpan::default(),
                 };
             }
         }
@@ -157,6 +163,7 @@ impl IrLowerer<'_> {
             path: path_strs,
             target: crate::ir::ReferenceTarget::Unresolved,
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -192,6 +199,7 @@ impl IrLowerer<'_> {
             args: lowered_args,
             dispatch,
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 

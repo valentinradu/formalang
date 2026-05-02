@@ -22,6 +22,7 @@ impl IrLowerer<'_> {
             then_branch: Box::new(then_ir),
             else_branch: else_branch.map(|e| Box::new(self.lower_expr(e))),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -60,6 +61,7 @@ impl IrLowerer<'_> {
             collection: Box::new(collection_ir),
             body: Box::new(body_ir.clone()),
             ty: ResolvedType::Array(Box::new(body_ir.ty().clone())),
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -103,6 +105,7 @@ impl IrLowerer<'_> {
             scrutinee: Box::new(scrutinee_ir),
             arms: arms_ir,
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -172,6 +175,7 @@ impl IrLowerer<'_> {
             statements,
             result: Box::new(ir_body),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -219,6 +223,7 @@ impl IrLowerer<'_> {
             statements: ir_statements,
             result: Box::new(ir_result),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -292,6 +297,7 @@ impl IrLowerer<'_> {
                     let key = IrExpr::Literal {
                         value: Literal::Number((i as f64).into()),
                         ty: ResolvedType::Primitive(PrimitiveType::I32),
+                        span: crate::ir::IrSpan::default(),
                     };
                     IrBlockStatement::Let {
                         binding_id: crate::ir::BindingId(0),
@@ -302,6 +308,7 @@ impl IrLowerer<'_> {
                             dict: Box::new(ir_value.clone()),
                             key: Box::new(key),
                             ty: elem_ty.clone(),
+                            span: crate::ir::IrSpan::default(),
                         },
                     }
                 })
@@ -334,6 +341,7 @@ impl IrLowerer<'_> {
                         field: field_name,
                         field_idx: crate::ir::FieldIdx(0),
                         ty: field_ty,
+                        span: crate::ir::IrSpan::default(),
                     },
                 }
             })
@@ -387,6 +395,7 @@ impl IrLowerer<'_> {
                             field: field_name,
                             field_idx: crate::ir::FieldIdx(0),
                             ty,
+                            span: crate::ir::IrSpan::default(),
                         },
                     }
                 })

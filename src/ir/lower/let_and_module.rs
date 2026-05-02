@@ -87,8 +87,12 @@ impl IrLowerer<'_> {
         // When the binding is annotated `[T]`, retype the value's
         // `Array(Never)` to `Array(T)` so backends and downstream IR
         // passes see a concrete element type instead of Never.
-        if let (IrExpr::Array { elements, ty: vty }, ResolvedType::Array(annotated_elem)) =
-            (&mut value, &ty)
+        if let (
+            IrExpr::Array {
+                elements, ty: vty, ..
+            },
+            ResolvedType::Array(annotated_elem),
+        ) = (&mut value, &ty)
         {
             if elements.is_empty()
                 && matches!(

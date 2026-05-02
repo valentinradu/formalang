@@ -15,7 +15,9 @@ use crate::ir::{FieldIdx, IrExpr, MethodIdx, ReferenceTarget, ResolvedType, Vari
 pub(super) fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
     match expr {
         IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } => {}
-        IrExpr::Reference { path, target, ty } => {
+        IrExpr::Reference {
+            path, target, ty, ..
+        } => {
             *target = walkers::resolve_path(path, r);
             // Promote a remaining `Unresolved` to a typed
             // `UndefinedReference` error — but only when the upstream

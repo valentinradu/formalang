@@ -181,6 +181,7 @@ impl IrLowerer<'_> {
                 type_args: type_args_resolved,
                 fields: named_fields,
                 ty,
+                span: crate::ir::IrSpan::default(),
             }
         } else if let Some(external_ty) = self.try_external_type(&name, type_args_resolved.clone())
         {
@@ -201,6 +202,7 @@ impl IrLowerer<'_> {
                 type_args: type_args_resolved,
                 fields: named_fields,
                 ty: external_ty,
+                span: crate::ir::IrSpan::default(),
             }
         } else if let Some(call) = self.try_lower_closure_invocation(path, args) {
             call
@@ -366,6 +368,7 @@ impl IrLowerer<'_> {
                             ty: wrapper_param_types[i]
                                 .clone()
                                 .unwrap_or(ResolvedType::Error),
+                            span: crate::ir::IrSpan::default(),
                         },
                     );
                     statements.push(IrBlockStatement::Let {
@@ -381,11 +384,13 @@ impl IrLowerer<'_> {
                     function_id,
                     args: lowered_args,
                     ty: ty.clone(),
+                    span: crate::ir::IrSpan::default(),
                 };
                 IrExpr::Block {
                     statements,
                     result: Box::new(call),
                     ty,
+                    span: crate::ir::IrSpan::default(),
                 }
             } else {
                 IrExpr::FunctionCall {
@@ -393,6 +398,7 @@ impl IrLowerer<'_> {
                     function_id,
                     args: lowered_args,
                     ty,
+                    span: crate::ir::IrSpan::default(),
                 }
             }
         }
@@ -446,9 +452,11 @@ impl IrLowerer<'_> {
                 name: name.clone(),
                 binding_id: crate::ir::BindingId(0),
                 ty: local_ty,
+                span: crate::ir::IrSpan::default(),
             }),
             args: lowered_args,
             ty: return_ty,
+            span: crate::ir::IrSpan::default(),
         })
     }
 
@@ -476,6 +484,7 @@ impl IrLowerer<'_> {
                 .map(|(n, e)| (n.name.clone(), crate::ir::FieldIdx(0), self.lower_expr(e)))
                 .collect(),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -517,6 +526,7 @@ impl IrLowerer<'_> {
                 .map(|(n, e)| (n.name.clone(), crate::ir::FieldIdx(0), self.lower_expr(e)))
                 .collect(),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -578,6 +588,7 @@ impl IrLowerer<'_> {
         IrExpr::Array {
             elements: lowered,
             ty: ResolvedType::Array(Box::new(elem_ty)),
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -610,6 +621,7 @@ impl IrLowerer<'_> {
         IrExpr::Tuple {
             fields: lowered,
             ty: ResolvedType::Tuple(tuple_types),
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -650,6 +662,7 @@ impl IrLowerer<'_> {
         IrExpr::DictLiteral {
             entries: lowered_entries,
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -683,6 +696,7 @@ impl IrLowerer<'_> {
                 args: vec![(None, key_ir)],
                 dispatch: crate::ir::DispatchKind::Static { impl_id },
                 ty: ResolvedType::Primitive(PrimitiveType::I32),
+                span: crate::ir::IrSpan::default(),
             };
         }
 
@@ -700,6 +714,7 @@ impl IrLowerer<'_> {
             dict: Box::new(dict_ir),
             key: Box::new(key_ir),
             ty,
+            span: crate::ir::IrSpan::default(),
         }
     }
 

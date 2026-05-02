@@ -139,6 +139,7 @@ fn build_numeric_result(value: Literal, ty: &ResolvedType) -> IrExpr {
     IrExpr::Literal {
         value,
         ty: result_ty,
+        span: crate::ir::IrSpan::default(),
     }
 }
 
@@ -162,6 +163,7 @@ fn fold_boolean_pair(l: bool, op: BinaryOperator, r: bool) -> Option<IrExpr> {
     result.map(|value| IrExpr::Literal {
         value,
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+        span: crate::ir::IrSpan::default(),
     })
 }
 
@@ -170,6 +172,7 @@ fn fold_string_pair(l: &str, op: BinaryOperator, r: &str) -> Option<IrExpr> {
         Some(IrExpr::Literal {
             value: Literal::String(format!("{l}{r}")),
             ty: ResolvedType::Primitive(PrimitiveType::String),
+            span: crate::ir::IrSpan::default(),
         })
     } else {
         None
@@ -194,6 +197,7 @@ pub(super) fn fold_unary_op(
                 Some(IrExpr::Literal {
                     value: Literal::Number(NumberLiteral::from_lex(new_value, n.suffix, n.kind)),
                     ty: ty.clone(),
+                    span: crate::ir::IrSpan::default(),
                 })
             } else {
                 None
@@ -204,6 +208,7 @@ pub(super) fn fold_unary_op(
                 Some(IrExpr::Literal {
                     value: Literal::Boolean(!b),
                     ty: ResolvedType::Primitive(PrimitiveType::Boolean),
+                    span: crate::ir::IrSpan::default(),
                 })
             } else {
                 None
