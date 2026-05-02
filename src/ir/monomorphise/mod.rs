@@ -64,7 +64,9 @@ use compact::{
     apply_impl_index_remap, apply_remaps, build_enum_remap, build_struct_remap, build_trait_remap,
     drop_specialised_generic_impls,
 };
-use external::{rewrite_external_references, specialise_external_instantiations};
+use external::{
+    inline_imported_functions, rewrite_external_references, specialise_external_instantiations,
+};
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
 use rewrite::{
@@ -103,10 +105,10 @@ impl IrPass for MonomorphisePass {
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         let mut errors = Vec::new();
 
-        // Phase 1a: clone each imported generic `External` into the current
-        // module under a fresh local id. Phase 2 uses the returned map to
-        // rewrite the External references.
-        let external_mapping = if self.imported_modules.is_empty() {
+        // Phase 1a: clone each imported `External` (generic or non-generic)
+        // into the current module under a qualified name. Phase 2 uses the
+        // returned map to rewrite the External references.
+        let mut external_mapping = if self.imported_modules.is_empty() {
             HashMap::new()
         } else {
             match specialise_external_instantiations(&mut module, &self.imported_modules) {
@@ -117,6 +119,28 @@ impl IrPass for MonomorphisePass {
                 }
             }
         };
+
+        // Phase 1b: inline imported functions into the current module
+        // under qualified names. Each clone's signature + body has its
+        // ResolvedType references externalised so later phases can
+        // rewrite them to local clones. After this runs, the entry
+        // module's `functions` includes every imported function;
+        // call sites resolve via path-based lookup, and DCE prunes
+        // unused clones in the codegen pipeline.
+        if !self.imported_modules.is_empty() {
+            if let Err(mut e) = inline_imported_functions(&mut module, &self.imported_modules) {
+                errors.append(&mut e);
+            }
+            // Re-run Phase 1a so any External references introduced by
+            // the inlined function bodies (types they reference that the
+            // entry module didn't directly mention) are also specialised.
+            // Existing entries in `external_mapping` are deduplicated by
+            // the worklist; new entries are merged in.
+            match specialise_external_instantiations(&mut module, &self.imported_modules) {
+                Ok(more) => external_mapping.extend(more),
+                Err(mut e) => errors.append(&mut e),
+            }
+        }
 
         // Phase 1: collect every `Generic { base, args }` instantiation in
         // the module. The worklist processes args recursively when a

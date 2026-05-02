@@ -14,7 +14,9 @@ use crate::ir::{GenericBase, ImportedKind, IrModule, IrTrait, ResolvedType};
 use crate::location::Span;
 
 use super::specialise::{substitute_type, type_suffix};
-use super::walkers::{walk_expr_types_mut, walk_module_types, walk_module_types_mut};
+use super::walkers::{
+    walk_expr_types_mut, walk_function_types_mut, walk_module_types, walk_module_types_mut,
+};
 
 /// External generic instantiation key: `(module_path, name, type_args)`.
 /// Populated from every `External { type_args, .. }` whose `type_args`
@@ -511,5 +513,75 @@ fn rewrite_external_type(
         | ResolvedType::Enum(_)
         | ResolvedType::TypeParam(_)
         | ResolvedType::Error => {}
+    }
+}
+
+/// Build the qualified `module::path::name` form for cross-module clones.
+fn qualified_name(module_path: &[String], name: &str) -> String {
+    let mut out = String::with_capacity(
+        module_path.iter().map(String::len).sum::<usize>() + module_path.len() * 2 + name.len(),
+    );
+    for seg in module_path {
+        out.push_str(seg);
+        out.push_str("::");
+    }
+    out.push_str(name);
+    out
+}
+
+/// Phase 1b: inline every imported function into the current module under
+/// a qualified name.
+///
+/// Each clone has its signature and body types externalised via
+/// [`externalise_imported_refs`] so subsequent worklist iterations of
+/// [`specialise_external_instantiations`] pick up any newly-introduced
+/// type references and clone them too. Body id-references
+/// (`ReferenceTarget::Function/Struct/Enum/Trait/ModuleLet`,
+/// `FunctionCall.function_id`, `DispatchKind::Static.impl_id`) stay
+/// in their imported-module id-space — correct for leaf functions whose
+/// bodies only reference `Param` / `Local` / primitive types, but will
+/// produce stale references if the body touches other module-level
+/// items. A follow-up commit walks and remaps those id references.
+///
+/// FormaLang's IR doesn't carry function visibility today, so every
+/// function in each imported module is cloned. Unused clones are removed
+/// by `DeadCodeEliminationPass` in the codegen pipeline.
+pub(super) fn inline_imported_functions(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) -> Result<(), Vec<CompilerError>> {
+    let mut errors = Vec::new();
+
+    for (module_path, imported) in imported_modules {
+        for func in &imported.functions {
+            let qualified = qualified_name(module_path, &func.name);
+
+            // Skip if a clone with this name already exists. Defends
+            // against double-processing when the same module appears
+            // under multiple aliases or the pass is run twice.
+            if module.function_id(&qualified).is_some() {
+                continue;
+            }
+
+            let mut clone = func.clone();
+            clone.name = qualified.clone();
+
+            // Externalise types in signature + body. The next worklist
+            // iteration of specialise_external_instantiations re-collects
+            // the produced External references and clones them.
+            walk_function_types_mut(&mut clone, &mut |ty| {
+                externalise_imported_refs(ty, imported, module_path);
+            });
+
+            if let Err(e) = module.add_function(qualified, clone) {
+                errors.push(e);
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
     }
 }
