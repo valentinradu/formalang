@@ -294,6 +294,48 @@ expressions originate from many files without ambiguity.
   end-to-end on a non-trivial program with cross-module references.
 - This plan file deleted by the implementing PR.
 
+---
+
+## Implementation progress
+
+One commit landed on `dwarf-spans-design`:
+
+- **SP-1** (`ef9e6ae`): Foundation. New module `src/ir/span.rs` with
+  `FileId(u32)` (id 0 reserved as `FileId::SYNTHETIC`), `IrSpan { span,
+  file }` with `is_default()` predicate. Added
+  `IrModule.file_table: Vec<PathBuf>` (real files at id 1+), plus
+  `file_path(FileId)` and `register_file(PathBuf)` accessors.
+  Exported `FileId` and `IrSpan` via `crate::ir`.
+
+### Remaining work
+
+The bulk of the plan — adding `pub span: IrSpan` to every IR shape
+and wiring the lowerer — is the every-node sweep. It's pervasive:
+
+1. **Add `span: IrSpan` to every IR shape.** Every variant of
+   `IrExpr`, every struct (`IrFunction`, `IrStruct`, `IrEnum`,
+   `IrField`, `IrImpl`, `IrLet`, `IrTrait`, `IrEnumVariant`,
+   `IrFunctionParam`). All marked
+   `#[serde(default, skip_serializing_if = "IrSpan::is_default")]`.
+2. **Lowerer plumbing.** Replace `IrLowerer.current_span: Span` with
+   `current_ir_span: IrSpan`, including a `current_file: FileId`
+   field. Update every IR-construction site in `src/ir/lower/` to
+   thread the current span through.
+3. **Synthesised-node spans.** Closure conversion, monomorphisation
+   `specialise.rs`/`external.rs`, synthetic let-bindings — each
+   carry the originating expression's span (per the resolved Q1
+   answer in this plan).
+4. **Cross-module integration.** When the cross-module-codegen plan
+   inlines imported items, each clone keeps its originating span
+   with the imported file's `FileId`. The entry module's
+   `file_table` registers every imported source.
+5. **Tests + documentation** per plan steps 7 and 8.
+
+Roughly 8-12 commits to complete; each touches many files due to
+the every-IR-node nature. SP-1's foundation is the prerequisite —
+all of the above can now reference `IrSpan` and `FileId` without
+forward-declaring them.
+
 ## Status in the formawasm backend
 
 Phase 5 #5 was queued for DWARF emission and found no spans to
