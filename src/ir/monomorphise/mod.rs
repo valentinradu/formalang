@@ -65,7 +65,8 @@ use compact::{
     drop_specialised_generic_impls,
 };
 use external::{
-    inline_imported_functions, rewrite_external_references, specialise_external_instantiations,
+    inline_imported_functions, inline_imported_impls, rewrite_external_references,
+    specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -131,11 +132,16 @@ impl IrPass for MonomorphisePass {
             if let Err(mut e) = inline_imported_functions(&mut module, &self.imported_modules) {
                 errors.append(&mut e);
             }
+            // Phase 1c: inline imported impl blocks whose target type
+            // is now in the local module. Method signatures and bodies
+            // have their types externalised the same way as functions.
+            inline_imported_impls(&mut module, &self.imported_modules);
             // Re-run Phase 1a so any External references introduced by
-            // the inlined function bodies (types they reference that the
-            // entry module didn't directly mention) are also specialised.
-            // Existing entries in `external_mapping` are deduplicated by
-            // the worklist; new entries are merged in.
+            // the inlined function / impl-method bodies (types they
+            // reference that the entry module didn't directly mention)
+            // are also specialised. Existing entries in
+            // `external_mapping` are deduplicated by the worklist; new
+            // entries are merged in.
             match specialise_external_instantiations(&mut module, &self.imported_modules) {
                 Ok(more) => external_mapping.extend(more),
                 Err(mut e) => errors.append(&mut e),

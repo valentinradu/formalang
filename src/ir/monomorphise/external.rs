@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
-use crate::ir::{GenericBase, ImportedKind, IrModule, IrTrait, ResolvedType};
+use crate::ir::{GenericBase, ImplTarget, ImportedKind, IrModule, IrTrait, ResolvedType};
 use crate::location::Span;
 
 use super::specialise::{substitute_type, type_suffix};
@@ -527,6 +527,84 @@ fn qualified_name(module_path: &[String], name: &str) -> String {
     }
     out.push_str(name);
     out
+}
+
+/// Phase 1c: inline every imported impl block whose target type is now
+/// present in the local module (its struct or enum has already been
+/// cloned by Phase 1a).
+///
+/// The clone has its `target` and `trait_ref.trait_id` translated from
+/// the imported module's id-space to the local clone's id (looked up by
+/// qualified name). Method signatures and bodies have ResolvedType
+/// references externalised so subsequent worklist iterations of
+/// [`specialise_external_instantiations`] pick up any new types.
+///
+/// Method body **id-references** (`DispatchKind::Static.impl_id`,
+/// `Reference::Function/Struct/...` ids in method bodies) stay in the
+/// imported module's id-space and are stale — same limitation as
+/// [`inline_imported_functions`]. A follow-up commit walks bodies and
+/// remaps those ids.
+///
+/// Impls whose target struct/enum was *not* cloned are skipped (they
+/// would have nowhere to attach in the local module).
+pub(super) fn inline_imported_impls(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    for (module_path, imported) in imported_modules {
+        for impl_block in &imported.impls {
+            // Translate the impl's target id to the local clone's id.
+            let new_target = match impl_block.target {
+                ImplTarget::Struct(imported_id) => {
+                    let Some(s) = imported.structs.get(imported_id.0 as usize) else {
+                        continue;
+                    };
+                    let qualified = qualified_name(module_path, &s.name);
+                    let Some(local_id) = module.struct_id(&qualified) else {
+                        continue;
+                    };
+                    ImplTarget::Struct(local_id)
+                }
+                ImplTarget::Enum(imported_id) => {
+                    let Some(e) = imported.enums.get(imported_id.0 as usize) else {
+                        continue;
+                    };
+                    let qualified = qualified_name(module_path, &e.name);
+                    let Some(local_id) = module.enum_id(&qualified) else {
+                        continue;
+                    };
+                    ImplTarget::Enum(local_id)
+                }
+            };
+
+            let mut clone = impl_block.clone();
+            clone.target = new_target;
+
+            // Translate trait_ref.trait_id by qualified-name lookup if
+            // the trait was cloned. If not, the trait_ref still points
+            // at the imported id-space — leave the original id and let
+            // a leftover-scanner catch it later if it matters.
+            if let Some(tref) = &mut clone.trait_ref {
+                if let Some(t) = imported.traits.get(tref.trait_id.0 as usize) {
+                    let qualified = qualified_name(module_path, &t.name);
+                    if let Some(local_id) = module.trait_id(&qualified) {
+                        tref.trait_id = local_id;
+                    }
+                }
+            }
+
+            // Externalise types in each method's signature + body. The
+            // worklist re-runs Phase 1a and clones any types these
+            // methods reference for the first time.
+            for method in &mut clone.functions {
+                walk_function_types_mut(method, &mut |ty| {
+                    externalise_imported_refs(ty, imported, module_path);
+                });
+            }
+
+            module.impls.push(clone);
+        }
+    }
 }
 
 /// Phase 1b: inline every imported function into the current module under
