@@ -275,6 +275,23 @@ pub(super) fn regular_fn_without_body<'a>(
         .with_help("Add a body: fn name(params) -> ReturnType { expression }")
 }
 
+pub(super) fn required_param_after_default<'a>(
+    filename: &'a str,
+    span: Span,
+    function: &'a str,
+    param: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E121")
+        .with_message(format!(
+            "Parameter '{param}' on '{function}' has no default value but follows one that does"
+        ))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' must have a default value or appear before any defaulted parameter",
+            param.fg(Color::Red)
+        )))
+        .with_help("Defaults must be positional from the right: every parameter after a defaulted one needs a default too.")
+}
+
 pub(super) fn extern_impl_with_body<'a>(
     filename: &'a str,
     span: Span,

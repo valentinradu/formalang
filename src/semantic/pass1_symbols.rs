@@ -362,6 +362,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             })
             .collect();
 
+        // DP-5: enforce positional-from-the-right. Once a parameter
+        // has a default, every subsequent non-self parameter must
+        // also have a default (or be defaulted by reference). Reject
+        // at definition time so call-site arity resolution is
+        // unambiguous.
+        let mut seen_default = false;
+        for p in &func_def.params {
+            if p.name.name == "self" {
+                continue;
+            }
+            if p.default.is_some() {
+                seen_default = true;
+            } else if seen_default {
+                self.errors.push(CompilerError::RequiredParamAfterDefault {
+                    function: func_def.name.name.clone(),
+                    param: p.name.name.clone(),
+                    span: p.span,
+                });
+            }
+        }
+
         if let Some((kind, _)) = self.symbols.define_function(
             func_def.name.name.clone(),
             func_def.visibility,

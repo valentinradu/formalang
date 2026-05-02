@@ -261,6 +261,19 @@ pub enum CompilerError {
     #[error("Extern impl block for '{name}' must not contain function bodies")]
     ExternImplWithBody { name: String, span: Span },
 
+    /// A parameter without a default value appears after one with a
+    /// default value. Default values must be positional from the
+    /// right (no required parameter may follow a defaulted one,
+    /// excluding `self`).
+    #[error(
+        "Parameter '{param}' on '{function}' has no default value but follows a parameter that does — defaults must be positional from the right"
+    )]
+    RequiredParamAfterDefault {
+        function: String,
+        param: String,
+        span: Span,
+    },
+
     /// nil literal assigned to a non-optional type.
     #[error("Cannot assign nil to non-optional type '{expected}'")]
     NilAssignedToNonOptional { expected: String, span: Span },
@@ -402,6 +415,7 @@ impl CompilerError {
             | Self::ExternFnWithBody { span, .. }
             | Self::RegularFnWithoutBody { span, .. }
             | Self::ExternImplWithBody { span, .. }
+            | Self::RequiredParamAfterDefault { span, .. }
             | Self::NilAssignedToNonOptional { span, .. }
             | Self::OptionalUsedAsNonOptional { span, .. }
             | Self::MissingTraitMethod { span, .. }
