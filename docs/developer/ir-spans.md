@@ -59,6 +59,22 @@ A TypeScript backend would consume the same data for source-map
 emission. A Kotlin / JVM backend would consume it for
 `LineNumberTable` attributes. A Swift backend, similarly.
 
+### Specifically: source maps for the wasm backend
+
+The wasm backend can emit a v3 source map (the JSON format browser
+devtools and Chrome's wasm debugger consume) alongside or instead
+of DWARF. Source maps need the same per-`IrExpr` span data as
+DWARF — the difference is encoding (`mappings` VLQ string vs.
+`.debug_line` opcodes) and packaging (separate `.wasm.map` file +
+a `sourceMappingURL` custom section pointing at it, vs. DWARF's
+inline `.debug_*` sections).
+
+A backend that has the IR-side spans can emit either or both at
+no extra IR-side cost; the picking happens at the codegen layer,
+not upstream. Formats sharing the same IR-side input is the main
+argument for keeping the span data in the IR rather than carving
+a DWARF-specific side-table.
+
 ## Two design directions
 
 ### Direction A — add spans to every IR node
