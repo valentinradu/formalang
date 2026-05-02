@@ -222,6 +222,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // Primitive impl blocks (`extern impl String { fn len(self) -> I32 }`):
+        // when the receiver is a primitive type name, scan impl blocks
+        // whose target is that primitive name. This mirrors the
+        // struct/enum dispatch above but routes through the primitive
+        // branch of `ImplTarget` in the IR.
+        if crate::semantic::is_primitive_name(lookup) {
+            for statement in &file.statements {
+                if let Statement::Definition(def) = statement {
+                    if let Definition::Impl(impl_def) = &**def {
+                        if impl_def.name.name == lookup {
+                            for func in &impl_def.functions {
+                                if func.name.name == method_name {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Check enum impl blocks
         if self.symbols.get_enum_variants(lookup).is_some() {
             for statement in &file.statements {

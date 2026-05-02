@@ -6,7 +6,7 @@
 //! the `lower_definition` dispatcher.
 
 use super::IrLowerer;
-use crate::ast::{self, Definition, EnumDef, ImplDef, StructDef, TraitDef};
+use crate::ast::{self, Definition, EnumDef, ImplDef, PrimitiveType, StructDef, TraitDef};
 use crate::error::CompilerError;
 use crate::ir::{
     ImportedKind, IrEnumVariant, IrField, IrFunction, IrFunctionSig, IrGenericParam, IrImpl,
@@ -14,6 +14,25 @@ use crate::ir::{
 };
 use crate::semantic::SymbolTable;
 use std::collections::HashMap;
+
+/// Map a bare type-name identifier to its primitive variant, if any.
+/// Used by impl lowering to recognise `extern impl String`,
+/// `extern impl I32`, etc. Mirrors the primitive name set in
+/// `crate::semantic::helpers::is_primitive_name`.
+fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
+    match name {
+        "String" => Some(PrimitiveType::String),
+        "I32" => Some(PrimitiveType::I32),
+        "I64" => Some(PrimitiveType::I64),
+        "F32" => Some(PrimitiveType::F32),
+        "F64" => Some(PrimitiveType::F64),
+        "Boolean" => Some(PrimitiveType::Boolean),
+        "Path" => Some(PrimitiveType::Path),
+        "Regex" => Some(PrimitiveType::Regex),
+        "Never" => Some(PrimitiveType::Never),
+        _ => None,
+    }
+}
 
 impl IrLowerer<'_> {
     /// Second pass: lower definitions with full type resolution
@@ -372,7 +391,10 @@ impl IrLowerer<'_> {
             format!("{}::{}", self.current_module_prefix, i.name.name)
         };
 
-        // Try to find struct first (qualified then unqualified), then enum
+        // Try struct (qualified then unqualified), then enum, then
+        // primitive. A bare identifier matching a primitive name like
+        // `String` or `I32` becomes `ImplTarget::Primitive` — only
+        // valid in `extern impl` blocks (semantic enforces).
         let target = if let Some(id) = self.module.struct_id(&qualified_name) {
             ImplTarget::Struct(id)
         } else if let Some(id) = self.module.struct_id(&i.name.name) {
@@ -381,6 +403,8 @@ impl IrLowerer<'_> {
             ImplTarget::Enum(id)
         } else if let Some(id) = self.module.enum_id(&i.name.name) {
             ImplTarget::Enum(id)
+        } else if let Some(prim) = primitive_from_name(&i.name.name) {
+            ImplTarget::Primitive(prim)
         } else {
             return; // Error would have been caught in semantic analysis
         };
