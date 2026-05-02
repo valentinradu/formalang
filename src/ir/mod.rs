@@ -36,6 +36,7 @@ mod module;
 mod monomorphise;
 mod resolve_refs;
 mod resolved_type;
+mod span;
 mod types;
 mod visitor;
 
@@ -56,6 +57,7 @@ pub use module::{IrModule, IrModuleNode};
 pub use monomorphise::MonomorphisePass;
 pub use resolve_refs::ResolveReferencesPass;
 pub use resolved_type::{GenericBase, ResolvedType};
+pub use span::{FileId, IrSpan};
 pub use types::{
     ImplTarget, IrEnum, IrEnumVariant, IrField, IrFunction, IrFunctionParam, IrFunctionSig,
     IrGenericParam, IrImpl, IrLet, IrStruct, IrTrait, IrTraitRef,

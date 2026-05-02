@@ -71,6 +71,18 @@ pub struct IrModule {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modules: Vec<IrModuleNode>,
 
+    /// Source-file table indexed by [`crate::ir::FileId`]. Index 0 is
+    /// reserved for synthetic / unknown nodes (closure-converted lift
+    /// wrappers, monomorphised specialisations, hand-constructed test
+    /// IR). Real source files start at index 1; the entry-point file
+    /// is conventionally the first registered.
+    ///
+    /// Backends emit DWARF `DW_AT_decl_file` / source-map `sources`
+    /// entries by walking this table; per-IR-node spans carry the
+    /// `FileId` that indexes into it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_table: Vec<std::path::PathBuf>,
+
     /// Mapping from struct names to IDs for lookup during lowering.
     /// Skipped during serde round-trips; rebuilt on load via
     /// `rebuild_indices`.
@@ -299,6 +311,33 @@ impl IrModule {
     #[must_use]
     pub fn function_id(&self, name: &str) -> Option<FunctionId> {
         self.function_names.get(name).copied()
+    }
+
+    /// Look up the source path for a [`crate::ir::FileId`]. Returns
+    /// `None` for `FileId::SYNTHETIC` (id 0) and for ids past the
+    /// table's length.
+    #[must_use]
+    pub fn file_path(&self, file: crate::ir::FileId) -> Option<&std::path::PathBuf> {
+        if file.is_synthetic() {
+            return None;
+        }
+        // FileId(1) is the first real file; index into the table is
+        // file.0 - 1 so synthetic id 0 doesn't consume a slot.
+        let idx = (file.0.checked_sub(1))? as usize;
+        self.file_table.get(idx)
+    }
+
+    /// Register a source file in the file table and return its
+    /// [`crate::ir::FileId`]. If the path is already registered,
+    /// returns the existing id. The first registered file gets
+    /// `FileId(1)` (id 0 is reserved for synthetic nodes).
+    pub fn register_file(&mut self, path: std::path::PathBuf) -> crate::ir::FileId {
+        if let Some(idx) = self.file_table.iter().position(|p| p == &path) {
+            // +1 because the table is offset to leave id 0 reserved.
+            return crate::ir::FileId(u32::try_from(idx).unwrap_or(0).saturating_add(1));
+        }
+        self.file_table.push(path);
+        crate::ir::FileId(u32::try_from(self.file_table.len()).unwrap_or(1))
     }
 
     /// Add a standalone function and return its ID.
