@@ -1,0 +1,22 @@
+// FormaLang compiler-shipped prelude.
+//
+// Declares the v1 String surface via `extern impl String { ... }`.
+// Each method is bodyless — backends provide implementations through
+// their existing extern-binding paths (wasm component imports, JS
+// runtime bindings, etc.).
+//
+// Contracts:
+// - `slice` is zero-copy. FormaLang strings are immutable end-to-end,
+//   so the new header may share backing memory with the source.
+// - `byte_at` and `slice` are byte-indexed, not code-point-indexed.
+//   `s[i]` desugars to `s.byte_at(i)` at lowering.
+// - All methods are `extern` — the compiler emits no body.
+
+extern impl String {
+    fn len(self) -> I32
+    fn is_empty(self) -> Boolean
+    fn slice(self, start: I32, end: I32) -> String
+    fn starts_with(self, prefix: String) -> Boolean
+    fn contains(self, needle: String) -> Boolean
+    fn byte_at(self, i: I32) -> I32
+}

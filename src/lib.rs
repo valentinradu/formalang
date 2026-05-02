@@ -29,6 +29,13 @@ pub mod pipeline;
 pub mod reporting;
 pub mod semantic;
 
+/// Compiler-shipped prelude source. Contains `extern impl <Primitive>`
+/// declarations for the built-in method surface (e.g., `String::len`,
+/// `String::slice`). Prepended to every user source at the entry-point
+/// compile functions so its declarations are visible without an
+/// explicit `use`.
+pub(crate) const PRELUDE_SOURCE: &str = include_str!("prelude.fv");
+
 // Re-export commonly used types
 pub use ast::{Definition, Expr, File, Ident, Statement, Type};
 pub use error::CompilerError;
@@ -73,8 +80,13 @@ pub fn compile_with_analyzer_and_resolver<R>(
 where
     R: semantic::module_resolver::ModuleResolver,
 {
-    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
-    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
+    // Prepend the compiler-shipped prelude so its `extern impl
+    // <Primitive>` declarations are visible to every program without
+    // an explicit `use`. The prelude has no `use` statements and no
+    // bodies — its IR contribution is bodyless extern impls only.
+    let combined = format!("{PRELUDE_SOURCE}\n{source}");
+    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(&combined);
+    let parse_result = parse_file_with_source(&tokens, &combined).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
