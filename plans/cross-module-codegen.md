@@ -394,29 +394,23 @@ Eight commits landed on `cross-module-codegen-design`:
 Each piece below is genuinely 1-3 commits of careful work; tracked as
 a follow-up plan.
 
-1. **Per-item path qualification context.** `qualify_imported_paths`
-   uses a single global candidate set. Cloned items that reference
-   *their* module's imports (helper.fv has `use other::compute` and
-   the cloned helper body references `compute`) need per-item
-   resolution against the originating module's `IrImport` list.
-   Today, this works only when the chained item is also reachable
-   from the entry module's clones.
-2. **Cycle guard (defence in depth).** The existing `mapping.contains_key`
-   dedup in `specialise_external_instantiations` prevents infinite loops
-   but doesn't surface a clear `InternalError { detail: "monomorphise:
-   cyclic import .." }`. Plan-spec'd guard: an `in_progress: HashSet<Vec<String>>`
-   tracking module paths under active processing.
-3. **`IrModuleNode` tree merge.** Imported modules' `modules: Vec<IrModuleNode>`
-   trees should be spliced into the entry module's tree under their
-   `module_path`. Codegen ignores the tree; source-introspection
-   tools depend on it.
-4. **Tests.** Two-file integration tests covering: non-generic struct
-   field access cross-module; pub fn cross-module call (helper-internal
-   refs and chained imports); pub impl method dispatch; pub let
-   read; cycle-guard regression.
-5. **Documentation.** Update `docs/developer/ir.md` with the
-   transient-`External` contract; update doc-comments on
-   `compile_to_ir_with_resolver`, `IrImport`, and `MonomorphisePass`.
+- **CM-G** (`50e60b8`): Per-item path qualification using each
+  cloned item's source-module IrImport list. Replaces the global
+  candidate set with context-aware resolution.
+- **CM-H** (`a2ee7ed`): Defence-in-depth cycle guard via DFS over
+  the imported-module graph. Raises `InternalError` if a cycle
+  reaches the IR layer.
+- **CM-I** (`fb066c9`): IrModuleNode tree merge — splices imported
+  modules' tree under their module_path, populated with translated
+  ids.
+- **Tests + docs** (`59056da`): Two-file integration tests
+  + `docs/developer/ir.md` transient-External callout.
+- **CM-J** (`6f26f53`): Extends `ImportedKind` with `Function` and
+  `ModuleLet` variants. `register_imported_types` now walks
+  `symbols.functions` and `symbols.lets` and tracks them in
+  `IrImport.items`. Closes the chained-import gap: bare `compute()`
+  call after `use other::compute` qualifies to `["other", "compute"]`
+  via the existing per-item path resolution.
 
 What's already shipped (CM-A through CM-F-2) is enough to unblock
 formawasm Phase 4 R2's literal `NotYetSupported { kind: "External(..)" }`
