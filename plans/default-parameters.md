@@ -249,6 +249,56 @@ than a synthesized wrapper.
   end-to-end with no backend-side substitution work.
 - This plan file deleted by the implementing PR.
 
+---
+
+## Implementation progress
+
+Four commits landed on `default-params-design`:
+
+- **DP-1** (`6898c34`): Add `default: Option<Expr>` to semantic
+  `ParamInfo`; populate at both construction sites
+  (`pass1_symbols.rs`, `module_collect.rs`). Broaden the validator's
+  exact-arity rejection in `invocation.rs` to a range check
+  `[required, non_self_count]`. Zero-arg overload match accepts
+  all-defaults overloads.
+- **DP-2** (`1672396`): At the `FunctionCall` lowering site
+  (`literals_and_containers.rs`), append cloned default IR for
+  trailing missing positions after lowering args. Labels follow the
+  call's existing convention. Defaults reach backends as ordinary
+  `IrExpr` entries.
+- **DP-3** (`fc18148`): Most-specific overload tie-break — among
+  matching overloads, prefer the one whose `non_self_count -
+  args.len()` is smallest. Ties at the same gap fall through to
+  `AmbiguousCall`. `fn f(x)` wins over `fn f(x, y=1)` for a `f(1)`
+  call.
+- **DP-1 follow-up** (`a34b7c3`): Mode A label-set check accepts
+  `call_labels` as a subset of `param_labels` covering required
+  (non-defaulted) labels. `f(x: 1)` for `fn f(x, y = 2)` matches.
+
+### Remaining work
+
+1. **Let-wrapper for defaults referencing earlier params.** Defaults
+   like `fn f(x, y = x + 1)` carry IR with stale binding-ids from
+   the callee's lowering. The plan-spec'd let-wrapper that binds
+   preceding non-defaulted args at the call site still needs to be
+   implemented.
+2. **Forward-reference and cross-module defaults.** When
+   `function_id` is `None` at lowering (forward ref or cross-module
+   call), DP-2's substitution skips. Need a post-lowering
+   substitution pass keyed off resolved function ids.
+3. **Mid-list omissions in labeled mode A.** DP-2 only fills trailing
+   missing positions. Labeled calls that omit a non-trailing default
+   (illegal under positional-from-the-right but worth defending
+   against) produce IR with mis-aligned args.
+4. **Positional-from-the-right enforcement in pass1.** A function
+   declared `fn f(x = 0, y)` (default before non-default) currently
+   passes parser/semantic. Should be rejected at definition time.
+5. **Tests and documentation** per the plan steps 6 and 7.
+
+What's already shipped (DP-1 through DP-1-followup) covers the
+common case: `fn f(x: I32, y: I32 = 0); f(1)` compiles end-to-end
+with arity-correct IR through the pipeline.
+
 ## Status in the formawasm backend
 
 Phase 5 #3 was queued for default parameter values but found no
