@@ -285,19 +285,34 @@ Four commits landed on `default-params-design`:
 2. **Forward-reference and cross-module defaults.** When
    `function_id` is `None` at lowering (forward ref or cross-module
    call), DP-2's substitution skips. Need a post-lowering
-   substitution pass keyed off resolved function ids.
-3. **Mid-list omissions in labeled mode A.** DP-2 only fills trailing
-   missing positions. Labeled calls that omit a non-trailing default
-   (illegal under positional-from-the-right but worth defending
-   against) produce IR with mis-aligned args.
-4. **Positional-from-the-right enforcement in pass1.** A function
-   declared `fn f(x = 0, y)` (default before non-default) currently
-   passes parser/semantic. Should be rejected at definition time.
-5. **Tests and documentation** per the plan steps 6 and 7.
+   substitution pass keyed off resolved function ids — most
+   relevant once the cross-module-codegen plan lands; in single-
+   module compilation the lowerer typically resolves all
+   function_ids since registration runs before bodies.
+3. **Tests and documentation** for DP-4 / DP-5 / DP-7 — the existing
+   tests cover DP-1, DP-2, DP-3, DP-1-followup; the let-wrapper
+   for earlier-param refs and the mid-list-omission fix should
+   each gain a focused test.
 
-What's already shipped (DP-1 through DP-1-followup) covers the
-common case: `fn f(x: I32, y: I32 = 0); f(1)` compiles end-to-end
-with arity-correct IR through the pipeline.
+### Recently added
+
+- **DP-5 (positional-right)** (`ae0d578`): Pass1 rejects
+  `fn f(x = 0, y)` with `RequiredParamAfterDefault`.
+- **DP-4 (let-wrapper)** (`dd3711c`): Defaults referencing earlier
+  params are wrapped in `IrExpr::Block` with `IrBlockStatement::Let`
+  bindings so the default's `Reference{path:[name]}` resolves
+  correctly via path lookup.
+- **DP-6 (tests + docs)** (`106a822`): Integration tests +
+  formalang.md user-doc section.
+- **DP-7 (mid-list omissions)** (`914dd9c`): Labeled-mode
+  substitution walks callee params in order, fills missing labels
+  at the right position.
+
+What's already shipped covers the common cases end-to-end: simple
+positional defaults, defaults referencing earlier params (with
+let-wrapping for side-effect safety), labeled-mode calls with
+omissions anywhere in the param list, most-specific overload
+resolution, positional-from-the-right enforcement.
 
 ## Status in the formawasm backend
 
