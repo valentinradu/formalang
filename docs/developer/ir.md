@@ -238,6 +238,18 @@ When a module uses types from other modules via `use` statements, those types
 are represented as `External` variants in `ResolvedType`. The `imports` field
 tracks which external types are used.
 
+> **Direction A inline pass:** `compile_to_ir_with_resolver` runs
+> `MonomorphisePass` with the analyzer's `imported_ir_modules()`
+> populated, which inlines every imported struct / enum / trait /
+> function / impl / pub-let into the entry `IrModule` under
+> qualified `module::path::name` form, then rewrites `External`
+> references to point at the cloned local definitions. After the
+> pass, **`ResolvedType::External` is a transient artifact that
+> doesn't reach the backend** — backends consume one flat `IrModule`
+> regardless of how many source files contributed to it. See
+> `plans/cross-module-codegen.md` for the design and the per-phase
+> commit history.
+
 #### IrImport
 
 ```rust
