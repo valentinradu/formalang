@@ -254,8 +254,10 @@ impl IrLowerer<'_> {
                         mutable: false,
                         doc: f.doc.clone(),
                         convention: ast::ParamConvention::default(),
+                        span: crate::ir::IrSpan::default(),
                     })
                     .collect(),
+                span: crate::ir::IrSpan::default(),
             })
             .collect();
         self.generic_scopes.pop();
@@ -368,6 +370,7 @@ impl IrLowerer<'_> {
             .map(|v| IrEnumVariant {
                 name: v.name.name.clone(),
                 fields: v.fields.iter().map(|f| self.lower_field_def(f)).collect(),
+                span: crate::ir::IrSpan::default(),
             })
             .collect();
 
@@ -489,6 +492,7 @@ impl IrLowerer<'_> {
             is_extern: i.is_extern,
             generic_params,
             functions,
+            span: crate::ir::IrSpan::default(),
         }) {
             self.errors.push(err);
         }

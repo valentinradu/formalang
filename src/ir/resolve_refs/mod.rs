@@ -392,7 +392,7 @@ impl<'a> FnResolver<'a> {
     }
 }
 
-const fn placeholder_function() -> IrFunction {
+fn placeholder_function() -> IrFunction {
     IrFunction {
         name: String::new(),
         generic_params: Vec::new(),
@@ -402,6 +402,7 @@ const fn placeholder_function() -> IrFunction {
         extern_abi: None,
         attributes: Vec::new(),
         doc: None,
+        span: crate::ir::IrSpan::default(),
     }
 }
 

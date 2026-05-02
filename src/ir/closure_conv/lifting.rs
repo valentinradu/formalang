@@ -110,6 +110,7 @@ fn build_lifted_function(
         ty: Some(ResolvedType::Struct(env_struct_id)),
         default: None,
         convention: ParamConvention::Let,
+        span: crate::ir::IrSpan::default(),
     };
 
     let mut params = Vec::with_capacity(closure_params.len().saturating_add(1));
@@ -122,6 +123,7 @@ fn build_lifted_function(
             ty: Some(param_ty.clone()),
             default: None,
             convention: *convention,
+            span: crate::ir::IrSpan::default(),
         });
     }
 
@@ -137,6 +139,7 @@ fn build_lifted_function(
             "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures."
                 .to_string(),
         ),
+        span: crate::ir::IrSpan::default(),
     }
 }
 

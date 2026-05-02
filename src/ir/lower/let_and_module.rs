@@ -107,6 +107,7 @@ impl IrLowerer<'_> {
             ty,
             value,
             doc: let_binding.doc.clone(),
+            span: crate::ir::IrSpan::default(),
         });
     }
 
@@ -211,6 +212,7 @@ impl IrLowerer<'_> {
                     ty,
                     default,
                     convention: p.convention,
+                    span: crate::ir::IrSpan::default(),
                 }
             })
             .collect();
@@ -259,6 +261,7 @@ impl IrLowerer<'_> {
                 extern_abi,
                 attributes: f.attributes.iter().map(|a| a.kind).collect(),
                 doc: f.doc.clone(),
+                span: crate::ir::IrSpan::default(),
             },
         ) {
             self.errors.push(e);
@@ -303,6 +306,7 @@ impl IrLowerer<'_> {
                     ty,
                     default,
                     convention: p.convention,
+                    span: crate::ir::IrSpan::default(),
                 }
             })
             .collect();
@@ -367,6 +371,7 @@ impl IrLowerer<'_> {
             extern_abi,
             attributes: f.attributes.iter().map(|a| a.kind).collect(),
             doc: f.doc.clone(),
+            span: crate::ir::IrSpan::default(),
         }
     }
 
@@ -390,6 +395,7 @@ impl IrLowerer<'_> {
                     ty,
                     default,
                     convention: p.convention,
+                    span: crate::ir::IrSpan::default(),
                 }
             })
             .collect();
@@ -402,6 +408,7 @@ impl IrLowerer<'_> {
             params,
             return_type,
             attributes: sig.attributes.iter().map(|a| a.kind).collect(),
+            span: crate::ir::IrSpan::default(),
         }
     }
 }

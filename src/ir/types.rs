@@ -39,6 +39,11 @@ pub struct IrLet {
     /// Joined `///` doc comments preceding this binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+
+    /// Source span for DWARF / source-map emission. Carries
+    /// `IrSpan::default()` for synthetic / hand-built IR.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// A struct definition in the IR.
@@ -73,6 +78,10 @@ pub struct IrStruct {
     /// Joined `///` doc comments preceding this struct.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// A trait definition in the IR.
@@ -105,6 +114,10 @@ pub struct IrTrait {
     /// Joined `///` doc comments preceding this trait.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// A function signature in the IR (without a body).
@@ -140,6 +153,10 @@ pub struct IrFunctionSig {
     /// compatible with documents that predate this field.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attributes: Vec<crate::ast::FunctionAttribute>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// An enum definition in the IR.
@@ -166,6 +183,10 @@ pub struct IrEnum {
     /// Joined `///` doc comments preceding this enum.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// An enum variant.
@@ -180,6 +201,10 @@ pub struct IrEnumVariant {
 
     /// Associated data fields (empty for unit variants)
     pub fields: Vec<IrField>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// Target of an impl block.
@@ -237,6 +262,10 @@ pub struct IrImpl {
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 impl IrImpl {
@@ -331,6 +360,11 @@ pub struct IrFunction {
     /// Joined `///` doc comments preceding this function.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+
+    /// Source span for DWARF / source-map emission. For DWARF
+    /// `DW_TAG_subprogram` this is the function's declaration span.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 impl IrFunction {
@@ -375,6 +409,10 @@ pub struct IrFunctionParam {
 
     /// Parameter passing convention
     pub convention: crate::ast::ParamConvention,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// A field definition.
@@ -419,6 +457,10 @@ pub struct IrField {
     /// [`ParamConvention::Let`] (the existing implicit behaviour).
     #[serde(default)]
     pub convention: crate::ast::ParamConvention,
+
+    /// Source span for DWARF / source-map emission.
+    #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+    pub span: super::IrSpan,
 }
 
 /// A generic type parameter.

@@ -62,6 +62,7 @@ fn find_residual_closures_locates_let_value() {
         },
         value: unit_closure_expr(),
         doc: None,
+        span: crate::ir::IrSpan::default(),
     });
     let hits = find_residual_closures(&module);
     let first = hits.first().expect("one residual hit expected");
@@ -81,6 +82,7 @@ fn find_residual_closures_locates_function_body() {
         extern_abi: None,
         attributes: Vec::new(),
         doc: None,
+        span: crate::ir::IrSpan::default(),
     });
     let hits = find_residual_closures(&module);
     let first = hits.first().expect("one residual hit expected");

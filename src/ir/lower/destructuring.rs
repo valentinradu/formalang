@@ -61,6 +61,7 @@ impl IrLowerer<'_> {
                     ty: elem_ty.clone(),
                     value: access_expr,
                     doc: let_binding.doc.clone(),
+                    span: crate::ir::IrSpan::default(),
                 });
             }
         }
@@ -94,6 +95,7 @@ impl IrLowerer<'_> {
                 ty: field_ty,
                 value: access_expr,
                 doc: let_binding.doc.clone(),
+                span: crate::ir::IrSpan::default(),
             });
         }
     }
@@ -151,6 +153,7 @@ impl IrLowerer<'_> {
                     ty,
                     value: access_expr,
                     doc: let_binding.doc.clone(),
+                    span: crate::ir::IrSpan::default(),
                 });
             }
         }

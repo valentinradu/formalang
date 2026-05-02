@@ -390,6 +390,7 @@ fn unresolved_path_with_concrete_type_emits_undefined_reference() -> TestResult 
         extern_abi: None,
         attributes: vec![],
         doc: None,
+        span: formalang::ir::IrSpan::default(),
     });
     module.rebuild_indices();
     let mut pass = formalang::ir::ResolveReferencesPass::new();
@@ -425,6 +426,7 @@ fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
         extern_abi: None,
         attributes: vec![],
         doc: None,
+        span: formalang::ir::IrSpan::default(),
     });
     module.rebuild_indices();
     let mut pass = formalang::ir::ResolveReferencesPass::new();

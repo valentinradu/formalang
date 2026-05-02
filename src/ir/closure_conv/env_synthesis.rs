@@ -26,6 +26,7 @@ pub(super) fn synthesize_env_struct(
             default: None,
             doc: None,
             convention: *convention,
+            span: crate::ir::IrSpan::default(),
         })
         .collect();
 
@@ -39,5 +40,6 @@ pub(super) fn synthesize_env_struct(
             "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`."
                 .to_string(),
         ),
+        span: crate::ir::IrSpan::default(),
     }
 }
