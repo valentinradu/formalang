@@ -47,7 +47,8 @@ Plugin System -> [IrPass, ...] -> Backend -> Output
 
 | Feature | AST | IR |
 | ------- | --- | --- |
-| Source locations (spans) | Yes | No |
+| Source locations (spans) | Yes | Yes (`IrSpan`) |
+| Multi-file source identity | No | Yes (`FileId` + `IrModule.file_table`) |
 | Type resolution | No | Yes |
 | ID-based references | No | Yes |
 | String type names | Yes | No |
@@ -55,11 +56,46 @@ Plugin System -> [IrPass, ...] -> Backend -> Output
 | Comments | Yes | No |
 | Parentheses/grouping | Yes | No |
 
+### Source Spans (DWARF / source-map / line-table)
+
+Every IR shape carries an `IrSpan` field:
+
+```rust
+pub struct IrSpan {
+    pub span: crate::location::Span,  // byte / line / column range
+    pub file: FileId,                  // index into IrModule.file_table
+}
+```
+
+`FileId(0)` is reserved for synthetic / hand-built nodes (closure-
+converted lift wrappers, monomorphisation specialisations, test
+fixtures). Real source files start at `FileId(1)` and live in
+`IrModule.file_table: Vec<PathBuf>`. The lowerer registers files via
+`IrModule.register_file(path)` which returns the assigned id.
+
+Spans cover every data struct (`IrFunction`, `IrStruct`, `IrEnum`,
+`IrEnumVariant`, `IrField`, `IrLet`, `IrTrait`, `IrFunctionSig`,
+`IrFunctionParam`, `IrImpl`) and every `IrExpr` variant
+(`Literal`, `Reference`, `FunctionCall`, `MethodCall`, `BinaryOp`,
+`UnaryOp`, `If`, `For`, `Match`, `Block`, etc.).
+
+Backends emit:
+
+- **DWARF** `DW_TAG_subprogram` / `DW_AT_decl_file` / `.debug_line`
+  by reading `IrFunction.span` + `IrModule.file_table`.
+- **Source maps (v3)** by walking IR expressions, mapping each
+  emitted instruction back to `IrSpan.span.start`.
+- **JVM `LineNumberTable`** by mapping bytecode offsets to
+  `IrFunctionSig.span.start.line`.
+
+All `span` fields are `#[serde(default, skip_serializing_if =
+"IrSpan::is_default")]`, so synthetic / round-tripped IR doesn't
+bloat the serialised form.
+
 ### What the IR Does NOT Include
 
 The IR intentionally omits:
 
-- **Source positions (Spans)**: Use the AST for error reporting
 - **Use statements**: Already resolved during lowering
 - **Comments**: Purely syntactic, not needed for codegen
 - **Parentheses/grouping**: Expression structure is normalized
