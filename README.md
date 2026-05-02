@@ -508,7 +508,7 @@ These are responsibilities of the embedding application and its backends.
 
 ## Further reading
 
-- [Language Reference](docs/user/formalang.md): full syntax reference with all rules
-- [Architecture](docs/developer/architecture.md): compiler internals
-- [IR Reference](docs/developer/ir.md): IrModule structure for backend authors
-- [AST Reference](docs/developer/ast.md): AST structure for tooling authors
+- [Language Reference](docs/user/core.md): user-facing syntax and feature reference
+- [Architecture](docs/developer/architecture/design.md): compiler internals
+- [IR Reference](docs/developer/ir/overview.md): IrModule structure for backend authors
+- [AST Reference](docs/developer/ast/overview.md): AST structure for tooling authors

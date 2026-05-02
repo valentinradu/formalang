@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FormaLang — a declarative DSL frontend for Rust</title>
+    <meta name="description" content="FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. Parse .fv source, get a type-resolved IR back.">
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="min-h-screen flex flex-col">
+    <header class="border-b border-surface0 bg-mantle">
+        <nav class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+            <a href="/" class="font-mono font-semibold text-lavender">formalang</a>
+            <div class="flex items-center gap-5 text-sm text-subtext1">
+                <a href="./docs/" class="hover:text-mauve transition-colors">Docs</a>
+                <a href="https://crates.io/crates/formalang" class="hover:text-mauve transition-colors">crates.io</a>
+                <a href="https://docs.rs/formalang" class="hover:text-mauve transition-colors">docs.rs</a>
+                <a href="https://github.com/valentinradu/formalang" class="hover:text-mauve transition-colors">GitHub</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="flex-1">
+        <!-- Hero -->
+        <section class="max-w-5xl mx-auto px-6 pt-20 pb-16">
+            <h1 class="text-4xl md:text-5xl font-semibold text-text leading-tight tracking-tight">
+                A statically typed, declarative DSL for
+                <span class="text-mauve">Rust applications</span>.
+            </h1>
+            <p class="mt-6 text-lg text-subtext1 max-w-2xl">
+                Parse <code class="text-peach">.fv</code> source. Get a fully type-resolved
+                <code class="text-peach">IrModule</code> back. Drive a UI framework,
+                generate code, configure a runtime — your backend, your call.
+            </p>
+            <div class="mt-8 flex flex-wrap gap-3">
+                <a class="btn-primary" href="./docs/">Read the docs</a>
+                <a class="btn-ghost" href="https://github.com/valentinradu/formalang">View on GitHub</a>
+            </div>
+        </section>
+
+        <!-- Quick example -->
+        <section class="max-w-5xl mx-auto px-6 pb-16">
+            <div class="code-card">
+                <pre class="text-sm leading-relaxed"><span class="text-overlay1">// Cargo.toml</span>
+<span class="text-yellow">[dependencies]</span>
+<span class="text-text">formalang</span> = <span class="text-green">"0.0.2-beta"</span>
+
+<span class="text-overlay1">// main.rs</span>
+<span class="text-mauve">use</span> formalang::compile_to_ir;
+
+<span class="text-mauve">let</span> source = <span class="text-green">r#"
+    pub struct User {
+        name: String,
+        age: I32
+    }
+"#</span>;
+
+<span class="text-mauve">let</span> module = <span class="text-blue">compile_to_ir</span>(source).<span class="text-blue">unwrap</span>();
+<span class="text-blue">println!</span>(<span class="text-green">"{}"</span>, module.structs[<span class="text-peach">0</span>].name); <span class="text-overlay1">// User</span></pre>
+            </div>
+        </section>
+
+        <!-- Why -->
+        <section class="max-w-5xl mx-auto px-6 pb-24">
+            <h2 class="text-2xl font-semibold text-lavender mb-8">Why FormaLang</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-mauve mb-2">Statically typed</h3>
+                    <p class="text-subtext1">
+                        Every type, name, and overload is settled at load time.
+                        A broken <code class="text-peach">.fv</code> fails fast — not when
+                        the user clicks the button that runs the bad branch.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-mauve mb-2">Embeddable</h3>
+                    <p class="text-subtext1">
+                        Pure compiler frontend: no runtime, no I/O, no globals,
+                        no sandbox to maintain. The output is data — walk it,
+                        transform it, emit whatever you want.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-mauve mb-2">Backend-agnostic</h3>
+                    <p class="text-subtext1">
+                        Drive a UI framework, generate code for any target,
+                        configure a runtime, layer custom IR passes. The
+                        compiler stops at the IR; you decide what comes next.
+                    </p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t border-surface0 bg-mantle">
+        <div class="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between text-sm text-subtext0">
+            <span>FormaLang &middot; MIT / Apache-2.0</span>
+            <span>
+                <a href="./docs/" class="hover:text-mauve">Docs</a>
+                &middot;
+                <a href="https://github.com/valentinradu/formalang" class="hover:text-mauve">GitHub</a>
+            </span>
+        </div>
+    </footer>
+</body>
+</html>

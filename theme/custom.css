@@ -1,0 +1,154 @@
+/*
+ * Catppuccin Mocha overrides for mdBook.
+ *
+ * Loaded via `additional-css` in book.toml so it appends *after* mdBook's
+ * built-in stylesheets. We don't replace `general.css` or the per-theme
+ * highlight stylesheets — that strips out the layout and the syntax
+ * colors. Everything cosmetic lives here, and the actual color
+ * variables live in theme/css/variables.css (which IS intended to be
+ * replaced).
+ *
+ * Palette: see theme/css/variables.css
+ */
+
+/* ───────── Typography ───────── */
+
+html {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+    line-height: 1.6;
+}
+
+h1 { color: var(--ctp-mauve); }
+h2, h3, h4, h5, h6 {
+    color: var(--ctp-lavender);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+a:hover { color: var(--ctp-mauve) !important; }
+
+/* Inline code */
+:not(pre) > code {
+    background-color: var(--ctp-surface0);
+    color: var(--inline-code-color);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", "SFMono-Regular", Consolas,
+                 "Liberation Mono", Menlo, monospace;
+    font-size: 0.92em;
+}
+
+/* Block code */
+pre {
+    background-color: var(--ctp-mantle) !important;
+    border: 1px solid var(--ctp-surface0);
+    border-radius: 6px;
+}
+
+/* Blockquotes */
+blockquote {
+    background-color: var(--quote-bg);
+    border-left: 3px solid var(--quote-border);
+    color: var(--ctp-subtext1);
+}
+
+/* Tables */
+table thead {
+    color: var(--ctp-lavender);
+    background: var(--table-header-bg);
+}
+table tr:nth-child(even) {
+    background: var(--table-alternate-bg);
+}
+table td, table th {
+    border: 1px solid var(--table-border-color);
+    padding: 6px 12px;
+}
+
+/* Sidebar accents */
+.chapter li.chapter-item a:hover {
+    color: var(--ctp-mauve);
+}
+.chapter li.chapter-item a.active {
+    color: var(--sidebar-active);
+    font-weight: 600;
+}
+
+/* Top nav bar tint */
+.menu-bar,
+.menu-bar:hover,
+html.sidebar-visible .menu-bar {
+    background-color: var(--ctp-mantle);
+    border-bottom: 1px solid var(--ctp-surface0);
+}
+.menu-title {
+    color: var(--ctp-lavender);
+    font-weight: 600;
+}
+
+::selection {
+    background: var(--ctp-mauve);
+    color: var(--ctp-base);
+}
+
+/* Hide the theme picker — we ship a single Mocha theme. */
+.right-buttons #theme-toggle,
+#theme-list,
+.theme-popup {
+    display: none !important;
+}
+
+/* ───────── Catppuccin Mocha syntax highlighting ─────────
+ * Override across ALL theme stylesheets (highlight.css for light,
+ * tomorrow-night.css for coal/navy, ayu-highlight.css for ayu) so
+ * the active theme doesn't matter — the colors are uniform.
+ */
+
+.hljs {
+    background: var(--ctp-mantle) !important;
+    color: var(--ctp-text) !important;
+}
+
+.hljs-comment,
+.hljs-quote                 { color: var(--ctp-overlay1) !important; font-style: italic; }
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-meta-keyword,
+.hljs-doctag,
+.hljs-section,
+.hljs-name                  { color: var(--ctp-mauve) !important; }
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-class .hljs-title,
+.hljs-type                  { color: var(--ctp-yellow) !important; }
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-subst,
+.hljs-meta,
+.hljs-link                  { color: var(--ctp-sky) !important; }
+
+.hljs-title,
+.hljs-function .hljs-title  { color: var(--ctp-blue) !important; }
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition              { color: var(--ctp-green) !important; }
+
+.hljs-number,
+.hljs-literal               { color: var(--ctp-peach) !important; }
+
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-deletion              { color: var(--ctp-red) !important; }
+
+.hljs-emphasis              { font-style: italic; }
+.hljs-strong                { font-weight: bold; }
