@@ -39,6 +39,31 @@ impl IrLowerer<'_> {
             }
         }
 
+        // CM-J: Track imported standalone-function and module-let
+        // imports in IrImport.items so the cross-module qualification
+        // pass can route bare-name references to their qualified
+        // forms after inlining.
+        let function_names: Vec<String> = self
+            .symbols
+            .functions
+            .keys()
+            .filter(|name| self.symbols.get_module_origin(name).is_some())
+            .cloned()
+            .collect();
+        for name in function_names {
+            self.try_track_imported_type(&name, ImportedKind::Function);
+        }
+        let let_names: Vec<String> = self
+            .symbols
+            .lets
+            .keys()
+            .filter(|name| self.symbols.get_module_origin(name).is_some())
+            .cloned()
+            .collect();
+        for name in let_names {
+            self.try_track_imported_type(&name, ImportedKind::ModuleLet);
+        }
+
         // Register types from imported nested modules (e.g., fill::Solid)
         for (module_name, module_info) in &self.symbols.modules {
             self.register_module_types(module_name, &module_info.symbols);

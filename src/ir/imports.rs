@@ -1,8 +1,8 @@
 //! Cross-module import metadata: backends use these to emit import
 //! statements in the target language.
 
-/// Kind of external type reference. Distinguishes the three definition
-/// kinds when referencing types from other modules.
+/// Kind of external item reference. Distinguishes definition kinds
+/// when referencing items from other modules.
 #[expect(
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
@@ -12,6 +12,13 @@ pub enum ImportedKind {
     Struct,
     Trait,
     Enum,
+    /// A standalone function imported via `use other::compute`. The
+    /// item's qualified-name clone lives in `IrModule.functions`
+    /// after the cross-module inline pass.
+    Function,
+    /// A module-level `pub let` imported via `use other::CONST`.
+    /// The qualified-name clone lives in `IrModule.lets`.
+    ModuleLet,
 }
 
 /// An import from another module. Tracks which types were imported from
