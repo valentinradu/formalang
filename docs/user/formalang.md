@@ -644,6 +644,35 @@ pub fn identity<T>(value: T) -> T {
 }
 ```
 
+#### Default Parameter Values
+
+Parameters may declare a default value with `= expr`:
+
+```formalang
+fn greet(name: String, greeting: String = "Hello") -> String {
+  greeting + ", " + name
+}
+
+greet("world")              // greeting = "Hello"
+greet("world", "Hi there")  // greeting = "Hi there"
+```
+
+Rules:
+
+- **Defaults must be positional from the right.** `fn f(x = 0, y)`
+  is rejected at definition time — every parameter after a defaulted
+  one must also have a default (`self` is not counted).
+- **Defaults may reference earlier parameters.** `fn f(x: I32, y:
+  I32 = x + 1)` is valid; calls like `f(5)` lower to a Let-wrapped
+  Block that binds `x` to the call-site value, so the default sees
+  the actual passed value.
+- **Defaults are re-evaluated on every call.** `fn f(x: I32 = current_count())`
+  runs `current_count()` once per call site — Python's mutable-
+  default footgun is avoided.
+- **Overload resolution prefers the no-default match.** With both
+  `fn f(x: I32)` and `fn f(x: I32, y: I32 = 1)` defined, `f(5)`
+  resolves to the no-default overload.
+
 #### Codegen Attributes
 
 Three optional keyword prefixes hint to backends about call-site
