@@ -316,43 +316,59 @@ One commit landed on `dwarf-spans-design`:
   `IrFunction.span`, `IrStruct.span`, etc. — currently default
   values until the lowerer plumbing populates them.
 
+- **SP-3** (`d5e280a`): `pub span: IrSpan` field added to every
+  `IrExpr` variant (Literal, StructInst, EnumInst, Array, Tuple,
+  Reference, SelfFieldRef, FieldAccess, LetRef, BinaryOp, UnaryOp,
+  If, For, Match, FunctionCall, CallClosure, MethodCall, Closure,
+  ClosureRef, DictLiteral, DictAccess, Block — 22 variants). All
+  construction sites mass-patched via Python scripting against
+  `cargo check --message-format=json`: 156 E0027 (pattern) +
+  E0063 (initializer) errors auto-fixed, then `cargo fmt` to
+  normalise the formatting. cargo check + cargo check --tests
+  green.
+- **SP-4** (`8bb294e`): Lowerer plumbing. Added `current_file:
+  FileId` field to `IrLowerer` + `current_ir_span()` helper.
+  Mass-replaced 61 instances of `crate::ir::IrSpan::default()` in
+  `src/ir/lower/*` with `self.current_ir_span()` so every IR node
+  the lowerer constructs carries the AST span at the moment of
+  lowering.
+- **SP-5** (`24758dd`): Integration tests for span population
+  (`tests/ir_spans.rs` — function/struct/IrExpr span fields,
+  file_table round-trip, IrSpan::is_default predicate). Updated
+  `docs/developer/ir.md` with a "Source Spans" subsection covering
+  IrSpan, FileId, file_table, and DWARF / source-map / JVM
+  LineNumberTable consumption.
+- **SP-6** (`74d483a`): Closure-conversion synthesised nodes carry
+  the originating closure expression's span. Lifted top-level
+  function, env-param, env-struct StructInst, ClosureRef value all
+  anchor DWARF `DW_TAG_subprogram` at the user-visible
+  `|x| { ... }` source location.
+
 ### Remaining work
 
-Foundation (SP-1) and data-struct sweep (SP-2) landed. The bulk of
-the remaining work is the IrExpr variant sweep + lowerer plumbing.
+Most of the plan is shipped. Remaining items:
 
-1. **`IrExpr` variant span fields (~800 construction sites across
-   ~22 variants).** Each variant (`Literal`, `Reference`,
-   `FunctionCall`, `MethodCall`, `BinaryOp`, `UnaryOp`, `If`, `For`,
-   `Match`, `Block`, `Closure`, `ClosureRef`, `Array`, `Tuple`,
-   `StructInst`, `EnumInst`, `DictLiteral`, `DictAccess`,
-   `FieldAccess`, `LetRef`, `SelfFieldRef`, `CallClosure`) needs
-   its own `span: IrSpan` field, plus its construction sites
-   patched. `Literal`, `Reference`, `FunctionCall`, `MethodCall`,
-   `BinaryOp` alone account for 326 sites. Recommended approach:
-   scripted Python over `cargo check` error output to mass-patch
-   construction sites.
-2. **Lowerer plumbing.** Replace `IrLowerer.current_span: Span`
-   with `current_ir_span: IrSpan` (including a `current_file:
-   FileId` field). Update every IR-construction site in
-   `src/ir/lower/` to populate the new `span` fields from
-   `current_ir_span` instead of `IrSpan::default()`. Both data-
-   struct construction (89 sites SP-2 already patched with
-   `IrSpan::default()`) and IrExpr variants need this.
-3. **Synthesised-node spans.** Closure conversion, monomorphisation
-   `specialise.rs`/`external.rs`, synthetic let-bindings — each
-   carry the originating expression's span (per resolved Q1).
-4. **Cross-module integration.** When the cross-module-codegen plan
-   inlines imported items, each clone keeps its originating span
-   with the imported file's `FileId`; entry's `file_table` registers
-   every imported source.
-5. **Tests + documentation.**
+1. **`current_file` registration.** `IrLowerer.current_file`
+   defaults to `FileId::SYNTHETIC`. Wire `lower_to_ir` (and
+   `compile_to_ir{_with_resolver}`) to accept the source path,
+   register it via `IrModule.register_file()`, and seed
+   `current_file` so lowered spans carry a real file id. Tracked
+   as a small follow-up — needs a public-API tweak.
+2. **Monomorphisation specialisation spans.** When
+   `monomorphise/specialise.rs` clones a generic struct/enum/fn,
+   the clone should keep the originating generic's span (matches
+   Rust / C++ template convention).
+3. **Cross-module integration.** Coordinate with
+   `plans/cross-module-codegen.md`: imported clones should keep
+   their originating `IrSpan` with the imported file's `FileId`;
+   entry's `file_table` should register every imported source.
+4. **Synthetic let-binding spans** in
+   `lower/expr/literals_and_containers.rs`'s default-substitution
+   wrapper (DP-4) and any other auto-synthesised `IrBlockStatement::Let`.
 
-SP-1 + SP-2 give backends the ability to ANCHOR DWARF
-`DW_TAG_subprogram` / source-map function-entry / JVM
-LineNumberTable function-entry sections against `IrFunction.span`,
-`IrStruct.span`, etc. Per-expression line-table emission requires
-the IrExpr variant work.
+These are smaller commits each — the foundation, every-node sweep,
+lowerer plumbing, and closure-conv synthesised spans are all in
+place and exercised by the test suite.
 
 ## Status in the formawasm backend
 
