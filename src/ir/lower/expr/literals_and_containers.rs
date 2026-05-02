@@ -656,14 +656,43 @@ impl IrLowerer<'_> {
     pub(super) fn lower_dict_access(&mut self, dict: &Expr, key: &Expr) -> IrExpr {
         let dict_ir = self.lower_expr(dict);
         let key_ir = self.lower_expr(key);
-        let bad_dict = dict_ir.ty().clone();
-        let ty = if let ResolvedType::Dictionary { value_ty, .. } = &bad_dict {
+        let receiver_ty = dict_ir.ty().clone();
+
+        // SB-5: `s[i]` on a String receiver desugars to a method call
+        // on the prelude's `extern impl String { fn byte_at(self, i: I32) -> I32 }`.
+        // Backends only ever see `IrExpr::MethodCall`; no separate
+        // primitive-indexing IR shape needed.
+        if matches!(receiver_ty, ResolvedType::Primitive(PrimitiveType::String)) {
+            let impl_id = self
+                .module
+                .impls
+                .iter()
+                .position(|imp| {
+                    matches!(
+                        imp.target,
+                        crate::ir::ImplTarget::Primitive(PrimitiveType::String)
+                    ) && imp.functions.iter().any(|f| f.name == "byte_at")
+                })
+                .map_or(crate::ir::ImplId(0), |idx| {
+                    crate::ir::ImplId(u32::try_from(idx).unwrap_or(0))
+                });
+            return IrExpr::MethodCall {
+                receiver: Box::new(dict_ir),
+                method: "byte_at".to_string(),
+                method_idx: crate::ir::MethodIdx(0),
+                args: vec![(None, key_ir)],
+                dispatch: crate::ir::DispatchKind::Static { impl_id },
+                ty: ResolvedType::Primitive(PrimitiveType::I32),
+            };
+        }
+
+        let ty = if let ResolvedType::Dictionary { value_ty, .. } = &receiver_ty {
             (**value_ty).clone()
         } else {
             self.internal_error_type_if_concrete(
-                &bad_dict,
+                &receiver_ty,
                 format!(
-                    "dict-access receiver lowered to non-dictionary type {bad_dict:?}; semantic should have caught this",
+                    "dict-access receiver lowered to non-dictionary type {receiver_ty:?}; semantic should have caught this",
                 ),
             )
         };
