@@ -71,6 +71,27 @@ impl IrLowerer<'_> {
             };
         }
 
+        if let ResolvedType::Primitive(prim) = effective_ty {
+            // SB-3: primitive receivers dispatch via the prelude's
+            // `extern impl <Primitive>` blocks. Scan module.impls for
+            // an `ImplTarget::Primitive(prim)` carrying `method_name`.
+            for (idx, imp) in self.module.impls.iter().enumerate() {
+                if matches!(imp.target, crate::ir::ImplTarget::Primitive(p) if p == *prim)
+                    && imp.functions.iter().any(|f| f.name == method_name)
+                {
+                    return DispatchKind::Static {
+                        impl_id: crate::ir::ImplId(u32::try_from(idx).unwrap_or(0)),
+                    };
+                }
+            }
+            // No matching primitive impl found. Fall through to the
+            // generic next-impl-id sentinel so ResolveReferencesPass
+            // still has a placeholder to walk.
+            return DispatchKind::Static {
+                impl_id: self.next_impl_id_or_record(),
+            };
+        }
+
         if let ResolvedType::TypeParam(param_name) = receiver_ty {
             if let Some(trait_id) = self.find_trait_for_method(param_name, method_name) {
                 return DispatchKind::Virtual {
