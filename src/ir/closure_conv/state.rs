@@ -146,8 +146,8 @@ impl ConversionState {
                 captures,
                 body,
                 ty,
-                ..
-            } => self.lift_closure(&params, &captures, *body, ty, ctx),
+                span,
+            } => self.lift_closure(&params, &captures, *body, ty, span, ctx),
 
             IrExpr::Literal { value, ty, .. } => IrExpr::Literal {
                 value,

@@ -24,6 +24,7 @@ impl ConversionState {
         captures: &[(crate::ir::BindingId, String, ParamConvention, ResolvedType)],
         body: IrExpr,
         closure_ty: ResolvedType,
+        closure_span: crate::ir::IrSpan,
         outer_ctx: &CaptureCtx,
     ) -> IrExpr {
         let (_idx, env_name, func_name, env_id) = self.allocate();
@@ -44,9 +45,18 @@ impl ConversionState {
             ResolvedType::Error
         };
 
-        // Synthesize the lifted top-level function.
-        let lifted_fn =
-            build_lifted_function(func_name.clone(), env_id, params, return_ty, lifted_body);
+        // Synthesize the lifted top-level function. The lifted function
+        // carries the originating closure expression's span so DWARF /
+        // source-map emitters anchor `DW_TAG_subprogram` at the
+        // user-visible `|x| { ... }` source location.
+        let lifted_fn = build_lifted_function(
+            func_name.clone(),
+            env_id,
+            params,
+            return_ty,
+            lifted_body,
+            closure_span,
+        );
         self.lifted.push(lifted_fn);
 
         // Build the env-struct constructor: each capture's value is
@@ -67,7 +77,7 @@ impl ConversionState {
                     path: vec![name.clone()],
                     target: crate::ir::ReferenceTarget::Local(*outer_bid),
                     ty: capture_ty.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span: closure_span,
                 };
                 #[expect(
                     clippy::cast_possible_truncation,
@@ -83,14 +93,14 @@ impl ConversionState {
             type_args: Vec::new(),
             fields: env_fields,
             ty: ResolvedType::Struct(env_id),
-            span: crate::ir::IrSpan::default(),
+            span: closure_span,
         };
 
         IrExpr::ClosureRef {
             funcref: vec![func_name],
             env_struct: Box::new(env_inst),
             ty: closure_ty,
-            span: crate::ir::IrSpan::default(),
+            span: closure_span,
         }
     }
 }
@@ -105,6 +115,7 @@ fn build_lifted_function(
     closure_params: &[(ParamConvention, crate::ir::BindingId, String, ResolvedType)],
     return_ty: ResolvedType,
     body: IrExpr,
+    closure_span: crate::ir::IrSpan,
 ) -> IrFunction {
     let env_param = IrFunctionParam {
         binding_id: crate::ir::BindingId(0),
@@ -113,7 +124,7 @@ fn build_lifted_function(
         ty: Some(ResolvedType::Struct(env_struct_id)),
         default: None,
         convention: ParamConvention::Let,
-        span: crate::ir::IrSpan::default(),
+        span: closure_span,
     };
 
     let mut params = Vec::with_capacity(closure_params.len().saturating_add(1));
@@ -126,7 +137,7 @@ fn build_lifted_function(
             ty: Some(param_ty.clone()),
             default: None,
             convention: *convention,
-            span: crate::ir::IrSpan::default(),
+            span: closure_span,
         });
     }
 
@@ -142,7 +153,7 @@ fn build_lifted_function(
             "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures."
                 .to_string(),
         ),
-        span: crate::ir::IrSpan::default(),
+        span: closure_span,
     }
 }
 
