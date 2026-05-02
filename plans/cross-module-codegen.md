@@ -357,6 +357,75 @@ forecloses adding it later as a hybrid escape hatch.
   with `NotYetSupported { kind: "External(..)" }`.
 - This plan file is deleted as part of the implementing PR.
 
+---
+
+## Implementation progress
+
+Eight commits landed on `cross-module-codegen-design`:
+
+- **CM-A** (`8aedaef`): Wire imports map + MonomorphisePass into
+  `compile_to_ir_with_resolver`. Public API now runs the inline pass
+  with the analyzer's `imported_ir_modules()` keyed by logical
+  module path.
+- **CM-B** (`54fc9b0`): Generalise `specialise_external_instantiations`
+  to non-generic `External` references and to imported traits. Mangle
+  gained a non-generic `module::path::Name` branch.
+- **CM-C** (`5351be9`): Phase 1b — inline imported functions under
+  qualified names. Signatures + body types externalised.
+- **CM-D** (`1454955`): Phase 1c — inline imported impls whose target
+  was cloned. `target` and `trait_ref.trait_id` translated to local
+  ids by qualified-name lookup.
+- **CM-E** (`ad108d0`): Phase 1d — inline imported pub lets under
+  qualified names.
+- **CM-F-1** (`2bd1e61`): Phase 1e — `remap_imported_body_ids` walks
+  cloned bodies and translates `FunctionCall.function_id` and
+  `DispatchKind::Static.impl_id` from imported id-space to local
+  id-space. Symmetric `module_prefix` fallback added to
+  `walkers::resolve_path` so single-segment Reference paths in cloned
+  bodies bind via the qualified clone name.
+- **CM-F-2** (`c0a3f48`): Phase 1f — `qualify_imported_paths` rewrites
+  entry-side single-segment paths in `FunctionCall` / `Reference` to
+  qualified form when the bare name matches a unique cloned import
+  (e.g., `use helper::greet; greet()` → `helper::greet(..)`). Locals
+  win; ambiguous cross-module candidates skip.
+
+### Remaining work
+
+Each piece below is genuinely 1-3 commits of careful work; tracked as
+a follow-up plan.
+
+1. **Per-item path qualification context.** `qualify_imported_paths`
+   uses a single global candidate set. Cloned items that reference
+   *their* module's imports (helper.fv has `use other::compute` and
+   the cloned helper body references `compute`) need per-item
+   resolution against the originating module's `IrImport` list.
+   Today, this works only when the chained item is also reachable
+   from the entry module's clones.
+2. **Cycle guard (defence in depth).** The existing `mapping.contains_key`
+   dedup in `specialise_external_instantiations` prevents infinite loops
+   but doesn't surface a clear `InternalError { detail: "monomorphise:
+   cyclic import .." }`. Plan-spec'd guard: an `in_progress: HashSet<Vec<String>>`
+   tracking module paths under active processing.
+3. **`IrModuleNode` tree merge.** Imported modules' `modules: Vec<IrModuleNode>`
+   trees should be spliced into the entry module's tree under their
+   `module_path`. Codegen ignores the tree; source-introspection
+   tools depend on it.
+4. **Tests.** Two-file integration tests covering: non-generic struct
+   field access cross-module; pub fn cross-module call (helper-internal
+   refs and chained imports); pub impl method dispatch; pub let
+   read; cycle-guard regression.
+5. **Documentation.** Update `docs/developer/ir.md` with the
+   transient-`External` contract; update doc-comments on
+   `compile_to_ir_with_resolver`, `IrImport`, and `MonomorphisePass`.
+
+What's already shipped (CM-A through CM-F-2) is enough to unblock
+formawasm Phase 4 R2's literal `NotYetSupported { kind: "External(..)" }`
+rejection — non-generic and generic struct/enum/trait references
+flow through end-to-end. Cross-module function calls work for the
+common case (entry calls imported, cloned helper bodies reference
+helper-internal items). The chained `use` case noted in #1 is the
+biggest known gap.
+
 ## Status in the formawasm backend
 
 `~/projects/formawasm` Phase 4 closed with `extern_abi`-bearing
