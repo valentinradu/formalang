@@ -676,28 +676,26 @@ pub(super) fn remap_imported_body_ids(
 }
 
 /// Phase 1f: qualify bare-name paths in `FunctionCall` and `Reference`
-/// expressions where the name matches a cloned imported item.
+/// expressions, with a per-item context derived from each cloned (or
+/// entry-native) item's source-module import set.
 ///
 /// At lowering time, an entry-module call `greet()` after `use
 /// helper::greet` produces `FunctionCall { path: ["greet"],
 /// function_id: None }`. After Phases 1b–1e the cloned function is
 /// named `"helper::greet"` in the entry module; the bare path
-/// `["greet"]` doesn't resolve. This pass walks every expression in
-/// the module and rewrites bare paths to the qualified form when:
+/// `["greet"]` doesn't resolve through the joined-name lookup. This
+/// pass rewrites bare paths to the qualified form using the right
+/// context for each item:
 ///
-/// - The bare name matches exactly one cloned imported item; AND
-/// - It does not match a local entry-module item (locals win).
-///
-/// Cloned items' bodies are walked too — they may reference items
-/// from their *own* module's imports (e.g. helper.fv has `use
-/// other::compute` and the cloned helper body references `compute`).
-/// For those, the per-item context (which imports apply) is the
-/// imported module's import set, not the entry's. Today this pass
-/// uses a single global candidate set built from `imported_modules`'
-/// own qualified-clone names — it doesn't consult helper.imports
-/// individually. That covers the common case (one module imports
-/// another and uses it directly) but not the chained case (helper
-/// imports other, helper's body references other's items).
+/// - **Cloned imported items** use their source module's own
+///   definitions + that module's `IrImport` list. So a body cloned
+///   from `helper.fv` (with `use other::compute`) referencing
+///   `compute` resolves to `["other", "compute"]`.
+/// - **Entry-native items** use the entry module's `IrImport` list.
+///   Bare references to imports like `use helper::greet` resolve to
+///   `["helper", "greet"]`. The entry's own definitions are left
+///   bare — `ResolveReferencesPass`'s `module_prefix` fallback
+///   handles them.
 pub(super) fn qualify_imported_paths(
     module: &mut IrModule,
     imported_modules: &HashMap<Vec<String>, IrModule>,
@@ -705,122 +703,144 @@ pub(super) fn qualify_imported_paths(
     if imported_modules.is_empty() {
         return;
     }
-    // Build a bare-name → qualified-name map of cloned import items.
-    // Skip names that have multiple qualifiers (would be ambiguous).
-    let mut bare_to_qualified: HashMap<String, String> = HashMap::new();
-    let mut ambiguous: HashSet<String> = HashSet::new();
-    for path in imported_modules.keys() {
-        for func in &module.functions {
-            if let Some(stripped) = strip_qualified_prefix(&func.name, path) {
-                register_qualified(stripped, &func.name, &mut bare_to_qualified, &mut ambiguous);
-            }
-        }
-        for s in &module.structs {
-            if let Some(stripped) = strip_qualified_prefix(&s.name, path) {
-                register_qualified(stripped, &s.name, &mut bare_to_qualified, &mut ambiguous);
-            }
-        }
-        for e in &module.enums {
-            if let Some(stripped) = strip_qualified_prefix(&e.name, path) {
-                register_qualified(stripped, &e.name, &mut bare_to_qualified, &mut ambiguous);
-            }
-        }
-        for t in &module.traits {
-            if let Some(stripped) = strip_qualified_prefix(&t.name, path) {
-                register_qualified(stripped, &t.name, &mut bare_to_qualified, &mut ambiguous);
-            }
-        }
-        for l in &module.lets {
-            if let Some(stripped) = strip_qualified_prefix(&l.name, path) {
-                register_qualified(stripped, &l.name, &mut bare_to_qualified, &mut ambiguous);
-            }
-        }
-    }
-    // Drop ambiguous bare names.
-    for name in &ambiguous {
-        bare_to_qualified.remove(name);
-    }
-    // Subtract any entry-module local items — their bare name should
-    // continue to resolve locally, not get qualified to an import.
-    for func in &module.functions {
-        if !func.name.contains("::") {
-            bare_to_qualified.remove(&func.name);
-        }
-    }
-    for s in &module.structs {
-        if !s.name.contains("::") {
-            bare_to_qualified.remove(&s.name);
-        }
-    }
-    for e in &module.enums {
-        if !e.name.contains("::") {
-            bare_to_qualified.remove(&e.name);
-        }
-    }
-    for t in &module.traits {
-        if !t.name.contains("::") {
-            bare_to_qualified.remove(&t.name);
-        }
-    }
-    for l in &module.lets {
-        if !l.name.contains("::") {
-            bare_to_qualified.remove(&l.name);
-        }
-    }
+    // Snapshot the entry module's imports for entry-native item bodies.
+    let entry_imports = module.imports.clone();
 
-    if bare_to_qualified.is_empty() {
-        return;
-    }
+    // Pre-compute the source module for each item (functions, impl
+    // methods, lets) so the body walk doesn't need to look up while
+    // borrowing module mutably.
+    let func_sources: Vec<Option<Vec<String>>> = module
+        .functions
+        .iter()
+        .map(|f| imported_path_of(&f.name, imported_modules))
+        .collect();
+    let impl_method_sources: Vec<Vec<Option<Vec<String>>>> = module
+        .impls
+        .iter()
+        .map(|imp| {
+            let impl_source = match imp.target {
+                crate::ir::ImplTarget::Struct(id) => module
+                    .get_struct(id)
+                    .and_then(|s| imported_path_of(&s.name, imported_modules)),
+                crate::ir::ImplTarget::Enum(id) => module
+                    .get_enum(id)
+                    .and_then(|e| imported_path_of(&e.name, imported_modules)),
+            };
+            imp.functions
+                .iter()
+                .map(|m| {
+                    impl_source
+                        .clone()
+                        .or_else(|| imported_path_of(&m.name, imported_modules))
+                })
+                .collect()
+        })
+        .collect();
+    let let_sources: Vec<Option<Vec<String>>> = module
+        .lets
+        .iter()
+        .map(|l| imported_path_of(&l.name, imported_modules))
+        .collect();
 
-    // Walk every body and qualify single-segment paths whose name
-    // matches a candidate.
-    for func in &mut module.functions {
+    // Walk each body with its precomputed source.
+    for (idx, func) in module.functions.iter_mut().enumerate() {
         if let Some(body) = &mut func.body {
-            qualify_paths_in_expr(body, &bare_to_qualified);
-        }
-    }
-    for impl_block in &mut module.impls {
-        for method in &mut impl_block.functions {
-            if let Some(body) = &mut method.body {
-                qualify_paths_in_expr(body, &bare_to_qualified);
+            let context = build_qualification_context(
+                func_sources[idx].as_deref(),
+                &entry_imports,
+                imported_modules,
+            );
+            if !context.is_empty() {
+                qualify_paths_in_expr(body, &context);
             }
         }
     }
-    for let_binding in &mut module.lets {
-        qualify_paths_in_expr(&mut let_binding.value, &bare_to_qualified);
-    }
-}
-
-fn strip_qualified_prefix<'a>(name: &'a str, path: &[String]) -> Option<&'a str> {
-    let mut prefix_len = 0usize;
-    for seg in path {
-        prefix_len += seg.len() + 2; // +2 for "::"
-    }
-    if name.len() <= prefix_len {
-        return None;
-    }
-    let prefix = qualified_name(path, "");
-    name.strip_prefix(&prefix)
-}
-
-fn register_qualified(
-    bare: &str,
-    qualified: &str,
-    out: &mut HashMap<String, String>,
-    ambiguous: &mut HashSet<String>,
-) {
-    // Skip nested-module clones (`helper::utils::Foo` from helper has
-    // bare = "utils::Foo" — multi-segment; not what we're matching).
-    if bare.contains("::") {
-        return;
-    }
-    match out.get(bare) {
-        Some(existing) if existing != qualified => {
-            ambiguous.insert(bare.to_string());
+    for (impl_idx, impl_block) in module.impls.iter_mut().enumerate() {
+        for (m_idx, method) in impl_block.functions.iter_mut().enumerate() {
+            if let Some(body) = &mut method.body {
+                let source = impl_method_sources
+                    .get(impl_idx)
+                    .and_then(|v| v.get(m_idx))
+                    .and_then(Option::as_deref);
+                let context =
+                    build_qualification_context(source, &entry_imports, imported_modules);
+                if !context.is_empty() {
+                    qualify_paths_in_expr(body, &context);
+                }
+            }
         }
-        Some(_) => {}
-        None => {
-            out.insert(bare.to_string(), qualified.to_string());
+    }
+    for (idx, let_binding) in module.lets.iter_mut().enumerate() {
+        let context = build_qualification_context(
+            let_sources[idx].as_deref(),
+            &entry_imports,
+            imported_modules,
+        );
+        if !context.is_empty() {
+            qualify_paths_in_expr(&mut let_binding.value, &context);
+        }
+    }
+}
+
+/// Build the bare-name → qualified-path map for a single item's body.
+///
+/// `source` is the imported module path the cloned item came from, or
+/// `None` for entry-native items. `entry_imports` is the entry
+/// module's `IrImport` list (used when source is None).
+fn build_qualification_context(
+    source: Option<&[String]>,
+    entry_imports: &[crate::ir::IrImport],
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) -> HashMap<String, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+
+    if let Some(helper_path) = source {
+        // Cloned item — use the source module's own items + imports.
+        let Some(helper) = imported_modules.get(helper_path) else {
+            return map;
+        };
+        // Helper's own items: cloned to entry under qualified name.
+        // `helper.fv: pub fn helper_b()` cloned as `"helper::helper_b"`.
+        let prefix = qualified_name(helper_path, "");
+        for f in &helper.functions {
+            map.entry(f.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", f.name));
+        }
+        for s in &helper.structs {
+            map.entry(s.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", s.name));
+        }
+        for e in &helper.enums {
+            map.entry(e.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", e.name));
+        }
+        for t in &helper.traits {
+            map.entry(t.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", t.name));
+        }
+        for l in &helper.lets {
+            map.entry(l.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", l.name));
+        }
+        // Helper's imports: each item bare-name maps to its declaring
+        // module's qualified form.
+        register_imports_into(&helper.imports, &mut map);
+    } else {
+        // Entry-native item — use entry's IrImport list. Entry's own
+        // definitions are left bare (ResolveReferencesPass handles
+        // them via module_prefix or by_name lookup).
+        register_imports_into(entry_imports, &mut map);
+    }
+
+    map
+}
+
+fn register_imports_into(imports: &[crate::ir::IrImport], map: &mut HashMap<String, String>) {
+    for imp in imports {
+        let prefix = qualified_name(&imp.module_path, "");
+        for item in &imp.items {
+            map.entry(item.name.clone())
+                .or_insert_with(|| format!("{prefix}{}", item.name));
         }
     }
 }
