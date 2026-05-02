@@ -435,11 +435,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let none_labeled = call_labels.iter().all(Option::is_none);
 
         if all_labeled && !call_labels.is_empty() {
-            // Mode A: match by label set
-            let call_label_set: Vec<&str> =
+            // Mode A: match by label set, accepting omitted parameters
+            // when they have defaults. Required = labels without defaults.
+            // The call's labels must be a subset of param_labels covering
+            // every required label.
+            let call_label_set: std::collections::HashSet<&str> =
                 call_labels.iter().filter_map(|l| l.as_deref()).collect();
-            let param_label_set: Vec<&str> = param_labels.iter().map(String::as_str).collect();
-            call_label_set == param_label_set
+            let required_labels: std::collections::HashSet<&str> = params
+                .iter()
+                .filter(|p| p.name.name != "self" && p.default.is_none())
+                .map(|p| {
+                    p.external_label
+                        .as_ref()
+                        .map_or(p.name.name.as_str(), |l| l.name.as_str())
+                })
+                .collect();
+            let param_label_set: std::collections::HashSet<&str> =
+                param_labels.iter().map(String::as_str).collect();
+            // Every call label must exist on the param; every required
+            // label must be present in the call.
+            call_label_set.iter().all(|l| param_label_set.contains(l))
+                && required_labels.iter().all(|l| call_label_set.contains(l))
         } else if none_labeled && args.is_empty() {
             // Zero-arg call: matches a zero-required-arg overload. With
             // default values, an overload with all defaults (e.g.
