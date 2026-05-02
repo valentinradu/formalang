@@ -91,7 +91,7 @@ impl IrLowerer<'_> {
                     mutable: false,
                     doc: f.doc.clone(),
                     convention: ast::ParamConvention::default(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 })
                 .collect();
             let methods: Vec<IrFunctionSig> = trait_info
@@ -110,7 +110,7 @@ impl IrLowerer<'_> {
                     methods,
                     generic_params,
                     doc: None,
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 },
             ) {
                 self.errors.push(e);
@@ -183,7 +183,7 @@ impl IrLowerer<'_> {
                                 mutable: false,
                                 doc: f.doc.clone(),
                                 convention: ast::ParamConvention::default(),
-                                span: crate::ir::IrSpan::default(),
+                                span: self.current_ir_span(),
                             })
                             .collect()
                     })
@@ -191,7 +191,7 @@ impl IrLowerer<'_> {
                 IrEnumVariant {
                     name: variant_name.clone(),
                     fields,
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 }
             })
             .collect();
@@ -206,7 +206,7 @@ impl IrLowerer<'_> {
                 variants,
                 generic_params,
                 doc: None,
-                span: crate::ir::IrSpan::default(),
+                span: self.current_ir_span(),
             },
         ) {
             self.errors.push(e);
@@ -234,7 +234,7 @@ impl IrLowerer<'_> {
                     default: None,
                     doc: f.doc.clone(),
                     convention: ast::ParamConvention::default(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 }
             })
             .collect();
@@ -265,7 +265,7 @@ impl IrLowerer<'_> {
                 fields,
                 generic_params,
                 doc: None,
-                span: crate::ir::IrSpan::default(),
+                span: self.current_ir_span(),
             },
         ) {
             self.errors.push(e);
@@ -288,7 +288,7 @@ impl IrLowerer<'_> {
                         methods: Vec::new(),
                         generic_params: Vec::new(),
                         doc: t.doc.clone(),
-                        span: crate::ir::IrSpan::default(),
+                        span: self.current_ir_span(),
                     },
                 ) {
                     self.errors.push(e);
@@ -305,7 +305,7 @@ impl IrLowerer<'_> {
                         fields: Vec::new(),
                         generic_params: Vec::new(),
                         doc: s.doc.clone(),
-                        span: crate::ir::IrSpan::default(),
+                        span: self.current_ir_span(),
                     },
                 ) {
                     self.errors.push(e);
@@ -321,7 +321,7 @@ impl IrLowerer<'_> {
                         variants: Vec::new(),
                         generic_params: Vec::new(),
                         doc: e.doc.clone(),
-                        span: crate::ir::IrSpan::default(),
+                        span: self.current_ir_span(),
                     },
                 ) {
                     self.errors.push(e);

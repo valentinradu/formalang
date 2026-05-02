@@ -202,7 +202,7 @@ impl IrLowerer<'_> {
             default: None,
             doc: f.doc.clone(),
             convention: ast::ParamConvention::default(),
-            span: crate::ir::IrSpan::default(),
+            span: self.current_ir_span(),
         }
     }
 
@@ -222,7 +222,7 @@ impl IrLowerer<'_> {
             default,
             doc: f.doc.clone(),
             convention: ast::ParamConvention::default(),
-            span: crate::ir::IrSpan::default(),
+            span: self.current_ir_span(),
         }
     }
 

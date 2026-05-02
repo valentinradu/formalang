@@ -96,6 +96,10 @@ struct IrLowerer<'a> {
     /// `InternalError` diagnostics can cite a meaningful source location
     /// instead of `Span::default()`.
     pub(super) current_span: crate::location::Span,
+    /// File id for the source being lowered. The lowerer registers the
+    /// entry-point file as `FileId(1)` on construction; cross-module
+    /// inlining (in `MonomorphisePass`) updates this for cloned items.
+    pub(super) current_file: crate::ir::FileId,
     /// when a closure literal is being lowered as the
     /// argument to a function call (or assigned to a closure-typed
     /// struct field, or passed as a method argument), this carries the
@@ -181,10 +185,17 @@ impl<'a> IrLowerer<'a> {
             current_impl_method_returns: None,
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
+            current_file: crate::ir::FileId::SYNTHETIC,
             expected_closure_type: None,
             expected_value_type: None,
             module_node_stack: Vec::new(),
         }
+    }
+
+    /// Build an `IrSpan` for the currently-lowered AST node from the
+    /// stored `current_span` + `current_file`.
+    pub(super) fn current_ir_span(&self) -> crate::ir::IrSpan {
+        crate::ir::IrSpan::new(self.current_span, self.current_file)
     }
 
     /// Look up a function by its source-level (single-segment) name

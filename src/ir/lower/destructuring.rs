@@ -48,13 +48,13 @@ impl IrLowerer<'_> {
                 let index_key = IrExpr::Literal {
                     value: Literal::Number((i as f64).into()),
                     ty: ResolvedType::Primitive(PrimitiveType::I32),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 };
                 let access_expr = IrExpr::DictAccess {
                     dict: Box::new(value_expr.clone()),
                     key: Box::new(index_key),
                     ty: elem_ty.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 };
                 self.module.add_let(IrLet {
                     name,
@@ -63,7 +63,7 @@ impl IrLowerer<'_> {
                     ty: elem_ty.clone(),
                     value: access_expr,
                     doc: let_binding.doc.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 });
             }
         }
@@ -89,7 +89,7 @@ impl IrLowerer<'_> {
                 field: field_name,
                 field_idx: crate::ir::FieldIdx(0),
                 ty: field_ty.clone(),
-                span: crate::ir::IrSpan::default(),
+                span: self.current_ir_span(),
             };
             self.module.add_let(IrLet {
                 name: binding_name,
@@ -98,7 +98,7 @@ impl IrLowerer<'_> {
                 ty: field_ty,
                 value: access_expr,
                 doc: let_binding.doc.clone(),
-                span: crate::ir::IrSpan::default(),
+                span: self.current_ir_span(),
             });
         }
     }
@@ -148,7 +148,7 @@ impl IrLowerer<'_> {
                     field: field_name,
                     field_idx: crate::ir::FieldIdx(0),
                     ty: ty.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 };
                 self.module.add_let(IrLet {
                     name,
@@ -157,7 +157,7 @@ impl IrLowerer<'_> {
                     ty,
                     value: access_expr,
                     doc: let_binding.doc.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span: self.current_ir_span(),
                 });
             }
         }
