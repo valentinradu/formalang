@@ -65,8 +65,9 @@ use compact::{
     drop_specialised_generic_impls,
 };
 use external::{
-    inline_imported_functions, inline_imported_impls, inline_imported_lets, qualify_imported_paths,
-    remap_imported_body_ids, rewrite_external_references, specialise_external_instantiations,
+    detect_import_cycle, inline_imported_functions, inline_imported_impls, inline_imported_lets,
+    qualify_imported_paths, remap_imported_body_ids, rewrite_external_references,
+    specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -108,6 +109,20 @@ impl IrPass for MonomorphisePass {
         // Tracks (imported_module_path, imported_impl_idx) → local_impl_idx
         // for the body-id remap pass. Populated by Phase 1c.
         let mut impl_clone_remap: HashMap<(Vec<String>, u32), u32> = HashMap::new();
+
+        // Phase 0: defence-in-depth import-cycle check. Semantic
+        // analysis already rejects cyclic `use` chains; surface a
+        // clear diagnostic if one slipped through to the IR layer.
+        if !self.imported_modules.is_empty() {
+            if let Some(cycle_node) = detect_import_cycle(&self.imported_modules) {
+                return Err(vec![CompilerError::InternalError {
+                    detail: format!(
+                        "monomorphise: cyclic import involving module {cycle_node:?} reached the IR layer; semantic analysis should have rejected this"
+                    ),
+                    span: Span::default(),
+                }]);
+            }
+        }
 
         // Phase 1a: clone each imported `External` (generic or non-generic)
         // into the current module under a qualified name. Phase 2 uses the

@@ -519,6 +519,57 @@ fn rewrite_external_type(
     }
 }
 
+/// Defence-in-depth cycle detection over the imported-module import
+/// graph. Semantic analysis already rejects cyclic `use` chains, so
+/// this should never fire in practice — but if it does, the IR layer
+/// surfaces a clear `InternalError` rather than silently producing
+/// miscompiled output.
+///
+/// Returns the first node on a detected cycle, or `None` if the graph
+/// is acyclic.
+pub(super) fn detect_import_cycle(
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) -> Option<Vec<String>> {
+    let mut visited: HashSet<Vec<String>> = HashSet::new();
+    let mut on_stack: Vec<Vec<String>> = Vec::new();
+    for start in imported_modules.keys() {
+        if visited.contains(start) {
+            continue;
+        }
+        if let Some(cycle) = dfs_detect_cycle(start, imported_modules, &mut visited, &mut on_stack) {
+            return Some(cycle);
+        }
+    }
+    None
+}
+
+fn dfs_detect_cycle(
+    node: &Vec<String>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+    visited: &mut HashSet<Vec<String>>,
+    on_stack: &mut Vec<Vec<String>>,
+) -> Option<Vec<String>> {
+    if on_stack.contains(node) {
+        return Some(node.clone());
+    }
+    if visited.contains(node) {
+        return None;
+    }
+    on_stack.push(node.clone());
+    if let Some(module) = imported_modules.get(node) {
+        for import in &module.imports {
+            if let Some(cycle) =
+                dfs_detect_cycle(&import.module_path, imported_modules, visited, on_stack)
+            {
+                return Some(cycle);
+            }
+        }
+    }
+    on_stack.pop();
+    visited.insert(node.clone());
+    None
+}
+
 /// Build the qualified `module::path::name` form for cross-module clones.
 fn qualified_name(module_path: &[String], name: &str) -> String {
     let mut out = String::with_capacity(
