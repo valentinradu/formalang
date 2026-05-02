@@ -247,15 +247,16 @@ impl IrLowerer<'_> {
                     (name_opt.as_ref().map(|n| n.name.clone()), lowered)
                 })
                 .collect();
-            // DP-2 / DP-4: substitute defaults for missing args.
-            // Append cloned default IRs for the trailing missing
-            // positions. If any substituted default references a
-            // preceding non-defaulted param by name, wrap the entire
-            // FunctionCall in a Block whose Let statements bind those
-            // param names to the explicit args (so the default's
-            // Reference resolves via path lookup to the new binding,
-            // not to the callee's stale binding-id, and side-effects
-            // in the explicit args don't duplicate).
+            // DP-2 / DP-4 / DP-7: substitute defaults for missing args.
+            // For all-positional calls, append trailing defaults. For
+            // labeled calls (mode A), walk callee params in order and
+            // fill any whose label is missing from the call. If any
+            // substituted default references a preceding non-defaulted
+            // param by name, wrap the entire FunctionCall in a Block
+            // whose Let statements bind those param names to the
+            // explicit args (so the default's Reference resolves via
+            // path lookup to the new binding, not to the callee's
+            // stale binding-id, and side-effects don't duplicate).
             let mut needs_let_wrapper = false;
             let mut wrapper_param_names: Vec<String> = Vec::new();
             let mut wrapper_param_types: Vec<Option<ResolvedType>> = Vec::new();
@@ -270,28 +271,69 @@ impl IrLowerer<'_> {
                     let want = non_self_params.len();
                     if lowered_args.len() < want {
                         let any_labeled = lowered_args.iter().any(|(l, _)| l.is_some());
-                        let preceding_names: HashSet<String> = non_self_params
-                            .iter()
-                            .take(lowered_args.len())
-                            .map(|p| p.name.clone())
-                            .collect();
-                        for param in non_self_params.iter().skip(lowered_args.len()) {
-                            if let Some(default) = &param.default {
-                                if expr_references_any_name(default, &preceding_names) {
-                                    needs_let_wrapper = true;
-                                }
-                                let label = if any_labeled {
-                                    Some(param.name.clone())
+                        // Names of params that already have a value in
+                        // the call (used to detect earlier-param refs
+                        // that need the let-wrapper).
+                        let already_provided_names: HashSet<String> = if any_labeled {
+                            lowered_args
+                                .iter()
+                                .filter_map(|(l, _)| l.clone())
+                                .collect()
+                        } else {
+                            non_self_params
+                                .iter()
+                                .take(lowered_args.len())
+                                .map(|p| p.name.clone())
+                                .collect()
+                        };
+                        if any_labeled {
+                            // Mode A — labeled call. Build a new
+                            // ordered args list that walks callee
+                            // params in order, picking up the
+                            // explicit-call value when its label is
+                            // present and substituting the default
+                            // otherwise. Mid-list omissions get
+                            // filled at the right position.
+                            let mut new_args: Vec<(Option<String>, IrExpr)> =
+                                Vec::with_capacity(want);
+                            for param in &non_self_params {
+                                if let Some(pos) = lowered_args.iter().position(|(l, _)| {
+                                    l.as_ref().is_some_and(|name| name == &param.name)
+                                }) {
+                                    let (label, value) = lowered_args.remove(pos);
+                                    new_args.push((label, value));
+                                } else if let Some(default) = &param.default {
+                                    if expr_references_any_name(default, &already_provided_names)
+                                    {
+                                        needs_let_wrapper = true;
+                                    }
+                                    new_args.push((Some(param.name.clone()), default.clone()));
                                 } else {
-                                    None
-                                };
-                                lowered_args.push((label, default.clone()));
-                            } else {
-                                break;
+                                    // Required label missing: validator
+                                    // should have rejected. Stop on the
+                                    // first gap to preserve some signal.
+                                    break;
+                                }
+                            }
+                            lowered_args = new_args;
+                        } else {
+                            // Positional — append trailing defaults.
+                            for param in non_self_params.iter().skip(lowered_args.len()) {
+                                if let Some(default) = &param.default {
+                                    if expr_references_any_name(default, &already_provided_names) {
+                                        needs_let_wrapper = true;
+                                    }
+                                    lowered_args.push((None, default.clone()));
+                                } else {
+                                    break;
+                                }
                             }
                         }
                         if needs_let_wrapper {
-                            for param in non_self_params.iter().take(preceding_names.len()) {
+                            for param in non_self_params
+                                .iter()
+                                .filter(|p| already_provided_names.contains(&p.name))
+                            {
                                 wrapper_param_names.push(param.name.clone());
                                 wrapper_param_types.push(param.ty.clone());
                             }
