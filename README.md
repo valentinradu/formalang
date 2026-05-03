@@ -37,6 +37,41 @@ You write `.fv` files; the library parses and validates them, and you get a full
 
 ---
 
+<details>
+<summary><b>Contents</b></summary>
+
+- [Why FormaLang?](#why-formalang)
+- [Quick Start](#quick-start)
+- [Language Tour](#language-tour)
+  - [Primitives](#primitives)
+  - [Structs](#structs)
+  - [Methods (impl blocks)](#methods-impl-blocks)
+  - [Parameter Conventions](#parameter-conventions)
+  - [Traits](#traits)
+  - [Enums](#enums)
+  - [Let bindings](#let-bindings)
+  - [Arrays, Dictionaries, Tuples](#arrays-dictionaries-tuples)
+  - [Control Flow](#control-flow)
+  - [Closures](#closures)
+  - [Generics](#generics)
+  - [Destructuring](#destructuring)
+  - [Modules](#modules)
+  - [Extern declarations](#extern-declarations)
+  - [Function overloading](#function-overloading)
+- [Rust API](#rust-api)
+  - [Entry points](#entry-points)
+  - [The IrModule](#the-irmodule)
+  - [Pipeline (passes + backends)](#pipeline-passes--backends)
+  - [Error reporting](#error-reporting)
+- [File extension](#file-extension)
+- [What is not built in](#what-is-not-built-in)
+- [Further reading](#further-reading)
+- [License](#license)
+
+</details>
+
+---
+
 ## Why FormaLang?
 
 You're building a Rust application that needs to accept user-authored logic: UI definitions, configuration with computation, state machines, scripted rules. The usual options each have a sharp edge:
