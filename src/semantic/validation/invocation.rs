@@ -319,23 +319,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let min_gap: Option<usize> = matching
                     .iter()
                     .map(|overload| {
-                        let non_self =
-                            overload.params.iter().filter(|p| p.name.name != "self").count();
+                        let non_self = overload
+                            .params
+                            .iter()
+                            .filter(|p| p.name.name != "self")
+                            .count();
                         non_self.saturating_sub(args.len())
                     })
                     .min();
-                let most_specific: Vec<_> = match min_gap {
-                    Some(g) => matching
-                        .iter()
-                        .copied()
-                        .filter(|overload| {
-                            let non_self =
-                                overload.params.iter().filter(|p| p.name.name != "self").count();
-                            non_self.saturating_sub(args.len()) == g
-                        })
-                        .collect(),
-                    None => matching.clone(),
-                };
+                let most_specific: Vec<_> = min_gap.map_or_else(
+                    || matching.clone(),
+                    |g| {
+                        matching
+                            .iter()
+                            .copied()
+                            .filter(|overload| {
+                                let non_self = overload
+                                    .params
+                                    .iter()
+                                    .filter(|p| p.name.name != "self")
+                                    .count();
+                                non_self.saturating_sub(args.len()) == g
+                            })
+                            .collect()
+                    },
+                );
 
                 match most_specific.len() {
                     0 => {

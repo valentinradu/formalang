@@ -165,144 +165,39 @@ fn substitute_forward_ref_defaults(module: &mut IrModule) {
     }
     module.lets = lets;
 
-    for impl_idx in 0..module.impls.len() {
-        for fn_idx in 0..module.impls[impl_idx].functions.len() {
-            let mut taken = std::mem::replace(
-                &mut module.impls[impl_idx].functions[fn_idx],
-                placeholder_function(),
-            );
-            if let Some(body) = &mut taken.body {
+    for impl_block in &mut module.impls {
+        for func in &mut impl_block.functions {
+            if let Some(body) = &mut func.body {
                 substitute_in_expr(body, &snapshot);
             }
-            module.impls[impl_idx].functions[fn_idx] = taken;
         }
     }
 }
 
 /// Recursive walk of an `IrExpr` that fills missing trailing default
-/// arguments on every `FunctionCall` whose function_id is now Some.
+/// arguments on every `FunctionCall` whose `function_id` is now Some.
 /// Reads each callee's defaults from `default_snapshot`, indexed by
 /// the callee's `FunctionId.0`.
 fn substitute_in_expr(expr: &mut IrExpr, default_snapshot: &[Vec<Option<IrExpr>>]) {
     if let IrExpr::FunctionCall {
-        function_id, args, ..
+        function_id: Some(id),
+        args,
+        ..
     } = expr
     {
-        if let Some(id) = function_id {
-            if let Some(defaults) = default_snapshot.get(id.0 as usize) {
-                let want = defaults.len();
-                let any_labeled = args.iter().any(|(l, _)| l.is_some());
-                if !any_labeled && args.len() < want {
-                    for default in defaults.iter().skip(args.len()) {
-                        if let Some(d) = default {
-                            args.push((None, d.clone()));
-                        } else {
-                            break;
-                        }
-                    }
+        if let Some(defaults) = default_snapshot.get(id.0 as usize) {
+            let any_labeled = args.iter().any(|(l, _)| l.is_some());
+            if !any_labeled && args.len() < defaults.len() {
+                for default in defaults.iter().skip(args.len()) {
+                    let Some(d) = default else { break };
+                    args.push((None, d.clone()));
                 }
             }
         }
     }
-    // Recurse into children. Use the same walker pattern as resolve_expr.
-    use crate::ir::IrBlockStatement;
-    match expr {
-        IrExpr::BinaryOp { left, right, .. } => {
-            substitute_in_expr(left, default_snapshot);
-            substitute_in_expr(right, default_snapshot);
-        }
-        IrExpr::UnaryOp { operand, .. } => substitute_in_expr(operand, default_snapshot),
-        IrExpr::Array { elements, .. } => {
-            for e in elements {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::DictLiteral { entries, .. } => {
-            for (k, v) in entries {
-                substitute_in_expr(k, default_snapshot);
-                substitute_in_expr(v, default_snapshot);
-            }
-        }
-        IrExpr::DictAccess { dict, key, .. } => {
-            substitute_in_expr(dict, default_snapshot);
-            substitute_in_expr(key, default_snapshot);
-        }
-        IrExpr::FieldAccess { object, .. } => substitute_in_expr(object, default_snapshot),
-        IrExpr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            substitute_in_expr(condition, default_snapshot);
-            substitute_in_expr(then_branch, default_snapshot);
-            if let Some(eb) = else_branch {
-                substitute_in_expr(eb, default_snapshot);
-            }
-        }
-        IrExpr::Match { scrutinee, arms, .. } => {
-            substitute_in_expr(scrutinee, default_snapshot);
-            for arm in arms {
-                substitute_in_expr(&mut arm.body, default_snapshot);
-            }
-        }
-        IrExpr::For {
-            collection, body, ..
-        } => {
-            substitute_in_expr(collection, default_snapshot);
-            substitute_in_expr(body, default_snapshot);
-        }
-        IrExpr::Block {
-            statements, result, ..
-        } => {
-            for stmt in statements {
-                match stmt {
-                    IrBlockStatement::Let { value, .. } => {
-                        substitute_in_expr(value, default_snapshot);
-                    }
-                    IrBlockStatement::Assign { target, value, .. } => {
-                        substitute_in_expr(target, default_snapshot);
-                        substitute_in_expr(value, default_snapshot);
-                    }
-                    IrBlockStatement::Expr(e) => substitute_in_expr(e, default_snapshot),
-                }
-            }
-            substitute_in_expr(result, default_snapshot);
-        }
-        IrExpr::FunctionCall { args, .. } => {
-            for (_, e) in args {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::CallClosure { closure, args, .. } => {
-            substitute_in_expr(closure, default_snapshot);
-            for (_, e) in args {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::MethodCall { receiver, args, .. } => {
-            substitute_in_expr(receiver, default_snapshot);
-            for (_, e) in args {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::Tuple { fields, .. } => {
-            for (_, e) in fields {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-            for (_, _, e) in fields {
-                substitute_in_expr(e, default_snapshot);
-            }
-        }
-        IrExpr::Closure { body, .. } => substitute_in_expr(body, default_snapshot),
-        IrExpr::ClosureRef { env_struct, .. } => substitute_in_expr(env_struct, default_snapshot),
-        IrExpr::Literal { .. }
-        | IrExpr::Reference { .. }
-        | IrExpr::SelfFieldRef { .. }
-        | IrExpr::LetRef { .. } => {}
-    }
+    crate::ir::walk_expr_children_mut(expr, &mut |child| {
+        substitute_in_expr(child, default_snapshot);
+    });
 }
 
 mod expr;

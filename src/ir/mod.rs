@@ -54,6 +54,7 @@ pub use ids::{
 pub use imports::{ImportedKind, IrImport, IrImportItem};
 pub use lower::{lower_to_ir, lower_to_ir_with_path};
 pub use module::{IrModule, IrModuleNode};
+pub(crate) use monomorphise::walkers::walk_expr_children_mut;
 pub use monomorphise::MonomorphisePass;
 pub use resolve_refs::ResolveReferencesPass;
 pub use resolved_type::{GenericBase, ResolvedType};

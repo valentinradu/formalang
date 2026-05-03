@@ -4,6 +4,35 @@ use formalang::compile_to_ir;
 use formalang::error::CompilerError;
 use formalang::ir::{IrBlockStatement, IrExpr};
 
+/// Return the arguments of a `FunctionCall` directly, or descend through
+/// a `Block` whose result is a `FunctionCall`. `None` for any other shape.
+fn function_call_args(expr: &IrExpr) -> Option<&Vec<(Option<String>, IrExpr)>> {
+    match expr {
+        IrExpr::FunctionCall { args, .. } => Some(args),
+        IrExpr::Block { result, .. } => function_call_args(result),
+        IrExpr::Literal { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::For { .. }
+        | IrExpr::Match { .. }
+        | IrExpr::CallClosure { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::Closure { .. }
+        | IrExpr::ClosureRef { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. } => None,
+    }
+}
+
 /// DP-1 + DP-2: `f(1)` compiles for `fn f(x: I32, y: I32 = 0)`. The
 /// IR's `FunctionCall.args` has two entries (the explicit `1` and
 /// the substituted default `0`).
@@ -20,22 +49,14 @@ fn main() -> I32 { f(1) }
         .find(|f| f.name == "main")
         .ok_or("main missing")?;
     let body = main.body.as_ref().ok_or("main body missing")?;
-    // main's body should be a FunctionCall with 2 args (the explicit 1 + default 0).
-    match body {
-        IrExpr::FunctionCall { args, .. } => {
-            if args.len() != 2 {
-                return Err(format!("expected 2 args after default substitution, got {}", args.len()).into());
-            }
-        }
-        IrExpr::Block { result, .. } => match result.as_ref() {
-            IrExpr::FunctionCall { args, .. } => {
-                if args.len() != 2 {
-                    return Err(format!("expected 2 args after default substitution, got {}", args.len()).into());
-                }
-            }
-            _ => return Err(format!("unexpected main body shape: {result:?}").into()),
-        },
-        _ => return Err(format!("unexpected main body shape: {body:?}").into()),
+    let args =
+        function_call_args(body).ok_or_else(|| format!("unexpected main body shape: {body:?}"))?;
+    if args.len() != 2 {
+        return Err(format!(
+            "expected 2 args after default substitution, got {}",
+            args.len()
+        )
+        .into());
     }
     Ok(())
 }
@@ -58,49 +79,44 @@ fn main() -> I32 { f(5) }
         .find(|f| f.name == "main")
         .ok_or("main missing")?;
     let body = main.body.as_ref().ok_or("main body missing")?;
-    match body {
-        IrExpr::Block { statements, result, .. } => {
-            let has_x_let = statements
-                .iter()
-                .any(|s| matches!(s, IrBlockStatement::Let { name, .. } if name == "x"));
-            if !has_x_let {
-                return Err(
-                    format!("expected a Let binding for `x`, got: {statements:?}").into(),
-                );
-            }
-            if !matches!(result.as_ref(), IrExpr::FunctionCall { .. }) {
-                return Err(
-                    format!("expected Block.result to be FunctionCall, got: {result:?}").into(),
-                );
-            }
-        }
-        _ => return Err(format!(
+    let IrExpr::Block {
+        statements, result, ..
+    } = body
+    else {
+        return Err(format!(
             "expected Block wrapping for earlier-param-ref default, got: {body:?}"
         )
-        .into()),
+        .into());
+    };
+    let has_x_let = statements
+        .iter()
+        .any(|s| matches!(s, IrBlockStatement::Let { name, .. } if name == "x"));
+    if !has_x_let {
+        return Err(format!("expected a Let binding for `x`, got: {statements:?}").into());
+    }
+    if !matches!(result.as_ref(), IrExpr::FunctionCall { .. }) {
+        return Err(format!("expected Block.result to be FunctionCall, got: {result:?}").into());
     }
     Ok(())
 }
 
-
 /// DP-5: `fn f(x: I32 = 0, y: I32)` is rejected at semantic time
 /// with `RequiredParamAfterDefault`.
 #[test]
-fn required_param_after_default_rejected() {
+fn required_param_after_default_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 fn f(x: I32 = 0, y: I32) -> I32 { x + y }
 ";
-    let result = compile_to_ir(source);
-    let errors = match result {
-        Ok(_) => panic!("expected error, got Ok"),
-        Err(errors) => errors,
-    };
+    let errors = compile_to_ir(source)
+        .err()
+        .ok_or("expected compile error, got Ok")?;
     let has_expected = errors
         .iter()
         .any(|e| matches!(e, CompilerError::RequiredParamAfterDefault { .. }));
     if !has_expected {
-        panic!("expected RequiredParamAfterDefault, got: {errors:?}");
+        return Err(format!("expected RequiredParamAfterDefault, got: {errors:?}").into());
     }
+    Ok(())
 }
 
 /// DP-3: most-specific overload wins. `fn f(x)` and `fn f(x, y=1)`
@@ -136,15 +152,8 @@ fn main() -> I32 { f(x: 10, z: 30) }
         .find(|f| f.name == "main")
         .ok_or("main missing")?;
     let body = main.body.as_ref().ok_or("main body missing")?;
-    // Walk through any Block wrapper.
-    let call = match body {
-        IrExpr::FunctionCall { args, .. } => args,
-        IrExpr::Block { result, .. } => match result.as_ref() {
-            IrExpr::FunctionCall { args, .. } => args,
-            other => return Err(format!("unexpected body shape: {other:?}").into()),
-        },
-        other => return Err(format!("unexpected body shape: {other:?}").into()),
-    };
+    let call =
+        function_call_args(body).ok_or_else(|| format!("unexpected body shape: {body:?}"))?;
     if call.len() != 3 {
         return Err(format!(
             "expected 3 args after mid-list default substitution, got {}: {call:?}",
@@ -153,24 +162,18 @@ fn main() -> I32 { f(x: 10, z: 30) }
         .into());
     }
     // Walk the args in callee-param order: x, y, z.
-    let labels: Vec<Option<&str>> = call
-        .iter()
-        .map(|(l, _)| l.as_deref())
-        .collect();
+    let labels: Vec<Option<&str>> = call.iter().map(|(l, _)| l.as_deref()).collect();
     if labels != [Some("x"), Some("y"), Some("z")] {
-        return Err(format!(
-            "expected args in order [x, y, z], got labels: {labels:?}"
-        )
-        .into());
+        return Err(format!("expected args in order [x, y, z], got labels: {labels:?}").into());
     }
     Ok(())
 }
 
 /// DP-8: a call to a function declared *later* in the same module
 /// (forward reference) gets its missing default substituted by
-/// ResolveReferencesPass. The lowerer's DP-2 substitution would
-/// skip if function_id were None at lowering, but the registration
-/// pass means function_id is normally already bound. Validate that
+/// `ResolveReferencesPass`. The lowerer's DP-2 substitution would
+/// skip if `function_id` were None at lowering, but the registration
+/// pass means `function_id` is normally already bound. Validate that
 /// the end-to-end pipeline accepts the program and produces an
 /// arity-correct call.
 #[test]
@@ -188,14 +191,8 @@ fn callee(x: I32, y: I32 = 5) -> I32 { x + y }
         .find(|f| f.name == "caller")
         .ok_or("caller missing")?;
     let body = caller.body.as_ref().ok_or("caller body missing")?;
-    let call_args = match body {
-        IrExpr::FunctionCall { args, .. } => args,
-        IrExpr::Block { result, .. } => match result.as_ref() {
-            IrExpr::FunctionCall { args, .. } => args,
-            other => return Err(format!("unexpected body shape: {other:?}").into()),
-        },
-        other => return Err(format!("unexpected body shape: {other:?}").into()),
-    };
+    let call_args =
+        function_call_args(body).ok_or_else(|| format!("unexpected body shape: {body:?}"))?;
     if call_args.len() != 2 {
         return Err(format!(
             "expected 2 args after forward-ref default substitution, got {}",

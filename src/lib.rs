@@ -285,11 +285,12 @@ where
         .run(module)
 }
 
-/// Compile `FormaLang` source to IR with both a custom resolver and
-/// a known source-file path. Combines the contracts of
-/// [`compile_to_ir_with_resolver`] (cross-module imports via the
-/// resolver) and [`compile_to_ir_with_path`] (file_table seeded with
-/// the entry-point path so spans carry a real `FileId`).
+/// Compile `FormaLang` source to IR with both a custom resolver and a known
+/// source-file path.
+///
+/// Combines the contracts of [`compile_to_ir_with_resolver`] (cross-module
+/// imports via the resolver) and [`compile_to_ir_with_path`] (`file_table`
+/// seeded with the entry-point path so spans carry a real `FileId`).
 ///
 /// # Errors
 ///

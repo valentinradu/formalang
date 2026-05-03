@@ -11,6 +11,37 @@ use formalang::compile_to_ir;
 use formalang::ir::{FileId, IrExpr, IrModule, IrSpan};
 use std::path::PathBuf;
 
+/// Extract the span from a `Reference` expression, descending into
+/// `Block` results. Returns `None` for other expression shapes; the
+/// caller renders an error when the body doesn't match the expected
+/// shape.
+fn reference_span(expr: &IrExpr) -> Option<IrSpan> {
+    match expr {
+        IrExpr::Reference { span, .. } => Some(*span),
+        IrExpr::Block { result, .. } => reference_span(result),
+        IrExpr::Literal { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::For { .. }
+        | IrExpr::Match { .. }
+        | IrExpr::FunctionCall { .. }
+        | IrExpr::CallClosure { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::Closure { .. }
+        | IrExpr::ClosureRef { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. } => None,
+    }
+}
+
 /// SP-2 + SP-7: IrFunction.span is populated (non-default) for each
 /// lowered function when the caller supplies a source path via
 /// `compile_to_ir_with_path`. The span's `file` carries `FileId(1)`
@@ -52,7 +83,7 @@ fn struct_carries_non_default_span() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// SP-3: IrExpr variants carry span fields.
+/// SP-3: `IrExpr` variants carry span fields.
 #[test]
 fn ir_expr_variants_have_span_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub fn id(x: I32) -> I32 { x }";
@@ -64,19 +95,11 @@ fn ir_expr_variants_have_span_field() -> Result<(), Box<dyn std::error::Error>> 
         .ok_or("id missing")?;
     let body = id.body.as_ref().ok_or("body missing")?;
     // Reference expression should have a span.
-    let span = match body {
-        IrExpr::Reference { span, .. } => *span,
-        IrExpr::Block { result, .. } => match result.as_ref() {
-            IrExpr::Reference { span, .. } => *span,
-            other => return Err(format!("unexpected body shape: {other:?}").into()),
-        },
-        other => return Err(format!("unexpected body shape: {other:?}").into()),
-    };
-    let _ = span;
+    let _span = reference_span(body).ok_or_else(|| format!("unexpected body shape: {body:?}"))?;
     Ok(())
 }
 
-/// SP-1: file_table and register_file round-trip.
+/// SP-1: `file_table` and `register_file` round-trip.
 #[test]
 fn file_table_round_trips() {
     let mut module = IrModule::new();
@@ -99,7 +122,7 @@ fn file_table_round_trips() {
     assert_eq!(id_a_again, id_a);
 }
 
-/// SP-1: IrSpan::is_default behaves correctly.
+/// SP-1: `IrSpan::is_default` behaves correctly.
 #[test]
 fn ir_span_default_predicate() {
     let s = IrSpan::default();

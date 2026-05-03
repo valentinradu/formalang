@@ -5,8 +5,8 @@
 //! no `External` references survive, cross-module function calls
 //! resolve, imported impls are present, the module tree is spliced.
 
-use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use formalang::ir::ResolvedType;
+use formalang::semantic::module_resolver::{ModuleError, ModuleResolver};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ impl ModuleResolver for MockResolver {
         _current_file: Option<&PathBuf>,
     ) -> Result<(String, PathBuf), ModuleError> {
         self.modules
-            .get(&path.to_vec())
+            .get(path)
             .cloned()
             .ok_or_else(|| ModuleError::NotFound {
                 path: path.to_vec(),
@@ -73,11 +73,37 @@ fn non_generic_struct_inlined() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|f| f.name == "h")
         .ok_or("h field missing")?;
-    match &h_field.ty {
-        ResolvedType::Struct(id) if *id == cloned => {}
-        other => return Err(format!("h.ty = {other:?}; expected Struct({cloned:?})").into()),
+    let ResolvedType::Struct(id) = &h_field.ty else {
+        return Err(format!("h.ty = {:?}; expected Struct({cloned:?})", h_field.ty).into());
+    };
+    if *id != cloned {
+        return Err(format!("h.ty = Struct({id:?}); expected Struct({cloned:?})").into());
     }
     Ok(())
+}
+
+fn has_external(ty: &ResolvedType) -> bool {
+    match ty {
+        ResolvedType::External { .. } => true,
+        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
+            has_external(inner)
+        }
+        ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| has_external(t)),
+        ResolvedType::Dictionary { key_ty, value_ty } => {
+            has_external(key_ty) || has_external(value_ty)
+        }
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => param_tys.iter().any(|(_, t)| has_external(t)) || has_external(return_ty),
+        ResolvedType::Generic { args, .. } => args.iter().any(has_external),
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Error => false,
+    }
 }
 
 /// CM-A exit criterion: zero `ResolvedType::External` references in
@@ -93,25 +119,6 @@ fn no_external_references_after_pipeline() -> Result<(), Box<dyn std::error::Err
 
     let module = formalang::compile_to_ir_with_resolver(main, resolver)
         .map_err(|errors| format!("compile failed: {errors:?}"))?;
-
-    fn has_external(ty: &ResolvedType) -> bool {
-        match ty {
-            ResolvedType::External { .. } => true,
-            ResolvedType::Array(inner)
-            | ResolvedType::Range(inner)
-            | ResolvedType::Optional(inner) => has_external(inner),
-            ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| has_external(t)),
-            ResolvedType::Dictionary { key_ty, value_ty } => {
-                has_external(key_ty) || has_external(value_ty)
-            }
-            ResolvedType::Closure {
-                param_tys,
-                return_ty,
-            } => param_tys.iter().any(|(_, t)| has_external(t)) || has_external(return_ty),
-            ResolvedType::Generic { args, .. } => args.iter().any(has_external),
-            _ => false,
-        }
-    }
     for s in &module.structs {
         for f in &s.fields {
             if has_external(&f.ty) {
@@ -122,15 +129,12 @@ fn no_external_references_after_pipeline() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// CM-I: imported module's IrModuleNode tree is spliced under its
+/// CM-I: imported module's `IrModuleNode` tree is spliced under its
 /// path in entry's module tree, populated with translated ids.
 #[test]
 fn module_tree_includes_imported_path() -> Result<(), Box<dyn std::error::Error>> {
     let mut resolver = MockResolver::new();
-    resolver.add(
-        vec!["util".to_string()],
-        "pub struct Helper { v: I32 }\n",
-    );
+    resolver.add(vec!["util".to_string()], "pub struct Helper { v: I32 }\n");
     let main = "use util::Helper\nstruct Main { h: Helper }\n";
 
     let module = formalang::compile_to_ir_with_resolver(main, resolver)
@@ -155,10 +159,10 @@ fn module_tree_includes_imported_path() -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-/// Cross-module file_table: every cloned item's `IrSpan.file` resolves
+/// Cross-module `file_table`: every cloned item's `IrSpan.file` resolves
 /// through the entry's `file_path` to the imported source path.
 /// Without Phase 2b, the cloned struct's span would still reference the
-/// imported module's id-space (which the entry's file_table doesn't
+/// imported module's id-space (which the entry's `file_table` doesn't
 /// know about), and `entry.file_path(span.file)` would dangle.
 #[test]
 fn cloned_item_spans_resolve_to_imported_source() -> Result<(), Box<dyn std::error::Error>> {
@@ -185,8 +189,9 @@ fn cloned_item_spans_resolve_to_imported_source() -> Result<(), Box<dyn std::err
     // The cloned struct's span must NOT be synthetic — it came from
     // a real source file (the imported geom module).
     if cloned.span.file.is_synthetic() {
-        return Err("cloned geom::Point span was left synthetic; file_table integration didn't fire"
-            .into());
+        return Err(
+            "cloned geom::Point span was left synthetic; file_table integration didn't fire".into(),
+        );
     }
     // Resolving through the entry module's file_table must succeed
     // and point at the imported source path.

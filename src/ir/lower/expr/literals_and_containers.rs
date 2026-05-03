@@ -13,9 +13,9 @@ use std::collections::{HashMap, HashSet};
 /// binds preceding non-defaulted params to the call-site values.
 fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
     match expr {
-        IrExpr::Reference { path, .. } => path
-            .first()
-            .is_some_and(|seg| names.contains(seg.as_str())),
+        IrExpr::Reference { path, .. } => {
+            path.first().is_some_and(|seg| names.contains(seg.as_str()))
+        }
         IrExpr::LetRef { name, .. } => names.contains(name.as_str()),
         IrExpr::BinaryOp { left, right, .. } => {
             expr_references_any_name(left, names) || expr_references_any_name(right, names)
@@ -55,7 +55,8 @@ fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
             statements.iter().any(|s| match s {
                 IrBlockStatement::Let { value, .. } => expr_references_any_name(value, names),
                 IrBlockStatement::Assign { target, value, .. } => {
-                    expr_references_any_name(target, names) || expr_references_any_name(value, names)
+                    expr_references_any_name(target, names)
+                        || expr_references_any_name(value, names)
                 }
                 IrBlockStatement::Expr(e) => expr_references_any_name(e, names),
             }) || expr_references_any_name(result, names)
@@ -63,10 +64,12 @@ fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
         IrExpr::Array { elements, .. } => {
             elements.iter().any(|e| expr_references_any_name(e, names))
         }
-        IrExpr::Tuple { fields, .. } => fields.iter().any(|(_, e)| expr_references_any_name(e, names)),
-        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-            fields.iter().any(|(_, _, e)| expr_references_any_name(e, names))
-        }
+        IrExpr::Tuple { fields, .. } => fields
+            .iter()
+            .any(|(_, e)| expr_references_any_name(e, names)),
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => fields
+            .iter()
+            .any(|(_, _, e)| expr_references_any_name(e, names)),
         IrExpr::DictLiteral { entries, .. } => entries
             .iter()
             .any(|(k, v)| expr_references_any_name(k, names) || expr_references_any_name(v, names)),
@@ -110,7 +113,7 @@ impl IrLowerer<'_> {
 
     #[expect(
         clippy::too_many_lines,
-        reason = "three branches (struct / external / function) each with their own arg-lowering plumbing — splitting hides the contract"
+        reason = "three branches (struct / external / function) each with their own arg-lowering plumbing; splitting hides the contract"
     )]
     pub(super) fn lower_invocation(
         &mut self,
@@ -277,10 +280,7 @@ impl IrLowerer<'_> {
                         // the call (used to detect earlier-param refs
                         // that need the let-wrapper).
                         let already_provided_names: HashSet<String> = if any_labeled {
-                            lowered_args
-                                .iter()
-                                .filter_map(|(l, _)| l.clone())
-                                .collect()
+                            lowered_args.iter().filter_map(|(l, _)| l.clone()).collect()
                         } else {
                             non_self_params
                                 .iter()
@@ -305,8 +305,7 @@ impl IrLowerer<'_> {
                                     let (label, value) = lowered_args.remove(pos);
                                     new_args.push((label, value));
                                 } else if let Some(default) = &param.default {
-                                    if expr_references_any_name(default, &already_provided_names)
-                                    {
+                                    if expr_references_any_name(default, &already_provided_names) {
                                         needs_let_wrapper = true;
                                     }
                                     new_args.push((Some(param.name.clone()), default.clone()));
@@ -359,15 +358,17 @@ impl IrLowerer<'_> {
                 // Reference{path:[name]} resolves to the let-binding
                 // post-ResolveReferencesPass.
                 let mut statements = Vec::with_capacity(wrapper_param_names.len());
-                for (i, name) in wrapper_param_names.iter().enumerate() {
+                for ((name, ty), arg) in wrapper_param_names
+                    .iter()
+                    .zip(wrapper_param_types.iter())
+                    .zip(lowered_args.iter_mut())
+                {
                     let value = std::mem::replace(
-                        &mut lowered_args[i].1,
+                        &mut arg.1,
                         IrExpr::Reference {
                             path: vec![name.clone()],
                             target: crate::ir::ReferenceTarget::Unresolved,
-                            ty: wrapper_param_types[i]
-                                .clone()
-                                .unwrap_or(ResolvedType::Error),
+                            ty: ty.clone().unwrap_or(ResolvedType::Error),
                             span: self.current_ir_span(),
                         },
                     );
@@ -375,7 +376,7 @@ impl IrLowerer<'_> {
                         binding_id: crate::ir::BindingId(0),
                         name: name.clone(),
                         mutable: false,
-                        ty: wrapper_param_types[i].clone(),
+                        ty: ty.clone(),
                         value,
                         span: self.current_ir_span(),
                     });

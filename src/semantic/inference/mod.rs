@@ -109,7 +109,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::DictAccess { dict, .. } => {
                 // extract V from a Dictionary shape.
-                // Structural unpacking — no string scanning needed.
+                // Structural unpacking; no string scanning needed.
                 let receiver = self.infer_type_sem(dict, file);
                 match receiver {
                     SemType::Dictionary { value, .. } => *value,
@@ -117,7 +117,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     SemType::Primitive(crate::ast::PrimitiveType::String) => {
                         SemType::Primitive(crate::ast::PrimitiveType::I32)
                     }
-                    _ => SemType::Unknown,
+                    SemType::Primitive(_)
+                    | SemType::Named(_)
+                    | SemType::Array(_)
+                    | SemType::Optional(_)
+                    | SemType::Tuple(_)
+                    | SemType::Generic { .. }
+                    | SemType::Closure { .. }
+                    | SemType::Unknown
+                    | SemType::InferredEnum
+                    | SemType::Nil => SemType::Unknown,
                 }
             }
             Expr::FieldAccess { object, field, .. } => {

@@ -57,7 +57,7 @@ mod functions;
 mod leftover;
 mod rewrite;
 mod specialise;
-mod walkers;
+pub(super) mod walkers;
 
 use collect::collect_all_instantiations;
 use compact::{

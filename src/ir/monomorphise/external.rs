@@ -11,15 +11,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
 use crate::ir::{
-    DispatchKind, FunctionId, GenericBase, ImplId, ImplTarget, ImportedKind, IrBlockStatement,
-    IrExpr, IrModule, IrModuleNode, IrTrait, ResolvedType,
+    DispatchKind, FunctionId, GenericBase, ImplId, ImplTarget, ImportedKind, IrExpr, IrModule,
+    IrModuleNode, IrTrait, ResolvedType,
 };
 use crate::location::Span;
 
 use super::specialise::{substitute_type, type_suffix};
 use super::walkers::{
-    walk_expr_types_mut, walk_function_spans_mut, walk_function_types_mut, walk_module_types,
-    walk_module_types_mut,
+    walk_expr_children_mut, walk_expr_types_mut, walk_function_spans_mut, walk_function_types_mut,
+    walk_module_types, walk_module_types_mut,
 };
 
 /// External generic instantiation key: `(module_path, name, type_args)`.
@@ -313,7 +313,23 @@ fn specialise_external_trait(
         }
     }
     let new_id = module.add_trait(mangled, spec)?;
-    Ok((ResolvedType::Trait(new_id), discovered.into_iter().collect()))
+    Ok((
+        ResolvedType::Trait(new_id),
+        discovered.into_iter().collect(),
+    ))
+}
+
+/// String-capacity hint for `module_path::...::name`: total length of every
+/// path segment plus two bytes per `"::"` separator plus the trailing name.
+/// Saturating throughout so an absurdly long path never wraps the usize
+/// hint into something dangerous.
+fn qualified_capacity(module_path: &[String], name_len: usize) -> usize {
+    module_path
+        .iter()
+        .map(String::len)
+        .sum::<usize>()
+        .saturating_add(module_path.len().saturating_mul(2))
+        .saturating_add(name_len)
 }
 
 /// Compute the un-deduplicated name for an external specialisation.
@@ -322,11 +338,7 @@ fn specialise_external_trait(
 /// module for an existing canonical clone.
 fn canonical_external_name(name: &str, args: &[ResolvedType], module_path: &[String]) -> String {
     if args.is_empty() {
-        let mut qualified = String::with_capacity(
-            module_path.iter().map(String::len).sum::<usize>()
-                + module_path.len() * 2
-                + name.len(),
-        );
+        let mut qualified = String::with_capacity(qualified_capacity(module_path, name.len()));
         for segment in module_path {
             qualified.push_str(segment);
             qualified.push_str("::");
@@ -378,11 +390,7 @@ fn mangle_external_name(
     module: &IrModule,
 ) -> String {
     let mut out = if args.is_empty() {
-        let mut qualified = String::with_capacity(
-            module_path.iter().map(String::len).sum::<usize>()
-                + module_path.len() * 2
-                + name.len(),
-        );
+        let mut qualified = String::with_capacity(qualified_capacity(module_path, name.len()));
         for segment in module_path {
             qualified.push_str(segment);
             qualified.push_str("::");
@@ -644,11 +652,7 @@ pub(super) fn merge_imported_module_trees(
     }
 }
 
-fn splice_module_node(
-    parent_nodes: &mut Vec<IrModuleNode>,
-    path: &[String],
-    leaf: IrModuleNode,
-) {
+fn splice_module_node(parent_nodes: &mut Vec<IrModuleNode>, path: &[String], leaf: IrModuleNode) {
     let Some((head, rest)) = path.split_first() else {
         return;
     };
@@ -668,16 +672,20 @@ fn splice_module_node(
         return;
     }
     // Intermediate segment: find or create node, recurse.
-    let idx = if let Some(idx) = parent_nodes.iter().position(|n| &n.name == head) {
-        idx
-    } else {
-        parent_nodes.push(IrModuleNode {
-            name: head.clone(),
-            ..Default::default()
+    let idx = parent_nodes
+        .iter()
+        .position(|n| &n.name == head)
+        .unwrap_or_else(|| {
+            parent_nodes.push(IrModuleNode {
+                name: head.clone(),
+                ..Default::default()
+            });
+            parent_nodes.len().saturating_sub(1)
         });
-        parent_nodes.len().saturating_sub(1)
+    let Some(node) = parent_nodes.get_mut(idx) else {
+        return;
     };
-    splice_module_node(&mut parent_nodes[idx].modules, rest, leaf);
+    splice_module_node(&mut node.modules, rest, leaf);
 }
 
 /// Defence-in-depth cycle detection over the imported-module import
@@ -697,7 +705,8 @@ pub(super) fn detect_import_cycle(
         if visited.contains(start) {
             continue;
         }
-        if let Some(cycle) = dfs_detect_cycle(start, imported_modules, &mut visited, &mut on_stack) {
+        if let Some(cycle) = dfs_detect_cycle(start, imported_modules, &mut visited, &mut on_stack)
+        {
             return Some(cycle);
         }
     }
@@ -733,9 +742,7 @@ fn dfs_detect_cycle(
 
 /// Build the qualified `module::path::name` form for cross-module clones.
 fn qualified_name(module_path: &[String], name: &str) -> String {
-    let mut out = String::with_capacity(
-        module_path.iter().map(String::len).sum::<usize>() + module_path.len() * 2 + name.len(),
-    );
+    let mut out = String::with_capacity(qualified_capacity(module_path, name.len()));
     for seg in module_path {
         out.push_str(seg);
         out.push_str("::");
@@ -747,7 +754,7 @@ fn qualified_name(module_path: &[String], name: &str) -> String {
 /// Per-imported-module id translation table for the body-id remap pass.
 #[derive(Default)]
 pub(super) struct ItemMaps {
-    /// imported function index → local FunctionId
+    /// imported function index → local `FunctionId`
     pub functions: HashMap<u32, FunctionId>,
     /// imported impl index → local impl index
     pub impls: HashMap<u32, u32>,
@@ -755,7 +762,7 @@ pub(super) struct ItemMaps {
 
 /// Build per-imported-module id translation tables from the final
 /// state of `module` after Phases 1a-1d. For each imported module
-/// path, records (imported_id → local_id) for functions and impls so
+/// path, records (`imported_id` → `local_id`) for functions and impls so
 /// the body-id remap pass can translate ids in cloned bodies.
 ///
 /// Functions look up their local id by qualified name. Impl
@@ -790,7 +797,10 @@ pub(super) fn build_item_maps(
 /// the longest matching imported path prefix from its qualified name.
 /// Returns `None` for entry-module-native items (no `::` or no matching
 /// imported path).
-fn imported_path_of(name: &str, imported_modules: &HashMap<Vec<String>, IrModule>) -> Option<Vec<String>> {
+fn imported_path_of(
+    name: &str,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) -> Option<Vec<String>> {
     if !name.contains("::") {
         return None;
     }
@@ -801,9 +811,7 @@ fn imported_path_of(name: &str, imported_modules: &HashMap<Vec<String>, IrModule
         // qualified_name with empty `name` produces "p1::p2::". Items
         // cloned from this module are named "p1::p2::Foo".
         if name.starts_with(&prefix)
-            && best.map_or(true, |b| {
-                qualified_name(b, "").len() < prefix.len()
-            })
+            && best.is_none_or(|b| qualified_name(b, "").len() < prefix.len())
         {
             best = Some(path);
         }
@@ -957,39 +965,32 @@ pub(super) fn qualify_imported_paths(
         .collect();
 
     // Walk each body with its precomputed source.
-    for (idx, func) in module.functions.iter_mut().enumerate() {
+    for (func, source) in module.functions.iter_mut().zip(func_sources.iter()) {
         if let Some(body) = &mut func.body {
-            let context = build_qualification_context(
-                func_sources[idx].as_deref(),
-                &entry_imports,
-                imported_modules,
-            );
+            let context =
+                build_qualification_context(source.as_deref(), &entry_imports, imported_modules);
             if !context.is_empty() {
                 qualify_paths_in_expr(body, &context);
             }
         }
     }
-    for (impl_idx, impl_block) in module.impls.iter_mut().enumerate() {
-        for (m_idx, method) in impl_block.functions.iter_mut().enumerate() {
+    for (impl_block, method_sources) in module.impls.iter_mut().zip(impl_method_sources.iter()) {
+        for (method, source) in impl_block.functions.iter_mut().zip(method_sources.iter()) {
             if let Some(body) = &mut method.body {
-                let source = impl_method_sources
-                    .get(impl_idx)
-                    .and_then(|v| v.get(m_idx))
-                    .and_then(Option::as_deref);
-                let context =
-                    build_qualification_context(source, &entry_imports, imported_modules);
+                let context = build_qualification_context(
+                    source.as_deref(),
+                    &entry_imports,
+                    imported_modules,
+                );
                 if !context.is_empty() {
                     qualify_paths_in_expr(body, &context);
                 }
             }
         }
     }
-    for (idx, let_binding) in module.lets.iter_mut().enumerate() {
-        let context = build_qualification_context(
-            let_sources[idx].as_deref(),
-            &entry_imports,
-            imported_modules,
-        );
+    for (let_binding, source) in module.lets.iter_mut().zip(let_sources.iter()) {
+        let context =
+            build_qualification_context(source.as_deref(), &entry_imports, imported_modules);
         if !context.is_empty() {
             qualify_paths_in_expr(&mut let_binding.value, &context);
         }
@@ -1060,256 +1061,114 @@ fn register_imports_into(imports: &[crate::ir::IrImport], map: &mut HashMap<Stri
 }
 
 fn qualify_paths_in_expr(expr: &mut IrExpr, bare_to_qualified: &HashMap<String, String>) {
-    match expr {
+    qualify_self_path(expr, bare_to_qualified);
+    walk_expr_children_mut(expr, &mut |child| {
+        qualify_paths_in_expr(child, bare_to_qualified);
+    });
+}
+
+/// Rewrite a single-segment path on this node to its qualified form, if
+/// applicable. Only `FunctionCall` (with no resolved `function_id`) and
+/// `Reference` (still `Unresolved`) carry paths that should be qualified
+/// here; every other variant is intentionally a no-op.
+fn qualify_self_path(expr: &mut IrExpr, bare_to_qualified: &HashMap<String, String>) {
+    let path: &mut Vec<String> = match expr {
         IrExpr::FunctionCall {
-            path, function_id, ..
-        } => {
-            if function_id.is_none() && path.len() == 1 {
-                if let Some(qualified) = bare_to_qualified.get(&path[0]) {
-                    *path = qualified.split("::").map(String::from).collect();
-                }
-            }
-        }
-        IrExpr::Reference { path, target, .. } => {
-            // Only qualify when target is still Unresolved — preserve
-            // any explicitly-set target (locals, params, already-resolved
-            // items).
-            if matches!(target, crate::ir::ReferenceTarget::Unresolved) && path.len() == 1 {
-                if let Some(qualified) = bare_to_qualified.get(&path[0]) {
-                    *path = qualified.split("::").map(String::from).collect();
-                }
-            }
-        }
-        _ => {}
-    }
-    // Recurse into children using the same descent as remap_expr_ids.
-    match expr {
-        IrExpr::BinaryOp { left, right, .. } => {
-            qualify_paths_in_expr(left, bare_to_qualified);
-            qualify_paths_in_expr(right, bare_to_qualified);
-        }
-        IrExpr::UnaryOp { operand, .. } => qualify_paths_in_expr(operand, bare_to_qualified),
-        IrExpr::Array { elements, .. } => {
-            for e in elements {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::DictLiteral { entries, .. } => {
-            for (k, v) in entries {
-                qualify_paths_in_expr(k, bare_to_qualified);
-                qualify_paths_in_expr(v, bare_to_qualified);
-            }
-        }
-        IrExpr::DictAccess { dict, key, .. } => {
-            qualify_paths_in_expr(dict, bare_to_qualified);
-            qualify_paths_in_expr(key, bare_to_qualified);
-        }
-        IrExpr::FieldAccess { object, .. } => qualify_paths_in_expr(object, bare_to_qualified),
-        IrExpr::If {
-            condition,
-            then_branch,
-            else_branch,
+            path,
+            function_id: None,
             ..
-        } => {
-            qualify_paths_in_expr(condition, bare_to_qualified);
-            qualify_paths_in_expr(then_branch, bare_to_qualified);
-            if let Some(eb) = else_branch {
-                qualify_paths_in_expr(eb, bare_to_qualified);
-            }
         }
-        IrExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            qualify_paths_in_expr(scrutinee, bare_to_qualified);
-            for arm in arms {
-                qualify_paths_in_expr(&mut arm.body, bare_to_qualified);
-            }
-        }
-        IrExpr::For {
-            collection, body, ..
-        } => {
-            qualify_paths_in_expr(collection, bare_to_qualified);
-            qualify_paths_in_expr(body, bare_to_qualified);
-        }
-        IrExpr::Block {
-            statements, result, ..
-        } => {
-            for stmt in statements {
-                match stmt {
-                    IrBlockStatement::Let { value, .. } => {
-                        qualify_paths_in_expr(value, bare_to_qualified)
-                    }
-                    IrBlockStatement::Assign { target, value, .. } => {
-                        qualify_paths_in_expr(target, bare_to_qualified);
-                        qualify_paths_in_expr(value, bare_to_qualified);
-                    }
-                    IrBlockStatement::Expr(e) => qualify_paths_in_expr(e, bare_to_qualified),
-                }
-            }
-            qualify_paths_in_expr(result, bare_to_qualified);
-        }
-        IrExpr::FunctionCall { args, .. } => {
-            for (_, e) in args {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::CallClosure { closure, args, .. } => {
-            qualify_paths_in_expr(closure, bare_to_qualified);
-            for (_, e) in args {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::MethodCall { receiver, args, .. } => {
-            qualify_paths_in_expr(receiver, bare_to_qualified);
-            for (_, e) in args {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::Tuple { fields, .. } => {
-            for (_, e) in fields {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-            for (_, _, e) in fields {
-                qualify_paths_in_expr(e, bare_to_qualified);
-            }
-        }
-        IrExpr::Closure { body, .. } => qualify_paths_in_expr(body, bare_to_qualified),
-        IrExpr::ClosureRef { env_struct, .. } => {
-            qualify_paths_in_expr(env_struct, bare_to_qualified)
-        }
-        IrExpr::Literal { .. }
+        | IrExpr::Reference {
+            path,
+            target: crate::ir::ReferenceTarget::Unresolved,
+            ..
+        } => path,
+        IrExpr::FunctionCall { .. }
         | IrExpr::Reference { .. }
+        | IrExpr::Literal { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
         | IrExpr::SelfFieldRef { .. }
-        | IrExpr::LetRef { .. } => {}
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::For { .. }
+        | IrExpr::Match { .. }
+        | IrExpr::CallClosure { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::Closure { .. }
+        | IrExpr::ClosureRef { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. }
+        | IrExpr::Block { .. } => return,
+    };
+    if let [single] = path.as_slice() {
+        if let Some(qualified) = bare_to_qualified.get(single) {
+            *path = qualified.split("::").map(String::from).collect();
+        }
     }
 }
 
-/// Walk an expression tree and apply id remaps for FunctionCall.function_id
-/// and DispatchKind::Static.impl_id.
+/// Walk an expression tree and apply id remaps for `FunctionCall.function_id`
+/// and `DispatchKind::Static.impl_id`.
 fn remap_expr_ids(expr: &mut IrExpr, maps: &ItemMaps) {
+    remap_self_ids(expr, maps);
+    walk_expr_children_mut(expr, &mut |child| remap_expr_ids(child, maps));
+}
+
+/// Apply id remaps to this node only, leaving children to the caller.
+/// Only `FunctionCall` and `MethodCall` (with `Static` dispatch) carry
+/// ids that need remapping; every other variant is intentionally a no-op.
+fn remap_self_ids(expr: &mut IrExpr, maps: &ItemMaps) {
     match expr {
-        IrExpr::FunctionCall { function_id, .. } => {
-            if let Some(old) = function_id {
-                if let Some(new) = maps.functions.get(&old.0) {
-                    *function_id = Some(*new);
-                }
-            }
-        }
-        IrExpr::MethodCall { dispatch, .. } => {
-            if let DispatchKind::Static { impl_id } = dispatch {
-                if let Some(new) = maps.impls.get(&impl_id.0) {
-                    *impl_id = ImplId(*new);
-                }
-            }
-        }
-        _ => {}
-    }
-    // Recurse into children. Block statements have a different shape;
-    // handle them via their own descent.
-    match expr {
-        IrExpr::BinaryOp { left, right, .. } => {
-            remap_expr_ids(left, maps);
-            remap_expr_ids(right, maps);
-        }
-        IrExpr::UnaryOp { operand, .. } => remap_expr_ids(operand, maps),
-        IrExpr::Array { elements, .. } => {
-            for e in elements {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::DictLiteral { entries, .. } => {
-            for (k, v) in entries {
-                remap_expr_ids(k, maps);
-                remap_expr_ids(v, maps);
-            }
-        }
-        IrExpr::DictAccess { dict, key, .. } => {
-            remap_expr_ids(dict, maps);
-            remap_expr_ids(key, maps);
-        }
-        IrExpr::FieldAccess { object, .. } => remap_expr_ids(object, maps),
-        IrExpr::If {
-            condition,
-            then_branch,
-            else_branch,
+        IrExpr::FunctionCall {
+            function_id: Some(old),
             ..
         } => {
-            remap_expr_ids(condition, maps);
-            remap_expr_ids(then_branch, maps);
-            if let Some(eb) = else_branch {
-                remap_expr_ids(eb, maps);
+            if let Some(new) = maps.functions.get(&old.0) {
+                *old = *new;
             }
         }
-        IrExpr::Match {
-            scrutinee, arms, ..
+        IrExpr::MethodCall {
+            dispatch: DispatchKind::Static { impl_id },
+            ..
         } => {
-            remap_expr_ids(scrutinee, maps);
-            for arm in arms {
-                remap_expr_ids(&mut arm.body, maps);
+            if let Some(new) = maps.impls.get(&impl_id.0) {
+                *impl_id = ImplId(*new);
             }
         }
-        IrExpr::For {
-            collection, body, ..
-        } => {
-            remap_expr_ids(collection, maps);
-            remap_expr_ids(body, maps);
-        }
-        IrExpr::Block {
-            statements, result, ..
-        } => {
-            for stmt in statements {
-                match stmt {
-                    IrBlockStatement::Let { value, .. } => remap_expr_ids(value, maps),
-                    IrBlockStatement::Assign { target, value, .. } => {
-                        remap_expr_ids(target, maps);
-                        remap_expr_ids(value, maps);
-                    }
-                    IrBlockStatement::Expr(e) => remap_expr_ids(e, maps),
-                }
-            }
-            remap_expr_ids(result, maps);
-        }
-        IrExpr::FunctionCall { args, .. } => {
-            for (_, e) in args {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::CallClosure { closure, args, .. } => {
-            remap_expr_ids(closure, maps);
-            for (_, e) in args {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::MethodCall { receiver, args, .. } => {
-            remap_expr_ids(receiver, maps);
-            for (_, e) in args {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::Tuple { fields, .. } => {
-            for (_, e) in fields {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
-            for (_, _, e) in fields {
-                remap_expr_ids(e, maps);
-            }
-        }
-        IrExpr::Closure { body, .. } => remap_expr_ids(body, maps),
-        IrExpr::ClosureRef { env_struct, .. } => remap_expr_ids(env_struct, maps),
-        IrExpr::Literal { .. }
+        IrExpr::FunctionCall { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::Literal { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
-        | IrExpr::LetRef { .. } => {}
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::For { .. }
+        | IrExpr::Match { .. }
+        | IrExpr::CallClosure { .. }
+        | IrExpr::Closure { .. }
+        | IrExpr::ClosureRef { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. }
+        | IrExpr::Block { .. } => {}
     }
 }
 
 /// Phase 1d: inline every imported pub `let` into the current module
 /// under a qualified name. The clone has its `ty` and the `value`
-/// expression's embedded ResolvedTypes externalised so the next
+/// expression's embedded `ResolvedTypes` externalised so the next
 /// worklist iteration of [`specialise_external_instantiations`] picks
 /// up any types they reference.
 ///
@@ -1349,7 +1208,7 @@ pub(super) fn inline_imported_lets(
 ///
 /// The clone has its `target` and `trait_ref.trait_id` translated from
 /// the imported module's id-space to the local clone's id (looked up by
-/// qualified name). Method signatures and bodies have ResolvedType
+/// qualified name). Method signatures and bodies have `ResolvedType`
 /// references externalised so subsequent worklist iterations of
 /// [`specialise_external_instantiations`] pick up any new types.
 ///
@@ -1362,8 +1221,8 @@ pub(super) fn inline_imported_lets(
 /// Impls whose target struct/enum was *not* cloned are skipped (they
 /// would have nowhere to attach in the local module).
 ///
-/// Records the (imported_module_path, imported_impl_idx) →
-/// local_impl_idx mapping into `impl_remap` so the body-id remapping
+/// Records the (`imported_module_path`, `imported_impl_idx`) →
+/// `local_impl_idx` mapping into `impl_remap` so the body-id remapping
 /// pass can rewrite `DispatchKind::Static.impl_id` references in
 /// cloned bodies.
 pub(super) fn inline_imported_impls(
@@ -1429,7 +1288,10 @@ pub(super) fn inline_imported_impls(
             let local_idx = u32::try_from(module.impls.len()).unwrap_or(u32::MAX);
             module.impls.push(clone);
             impl_remap.insert(
-                (module_path.clone(), u32::try_from(imported_idx).unwrap_or(u32::MAX)),
+                (
+                    module_path.clone(),
+                    u32::try_from(imported_idx).unwrap_or(u32::MAX),
+                ),
                 local_idx,
             );
         }
@@ -1450,7 +1312,7 @@ pub(super) fn inline_imported_impls(
 /// produce stale references if the body touches other module-level
 /// items. A follow-up commit walks and remaps those id references.
 ///
-/// FormaLang's IR doesn't carry function visibility today, so every
+/// `FormaLang`'s IR doesn't carry function visibility today, so every
 /// function in each imported module is cloned. Unused clones are removed
 /// by `DeadCodeEliminationPass` in the codegen pipeline.
 pub(super) fn inline_imported_functions(
@@ -1471,7 +1333,7 @@ pub(super) fn inline_imported_functions(
             }
 
             let mut clone = func.clone();
-            clone.name = qualified.clone();
+            clone.name.clone_from(&qualified);
 
             // Externalise types in signature + body. The next worklist
             // iteration of specialise_external_instantiations re-collects
@@ -1510,17 +1372,29 @@ pub(super) fn remap_imported_file_ids(
     if imported_modules.is_empty() {
         return;
     }
+    let remaps = build_file_remap_table(module, imported_modules);
+    remap_function_file_ids(module, &remaps, imported_modules);
+    remap_struct_file_ids(module, &remaps, imported_modules);
+    remap_enum_file_ids(module, &remaps, imported_modules);
+    remap_let_file_ids(module, &remaps, imported_modules);
+    remap_impl_file_ids(module, &remaps, imported_modules);
+}
 
-    // Per-module FileId remap: imported.FileId(N) -> entry.FileId(M).
-    // Synthetic FileId(0) is preserved as-is. The loop registers every
-    // path the imported module knows about so any span (including those
-    // from transitive `use` chains the imported module had) round-trips
-    // correctly through `module.file_path`.
+/// Per-module `FileId` remap: imported `FileId(N)` to entry `FileId(M)`.
+/// Synthetic `FileId(0)` is preserved as-is. Registers every path the
+/// imported module knows about so any span (including those from
+/// transitive `use` chains the imported module had) round-trips correctly
+/// through `module.file_path`.
+fn build_file_remap_table(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) -> HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>> {
     let mut remaps: HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>> =
         HashMap::with_capacity(imported_modules.len());
     for (path, imported) in imported_modules {
+        let cap = imported.file_table.len().saturating_add(1);
         let mut per_module: HashMap<crate::ir::FileId, crate::ir::FileId> =
-            HashMap::with_capacity(imported.file_table.len() + 1);
+            HashMap::with_capacity(cap);
         per_module.insert(crate::ir::FileId::SYNTHETIC, crate::ir::FileId::SYNTHETIC);
         for (idx, file) in imported.file_table.iter().enumerate() {
             // Imported FileId is offset by 1 (id 0 reserved for synthetic).
@@ -1530,16 +1404,21 @@ pub(super) fn remap_imported_file_ids(
         }
         remaps.insert(path.clone(), per_module);
     }
+    remaps
+}
 
-    // Apply remap to every cloned item identified by qualified-name
-    // prefix matching one of the imported module paths.
-    let function_indices: Vec<(usize, Vec<String>)> = module
+fn remap_function_file_ids(
+    module: &mut IrModule,
+    remaps: &HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    let indices: Vec<(usize, Vec<String>)> = module
         .functions
         .iter()
         .enumerate()
         .filter_map(|(i, f)| imported_path_of(&f.name, imported_modules).map(|p| (i, p)))
         .collect();
-    for (idx, source_path) in function_indices {
+    for (idx, source_path) in indices {
         let Some(remap) = remaps.get(&source_path) else {
             continue;
         };
@@ -1548,14 +1427,20 @@ pub(super) fn remap_imported_file_ids(
             walk_function_spans_mut(func, &mut |s| apply_file_remap(s, remap));
         }
     }
+}
 
-    let struct_indices: Vec<(usize, Vec<String>)> = module
+fn remap_struct_file_ids(
+    module: &mut IrModule,
+    remaps: &HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    let indices: Vec<(usize, Vec<String>)> = module
         .structs
         .iter()
         .enumerate()
         .filter_map(|(i, s)| imported_path_of(&s.name, imported_modules).map(|p| (i, p)))
         .collect();
-    for (idx, source_path) in struct_indices {
+    for (idx, source_path) in indices {
         let Some(remap) = remaps.get(&source_path) else {
             continue;
         };
@@ -1569,14 +1454,20 @@ pub(super) fn remap_imported_file_ids(
             }
         }
     }
+}
 
-    let enum_indices: Vec<(usize, Vec<String>)> = module
+fn remap_enum_file_ids(
+    module: &mut IrModule,
+    remaps: &HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    let indices: Vec<(usize, Vec<String>)> = module
         .enums
         .iter()
         .enumerate()
         .filter_map(|(i, e)| imported_path_of(&e.name, imported_modules).map(|p| (i, p)))
         .collect();
-    for (idx, source_path) in enum_indices {
+    for (idx, source_path) in indices {
         let Some(remap) = remaps.get(&source_path) else {
             continue;
         };
@@ -1595,14 +1486,20 @@ pub(super) fn remap_imported_file_ids(
             }
         }
     }
+}
 
-    let let_indices: Vec<(usize, Vec<String>)> = module
+fn remap_let_file_ids(
+    module: &mut IrModule,
+    remaps: &HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    let indices: Vec<(usize, Vec<String>)> = module
         .lets
         .iter()
         .enumerate()
         .filter_map(|(i, l)| imported_path_of(&l.name, imported_modules).map(|p| (i, p)))
         .collect();
-    for (idx, source_path) in let_indices {
+    for (idx, source_path) in indices {
         let Some(remap) = remaps.get(&source_path) else {
             continue;
         };
@@ -1613,9 +1510,15 @@ pub(super) fn remap_imported_file_ids(
             });
         }
     }
+}
 
-    // Impl blocks: identify by their target type's name.
-    let impl_sources: Vec<(usize, Option<Vec<String>>)> = module
+/// Impl blocks are identified by their target type's name.
+fn remap_impl_file_ids(
+    module: &mut IrModule,
+    remaps: &HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>>,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    let sources: Vec<(usize, Option<Vec<String>>)> = module
         .impls
         .iter()
         .enumerate()
@@ -1632,7 +1535,7 @@ pub(super) fn remap_imported_file_ids(
             (i, source)
         })
         .collect();
-    for (idx, source_opt) in impl_sources {
+    for (idx, source_opt) in sources {
         let Some(source_path) = source_opt else {
             continue;
         };

@@ -30,10 +30,10 @@ impl FileId {
     }
 }
 
-/// IR-level source span: a single-file AST span paired with the file
-/// identity. Backends emit DWARF / source-map entries by reading the
-/// `span` (byte range + line / column) and resolving `file` against
-/// `IrModule.file_table`.
+/// IR-level source span: a single-file AST span paired with the file identity.
+///
+/// Backends emit DWARF / source-map entries by reading the `span` (byte range
+/// + line / column) and resolving `file` against `IrModule.file_table`.
 #[expect(clippy::exhaustive_structs, reason = "public IR shape")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IrSpan {

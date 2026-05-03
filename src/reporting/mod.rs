@@ -222,9 +222,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::ExternImplWithBody { name, .. } => {
             errors_advanced::extern_impl_with_body(filename, span, name)
         }
-        CompilerError::RequiredParamAfterDefault { function, param, .. } => {
-            errors_advanced::required_param_after_default(filename, span, function, param)
-        }
+        CompilerError::RequiredParamAfterDefault {
+            function, param, ..
+        } => errors_advanced::required_param_after_default(filename, span, function, param),
         CompilerError::NilAssignedToNonOptional { expected, .. } => {
             errors_advanced::nil_assigned_to_non_optional(filename, span, expected)
         }

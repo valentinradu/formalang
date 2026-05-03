@@ -230,7 +230,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Build an `IrSpan` for the currently-lowered AST node from the
     /// stored `current_span` + `current_file`.
-    pub(super) fn current_ir_span(&self) -> crate::ir::IrSpan {
+    pub(super) const fn current_ir_span(&self) -> crate::ir::IrSpan {
         crate::ir::IrSpan::new(self.current_span, self.current_file)
     }
 
