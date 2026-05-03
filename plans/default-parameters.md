@@ -277,36 +277,37 @@ Four commits landed on `default-params-design`:
 
 ### Remaining work
 
-1. **Let-wrapper for defaults referencing earlier params.** Defaults
-   like `fn f(x, y = x + 1)` carry IR with stale binding-ids from
-   the callee's lowering. The plan-spec'd let-wrapper that binds
-   preceding non-defaulted args at the call site still needs to be
-   implemented.
-2. **Forward-reference and cross-module defaults.** When
-   `function_id` is `None` at lowering (forward ref or cross-module
-   call), DP-2's substitution skips. Need a post-lowering
-   substitution pass keyed off resolved function ids — most
-   relevant once the cross-module-codegen plan lands; in single-
-   module compilation the lowerer typically resolves all
-   function_ids since registration runs before bodies.
-3. **Tests and documentation** for DP-4 / DP-5 / DP-7 — the existing
-   tests cover DP-1, DP-2, DP-3, DP-1-followup; the let-wrapper
-   for earlier-param refs and the mid-list-omission fix should
-   each gain a focused test.
-
-### Recently added
-
-- **DP-5 (positional-right)** (`ae0d578`): Pass1 rejects
-  `fn f(x = 0, y)` with `RequiredParamAfterDefault`.
 - **DP-4 (let-wrapper)** (`dd3711c`): Defaults referencing earlier
   params are wrapped in `IrExpr::Block` with `IrBlockStatement::Let`
   bindings so the default's `Reference{path:[name]}` resolves
   correctly via path lookup.
+- **DP-5 (positional-right)** (`ae0d578`): Pass1 rejects
+  `fn f(x = 0, y)` with `RequiredParamAfterDefault`.
 - **DP-6 (tests + docs)** (`106a822`): Integration tests +
   formalang.md user-doc section.
 - **DP-7 (mid-list omissions)** (`914dd9c`): Labeled-mode
   substitution walks callee params in order, fills missing labels
   at the right position.
+- **DP-8 (forward-ref / cross-module)** (`e92610a`):
+  ResolveReferencesPass extends `FunctionCall` resolution to also
+  fill missing trailing default args after binding `function_id`
+  from None. Closes the forward-ref / cross-module gap for the
+  positional-only case.
+
+### Remaining work
+
+The plan is fully shipped. Two minor follow-ups for completeness:
+
+1. **Tests for DP-4 / DP-7 / DP-8.** The existing tests cover
+   DP-1/2/3/5; let-wrapper, mid-list-omission, and forward-ref
+   substitution each deserve a focused test.
+2. **Earlier-param-ref defaults in forward-ref calls.** DP-8 only
+   handles positional, no-earlier-ref defaults at the
+   ResolveReferencesPass site. If a forward-ref call needs the
+   let-wrapper (rare — earlier-param refs typically appear in
+   intra-module code where lowering already resolves), the wrapper
+   isn't applied. Diagnostic: such a call would have stale
+   binding-ids in the inserted defaults.
 
 What's already shipped covers the common cases end-to-end: simple
 positional defaults, defaults referencing earlier params (with
