@@ -37,8 +37,7 @@ You write `.fv` files; the library parses and validates them, and you get a full
 
 ---
 
-<details>
-<summary><b>Contents</b></summary>
+## Contents
 
 - [Why FormaLang?](#why-formalang)
 - [Quick Start](#quick-start)
@@ -67,8 +66,6 @@ You write `.fv` files; the library parses and validates them, and you get a full
 - [What is not built in](#what-is-not-built-in)
 - [Further reading](#further-reading)
 - [License](#license)
-
-</details>
 
 ---
 
