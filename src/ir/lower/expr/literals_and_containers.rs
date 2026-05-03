@@ -54,7 +54,7 @@ fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
         } => {
             statements.iter().any(|s| match s {
                 IrBlockStatement::Let { value, .. } => expr_references_any_name(value, names),
-                IrBlockStatement::Assign { target, value } => {
+                IrBlockStatement::Assign { target, value, .. } => {
                     expr_references_any_name(target, names) || expr_references_any_name(value, names)
                 }
                 IrBlockStatement::Expr(e) => expr_references_any_name(e, names),
@@ -377,6 +377,7 @@ impl IrLowerer<'_> {
                         mutable: false,
                         ty: wrapper_param_types[i].clone(),
                         value,
+                        span: self.current_ir_span(),
                     });
                 }
                 let call = IrExpr::FunctionCall {
