@@ -18,7 +18,8 @@ use crate::location::Span;
 
 use super::specialise::{substitute_type, type_suffix};
 use super::walkers::{
-    walk_expr_types_mut, walk_function_types_mut, walk_module_types, walk_module_types_mut,
+    walk_expr_types_mut, walk_function_spans_mut, walk_function_types_mut, walk_module_types,
+    walk_module_types_mut,
 };
 
 /// External generic instantiation key: `(module_path, name, type_args)`.
@@ -1489,5 +1490,170 @@ pub(super) fn inline_imported_functions(
         Ok(())
     } else {
         Err(errors)
+    }
+}
+
+/// Phase 2b: register each imported module's source files in the entry
+/// module's `file_table`, then remap every cloned item's `IrSpan.file`
+/// to the entry-side id-space.
+///
+/// Without this pass, cloned items still carry `IrSpan.file` values from
+/// their imported `IrModule`'s file table — which is dropped after
+/// monomorphisation, leaving spans pointing at indices that don't
+/// resolve via `IrModule.file_path` on the entry. After this pass the
+/// entry's `file_table` is the single source of truth: every span's
+/// `FileId` either targets an entry-table slot or is `FileId::SYNTHETIC`.
+pub(super) fn remap_imported_file_ids(
+    module: &mut IrModule,
+    imported_modules: &HashMap<Vec<String>, IrModule>,
+) {
+    if imported_modules.is_empty() {
+        return;
+    }
+
+    // Per-module FileId remap: imported.FileId(N) -> entry.FileId(M).
+    // Synthetic FileId(0) is preserved as-is. The loop registers every
+    // path the imported module knows about so any span (including those
+    // from transitive `use` chains the imported module had) round-trips
+    // correctly through `module.file_path`.
+    let mut remaps: HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>> =
+        HashMap::with_capacity(imported_modules.len());
+    for (path, imported) in imported_modules {
+        let mut per_module: HashMap<crate::ir::FileId, crate::ir::FileId> =
+            HashMap::with_capacity(imported.file_table.len() + 1);
+        per_module.insert(crate::ir::FileId::SYNTHETIC, crate::ir::FileId::SYNTHETIC);
+        for (idx, file) in imported.file_table.iter().enumerate() {
+            // Imported FileId is offset by 1 (id 0 reserved for synthetic).
+            let imported_id = crate::ir::FileId(u32::try_from(idx).unwrap_or(0).saturating_add(1));
+            let entry_id = module.register_file(file.clone());
+            per_module.insert(imported_id, entry_id);
+        }
+        remaps.insert(path.clone(), per_module);
+    }
+
+    // Apply remap to every cloned item identified by qualified-name
+    // prefix matching one of the imported module paths.
+    let function_indices: Vec<(usize, Vec<String>)> = module
+        .functions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, f)| imported_path_of(&f.name, imported_modules).map(|p| (i, p)))
+        .collect();
+    for (idx, source_path) in function_indices {
+        let Some(remap) = remaps.get(&source_path) else {
+            continue;
+        };
+        if let Some(func) = module.functions.get_mut(idx) {
+            apply_file_remap(&mut func.span, remap);
+            walk_function_spans_mut(func, &mut |s| apply_file_remap(s, remap));
+        }
+    }
+
+    let struct_indices: Vec<(usize, Vec<String>)> = module
+        .structs
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| imported_path_of(&s.name, imported_modules).map(|p| (i, p)))
+        .collect();
+    for (idx, source_path) in struct_indices {
+        let Some(remap) = remaps.get(&source_path) else {
+            continue;
+        };
+        if let Some(s) = module.structs.get_mut(idx) {
+            apply_file_remap(&mut s.span, remap);
+            for field in &mut s.fields {
+                apply_file_remap(&mut field.span, remap);
+                if let Some(d) = &mut field.default {
+                    super::walkers::walk_expr_spans_mut(d, &mut |sp| apply_file_remap(sp, remap));
+                }
+            }
+        }
+    }
+
+    let enum_indices: Vec<(usize, Vec<String>)> = module
+        .enums
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| imported_path_of(&e.name, imported_modules).map(|p| (i, p)))
+        .collect();
+    for (idx, source_path) in enum_indices {
+        let Some(remap) = remaps.get(&source_path) else {
+            continue;
+        };
+        if let Some(e) = module.enums.get_mut(idx) {
+            apply_file_remap(&mut e.span, remap);
+            for variant in &mut e.variants {
+                apply_file_remap(&mut variant.span, remap);
+                for field in &mut variant.fields {
+                    apply_file_remap(&mut field.span, remap);
+                    if let Some(d) = &mut field.default {
+                        super::walkers::walk_expr_spans_mut(d, &mut |sp| {
+                            apply_file_remap(sp, remap);
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let let_indices: Vec<(usize, Vec<String>)> = module
+        .lets
+        .iter()
+        .enumerate()
+        .filter_map(|(i, l)| imported_path_of(&l.name, imported_modules).map(|p| (i, p)))
+        .collect();
+    for (idx, source_path) in let_indices {
+        let Some(remap) = remaps.get(&source_path) else {
+            continue;
+        };
+        if let Some(l) = module.lets.get_mut(idx) {
+            apply_file_remap(&mut l.span, remap);
+            super::walkers::walk_expr_spans_mut(&mut l.value, &mut |sp| {
+                apply_file_remap(sp, remap);
+            });
+        }
+    }
+
+    // Impl blocks: identify by their target type's name.
+    let impl_sources: Vec<(usize, Option<Vec<String>>)> = module
+        .impls
+        .iter()
+        .enumerate()
+        .map(|(i, imp)| {
+            let source = match imp.target {
+                ImplTarget::Struct(id) => module
+                    .get_struct(id)
+                    .and_then(|s| imported_path_of(&s.name, imported_modules)),
+                ImplTarget::Enum(id) => module
+                    .get_enum(id)
+                    .and_then(|e| imported_path_of(&e.name, imported_modules)),
+                ImplTarget::Primitive(_) => None,
+            };
+            (i, source)
+        })
+        .collect();
+    for (idx, source_opt) in impl_sources {
+        let Some(source_path) = source_opt else {
+            continue;
+        };
+        let Some(remap) = remaps.get(&source_path) else {
+            continue;
+        };
+        if let Some(imp) = module.impls.get_mut(idx) {
+            apply_file_remap(&mut imp.span, remap);
+            for method in &mut imp.functions {
+                apply_file_remap(&mut method.span, remap);
+                walk_function_spans_mut(method, &mut |sp| apply_file_remap(sp, remap));
+            }
+        }
+    }
+}
+
+fn apply_file_remap(
+    span: &mut crate::ir::IrSpan,
+    remap: &HashMap<crate::ir::FileId, crate::ir::FileId>,
+) {
+    if let Some(new_file) = remap.get(&span.file).copied() {
+        span.file = new_file;
     }
 }

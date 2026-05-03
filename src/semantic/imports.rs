@@ -329,7 +329,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Lower the module to IR and cache it for codegen backends
         // This enables generating impl blocks from imported types
-        if let Ok(ir_module) = crate::ir::lower_to_ir(&file, &module_symbols) {
+        // Lower with the imported module's own path so its `file_table`
+        // is populated. Phase 2b of `MonomorphisePass` reads this table
+        // when remapping cloned items' `IrSpan.file` into the entry's
+        // id-space.
+        if let Ok(ir_module) =
+            crate::ir::lower_to_ir_with_path(&file, &module_symbols, module_path.to_path_buf())
+        {
             self.module_ir_cache
                 .insert(module_path.to_path_buf(), ir_module);
         }

@@ -66,6 +66,34 @@ impl IrExpr {
         }
     }
 
+    /// Get a mutable reference to the source span of this expression.
+    pub const fn span_mut(&mut self) -> &mut crate::ir::IrSpan {
+        match self {
+            Self::Literal { span, .. }
+            | Self::StructInst { span, .. }
+            | Self::EnumInst { span, .. }
+            | Self::Array { span, .. }
+            | Self::Tuple { span, .. }
+            | Self::Reference { span, .. }
+            | Self::SelfFieldRef { span, .. }
+            | Self::FieldAccess { span, .. }
+            | Self::LetRef { span, .. }
+            | Self::BinaryOp { span, .. }
+            | Self::UnaryOp { span, .. }
+            | Self::If { span, .. }
+            | Self::For { span, .. }
+            | Self::Match { span, .. }
+            | Self::FunctionCall { span, .. }
+            | Self::CallClosure { span, .. }
+            | Self::MethodCall { span, .. }
+            | Self::Closure { span, .. }
+            | Self::ClosureRef { span, .. }
+            | Self::DictLiteral { span, .. }
+            | Self::DictAccess { span, .. }
+            | Self::Block { span, .. } => span,
+        }
+    }
+
     /// Whether this expression is a constant aggregate — a literal, or an
     /// aggregate (array / tuple / struct / enum / dict) whose every leaf is a
     /// literal. After [`fold_constants`](crate::ir::fold_constants) this

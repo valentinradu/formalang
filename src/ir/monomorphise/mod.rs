@@ -67,7 +67,7 @@ use compact::{
 use external::{
     detect_import_cycle, inline_imported_functions, inline_imported_impls, inline_imported_lets,
     merge_imported_module_trees, qualify_imported_paths, remap_imported_body_ids,
-    rewrite_external_references, specialise_external_instantiations,
+    remap_imported_file_ids, rewrite_external_references, specialise_external_instantiations,
 };
 use functions::specialise_generic_functions;
 use leftover::LeftoverScanner;
@@ -186,6 +186,14 @@ impl IrPass for MonomorphisePass {
             // tree into the entry's modules tree under the import's
             // module_path, populating with translated local ids.
             merge_imported_module_trees(&mut module, &self.imported_modules);
+            // Phase 2b: register each imported source file in the
+            // entry's `file_table` and remap every cloned item's
+            // `IrSpan.file` from the imported id-space into the entry
+            // id-space. After this pass, every span resolves through
+            // `IrModule.file_path` on the entry — backends emitting
+            // DWARF / source maps don't need access to the imported
+            // modules' IR.
+            remap_imported_file_ids(&mut module, &self.imported_modules);
         }
 
         // Phase 1: collect every `Generic { base, args }` instantiation in

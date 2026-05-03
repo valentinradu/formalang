@@ -154,3 +154,51 @@ fn module_tree_includes_imported_path() -> Result<(), Box<dyn std::error::Error>
     }
     Ok(())
 }
+
+/// Cross-module file_table: every cloned item's `IrSpan.file` resolves
+/// through the entry's `file_path` to the imported source path.
+/// Without Phase 2b, the cloned struct's span would still reference the
+/// imported module's id-space (which the entry's file_table doesn't
+/// know about), and `entry.file_path(span.file)` would dangle.
+#[test]
+fn cloned_item_spans_resolve_to_imported_source() -> Result<(), Box<dyn std::error::Error>> {
+    let mut resolver = MockResolver::new();
+    resolver.add(
+        vec!["geom".to_string()],
+        "pub struct Point { x: I32, y: I32 }\n",
+    );
+    let main = "use geom::Point\nstruct Main { p: Point }\n";
+
+    let module = formalang::compile_to_ir_with_resolver(main, resolver)
+        .map_err(|errors| format!("compile failed: {errors:?}"))?;
+
+    let cloned_id = module
+        .struct_id("geom::Point")
+        .ok_or("geom::Point struct missing")?;
+    let cloned = module
+        .structs
+        .iter()
+        .find(|s| s.name == "geom::Point")
+        .ok_or("cloned struct unexpectedly absent given valid id")?;
+    let _ = cloned_id;
+
+    // The cloned struct's span must NOT be synthetic — it came from
+    // a real source file (the imported geom module).
+    if cloned.span.file.is_synthetic() {
+        return Err("cloned geom::Point span was left synthetic; file_table integration didn't fire"
+            .into());
+    }
+    // Resolving through the entry module's file_table must succeed
+    // and point at the imported source path.
+    let path = module
+        .file_path(cloned.span.file)
+        .ok_or("entry file_table didn't resolve the cloned struct's FileId")?;
+    if !path.to_string_lossy().contains("geom") {
+        return Err(format!(
+            "expected the resolved path to mention geom, got {}",
+            path.display()
+        )
+        .into());
+    }
+    Ok(())
+}

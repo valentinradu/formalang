@@ -411,6 +411,15 @@ a follow-up plan.
   `IrImport.items`. Closes the chained-import gap: bare `compute()`
   call after `use other::compute` qualifies to `["other", "compute"]`
   via the existing per-item path resolution.
+- **CM-K** Phase 2b — file_table integration. Each imported module's
+  source path is registered in the entry's `file_table`, and every
+  cloned item's `IrSpan.file` is remapped from the imported module's
+  id-space into the entry's id-space. Backends emitting DWARF or
+  source maps see a single flat `file_table` and resolve every span
+  through `entry.file_path(span.file)` regardless of which source
+  file the item originated in. Imported modules are now lowered via
+  `lower_to_ir_with_path` (in `semantic/imports.rs`) so their
+  `file_table` is populated in the first place.
 
 What's already shipped (CM-A through CM-F-2) is enough to unblock
 formawasm Phase 4 R2's literal `NotYetSupported { kind: "External(..)" }`
