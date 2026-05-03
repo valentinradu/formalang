@@ -801,6 +801,7 @@ pub(super) fn remap_imported_body_ids(
             ImplTarget::Enum(id) => module
                 .get_enum(id)
                 .and_then(|e| imported_path_of(&e.name, imported_modules)),
+            ImplTarget::Primitive(_) => None,
         })
         .collect();
     for (impl_block, path_opt) in module.impls.iter_mut().zip(impl_paths.iter()) {
@@ -877,6 +878,7 @@ pub(super) fn qualify_imported_paths(
                 crate::ir::ImplTarget::Enum(id) => module
                     .get_enum(id)
                     .and_then(|e| imported_path_of(&e.name, imported_modules)),
+                crate::ir::ImplTarget::Primitive(_) => None,
             };
             imp.functions
                 .iter()
@@ -1333,6 +1335,7 @@ pub(super) fn inline_imported_impls(
                     };
                     ImplTarget::Enum(local_id)
                 }
+                ImplTarget::Primitive(_) => continue,
             };
 
             let mut clone = impl_block.clone();
