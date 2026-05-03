@@ -43,8 +43,41 @@ pub(super) fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             args,
             ..
         } => {
+            let was_unbound = function_id.is_none();
             if function_id.is_none() {
                 *function_id = walkers::resolve_function_call_id(path, r);
+            }
+            // DP-8: post-lowering default substitution. When the call
+            // was unbound at lowering (forward ref or cross-module
+            // call) and ResolveReferencesPass just bound it, the
+            // lowerer's DP-2 / DP-7 substitution didn't run. Fill in
+            // any missing trailing defaults using the now-resolved
+            // callee's params. We only do this for purely-positional
+            // calls; labeled-mode calls already work because DP-7's
+            // mid-list filler operates against the call's labels
+            // independent of function_id resolution. Earlier-param
+            // refs (the let-wrapper case) still need the lowerer's
+            // path — at this point we'd be inserting Reference IR
+            // that resolves against an outer scope we can't easily
+            // reconstruct.
+            if was_unbound {
+                if let Some(id) = function_id {
+                    if let Some(func) = r.module.functions.get(id.0 as usize) {
+                        let non_self_params: Vec<&crate::ir::IrFunctionParam> =
+                            func.params.iter().filter(|p| p.name != "self").collect();
+                        let want = non_self_params.len();
+                        let any_labeled = args.iter().any(|(l, _)| l.is_some());
+                        if !any_labeled && args.len() < want {
+                            for param in non_self_params.iter().skip(args.len()) {
+                                if let Some(default) = &param.default {
+                                    args.push((None, default.clone()));
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             for (_, arg) in args {
                 resolve_expr(arg, r);
