@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FormaLang — a declarative DSL frontend for Rust</title>
     <meta name="description" content="FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. Parse .fv source, get a type-resolved IR back.">
+    <link rel="icon" type="image/png" sizes="96x96" href="./logo-96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./logo-192.png">
+    <link rel="apple-touch-icon" href="./logo-180.png">
     <link rel="stylesheet" href="./styles.css">
 </head>
 <body class="min-h-screen flex flex-col">
     <header class="border-b border-surface0 bg-mantle">
         <nav class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-            <a href="/" class="font-mono font-semibold text-lavender">formalang</a>
+            <a href="/" class="flex items-center gap-2 font-mono font-semibold text-lavender">
+                <img src="./logo-96.png" alt="" class="h-7 w-7" />
+                formalang
+            </a>
             <div class="flex items-center gap-5 text-sm text-subtext1">
                 <a href="./docs/" class="hover:text-mauve transition-colors">Docs</a>
                 <a href="https://crates.io/crates/formalang" class="hover:text-mauve transition-colors">crates.io</a>
@@ -22,24 +28,25 @@
 
     <main class="flex-1">
         <!-- Hero -->
-        <section class="max-w-5xl mx-auto px-6 pt-20 pb-16">
+        <section class="max-w-5xl mx-auto px-6 pt-24 pb-20 text-center">
+            <img src="./logo-180.png" alt="FormaLang" class="h-28 w-28 mx-auto mb-8" />
             <h1 class="text-4xl md:text-5xl font-semibold text-text leading-tight tracking-tight">
                 A statically typed, declarative DSL for
                 <span class="text-mauve">Rust applications</span>.
             </h1>
-            <p class="mt-6 text-lg text-subtext1 max-w-2xl">
+            <p class="mt-6 text-lg text-subtext1 max-w-2xl mx-auto">
                 Parse <code class="text-peach">.fv</code> source. Get a fully type-resolved
                 <code class="text-peach">IrModule</code> back. Drive a UI framework,
                 generate code, configure a runtime — your backend, your call.
             </p>
-            <div class="mt-8 flex flex-wrap gap-3">
+            <div class="mt-10 flex flex-wrap justify-center gap-3">
                 <a class="btn-primary" href="./docs/">Read the docs</a>
                 <a class="btn-ghost" href="https://github.com/valentinradu/formalang">View on GitHub</a>
             </div>
         </section>
 
         <!-- Quick example -->
-        <section class="max-w-5xl mx-auto px-6 pb-16">
+        <section class="max-w-3xl mx-auto px-6 pb-16">
             <div class="code-card">
                 <pre class="text-sm leading-relaxed"><span class="text-overlay1">// Cargo.toml</span>
 <span class="text-yellow">[dependencies]</span>
@@ -61,9 +68,9 @@
         </section>
 
         <!-- Why -->
-        <section class="max-w-5xl mx-auto px-6 pb-24">
-            <h2 class="text-2xl font-semibold text-lavender mb-8">Why FormaLang</h2>
-            <div class="grid md:grid-cols-3 gap-6">
+        <section class="max-w-5xl mx-auto px-6 pb-24 text-center">
+            <h2 class="text-2xl font-semibold text-lavender mb-10">Why FormaLang</h2>
+            <div class="grid md:grid-cols-3 gap-8">
                 <div>
                     <h3 class="text-lg font-semibold text-mauve mb-2">Statically typed</h3>
                     <p class="text-subtext1">

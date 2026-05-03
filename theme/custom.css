@@ -88,6 +88,19 @@ html.sidebar-visible .menu-bar {
 .menu-title {
     color: var(--ctp-lavender);
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+}
+.menu-title::before {
+    content: "";
+    display: inline-block;
+    width: 1.6em;
+    height: 1.6em;
+    background-image: url("../favicon.png");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
 }
 
 ::selection {

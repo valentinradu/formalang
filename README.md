@@ -1,4 +1,8 @@
-# FormaLang
+<p align="center">
+  <img src="website/logo-180.png" alt="FormaLang" width="160">
+</p>
+
+<h1 align="center">FormaLang</h1>
 
 FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. You write `.fv` files, the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend.
 
