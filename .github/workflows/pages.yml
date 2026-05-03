@@ -55,6 +55,8 @@ jobs:
         run: |
           cp website/index.html _site/index.html
           cp website/CNAME _site/CNAME
+          cp website/favicon.svg _site/favicon.svg
+          cp website/logo.png website/logo-96.png website/logo-180.png website/logo-192.png _site/
           cp -r book _site/docs
 
       - name: Upload artifact
