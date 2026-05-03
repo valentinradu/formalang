@@ -4,11 +4,3 @@
 # below 500. Goal: empty file.
 #
 # Format: <max_lines> <path-relative-to-repo-root>
-
-739 src/ir/lower/expr/literals_and_containers.rs
-730 src/ir/monomorphise/walkers.rs
-1562 src/ir/monomorphise/external.rs
-538 src/ir/expr/mod.rs
-510 src/ir/types.rs
-538 src/semantic/validation/invocation.rs
-506 src/reporting/errors_advanced.rs
