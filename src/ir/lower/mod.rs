@@ -151,6 +151,15 @@ struct IrLowerer<'a> {
     /// function) get appended to the topmost node as each definition
     /// is registered. Tier-1 item G.
     pub(super) module_node_stack: Vec<crate::ir::IrModuleNode>,
+    /// While `register_imported_types` is lowering an imported struct's
+    /// or enum's field types, this holds the source module's logical
+    /// path. The `lower_type` fallback uses it to default unresolved
+    /// type identifiers to `External(<source>, name)` instead of
+    /// `UndefinedType` — sibling types in the same source module are
+    /// reachable to the imported type even when the entry didn't
+    /// import them, and the `MonomorphisePass` will pull them in via
+    /// Phase 1a.
+    pub(super) imported_source_context: Option<Vec<String>>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -215,6 +224,7 @@ impl<'a> IrLowerer<'a> {
             expected_closure_type: None,
             expected_value_type: None,
             module_node_stack: Vec::new(),
+            imported_source_context: None,
         }
     }
 

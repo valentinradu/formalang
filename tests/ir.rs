@@ -4,6 +4,16 @@
 
 use formalang::compile_to_ir;
 
+/// Count user-defined impls, excluding the prelude's `extern impl
+/// <Primitive>` blocks (which are inlined into every module since SB-7).
+fn user_impl_count(module: &formalang::ir::IrModule) -> usize {
+    module
+        .impls
+        .iter()
+        .filter(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .count()
+}
+
 // =============================================================================
 // Basic Lowering Tests
 // =============================================================================
@@ -21,7 +31,7 @@ fn test_lower_empty_source() -> Result<(), Box<dyn std::error::Error>> {
     if !module.enums.is_empty() {
         return Err("assertion failed".into());
     }
-    if !module.impls.is_empty() {
+    if user_impl_count(&module) != 0 {
         return Err("assertion failed".into());
     }
     Ok(())
@@ -692,8 +702,8 @@ fn test_lower_impl_block() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
     }
     // Impl block is explicitly defined
-    if module.impls.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.impls.len()).into());
+    if user_impl_count(&module) != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, user_impl_count(&module)).into());
     }
     Ok(())
 }
@@ -1255,8 +1265,12 @@ impl IrVisitor for TypeCounter {
         self.field_count = self.field_count.saturating_add(1);
     }
 
-    fn visit_impl(&mut self, _i: &IrImpl) {
-        self.impl_count = self.impl_count.saturating_add(1);
+    fn visit_impl(&mut self, i: &IrImpl) {
+        // Exclude prelude `extern impl <Primitive>` blocks so the
+        // counts in tests below stay in terms of user-authored impls.
+        if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+            self.impl_count = self.impl_count.saturating_add(1);
+        }
     }
 
     fn visit_enum_variant(&mut self, _v: &IrEnumVariant) {

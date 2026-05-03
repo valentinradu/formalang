@@ -149,6 +149,14 @@ fn specialise_external(
                 span: Span::default(),
             });
         }
+        // Reuse an existing clone for the same (module_path, name, args)
+        // tuple so a re-run of phase 1a (after inlining adds new External
+        // refs) doesn't mint a duplicate `#2` clone alongside the canonical
+        // one. The canonical qualified name can't collide with a
+        // user-defined struct: `::` is not a legal identifier character.
+        if let Some(existing) = canonical_qualified_name(name, args, module_path, module) {
+            return Ok((ResolvedType::Struct(existing), Vec::new()));
+        }
         let subs: HashMap<String, ResolvedType> = source
             .generic_params
             .iter()
@@ -186,6 +194,9 @@ fn specialise_external(
                 actual: args.len(),
                 span: Span::default(),
             });
+        }
+        if let Some(existing) = canonical_qualified_enum(name, args, module_path, module) {
+            return Ok((ResolvedType::Enum(existing), Vec::new()));
         }
         let subs: HashMap<String, ResolvedType> = source
             .generic_params
@@ -302,6 +313,54 @@ fn specialise_external_trait(
     }
     let new_id = module.add_trait(mangled, spec)?;
     Ok((ResolvedType::Trait(new_id), discovered.into_iter().collect()))
+}
+
+/// Compute the un-deduplicated name for an external specialisation.
+/// Mirrors the prefix construction in [`mangle_external_name`] but stops
+/// before the `#N` collision-avoidance suffix so callers can probe the
+/// module for an existing canonical clone.
+fn canonical_external_name(name: &str, args: &[ResolvedType], module_path: &[String]) -> String {
+    if args.is_empty() {
+        let mut qualified = String::with_capacity(
+            module_path.iter().map(String::len).sum::<usize>()
+                + module_path.len() * 2
+                + name.len(),
+        );
+        for segment in module_path {
+            qualified.push_str(segment);
+            qualified.push_str("::");
+        }
+        qualified.push_str(name);
+        qualified
+    } else {
+        let mut s = name.to_string();
+        for a in args {
+            s.push_str("__");
+            type_suffix(a, &mut s);
+        }
+        s
+    }
+}
+
+/// If a struct under the canonical qualified name already exists, return
+/// its id so callers can reuse it instead of cloning a duplicate.
+fn canonical_qualified_name(
+    name: &str,
+    args: &[ResolvedType],
+    module_path: &[String],
+    module: &IrModule,
+) -> Option<crate::ir::StructId> {
+    module.struct_id(&canonical_external_name(name, args, module_path))
+}
+
+/// Enum variant of [`canonical_qualified_name`].
+fn canonical_qualified_enum(
+    name: &str,
+    args: &[ResolvedType],
+    module_path: &[String],
+    module: &IrModule,
+) -> Option<crate::ir::EnumId> {
+    module.enum_id(&canonical_external_name(name, args, module_path))
 }
 
 /// Build a unique mangled name for an external specialisation.

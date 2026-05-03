@@ -1431,8 +1431,10 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
         functions: usize,
     }
     impl IrVisitor for ImplFnCounter {
-        fn visit_impl(&mut self, _i: &IrImpl) {
-            self.impls += 1;
+        fn visit_impl(&mut self, i: &IrImpl) {
+            if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+                self.impls += 1;
+            }
         }
         fn visit_function(&mut self, _f: &IrFunction) {
             self.functions += 1;
@@ -1455,8 +1457,17 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
     if counter.impls != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, counter.impls).into());
     }
-    if counter.functions != 2 {
-        return Err(format!("expected {:?} but got {:?}", 2, counter.functions).into());
+    // Directly count user-impl methods so the prelude's `extern impl
+    // <Primitive>` blocks (which carry six methods on String) don't
+    // inflate the visitor count.
+    let user_method_count: usize = module
+        .impls
+        .iter()
+        .filter(|i| !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)))
+        .map(|i| i.functions.len())
+        .sum();
+    if user_method_count != 2 {
+        return Err(format!("expected {:?} but got {:?}", 2, user_method_count).into());
     }
     Ok(())
 }

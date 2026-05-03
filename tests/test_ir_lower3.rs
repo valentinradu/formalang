@@ -109,7 +109,7 @@ fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>>
     if module.impls.is_empty() {
         return Err("Expected non-empty impls".into());
     }
-    let impl_block = module.impls.first().ok_or("no impl block")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("no impl block")?;
     let get_x = impl_block
         .functions
         .iter()
@@ -175,7 +175,7 @@ fn test_lower_enum_impl_targets_enum_id() -> Result<(), Box<dyn std::error::Erro
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("no impl block")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
     if func.name != "is_circle" {
         return Err(format!("Expected is_circle, got {}", func.name).into());
@@ -358,7 +358,7 @@ fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::E
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("no impl block")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
     // Body should be x + y (BinaryOp of two SelfFieldRefs)
     let IrExpr::BinaryOp { left, right, .. } = func.body.as_ref().expect("expected function body")

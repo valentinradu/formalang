@@ -604,7 +604,11 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
-    let imp = folded.impls.first().ok_or("no impls in folded module")?;
+    let imp = folded
+        .impls
+        .iter()
+        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .ok_or("no user impls in folded module")?;
     let compute = imp
         .functions
         .iter()

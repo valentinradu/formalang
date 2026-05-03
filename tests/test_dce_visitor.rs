@@ -751,8 +751,12 @@ impl IrVisitor for CountingVisitor {
     fn visit_enum_variant(&mut self, _v: &IrEnumVariant) {
         self.enum_variants = self.enum_variants.saturating_add(1);
     }
-    fn visit_impl(&mut self, _i: &IrImpl) {
-        self.impls = self.impls.saturating_add(1);
+    fn visit_impl(&mut self, i: &IrImpl) {
+        // Skip the prelude's `extern impl <Primitive>` blocks so user-impl
+        // counts in this test stay at the source-declared values.
+        if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+            self.impls = self.impls.saturating_add(1);
+        }
     }
     fn visit_function(&mut self, _f: &IrFunction) {
         self.functions = self.functions.saturating_add(1);

@@ -118,11 +118,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Receiver-side generic args (`Box<I32>` → `["I32"]`)
         // for substituting the impl method's `TypeParam` references
         // with concrete types.
+        // Borrow the printable name of a primitive so SB-3 dispatch can
+        // route `s.len()` (`s: String`) through `extern impl String { ... }`
+        // alongside the existing struct/enum lookup paths.
+        let primitive_name_holder: String;
         let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = match &stripped {
             SemType::Generic { base, args } => (base.as_str(), args.clone()),
             SemType::Named(base) => (base.as_str(), Vec::new()),
-            SemType::Primitive(_)
-            | SemType::Array(_)
+            SemType::Primitive(p) => {
+                primitive_name_holder = format!("{p:?}");
+                (primitive_name_holder.as_str(), Vec::new())
+            }
+            SemType::Array(_)
             | SemType::Optional(_)
             | SemType::Tuple(_)
             | SemType::Dictionary { .. }

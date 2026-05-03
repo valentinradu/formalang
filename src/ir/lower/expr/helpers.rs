@@ -225,6 +225,24 @@ impl IrLowerer<'_> {
             }
         }
 
+        if let ResolvedType::Primitive(prim) = receiver_ty {
+            for impl_block in &self.module.impls {
+                if matches!(impl_block.target, crate::ir::ImplTarget::Primitive(p) if p == *prim) {
+                    for func in &impl_block.functions {
+                        if func.name == method_name {
+                            return func
+                                .return_type
+                                .clone()
+                                .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                                .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
+                        }
+                    }
+                }
+            }
+            // Fall through to the catch-all error: a missing primitive
+            // method is a compiler bug.
+        }
+
         if let ResolvedType::Enum(enum_id) = receiver_ty {
             for impl_block in &self.module.impls {
                 if impl_block.enum_id() == Some(*enum_id) {

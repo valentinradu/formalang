@@ -1,11 +1,667 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 102
 expression: file
 ---
 File {
     format_version: 1,
     statements: [
+        Definition(
+            Impl(
+                ImplDef {
+                    trait_name: None,
+                    trait_args: [],
+                    name: Ident {
+                        name: "String",
+                        span: Span {
+                            start: Location {
+                                offset: 626,
+                                line: 15,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 632,
+                                line: 15,
+                                column: 19,
+                            },
+                        },
+                    },
+                    generics: [],
+                    functions: [
+                        FnDef {
+                            name: Ident {
+                                name: "len",
+                                span: Span {
+                                    start: Location {
+                                        offset: 642,
+                                        line: 16,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 645,
+                                        line: 16,
+                                        column: 11,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 646,
+                                                line: 16,
+                                                column: 12,
+                                            },
+                                            end: Location {
+                                                offset: 650,
+                                                line: 16,
+                                                column: 16,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 646,
+                                            line: 16,
+                                            column: 12,
+                                        },
+                                        end: Location {
+                                            offset: 650,
+                                            line: 16,
+                                            column: 16,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    I32,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 639,
+                                    line: 16,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 658,
+                                    line: 16,
+                                    column: 24,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "is_empty",
+                                span: Span {
+                                    start: Location {
+                                        offset: 666,
+                                        line: 17,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 674,
+                                        line: 17,
+                                        column: 16,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 675,
+                                                line: 17,
+                                                column: 17,
+                                            },
+                                            end: Location {
+                                                offset: 679,
+                                                line: 17,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 675,
+                                            line: 17,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 679,
+                                            line: 17,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    Boolean,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 663,
+                                    line: 17,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 691,
+                                    line: 17,
+                                    column: 33,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "slice",
+                                span: Span {
+                                    start: Location {
+                                        offset: 699,
+                                        line: 18,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 704,
+                                        line: 18,
+                                        column: 13,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 705,
+                                                line: 18,
+                                                column: 14,
+                                            },
+                                            end: Location {
+                                                offset: 709,
+                                                line: 18,
+                                                column: 18,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 705,
+                                            line: 18,
+                                            column: 14,
+                                        },
+                                        end: Location {
+                                            offset: 709,
+                                            line: 18,
+                                            column: 18,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "start",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 711,
+                                                line: 18,
+                                                column: 20,
+                                            },
+                                            end: Location {
+                                                offset: 716,
+                                                line: 18,
+                                                column: 25,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            I32,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 711,
+                                            line: 18,
+                                            column: 20,
+                                        },
+                                        end: Location {
+                                            offset: 721,
+                                            line: 18,
+                                            column: 30,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "end",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 723,
+                                                line: 18,
+                                                column: 32,
+                                            },
+                                            end: Location {
+                                                offset: 726,
+                                                line: 18,
+                                                column: 35,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            I32,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 723,
+                                            line: 18,
+                                            column: 32,
+                                        },
+                                        end: Location {
+                                            offset: 731,
+                                            line: 18,
+                                            column: 40,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    String,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 696,
+                                    line: 18,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 742,
+                                    line: 18,
+                                    column: 51,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "starts_with",
+                                span: Span {
+                                    start: Location {
+                                        offset: 750,
+                                        line: 19,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 761,
+                                        line: 19,
+                                        column: 19,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 762,
+                                                line: 19,
+                                                column: 20,
+                                            },
+                                            end: Location {
+                                                offset: 766,
+                                                line: 19,
+                                                column: 24,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 762,
+                                            line: 19,
+                                            column: 20,
+                                        },
+                                        end: Location {
+                                            offset: 766,
+                                            line: 19,
+                                            column: 24,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "prefix",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 768,
+                                                line: 19,
+                                                column: 26,
+                                            },
+                                            end: Location {
+                                                offset: 774,
+                                                line: 19,
+                                                column: 32,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            String,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 768,
+                                            line: 19,
+                                            column: 26,
+                                        },
+                                        end: Location {
+                                            offset: 782,
+                                            line: 19,
+                                            column: 40,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    Boolean,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 747,
+                                    line: 19,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 794,
+                                    line: 19,
+                                    column: 52,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "contains",
+                                span: Span {
+                                    start: Location {
+                                        offset: 802,
+                                        line: 20,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 810,
+                                        line: 20,
+                                        column: 16,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 811,
+                                                line: 20,
+                                                column: 17,
+                                            },
+                                            end: Location {
+                                                offset: 815,
+                                                line: 20,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 811,
+                                            line: 20,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 815,
+                                            line: 20,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "needle",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 817,
+                                                line: 20,
+                                                column: 23,
+                                            },
+                                            end: Location {
+                                                offset: 823,
+                                                line: 20,
+                                                column: 29,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            String,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 817,
+                                            line: 20,
+                                            column: 23,
+                                        },
+                                        end: Location {
+                                            offset: 831,
+                                            line: 20,
+                                            column: 37,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    Boolean,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 799,
+                                    line: 20,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 843,
+                                    line: 20,
+                                    column: 49,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "byte_at",
+                                span: Span {
+                                    start: Location {
+                                        offset: 851,
+                                        line: 21,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 858,
+                                        line: 21,
+                                        column: 15,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 859,
+                                                line: 21,
+                                                column: 16,
+                                            },
+                                            end: Location {
+                                                offset: 863,
+                                                line: 21,
+                                                column: 20,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 859,
+                                            line: 21,
+                                            column: 16,
+                                        },
+                                        end: Location {
+                                            offset: 863,
+                                            line: 21,
+                                            column: 20,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "i",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 865,
+                                                line: 21,
+                                                column: 22,
+                                            },
+                                            end: Location {
+                                                offset: 866,
+                                                line: 21,
+                                                column: 23,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            I32,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 865,
+                                            line: 21,
+                                            column: 22,
+                                        },
+                                        end: Location {
+                                            offset: 871,
+                                            line: 21,
+                                            column: 28,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    I32,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 848,
+                                    line: 21,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 879,
+                                    line: 21,
+                                    column: 36,
+                                },
+                            },
+                        },
+                    ],
+                    is_extern: true,
+                    doc: None,
+                    span: Span {
+                        start: Location {
+                            offset: 614,
+                            line: 15,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 881,
+                            line: 22,
+                            column: 2,
+                        },
+                    },
+                },
+            ),
+        ),
         Definition(
             Struct(
                 StructDef {

@@ -417,7 +417,7 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("index out of bounds")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("index out of bounds")?;
     let func = impl_block
         .functions
         .iter()
@@ -448,7 +448,7 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let impl_block = &module.impls.first().ok_or("index out of bounds")?;
+    let impl_block = &module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("index out of bounds")?;
     let func = impl_block
         .functions
         .iter()
@@ -477,7 +477,7 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("index out of bounds")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     // Body should contain SelfFieldRef
     let IrExpr::BinaryOp { left, .. } = func.body.as_ref().expect("expected function body") else {
@@ -505,7 +505,7 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("index out of bounds")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     let IrExpr::Reference { path, .. } = func.body.as_ref().expect("expected function body") else {
         return Err(format!("Expected Reference(self), got {:?}", func.body.as_ref()).into());
@@ -823,7 +823,10 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
     let impl_block = optimized
         .impls
         .iter()
-        .find(|i| !i.functions.is_empty())
+        .find(|i| {
+            !i.functions.is_empty()
+                && !matches!(i.target, formalang::ir::ImplTarget::Primitive(_))
+        })
         .ok_or("impl")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     if !matches!(
@@ -942,7 +945,7 @@ fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Er
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let impl_block = module.impls.first().ok_or("no impl block")?;
+    let impl_block = module.impls.iter().find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_))).ok_or("no impl block")?;
     let func = impl_block
         .functions
         .iter()

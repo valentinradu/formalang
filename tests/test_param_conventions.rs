@@ -33,9 +33,14 @@ fn first_fn_params(src: &str) -> Vec<formalang::ast::FnParam> {
 fn first_impl_fn_params(src: &str) -> Vec<formalang::ast::FnParam> {
     use formalang::ast::{Definition, Statement};
     let file = parse_ok(src);
+    // Skip the compiler-shipped prelude's `extern impl <Primitive>` blocks
+    // so the test inspects the user's impl, not `impl String { fn len ... }`.
     for stmt in &file.statements {
         if let Statement::Definition(def) = stmt {
             if let Definition::Impl(imp) = &**def {
+                if imp.is_extern {
+                    continue;
+                }
                 if let Some(method) = imp.functions.first() {
                     return method.params.clone();
                 }

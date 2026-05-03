@@ -19,23 +19,44 @@ impl IrLowerer<'_> {
     /// This ensures that imported types have struct/enum IDs in the IR module,
     /// so when we instantiate them, `struct_id` is populated correctly.
     pub(super) fn register_imported_types(&mut self) {
-        // Register imported structs (top-level)
-        for (name, struct_info) in &self.symbols.structs {
-            // Check if this is an imported symbol
-            if self.symbols.get_module_origin(name).is_some() {
-                self.register_struct(name, struct_info);
-                // Track this import for backend use (to find impl blocks)
-                self.try_track_imported_type(name, ImportedKind::Struct);
+        // Collect the (name, source_module_path) pairs first so the
+        // borrow on `self.symbols` doesn't overlap the mutable borrow
+        // of `self.imported_source_context` below.
+        let imported_struct_pairs: Vec<(String, Vec<String>)> = self
+            .symbols
+            .structs
+            .iter()
+            .filter_map(|(name, _)| {
+                self.symbols
+                    .get_module_logical_path(name)
+                    .map(|path| (name.clone(), path.clone()))
+            })
+            .collect();
+        for (name, source_path) in imported_struct_pairs {
+            if let Some(struct_info) = self.symbols.structs.get(&name).cloned() {
+                self.imported_source_context = Some(source_path);
+                self.register_struct(&name, &struct_info);
+                self.imported_source_context = None;
+                self.try_track_imported_type(&name, ImportedKind::Struct);
             }
         }
 
-        // Register imported enums (top-level)
-        for (name, enum_info) in &self.symbols.enums {
-            // Check if this is an imported symbol
-            if self.symbols.get_module_origin(name).is_some() {
-                self.register_enum(name, enum_info);
-                // Track this import for backend use (to find impl blocks)
-                self.try_track_imported_type(name, ImportedKind::Enum);
+        let imported_enum_pairs: Vec<(String, Vec<String>)> = self
+            .symbols
+            .enums
+            .iter()
+            .filter_map(|(name, _)| {
+                self.symbols
+                    .get_module_logical_path(name)
+                    .map(|path| (name.clone(), path.clone()))
+            })
+            .collect();
+        for (name, source_path) in imported_enum_pairs {
+            if let Some(enum_info) = self.symbols.enums.get(&name).cloned() {
+                self.imported_source_context = Some(source_path);
+                self.register_enum(&name, &enum_info);
+                self.imported_source_context = None;
+                self.try_track_imported_type(&name, ImportedKind::Enum);
             }
         }
 

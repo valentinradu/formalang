@@ -250,6 +250,19 @@ impl IrLowerer<'_> {
                     ResolvedType::Enum(id)
                 } else if self.is_generic_param_in_scope(name) {
                     ResolvedType::TypeParam(name.clone())
+                } else if let Some(path) = self.imported_source_context.clone() {
+                    // CM gap: when register_imported_types is lowering an
+                    // imported struct/enum's field types, an unresolved
+                    // identifier most likely names a sibling type from the
+                    // same source module that the entry didn't import.
+                    // Default to External(<source>, name) so the
+                    // MonomorphisePass can pull it in via Phase 1a.
+                    ResolvedType::External {
+                        module_path: path,
+                        name: name.clone(),
+                        kind: crate::ir::ImportedKind::Struct,
+                        type_args: Vec::new(),
+                    }
                 } else {
                     // surface unresolved type names loudly
                     // instead of silently lowering to `TypeParam(name)`.
@@ -288,6 +301,14 @@ impl IrLowerer<'_> {
                 }
                 if self.is_generic_param_in_scope(&name.name) {
                     return ResolvedType::TypeParam(name.name.clone());
+                }
+                if let Some(path) = self.imported_source_context.clone() {
+                    return ResolvedType::External {
+                        module_path: path,
+                        name: name.name.clone(),
+                        kind: crate::ir::ImportedKind::Struct,
+                        type_args,
+                    };
                 }
                 self.errors.push(CompilerError::UndefinedType {
                     name: name.name.clone(),

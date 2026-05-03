@@ -175,13 +175,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             || self
                 .symbols
                 .get_enum_variants(&impl_def.name.name)
-                .is_some();
+                .is_some()
+            || crate::semantic::sem_type::primitive_from_name(&impl_def.name.name).is_some();
 
         if !type_exists {
             self.errors.push(CompilerError::UndefinedType {
                 name: impl_def.name.name.clone(),
                 span: impl_def.span,
             });
+            return;
+        }
+
+        // `extern impl <Primitive>` blocks (e.g. the prelude's `extern
+        // impl String { ... }`) don't get registered through the
+        // struct/enum-keyed `define_*_impl` paths below. The methods
+        // they declare are reachable through the IR module's own
+        // `impls` vector at lowering time.
+        if crate::semantic::sem_type::primitive_from_name(&impl_def.name.name).is_some() {
             return;
         }
 

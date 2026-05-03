@@ -1258,7 +1258,11 @@ fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("expected success: {e:?}"))?;
-    let imp = module.impls.first().ok_or("no impl")?;
+    let imp = module
+        .impls
+        .iter()
+        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .ok_or("no user impl")?;
     let next = imp
         .functions
         .iter()
