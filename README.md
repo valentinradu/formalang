@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://crates.io/crates/formalang"><img src="https://img.shields.io/crates/v/formalang.svg?style=flat-square&color=cba6f7&label=crates.io" alt="crates.io"></a>
   <a href="https://docs.rs/formalang"><img src="https://img.shields.io/docsrs/formalang?style=flat-square&color=cba6f7" alt="docs.rs"></a>
-  <a href="#license"><img src="https://img.shields.io/crates/l/formalang.svg?style=flat-square&color=cba6f7" alt="license"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT_or_Apache--2.0-cba6f7?style=flat-square" alt="license"></a>
   <a href=".github/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/valentinradu/formalang/ci.yml?style=flat-square&color=cba6f7&label=ci&branch=main" alt="ci"></a>
 </p>
 
