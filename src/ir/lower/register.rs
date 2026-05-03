@@ -25,8 +25,8 @@ impl IrLowerer<'_> {
         let imported_struct_pairs: Vec<(String, Vec<String>)> = self
             .symbols
             .structs
-            .iter()
-            .filter_map(|(name, _)| {
+            .keys()
+            .filter_map(|name| {
                 self.symbols
                     .get_module_logical_path(name)
                     .map(|path| (name.clone(), path.clone()))
@@ -44,8 +44,8 @@ impl IrLowerer<'_> {
         let imported_enum_pairs: Vec<(String, Vec<String>)> = self
             .symbols
             .enums
-            .iter()
-            .filter_map(|(name, _)| {
+            .keys()
+            .filter_map(|name| {
                 self.symbols
                     .get_module_logical_path(name)
                     .map(|path| (name.clone(), path.clone()))
