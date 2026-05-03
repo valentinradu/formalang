@@ -294,7 +294,7 @@ fn collect_free_refs(
                         collect_free_refs(value, &inner, out, seen);
                         inner.insert(name.clone());
                     }
-                    IrBlockStatement::Assign { target, value } => {
+                    IrBlockStatement::Assign { target, value, .. } => {
                         collect_free_refs(target, &inner, out, seen);
                         collect_free_refs(value, &inner, out, seen);
                     }

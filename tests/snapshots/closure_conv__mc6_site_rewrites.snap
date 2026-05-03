@@ -1,6 +1,5 @@
 ---
 source: tests/closure_conv.rs
-assertion_line: 122
 expression: "(make_adder_body, format_tag_value)"
 ---
 (
@@ -33,6 +32,23 @@ expression: "(make_adder_body, format_tag_value)"
                         ty: Primitive(
                             I32,
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                 ),
             ],
@@ -41,6 +57,23 @@ expression: "(make_adder_body, format_tag_value)"
                     1,
                 ),
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 62,
+                        line: 3,
+                        column: 9,
+                    },
+                    end: Location {
+                        offset: 76,
+                        line: 3,
+                        column: 23,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         ty: Closure {
             param_tys: [
@@ -53,6 +86,23 @@ expression: "(make_adder_body, format_tag_value)"
             ],
             return_ty: Primitive(
                 I32,
+            ),
+        },
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 62,
+                    line: 3,
+                    column: 9,
+                },
+                end: Location {
+                    offset: 76,
+                    line: 3,
+                    column: 23,
+                },
+            },
+            file: FileId(
+                0,
             ),
         },
     },
@@ -73,6 +123,23 @@ expression: "(make_adder_body, format_tag_value)"
                     0,
                 ),
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 123,
+                        line: 6,
+                        column: 40,
+                    },
+                    end: Location {
+                        offset: 136,
+                        line: 6,
+                        column: 53,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         ty: Closure {
             param_tys: [
@@ -85,6 +152,23 @@ expression: "(make_adder_body, format_tag_value)"
             ],
             return_ty: Primitive(
                 String,
+            ),
+        },
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 123,
+                    line: 6,
+                    column: 40,
+                },
+                end: Location {
+                    offset: 136,
+                    line: 6,
+                    column: 53,
+                },
+            },
+            file: FileId(
+                0,
             ),
         },
     },

@@ -1,6 +1,5 @@
 ---
 source: tests/closure_conv.rs
-assertion_line: 632
 expression: lifted_body
 ---
 Block {
@@ -29,6 +28,40 @@ Block {
                 ty: Primitive(
                     I32,
                 ),
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
+            },
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
             },
         },
     ],
@@ -45,6 +78,23 @@ Block {
             ty: Primitive(
                 I32,
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         op: Add,
         right: Reference {
@@ -59,12 +109,63 @@ Block {
             ty: Primitive(
                 I32,
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         ty: Primitive(
             I32,
         ),
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
     },
     ty: Primitive(
         I32,
     ),
+    span: IrSpan {
+        span: Span {
+            start: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+            end: Location {
+                offset: 0,
+                line: 1,
+                column: 1,
+            },
+        },
+        file: FileId(
+            0,
+        ),
+    },
 }

@@ -368,7 +368,7 @@ fn remap_block_statement(stmt: &mut crate::ir::IrBlockStatement, remap: &IdRemap
             }
             remap_expr(value, remap);
         }
-        IrBlockStatement::Assign { target, value } => {
+        IrBlockStatement::Assign { target, value, .. } => {
             remap_expr(target, remap);
             remap_expr(value, remap);
         }

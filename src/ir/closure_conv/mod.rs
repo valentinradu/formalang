@@ -427,7 +427,7 @@ fn expr_has_closure(expr: &IrExpr) -> bool {
         } => {
             statements.iter().any(|stmt| match stmt {
                 IrBlockStatement::Let { value, .. } => expr_has_closure(value),
-                IrBlockStatement::Assign { target, value } => {
+                IrBlockStatement::Assign { target, value, .. } => {
                     expr_has_closure(target) || expr_has_closure(value)
                 }
                 IrBlockStatement::Expr(e) => expr_has_closure(e),

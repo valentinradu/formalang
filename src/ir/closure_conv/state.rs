@@ -457,6 +457,7 @@ impl ConversionState {
                 mutable,
                 ty,
                 value,
+                ..
             } => {
                 let new_value = self.process(value, ctx);
                 IrBlockStatement::Let {
@@ -465,11 +466,15 @@ impl ConversionState {
                     mutable,
                     ty,
                     value: new_value,
+
+                    span: crate::ir::IrSpan::default(),
                 }
             }
-            IrBlockStatement::Assign { target, value } => IrBlockStatement::Assign {
+            IrBlockStatement::Assign { target, value, .. } => IrBlockStatement::Assign {
                 target: self.process(target, ctx),
                 value: self.process(value, ctx),
+
+                span: crate::ir::IrSpan::default(),
             },
             IrBlockStatement::Expr(e) => IrBlockStatement::Expr(self.process(e, ctx)),
         }

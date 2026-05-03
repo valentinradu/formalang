@@ -325,7 +325,7 @@ pub fn walk_block_statement<V: IrVisitor + ?Sized>(
         IrBlockStatement::Let { value, .. } => {
             walk_expr(visitor, value);
         }
-        IrBlockStatement::Assign { target, value } => {
+        IrBlockStatement::Assign { target, value, .. } => {
             walk_expr(visitor, target);
             walk_expr(visitor, value);
         }

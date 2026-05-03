@@ -23,6 +23,9 @@ pub enum IrBlockStatement {
         ty: Option<ResolvedType>,
         /// Value expression
         value: IrExpr,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
     /// Assignment: `x = expr`
     Assign {
@@ -30,8 +33,13 @@ pub enum IrBlockStatement {
         target: IrExpr,
         /// Value expression
         value: IrExpr,
+        /// Source span for DWARF / source-map emission.
+        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
+        span: super::IrSpan,
     },
-    /// Expression statement (evaluated for side effects)
+    /// Expression statement (evaluated for side effects).
+    /// The wrapped `IrExpr` carries its own span; no statement-level
+    /// span field is needed for this variant.
     Expr(IrExpr),
 }
 
@@ -50,16 +58,23 @@ impl IrBlockStatement {
                 mutable,
                 ty,
                 value,
+                span,
             } => Self::Let {
                 binding_id,
                 name,
                 mutable,
                 ty,
                 value: f(value),
+                span,
             },
-            Self::Assign { target, value } => Self::Assign {
+            Self::Assign {
+                target,
+                value,
+                span,
+            } => Self::Assign {
                 target: f(target),
                 value: f(value),
+                span,
             },
             Self::Expr(expr) => Self::Expr(f(expr)),
         }

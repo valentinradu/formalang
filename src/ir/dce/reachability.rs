@@ -240,7 +240,7 @@ impl DeadCodeEliminator<'_> {
             IrBlockStatement::Let { value, .. } => {
                 self.mark_used_in_expr(value);
             }
-            IrBlockStatement::Assign { target, value } => {
+            IrBlockStatement::Assign { target, value, .. } => {
                 self.mark_used_in_expr(target);
                 self.mark_used_in_expr(value);
             }

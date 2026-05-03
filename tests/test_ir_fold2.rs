@@ -585,7 +585,7 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
                 contains_addition(result)
                     || statements.iter().any(|s| match s {
                         IrBlockStatement::Let { value, .. } => contains_addition(value),
-                        IrBlockStatement::Assign { target, value } => {
+                        IrBlockStatement::Assign { target, value, .. } => {
                             contains_addition(target) || contains_addition(value)
                         }
                         IrBlockStatement::Expr(e) => contains_addition(e),

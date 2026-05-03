@@ -222,6 +222,24 @@ pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
     ir::lower_to_ir(&ast, analyzer.symbols())
 }
 
+/// Compile `FormaLang` source to IR with a known source-file path.
+///
+/// The path is registered in `IrModule.file_table` and threaded into
+/// every lowered IR node's `IrSpan.file`. Use this entry point when
+/// emitting DWARF / source maps / line tables — backends resolve
+/// every span to a real path via `IrModule.file_path(span.file)`.
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
+pub fn compile_to_ir_with_path(
+    source: &str,
+    path: std::path::PathBuf,
+) -> Result<IrModule, Vec<CompilerError>> {
+    let (ast, analyzer) = compile_with_analyzer(source)?;
+    ir::lower_to_ir_with_path(&ast, analyzer.symbols(), path)
+}
+
 /// Compile `FormaLang` source code to IR with a custom module resolver.
 ///
 /// Runs [`ir::MonomorphisePass`] after lowering with an `imports_map` built
@@ -265,4 +283,25 @@ where
     Pipeline::new()
         .pass(ir::MonomorphisePass::default().with_imports(imports_map))
         .run(module)
+}
+
+/// Compile `FormaLang` source to IR with both a custom resolver and
+/// a known source-file path. Combines the contracts of
+/// [`compile_to_ir_with_resolver`] (cross-module imports via the
+/// resolver) and [`compile_to_ir_with_path`] (file_table seeded with
+/// the entry-point path so spans carry a real `FileId`).
+///
+/// # Errors
+///
+/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
+pub fn compile_to_ir_with_path_and_resolver<R>(
+    source: &str,
+    path: std::path::PathBuf,
+    resolver: R,
+) -> Result<IrModule, Vec<CompilerError>>
+where
+    R: semantic::module_resolver::ModuleResolver,
+{
+    let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
+    ir::lower_to_ir_with_path(&ast, analyzer.symbols(), path)
 }

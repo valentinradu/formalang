@@ -53,7 +53,7 @@ pub(super) fn resolve_block_stmt(stmt: &mut IrBlockStatement, r: &mut FnResolver
             *binding_id = id;
             r.bind(name.clone(), id, BindingKind::Local);
         }
-        IrBlockStatement::Assign { target, value } => {
+        IrBlockStatement::Assign { target, value, .. } => {
             resolve_expr(target, r);
             resolve_expr(value, r);
         }

@@ -1,6 +1,5 @@
 ---
 source: tests/closure_conv.rs
-assertion_line: 290
 expression: "(make_curried_body, outer_lifted_body)"
 ---
 (
@@ -33,6 +32,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                         ty: Primitive(
                             I32,
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                 ),
             ],
@@ -41,6 +57,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                     0,
                 ),
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 81,
+                        line: 3,
+                        column: 13,
+                    },
+                    end: Location {
+                        offset: 108,
+                        line: 3,
+                        column: 40,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         ty: Closure {
             param_tys: [
@@ -64,6 +97,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                     I32,
                 ),
             },
+        },
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 81,
+                    line: 3,
+                    column: 13,
+                },
+                end: Location {
+                    offset: 108,
+                    line: 3,
+                    column: 40,
+                },
+            },
+            file: FileId(
+                0,
+            ),
         },
     },
     ClosureRef {
@@ -95,6 +145,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                         ty: Primitive(
                             I32,
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                 ),
                 (
@@ -117,6 +184,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                                     0,
                                 ),
                             ),
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
                         },
                         field: "n",
                         field_idx: FieldIdx(
@@ -125,6 +209,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                         ty: Primitive(
                             I32,
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                 ),
             ],
@@ -133,6 +234,23 @@ expression: "(make_curried_body, outer_lifted_body)"
                     1,
                 ),
             ),
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 90,
+                        line: 3,
+                        column: 22,
+                    },
+                    end: Location {
+                        offset: 108,
+                        line: 3,
+                        column: 40,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
         ty: Closure {
             param_tys: [
@@ -145,6 +263,23 @@ expression: "(make_curried_body, outer_lifted_body)"
             ],
             return_ty: Primitive(
                 I32,
+            ),
+        },
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 90,
+                    line: 3,
+                    column: 22,
+                },
+                end: Location {
+                    offset: 108,
+                    line: 3,
+                    column: 40,
+                },
+            },
+            file: FileId(
+                0,
             ),
         },
     },

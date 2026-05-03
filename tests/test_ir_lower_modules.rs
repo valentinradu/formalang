@@ -559,6 +559,8 @@ fn ir_block_statement_map_exprs_let() -> Result<(), Box<dyn std::error::Error>> 
 
             span: formalang::ir::IrSpan::default(),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mapped = stmt.map_exprs(|_e| IrExpr::Literal {
@@ -605,6 +607,8 @@ fn ir_block_statement_map_exprs_assign() -> Result<(), Box<dyn std::error::Error
 
             span: formalang::ir::IrSpan::default(),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut call_count = 0usize;
@@ -1576,6 +1580,8 @@ fn visitor_walk_block_statement_visits_let_value() -> Result<(), Box<dyn std::er
 
             span: formalang::ir::IrSpan::default(),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = ExprCounter(0);
@@ -1617,6 +1623,8 @@ fn visitor_walk_block_statement_visits_assign_both_sides() -> Result<(), Box<dyn
 
             span: formalang::ir::IrSpan::default(),
         },
+
+        span: formalang::ir::IrSpan::default(),
     };
 
     let mut counter = ExprCounter(0);
@@ -2991,6 +2999,8 @@ fn visitor_walk_expr_block_statements_and_result() -> Result<(), Box<dyn std::er
 
                 span: formalang::ir::IrSpan::default(),
             },
+
+            span: formalang::ir::IrSpan::default(),
         }],
         result: Box::new(IrExpr::Literal {
             value: Literal::Number(2.0.into()),

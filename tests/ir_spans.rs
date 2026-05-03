@@ -11,13 +11,16 @@ use formalang::compile_to_ir;
 use formalang::ir::{FileId, IrExpr, IrModule, IrSpan};
 use std::path::PathBuf;
 
-/// SP-2: IrFunction.span is populated (non-default) for each lowered
-/// function. The span's byte offsets must match the AST's source range
-/// somewhere — at minimum, span shouldn't be exactly default.
+/// SP-2 + SP-7: IrFunction.span is populated (non-default) for each
+/// lowered function when the caller supplies a source path via
+/// `compile_to_ir_with_path`. The span's `file` carries `FileId(1)`
+/// after path registration, so `is_default()` returns false even when
+/// the byte range happens to start at offset 0.
 #[test]
 fn function_carries_non_default_span() -> Result<(), Box<dyn std::error::Error>> {
     let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
-    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let module = formalang::compile_to_ir_with_path(source, PathBuf::from("test.fv"))
+        .map_err(|e| format!("{e:?}"))?;
     let add = module
         .functions
         .iter()
@@ -25,6 +28,9 @@ fn function_carries_non_default_span() -> Result<(), Box<dyn std::error::Error>>
         .ok_or("add missing")?;
     if add.span.is_default() {
         return Err("add.span should not be IrSpan::default()".into());
+    }
+    if add.span.file.is_synthetic() {
+        return Err("add.span.file should not be SYNTHETIC after path registration".into());
     }
     Ok(())
 }
@@ -79,7 +85,9 @@ fn file_table_round_trips() {
     let id_a = module.register_file(PathBuf::from("a.fv"));
     assert_eq!(id_a, FileId(1));
     assert_eq!(
-        module.file_path(id_a).map(|p| p.to_string_lossy().into_owned()),
+        module
+            .file_path(id_a)
+            .map(|p| p.to_string_lossy().into_owned()),
         Some("a.fv".to_string())
     );
 

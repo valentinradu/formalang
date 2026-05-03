@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 150
 expression: module
 ---
 IrModule {
@@ -20,6 +19,23 @@ IrModule {
                     default: None,
                     doc: None,
                     convention: Let,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
                 IrField {
                     name: "y",
@@ -31,10 +47,44 @@ IrModule {
                     default: None,
                     doc: None,
                     convention: Let,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
             ],
             generic_params: [],
             doc: None,
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
     ],
     traits: [],
@@ -63,6 +113,23 @@ IrModule {
                             ty: None,
                             default: None,
                             convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
                         },
                     ],
                     return_type: Some(
@@ -80,6 +147,23 @@ IrModule {
                                 ty: Primitive(
                                     I32,
                                 ),
+                                span: IrSpan {
+                                    span: Span {
+                                        start: Location {
+                                            offset: 119,
+                                            line: 6,
+                                            column: 17,
+                                        },
+                                        end: Location {
+                                            offset: 125,
+                                            line: 6,
+                                            column: 23,
+                                        },
+                                    },
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
                             },
                             op: Add,
                             right: SelfFieldRef {
@@ -90,23 +174,92 @@ IrModule {
                                 ty: Primitive(
                                     I32,
                                 ),
+                                span: IrSpan {
+                                    span: Span {
+                                        start: Location {
+                                            offset: 128,
+                                            line: 6,
+                                            column: 26,
+                                        },
+                                        end: Location {
+                                            offset: 134,
+                                            line: 6,
+                                            column: 32,
+                                        },
+                                    },
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
                             },
                             ty: Primitive(
                                 I32,
                             ),
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 119,
+                                        line: 6,
+                                        column: 17,
+                                    },
+                                    end: Location {
+                                        offset: 134,
+                                        line: 6,
+                                        column: 32,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
                         },
                     ),
                     extern_abi: None,
                     attributes: [],
                     doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
             ],
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
     ],
     lets: [],
     functions: [],
     imports: [],
     modules: [],
+    file_table: [],
     struct_names: {
         "Point": StructId(
             0,

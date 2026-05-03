@@ -12,6 +12,23 @@ expression: new_structs
         doc: Some(
             "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`.",
         ),
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
     },
     IrStruct {
         name: "__ClosureEnv1",
@@ -28,11 +45,45 @@ expression: new_structs
                 default: None,
                 doc: None,
                 convention: Sink,
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
         ],
         generic_params: [],
         doc: Some(
             "Auto-generated capture environment for a lifted closure. Produced by `ClosureConversionPass`.",
         ),
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
     },
 ]

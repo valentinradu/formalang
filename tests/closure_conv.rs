@@ -556,7 +556,7 @@ fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::i
             for stmt in statements {
                 match stmt {
                     IrBlockStatement::Let { value, .. } => visit(value),
-                    IrBlockStatement::Assign { target, value } => {
+                    IrBlockStatement::Assign { target, value, .. } => {
                         visit(target);
                         visit(value);
                     }

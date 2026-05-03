@@ -132,6 +132,8 @@ impl IrLowerer<'_> {
                 mutable,
                 ty: ir_ty,
                 value: ir_value,
+
+                span: crate::ir::IrSpan::default(),
             }],
             BindingPattern::Array { elements, .. } => {
                 self.lower_let_array_destructure(elements, mutable, &ir_value)
@@ -246,6 +248,8 @@ impl IrLowerer<'_> {
                         mutable: *mutable,
                         ty: ir_ty,
                         value: ir_value,
+
+                        span: crate::ir::IrSpan::default(),
                     }],
                     BindingPattern::Array { elements, .. } => {
                         self.lower_let_array_destructure(elements, *mutable, &ir_value)
@@ -262,6 +266,8 @@ impl IrLowerer<'_> {
                 vec![IrBlockStatement::Assign {
                     target: self.lower_expr(target),
                     value: self.lower_expr(value),
+
+                    span: crate::ir::IrSpan::default(),
                 }]
             }
             BlockStatement::Expr(expr) => {
@@ -310,6 +316,8 @@ impl IrLowerer<'_> {
                             ty: elem_ty.clone(),
                             span: self.current_ir_span(),
                         },
+
+                        span: crate::ir::IrSpan::default(),
                     }
                 })
             })
@@ -343,6 +351,8 @@ impl IrLowerer<'_> {
                         ty: field_ty,
                         span: self.current_ir_span(),
                     },
+
+                    span: crate::ir::IrSpan::default(),
                 }
             })
             .collect()
@@ -397,6 +407,8 @@ impl IrLowerer<'_> {
                             ty,
                             span: self.current_ir_span(),
                         },
+
+                        span: crate::ir::IrSpan::default(),
                     }
                 })
             })

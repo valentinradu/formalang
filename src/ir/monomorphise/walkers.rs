@@ -213,7 +213,7 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
 fn walk_block_stmt_types(stmt: &IrBlockStatement, visit: &mut impl FnMut(&ResolvedType)) {
     match stmt {
         IrBlockStatement::Let { value, .. } => walk_expr_types(value, visit),
-        IrBlockStatement::Assign { target, value } => {
+        IrBlockStatement::Assign { target, value, .. } => {
             walk_expr_types(target, visit);
             walk_expr_types(value, visit);
         }
@@ -469,7 +469,7 @@ fn walk_block_stmt_types_mut(
 ) {
     match stmt {
         IrBlockStatement::Let { value, .. } => walk_expr_types_mut_inner(value, visit),
-        IrBlockStatement::Assign { target, value } => {
+        IrBlockStatement::Assign { target, value, .. } => {
             walk_expr_types_mut_inner(target, visit);
             walk_expr_types_mut_inner(value, visit);
         }

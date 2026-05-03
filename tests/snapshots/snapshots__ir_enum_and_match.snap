@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 167
 expression: module
 ---
 IrModule {
@@ -14,10 +13,44 @@ IrModule {
                 IrEnumVariant {
                     name: "active",
                     fields: [],
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
                 IrEnumVariant {
                     name: "inactive",
                     fields: [],
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
                 IrEnumVariant {
                     name: "pending",
@@ -32,12 +65,63 @@ IrModule {
                             default: None,
                             doc: None,
                             convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
                         },
                     ],
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
             ],
             generic_params: [],
             doc: None,
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
     ],
     impls: [],
@@ -62,6 +146,23 @@ IrModule {
                     ),
                     default: None,
                     convention: Let,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
             ],
             return_type: Some(
@@ -81,6 +182,23 @@ IrModule {
                                 0,
                             ),
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 123,
+                                    line: 5,
+                                    column: 19,
+                                },
+                                end: Location {
+                                    offset: 124,
+                                    line: 5,
+                                    column: 20,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                     arms: [
                         IrMatchArm {
@@ -103,6 +221,23 @@ IrModule {
                                 ty: Primitive(
                                     I32,
                                 ),
+                                span: IrSpan {
+                                    span: Span {
+                                        start: Location {
+                                            offset: 152,
+                                            line: 6,
+                                            column: 26,
+                                        },
+                                        end: Location {
+                                            offset: 153,
+                                            line: 6,
+                                            column: 27,
+                                        },
+                                    },
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
                             },
                         },
                         IrMatchArm {
@@ -125,6 +260,23 @@ IrModule {
                                 ty: Primitive(
                                     I32,
                                 ),
+                                span: IrSpan {
+                                    span: Span {
+                                        start: Location {
+                                            offset: 182,
+                                            line: 7,
+                                            column: 28,
+                                        },
+                                        end: Location {
+                                            offset: 183,
+                                            line: 7,
+                                            column: 29,
+                                        },
+                                    },
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
                             },
                         },
                         IrMatchArm {
@@ -152,21 +304,73 @@ IrModule {
                                 ty: Primitive(
                                     I32,
                                 ),
+                                span: IrSpan {
+                                    span: Span {
+                                        start: Location {
+                                            offset: 218,
+                                            line: 8,
+                                            column: 34,
+                                        },
+                                        end: Location {
+                                            offset: 223,
+                                            line: 8,
+                                            column: 39,
+                                        },
+                                    },
+                                    file: FileId(
+                                        0,
+                                    ),
+                                },
                             },
                         },
                     ],
                     ty: Primitive(
                         I32,
                     ),
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 117,
+                                line: 5,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 237,
+                                line: 9,
+                                column: 14,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
             ),
             extern_abi: None,
             attributes: [],
             doc: None,
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
         },
     ],
     imports: [],
     modules: [],
+    file_table: [],
     struct_names: {},
     trait_names: {},
     enum_names: {

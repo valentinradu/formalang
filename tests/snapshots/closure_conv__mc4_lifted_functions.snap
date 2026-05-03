@@ -1,6 +1,5 @@
 ---
 source: tests/closure_conv.rs
-assertion_line: 63
 expression: lifted
 ---
 [
@@ -23,6 +22,23 @@ expression: lifted
                 ),
                 default: None,
                 convention: Let,
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 123,
+                            line: 6,
+                            column: 40,
+                        },
+                        end: Location {
+                            offset: 136,
+                            line: 6,
+                            column: 53,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
             IrFunctionParam {
                 binding_id: BindingId(
@@ -37,6 +53,23 @@ expression: lifted
                 ),
                 default: None,
                 convention: Let,
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 123,
+                            line: 6,
+                            column: 40,
+                        },
+                        end: Location {
+                            offset: 136,
+                            line: 6,
+                            column: 53,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
         ],
         return_type: Some(
@@ -57,6 +90,23 @@ expression: lifted
                 ty: Primitive(
                     String,
                 ),
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
         ),
         extern_abi: None,
@@ -64,6 +114,23 @@ expression: lifted
         doc: Some(
             "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures.",
         ),
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 123,
+                    line: 6,
+                    column: 40,
+                },
+                end: Location {
+                    offset: 136,
+                    line: 6,
+                    column: 53,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
     },
     IrFunction {
         name: "__closure1",
@@ -84,6 +151,23 @@ expression: lifted
                 ),
                 default: None,
                 convention: Let,
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 62,
+                            line: 3,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 76,
+                            line: 3,
+                            column: 23,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
             IrFunctionParam {
                 binding_id: BindingId(
@@ -98,6 +182,23 @@ expression: lifted
                 ),
                 default: None,
                 convention: Let,
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 62,
+                            line: 3,
+                            column: 9,
+                        },
+                        end: Location {
+                            offset: 76,
+                            line: 3,
+                            column: 23,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
         ],
         return_type: Some(
@@ -119,6 +220,23 @@ expression: lifted
                     ty: Primitive(
                         I32,
                     ),
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
                 op: Add,
                 right: FieldAccess {
@@ -136,6 +254,23 @@ expression: lifted
                                 1,
                             ),
                         ),
+                        span: IrSpan {
+                            span: Span {
+                                start: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Location {
+                                    offset: 0,
+                                    line: 1,
+                                    column: 1,
+                                },
+                            },
+                            file: FileId(
+                                0,
+                            ),
+                        },
                     },
                     field: "n",
                     field_idx: FieldIdx(
@@ -144,10 +279,44 @@ expression: lifted
                     ty: Primitive(
                         I32,
                     ),
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
                 },
                 ty: Primitive(
                     I32,
                 ),
+                span: IrSpan {
+                    span: Span {
+                        start: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 0,
+                            line: 1,
+                            column: 1,
+                        },
+                    },
+                    file: FileId(
+                        0,
+                    ),
+                },
             },
         ),
         extern_abi: None,
@@ -155,5 +324,22 @@ expression: lifted
         doc: Some(
             "Auto-generated lifted closure body. Produced by `ClosureConversionPass`. The first parameter `__env` carries the closure's captures.",
         ),
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 62,
+                    line: 3,
+                    column: 9,
+                },
+                end: Location {
+                    offset: 76,
+                    line: 3,
+                    column: 23,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
     },
 ]
