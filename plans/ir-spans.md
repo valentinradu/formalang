@@ -346,35 +346,30 @@ One commit landed on `dwarf-spans-design`:
 
 - **SP-7** (`a0e481c`): `lower_to_ir_with_path(ast, symbols, path)`
   registers the source path as `FileId(1)` and seeds
-  `IrLowerer.current_file`. Backends can resolve every span to a
-  real file via `IrModule.file_path(span.file)`.
+  `IrLowerer.current_file`.
+- **SP-8 + SP-9** (`09a3120`): Higher-level entry points
+  `compile_to_ir_with_path` and `compile_to_ir_with_path_and_resolver`
+  in lib.rs. Plus `pub span: IrSpan` field on
+  `IrBlockStatement::Let` and `IrBlockStatement::Assign` (the third
+  variant `Expr(IrExpr)` already carries a span via the wrapped
+  expression). All construction and pattern-match sites mass-patched
+  via the same Python script. Insta snapshots updated.
 
 ### Remaining work
 
-The plan is substantively complete. The remaining items are
-smaller follow-ups, several already correct-for-free:
+The formalang-side plan is fully shipped. One item is gated on
+cross-branch coordination:
 
-1. **Monomorphisation specialisation spans** — already correct.
-   The existing `let source = module.get_struct(id).cloned()`
-   pattern carries the struct's `span` through to the
-   specialisation via the `Clone` trait. Generic specialisations
-   anchor at the originating generic's source location
-   automatically.
-2. **Cross-module file_table integration.** When imports are
-   inlined (per `plans/cross-module-codegen.md`), the entry
-   module's `file_table` should register every imported source so
-   cloned items' spans resolve correctly. Lands as part of
-   cross-module follow-up after the branches merge.
-3. **`IrBlockStatement::Let` / `Assign` spans.** Optional polish —
-   block-statement-level spans aren't required for DWARF (the inner
-   `IrExpr` already carries a span). If future tooling needs the
-   `let` keyword's location, add a span field to those variants
-   (~25 construction sites).
-4. **Higher-level entry points** (`compile_to_ir` /
-   `compile_to_ir_with_resolver`) accepting an optional source
-   path and threading it to `lower_to_ir_with_path`. Today,
-   path-aware lowering must be invoked alongside
-   `compile_with_analyzer`.
+- **Cross-module file_table integration.** When imports are
+  inlined (per `plans/cross-module-codegen.md`), the entry
+  module's `file_table` should register every imported source so
+  cloned items' spans resolve correctly. Lands after the branches
+  merge to main.
+
+Monomorphisation specialisation spans are correct-for-free via the
+`Clone` trait — `let source = module.get_struct(id).cloned()`
+carries the struct's `span` field through into the specialised
+copy.
 
 ## Status in the formawasm backend
 
