@@ -1,10 +1,35 @@
+<br/>
+
 <p align="center">
-  <img src="website/logo-180.png" alt="FormaLang" width="160">
+  <img src="website/logo-180.png" alt="FormaLang" width="200">
 </p>
 
-<h1 align="center">FormaLang</h1>
+<h3 align="center">A statically typed, declarative DSL for Rust applications</h3>
 
-FormaLang is a statically typed, declarative language designed to be embedded in Rust applications. You write `.fv` files, the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend.
+<p align="center">
+  <a href="https://crates.io/crates/formalang"><img src="https://img.shields.io/crates/v/formalang.svg?style=flat-square&color=cba6f7&label=crates.io" alt="crates.io"></a>
+  <a href="https://docs.rs/formalang"><img src="https://img.shields.io/docsrs/formalang?style=flat-square&color=cba6f7" alt="docs.rs"></a>
+  <a href="#license"><img src="https://img.shields.io/crates/l/formalang.svg?style=flat-square&color=cba6f7" alt="license"></a>
+  <a href=".github/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/valentinradu/formalang/ci.yml?style=flat-square&color=cba6f7&label=ci&branch=main" alt="ci"></a>
+</p>
+
+<p align="center">
+  <a href="#why-formalang">Why</a>
+  &nbsp;·&nbsp;
+  <a href="#quick-start">Quick Start</a>
+  &nbsp;·&nbsp;
+  <a href="#language-tour">Language Tour</a>
+  &nbsp;·&nbsp;
+  <a href="#rust-api">Rust API</a>
+  &nbsp;·&nbsp;
+  <a href="https://formalang.org/docs/">Full Docs</a>
+</p>
+
+<br/>
+
+---
+
+You write `.fv` files; the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend.
 
 ```text
 .fv source → formalang library → IrModule → your Backend → output
@@ -516,3 +541,14 @@ These are responsibilities of the embedding application and its backends.
 - [Architecture](docs/developer/architecture/design.md): compiler internals
 - [IR Reference](docs/developer/ir/overview.md): IrModule structure for backend authors
 - [AST Reference](docs/developer/ast/overview.md): AST structure for tooling authors
+
+---
+
+## License
+
+Dual-licensed under either of:
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT License](LICENSE-MIT)
+
+at your option.
