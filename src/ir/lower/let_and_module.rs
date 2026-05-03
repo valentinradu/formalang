@@ -189,18 +189,32 @@ impl IrLowerer<'_> {
         };
         let generic_params = self.lower_generic_params(&f.generics);
         self.generic_scopes.push(generic_params.clone());
+        // DP-4 support: scope each param-default lower against the
+        // preceding params so `fn f(x, y = x)` resolves `x` inside
+        // the default to the previous param.
+        self.local_binding_scopes.push(HashMap::new());
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
-            .map(|p| IrFunctionParam {
-                binding_id: crate::ir::BindingId(0),
-                name: p.name.name.clone(),
-                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
-                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
-                default: p.default.as_ref().map(|e| self.lower_expr(e)),
-                convention: p.convention,
+            .map(|p| {
+                let ty = p.ty.as_ref().map(|t| self.lower_type(t));
+                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                if let Some(t) = &ty {
+                    if let Some(scope) = self.local_binding_scopes.last_mut() {
+                        scope.insert(p.name.name.clone(), (p.convention, t.clone()));
+                    }
+                }
+                IrFunctionParam {
+                    binding_id: crate::ir::BindingId(0),
+                    name: p.name.name.clone(),
+                    external_label: p.external_label.as_ref().map(|l| l.name.clone()),
+                    ty,
+                    default,
+                    convention: p.convention,
+                }
             })
             .collect();
+        self.local_binding_scopes.pop();
 
         let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
 
@@ -264,18 +278,37 @@ impl IrLowerer<'_> {
         f: &FnDef,
         enclosing_extern: Option<ExternAbi>,
     ) -> IrFunction {
+        // DP-4 support: lower params in two stages so each param's
+        // default expression sees its preceding params in the local
+        // binding scope. Without the frame, `fn f(x: I32, y: I32 = x)`
+        // emits `UndefinedReference` for the inner `x`.
+        let mut frame: HashMap<String, (ParamConvention, ResolvedType)> = HashMap::new();
+        self.local_binding_scopes.push(frame.clone());
         let params: Vec<IrFunctionParam> = f
             .params
             .iter()
-            .map(|p| IrFunctionParam {
-                binding_id: crate::ir::BindingId(0),
-                name: p.name.name.clone(),
-                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
-                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
-                default: p.default.as_ref().map(|e| self.lower_expr(e)),
-                convention: p.convention,
+            .map(|p| {
+                let ty = p.ty.as_ref().map(|t| self.lower_type(t));
+                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                if let Some(t) = &ty {
+                    frame.insert(p.name.name.clone(), (p.convention, t.clone()));
+                    if let Some(scope) = self.local_binding_scopes.last_mut() {
+                        scope.insert(p.name.name.clone(), (p.convention, t.clone()));
+                    }
+                }
+                IrFunctionParam {
+                    binding_id: crate::ir::BindingId(0),
+                    name: p.name.name.clone(),
+                    external_label: p.external_label.as_ref().map(|l| l.name.clone()),
+                    ty,
+                    default,
+                    convention: p.convention,
+                }
             })
             .collect();
+        // Pop the temporary frame; lower_fn_def re-pushes its own
+        // below covering the body.
+        self.local_binding_scopes.pop();
 
         let return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
 
@@ -338,18 +371,29 @@ impl IrLowerer<'_> {
     }
 
     pub(super) fn lower_fn_sig(&mut self, sig: &ast::FnSig) -> IrFunctionSig {
+        self.local_binding_scopes.push(HashMap::new());
         let params: Vec<IrFunctionParam> = sig
             .params
             .iter()
-            .map(|p| IrFunctionParam {
-                binding_id: crate::ir::BindingId(0),
-                name: p.name.name.clone(),
-                external_label: p.external_label.as_ref().map(|l| l.name.clone()),
-                ty: p.ty.as_ref().map(|t| self.lower_type(t)),
-                default: p.default.as_ref().map(|e| self.lower_expr(e)),
-                convention: p.convention,
+            .map(|p| {
+                let ty = p.ty.as_ref().map(|t| self.lower_type(t));
+                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                if let Some(t) = &ty {
+                    if let Some(scope) = self.local_binding_scopes.last_mut() {
+                        scope.insert(p.name.name.clone(), (p.convention, t.clone()));
+                    }
+                }
+                IrFunctionParam {
+                    binding_id: crate::ir::BindingId(0),
+                    name: p.name.name.clone(),
+                    external_label: p.external_label.as_ref().map(|l| l.name.clone()),
+                    ty,
+                    default,
+                    convention: p.convention,
+                }
             })
             .collect();
+        self.local_binding_scopes.pop();
 
         let return_type = sig.return_type.as_ref().map(|t| self.lower_type(t));
 

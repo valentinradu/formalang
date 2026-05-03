@@ -2,7 +2,7 @@
 
 use formalang::compile_to_ir;
 use formalang::error::CompilerError;
-use formalang::ir::IrExpr;
+use formalang::ir::{IrBlockStatement, IrExpr};
 
 /// DP-1 + DP-2: `f(1)` compiles for `fn f(x: I32, y: I32 = 0)`. The
 /// IR's `FunctionCall.args` has two entries (the explicit `1` and
@@ -40,43 +40,46 @@ fn main() -> I32 { f(1) }
     Ok(())
 }
 
-/// DP-4: when a default references an earlier param, the call is
-/// wrapped in a Block whose Let statements bind those preceding
-/// args. Today the semantic validator rejects bare references to
-/// preceding params inside default expressions
-/// (`UndefinedReference`) — DP-4's IR-side wrapper is in place but
-/// requires a paired semantic-side fix to populate the param scope
-/// when validating default expressions. The test asserts the
-/// validator-side limitation surface as a clean error rather than
-/// a panic so a future commit that lifts the validation can flip
-/// this assertion to the wrapper-shape check.
+/// DP-4: when a default references an earlier param, the lowerer
+/// scopes preceding params before lowering each default, and the
+/// call site is wrapped in a Block whose Let statements bind those
+/// preceding non-defaulted args so the default's `Reference{name}`
+/// resolves to the let binding (not the callee's stale binding-id).
 #[test]
-fn earlier_param_ref_in_default_currently_unscoped() {
+fn let_wrapper_for_earlier_param_ref() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
 fn f(x: I32, y: I32 = x) -> I32 { y }
 fn main() -> I32 { f(5) }
 ";
-    let result = compile_to_ir(source);
-    match result {
-        Ok(_) => {
-            // If a future commit lifts the validator scoping limit,
-            // this test should be tightened to assert the let-wrapper
-            // shape: Block { statements: [Let{name:"x", ...}], result:
-            // FunctionCall{..} }.
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let main = module
+        .functions
+        .iter()
+        .find(|f| f.name == "main")
+        .ok_or("main missing")?;
+    let body = main.body.as_ref().ok_or("main body missing")?;
+    match body {
+        IrExpr::Block { statements, result, .. } => {
+            let has_x_let = statements
+                .iter()
+                .any(|s| matches!(s, IrBlockStatement::Let { name, .. } if name == "x"));
+            if !has_x_let {
+                return Err(
+                    format!("expected a Let binding for `x`, got: {statements:?}").into(),
+                );
+            }
+            if !matches!(result.as_ref(), IrExpr::FunctionCall { .. }) {
+                return Err(
+                    format!("expected Block.result to be FunctionCall, got: {result:?}").into(),
+                );
+            }
         }
-        Err(errors) => {
-            // Expected today: UndefinedReference for `x` inside the
-            // default expression. The DP-4 IR-side wrapper is correct
-            // but never gets exercised because semantic rejects first.
-            assert!(
-                errors.iter().any(|e| matches!(
-                    e,
-                    CompilerError::UndefinedReference { name, .. } if name == "x"
-                )),
-                "unexpected error set: {errors:?}"
-            );
-        }
+        _ => return Err(format!(
+            "expected Block wrapping for earlier-param-ref default, got: {body:?}"
+        )
+        .into()),
     }
+    Ok(())
 }
 
 
