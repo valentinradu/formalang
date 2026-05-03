@@ -109,5 +109,5 @@ pub trait Container<T: Layout> {
 - Constraints must reference existing traits
 
 The `MonomorphisePass` clones generic definitions per unique
-argument tuple after parsing — see
+argument tuple after parsing: see
 [Built-in Passes / MonomorphisePass](../developer/architecture/passes.md#monomorphisepass).

@@ -71,7 +71,7 @@ pub struct IrModule {
 }
 ```
 
-The flat per-type vectors remain authoritative — every definition
+The flat per-type vectors remain authoritative: every definition
 lives in the appropriate slot regardless of source nesting. The
 `modules` tree is an *index* on top of those flat vectors, opt-in
 for backends that need to emit code into namespaces.
@@ -126,7 +126,7 @@ types are represented as `External` variants in `ResolvedType`. The
 > qualified `module::path::name` form, then rewrites `External`
 > references to point at the cloned local definitions. After the
 > pass, **`ResolvedType::External` is a transient artifact that
-> doesn't reach the backend** — backends consume one flat `IrModule`
+> doesn't reach the backend**: backends consume one flat `IrModule`
 > regardless of how many source files contributed to it. See
 > `plans/cross-module-codegen.md` for the design and the per-phase
 > commit history.
@@ -213,12 +213,12 @@ fn type_to_typescript(ty: &ResolvedType, module: &IrModule) -> String {
 }
 ```
 
-## IrModuleNode — source `mod` hierarchy
+## IrModuleNode: source `mod` hierarchy
 
 `IrModule.modules` mirrors the source `mod foo { ... }` tree. Each
 node lists the IDs of struct/trait/enum/function definitions
 declared *directly* in that module plus nested sub-modules. The
-flat per-type vectors on `IrModule` remain authoritative — this
+flat per-type vectors on `IrModule` remain authoritative: this
 tree is an *index* on top of them for backends that need to
 preserve source structure in their output (JS `export * from`,
 Swift nested types, Kotlin packages).
@@ -246,5 +246,5 @@ pub struct IrModuleNode {
 }
 ```
 
-Top-level (non-`mod`) definitions are not mirrored in the tree —
+Top-level (non-`mod`) definitions are not mirrored in the tree;
 backends iterate the flat vectors for those.

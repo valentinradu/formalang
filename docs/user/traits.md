@@ -47,7 +47,7 @@ pub trait Collection<T> {
 Impl blocks add methods to a struct (inherent impl) or declare trait
 conformance (impl Trait for Struct).
 
-**Inherent impl** — methods belong to the struct:
+**Inherent impl**: methods belong to the struct:
 
 ```formalang
 pub struct Counter {
@@ -132,7 +132,7 @@ impl Extended for Item {
 
 ## Trait-Bounded Polymorphism
 
-FormaLang has **no dynamic dispatch** — a trait name in a value-
+FormaLang has **no dynamic dispatch**: a trait name in a value-
 producing type position (parameter, return, let annotation, struct
 field, closure params/return) is a compile-time error
 (`TraitUsedAsValueType`). Take a trait-constrained value through a

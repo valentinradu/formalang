@@ -3,14 +3,14 @@
  *
  * mdBook scopes its color variables under per-theme classes
  * (.light, .rust, .coal, .navy, .ayu). We re-declare every theme
- * with the same Mocha palette so the picker is a no-op — and the
+ * with the same Mocha palette so the picker is a no-op; and the
  * picker itself is hidden in chrome.css.
  *
  * Palette: https://catppuccin.com/palette
  */
 
 :root {
-    /* Catppuccin Mocha — single source of truth for the whole site. */
+    /* Catppuccin Mocha; single source of truth for the whole site. */
     --ctp-rosewater: #f5e0dc;
     --ctp-flamingo:  #f2cdcd;
     --ctp-pink:      #f5c2e7;

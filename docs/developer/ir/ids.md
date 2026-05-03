@@ -52,13 +52,13 @@ Beyond the four definition-level IDs above, several expression-level
 typed IDs flow through the IR after `ResolveReferencesPass` rewrites
 name-keyed references:
 
-- `BindingId` — function-local `let` bindings, parameters, loop variables
-- `FieldIdx` — index into the matching struct/enum variant's `fields`
-- `VariantIdx` — index into the matching enum's `variants`
-- `MethodIdx` — index into the matching impl's or trait's `methods`
-- `LetId` — module-level `let` bindings
-- `ImplId` — impl blocks
-- `FunctionId` — standalone or impl-method functions
+- `BindingId`: function-local `let` bindings, parameters, loop variables
+- `FieldIdx`: index into the matching struct/enum variant's `fields`
+- `VariantIdx`: index into the matching enum's `variants`
+- `MethodIdx`: index into the matching impl's or trait's `methods`
+- `LetId`: module-level `let` bindings
+- `ImplId`: impl blocks
+- `FunctionId`: standalone or impl-method functions
 
 These appear on [`IrExpr`](expressions.md), [`IrMatchArm`](blocks.md),
 and [`IrBlockStatement`](blocks.md).

@@ -1,6 +1,6 @@
 # Type Expressions
 
-The shape of every type written in source — used in field annotations,
+The shape of every type written in source: used in field annotations,
 function signatures, generic arguments, and let-binding annotations.
 
 ## Type
@@ -42,7 +42,7 @@ pub enum PrimitiveType {
     Boolean,
     Path,
     Regex,
-    /// Uninhabited type — has no values.
+    /// Uninhabited type: has no values.
     Never,
 }
 ```

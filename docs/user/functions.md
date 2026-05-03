@@ -1,7 +1,7 @@
 # Functions
 
 Top-level functions, parameter conventions, codegen attributes, and
-overloading. Closure expressions live on a separate page —
+overloading. Closure expressions live on a separate page: see
 [Closures](closures.md).
 
 ## Definitions
@@ -42,14 +42,14 @@ greet("world", "Hi there")  // greeting = "Hi there"
 Rules:
 
 - **Defaults must be positional from the right.** `fn f(x = 0, y)`
-  is rejected at definition time — every parameter after a defaulted
+  is rejected at definition time: every parameter after a defaulted
   one must also have a default (`self` is not counted).
 - **Defaults may reference earlier parameters.** `fn f(x: I32, y:
   I32 = x + 1)` is valid; calls like `f(5)` lower to a Let-wrapped
   Block that binds `x` to the call-site value, so the default sees
   the actual passed value.
 - **Defaults are re-evaluated on every call.** `fn f(x: I32 = current_count())`
-  runs `current_count()` once per call site — Python's mutable-
+  runs `current_count()` once per call site: Python's mutable-
   default footgun is avoided.
 - **Overload resolution prefers the no-default match.** With both
   `fn f(x: I32)` and `fn f(x: I32, y: I32 = 1)` defined, `f(5)`
@@ -58,7 +58,7 @@ Rules:
 ## Codegen Attributes
 
 Three optional keyword prefixes hint to backends about call-site
-behavior. They are pure metadata — the frontend passes them through
+behavior. They are pure metadata: the frontend passes them through
 unchanged. Multiple prefixes can stack and combine freely with
 `pub` and `extern`.
 
@@ -88,17 +88,17 @@ controls how the callee may use the value:
 | `sink`     | `sink x: T`       | Ownership transfer. Caller gives up the value.   |
 
 ```formalang
-// Default — immutable parameter
+// Default: immutable parameter
 fn read(x: I32) -> I32 {
   x
 }
 
-// mut — callee may mutate; argument must be let mut at call site
+// mut: callee may mutate; argument must be let mut at call site
 fn bump(mut score: I32) -> I32 {
   score
 }
 
-// sink — callee owns the value; caller cannot use it after
+// sink: callee owns the value; caller cannot use it after
 fn consume(sink label: String) -> String {
   label
 }
@@ -114,7 +114,7 @@ impl Counter {
 }
 ```
 
-Call sites are transparent — no extra syntax required:
+Call sites are transparent: no extra syntax required:
 
 ```formalang
 let mut n: I32 = 0
@@ -122,14 +122,14 @@ let result = bump(n)   // n is let mut, so it satisfies mut convention
 ```
 
 Closure parameters carry the same conventions; the convention constrains
-the **caller of the closure** — see [Closures](closures.md) for details.
+the **caller of the closure**: see [Closures](closures.md) for details.
 
 ## Function Overloading
 
 Multiple functions with the same name are allowed when their signatures differ.
 The compiler selects the right overload at each call site.
 
-**Mode A — named-argument label set match** (exact label set determines the overload):
+**Mode A: named-argument label set match** (exact label set determines the overload):
 
 ```formalang
 fn format(value: I32) -> String { "number" }
@@ -137,7 +137,7 @@ fn format(value: String) -> String { "string" }
 fn format(value: I32, precision: I32) -> String { "precise" }
 ```
 
-**Mode B — first-positional-arg type match** (when call has no labels):
+**Mode B: first-positional-arg type match** (when call has no labels):
 
 ```formalang
 fn process(I32) -> String { "number" }

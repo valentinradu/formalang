@@ -40,7 +40,7 @@ extern impl Canvas {
 
 **Rules**:
 
-- Types are always normal structs — there is no `extern type`
+- Types are always normal structs: there is no `extern type`
 - Extern functions and extern impl methods have no body
 - A struct can have both a regular `impl` block and an `extern impl` block
 
@@ -60,8 +60,8 @@ extern impl I32 {
 ```
 
 The compiler ships a prelude (`src/prelude.fv`) declaring the v1
-String surface — `len`, `is_empty`, `slice`, `starts_with`,
-`contains`, `byte_at` — so `s.len()` works on any String value
+String surface: `len`, `is_empty`, `slice`, `starts_with`,
+`contains`, `byte_at`: so `s.len()` works on any String value
 without an explicit `use`. Backends bind these as host-provided
 extern functions through their existing extern-binding paths
 (wasm component imports, JS runtime bindings, etc.).

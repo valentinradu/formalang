@@ -1,7 +1,7 @@
 # Generics
 
 Type parameters and their constraints. Used wherever a definition
-introduces generics — `TraitDef.generics`, `StructDef.generics`,
+introduces generics: `TraitDef.generics`, `StructDef.generics`,
 `EnumDef.generics`, `ImplDef.generics`, `FunctionDef.generics`.
 
 ## GenericParam
@@ -23,5 +23,5 @@ pub enum GenericConstraint {
 ```
 
 The `args` slot carries concrete type arguments when the constraint
-references a generic trait — `<T: Container<I32>>` parses with
+references a generic trait: `<T: Container<I32>>` parses with
 `args = [I32]`. Empty `args` means a non-generic trait bound.

@@ -69,5 +69,5 @@ pub let box_inferred = Box(value: "inferred as String")
 
 ## Adding Methods
 
-To attach methods to a struct, write an `impl` block — see
+To attach methods to a struct, write an `impl` block: see
 [Traits & Impls](traits.md#impl-blocks).

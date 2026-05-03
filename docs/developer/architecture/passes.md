@@ -21,7 +21,7 @@ Evaluates constant expressions at compile time. Numeric folding takes
 the high-precision path when both operands are
 `NumberValue::Integer(i128)` (checked `i128` arithmetic; overflow leaves
 the `BinaryOp` un-folded so codegen decides the emit). Any operand
-carrying `NumberValue::Float(f64)` falls back to `f64` IEEE 754 —
+carrying `NumberValue::Float(f64)` falls back to `f64` IEEE 754;
 mixed-precision results are stored as `Float`, so
 `Integer(2^60) + Float(0.0)` round-trips as `Float`, losing exactness
 beyond `2^53`. Backends that need exact integer results should ensure

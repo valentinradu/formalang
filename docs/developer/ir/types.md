@@ -22,7 +22,7 @@ pub enum ResolvedType {
     /// Array type: [T]
     Array(Box<ResolvedType>),
 
-    /// Range type: T..T — produced by `start..end` expressions and consumed
+    /// Range type: T..T: produced by `start..end` expressions and consumed
     /// by `for x in start..end { ... }` loops.
     Range(Box<ResolvedType>),
 
@@ -58,7 +58,7 @@ pub enum ResolvedType {
 
     /// General closure / function type: (T1, T2) -> R
     ///
-    /// Each element is `(convention, type)` — convention constrains the
+    /// Each element is `(convention, type)`: convention constrains the
     /// **caller** of the closure. Event-handler shapes like
     /// `String -> Event` use this variant with the enum return type.
     Closure {
@@ -79,7 +79,7 @@ pub enum ResolvedType {
 
 ## GenericBase
 
-Target of a `Generic` instantiation — a generic struct, enum, or
+Target of a `Generic` instantiation: a generic struct, enum, or
 trait. Traits appear here only inside generic constraints
 (`<T: Foo<X>>`) and impl headers (`impl Foo<X> for Y`); FormaLang
 has no dynamic dispatch, so a trait base never sits in a value-

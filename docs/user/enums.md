@@ -1,6 +1,6 @@
 # Enums
 
-Enums define sum types (tagged unions) — a value is exactly one of the
+Enums define sum types (tagged unions): a value is exactly one of the
 declared variants.
 
 ## Definitions
@@ -52,7 +52,7 @@ let result2: Result<String, I32> = .error(err: 404)
 
 ## Pattern Matching
 
-To consume enum values, use a `match` expression — see
+To consume enum values, use a `match` expression: see
 [Control Flow & Pattern Matching](control-flow.md#match-expressions). To
-extract associated data without matching, use enum destructuring — see
+extract associated data without matching, use enum destructuring: see
 [Expressions / Destructuring](expressions.md#destructuring).

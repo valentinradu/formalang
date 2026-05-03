@@ -44,7 +44,7 @@ their declared / suffixed type are a compile error.
 
 ## Never Type
 
-`Never` is an uninhabited type — it has no values and cannot be instantiated.
+`Never` is an uninhabited type: it has no values and cannot be instantiated.
 It is used as a return type for functions that diverge (infinite loops, panics):
 
 ```formalang
@@ -171,10 +171,10 @@ pub struct Controls<E> {
   // Multiple parameters (comma-separated, no parens needed)
   onResize: I32, I32 -> E,
 
-  // mut parameter — caller must pass a mutable binding
+  // mut parameter: caller must pass a mutable binding
   onScale: mut I32 -> E,
 
-  // sink parameter — caller's binding is consumed (moved)
+  // sink parameter: caller's binding is consumed (moved)
   onSubmit: sink String -> E,
 
   // Optional closure (can be nil)

@@ -13,7 +13,7 @@ pub struct IrFunction {
     pub name: String,
 
     /// Generic type parameters declared on the function itself
-    /// (e.g. `fn identity<T>(x: T) -> T`). Empty for impl methods —
+    /// (e.g. `fn identity<T>(x: T) -> T`). Empty for impl methods;
     /// method-level generics aren't yet supported; enclosing-type
     /// generics live on the containing `IrImpl` / `IrStruct`.
     pub generic_params: Vec<IrGenericParam>,

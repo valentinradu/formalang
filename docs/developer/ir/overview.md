@@ -1,7 +1,7 @@
 # IR Overview
 
 The IR is the recommended output for building code generators. Code
-generation is not built into the library — backends are external and
+generation is not built into the library: backends are external and
 plug in via the `IrPass`/`Backend` trait system defined in
 `src/pipeline.rs`.
 
@@ -97,7 +97,7 @@ All `span` fields are `#[serde(default, skip_serializing_if =
 "IrSpan::is_default")]`, so synthetic / round-tripped IR doesn't
 bloat the serialised form.
 
-Module nesting is flattened in the per-type vectors — a struct
+Module nesting is flattened in the per-type vectors: a struct
 inside `mod foo { ... }` is stored on `IrModule.structs` with a
 qualified name `"foo::Bar"`. A parallel
 `IrModule.modules: Vec<IrModuleNode>` tree mirrors the source `mod`
@@ -118,6 +118,6 @@ The `SymbolTable` (built by the semantic analyzer) and the `IrModule`
   enums with embedded IDs. It is the authoritative view for code
   generators.
 
-The two are built in sequence — the symbol table drives lowering, then
+The two are built in sequence: the symbol table drives lowering, then
 falls out of scope. Backends that need human-readable names can read
 them from the IR directly; they never need to inspect the symbol table.

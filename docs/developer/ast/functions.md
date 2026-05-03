@@ -21,7 +21,7 @@ pub struct FnDef {
 ```
 
 `attributes` carries codegen-hint keyword prefixes parsed before
-`fn` — `inline fn foo() { ... }`, `cold fn rare() { ... }`. The
+`fn`: `inline fn foo() { ... }`, `cold fn rare() { ... }`. The
 frontend passes them through unchanged; backends decide whether to
 honour them.
 
@@ -49,13 +49,13 @@ Controls how a parameter receives its argument (Mutable Value Semantics).
 #[derive(Default)]
 pub enum ParamConvention {
     #[default]
-    Let,   // Immutable reference — the callee cannot mutate the value
-    Mut,   // Exclusive mutable access — callee may mutate the value
-    Sink,  // Ownership transfer — the binding is consumed at the call site
+    Let,   // Immutable reference: the callee cannot mutate the value
+    Mut,   // Exclusive mutable access: callee may mutate the value
+    Sink,  // Ownership transfer: the binding is consumed at the call site
 }
 ```
 
-Syntax summary (`Let` is the Rust enum variant name — there is no `let`
+Syntax summary (`Let` is the Rust enum variant name: there is no `let`
 keyword in FormaLang parameter position):
 
 | Variant | FormaLang parameter syntax | Meaning                              |

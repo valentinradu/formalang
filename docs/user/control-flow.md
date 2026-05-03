@@ -1,7 +1,7 @@
 # Control Flow & Pattern Matching
 
 All control flow is **compile-time validated**. Each form is an
-expression — it evaluates to a value.
+expression: it evaluates to a value.
 
 ## For Expressions
 

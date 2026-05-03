@@ -3,7 +3,7 @@
  *
  * Loaded via `additional-css` in book.toml so it appends *after* mdBook's
  * built-in stylesheets. We don't replace `general.css` or the per-theme
- * highlight stylesheets — that strips out the layout and the syntax
+ * highlight stylesheets; that strips out the layout and the syntax
  * colors. Everything cosmetic lives here, and the actual color
  * variables live in theme/css/variables.css (which IS intended to be
  * replaced).
@@ -88,19 +88,6 @@ html.sidebar-visible .menu-bar {
 .menu-title {
     color: var(--ctp-lavender);
     font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6em;
-}
-.menu-title::before {
-    content: "";
-    display: inline-block;
-    width: 1.6em;
-    height: 1.6em;
-    background-image: url("../favicon.png");
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
 }
 
 ::selection {
@@ -108,7 +95,7 @@ html.sidebar-visible .menu-bar {
     color: var(--ctp-base);
 }
 
-/* Hide the theme picker — we ship a single Mocha theme. */
+/* Hide the theme picker; we ship a single Mocha theme. */
 .right-buttons #theme-toggle,
 #theme-list,
 .theme-popup {
@@ -118,7 +105,7 @@ html.sidebar-visible .menu-bar {
 /* ───────── Catppuccin Mocha syntax highlighting ─────────
  * Override across ALL theme stylesheets (highlight.css for light,
  * tomorrow-night.css for coal/navy, ayu-highlight.css for ayu) so
- * the active theme doesn't matter — the colors are uniform.
+ * the active theme doesn't matter; the colors are uniform.
  */
 
 .hljs {

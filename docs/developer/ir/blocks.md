@@ -21,7 +21,7 @@ pub struct IrMatchArm {
     pub is_wildcard: bool,
 
     /// Bindings for associated data: `(name, binding_id, type)`. Each
-    /// `binding_id` is a fresh per-function id introduced by the arm —
+    /// `binding_id` is a fresh per-function id introduced by the arm;
     /// backends key on it to reach the slot the arm writes the payload
     /// into. Lowering emits `BindingId(0)` and `ResolveReferencesPass`
     /// overwrites it.

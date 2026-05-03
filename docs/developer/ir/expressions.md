@@ -52,7 +52,7 @@ How a method call should be dispatched.
 
 ```rust
 pub enum DispatchKind {
-    /// Direct call on a known concrete type — no runtime lookup needed.
+    /// Direct call on a known concrete type: no runtime lookup needed.
     Static {
         impl_id: ImplId,
     },
@@ -78,7 +78,7 @@ pub enum IrExpr {
 
     /// Struct instantiation: `User(name: "Alice", age: 30)`
     StructInst {
-        /// `None` for external structs — read `ty` instead.
+        /// `None` for external structs: read `ty` instead.
         struct_id: Option<StructId>,
         /// Generic type args (e.g., `[String]` for `Box<String>`).
         type_args: Vec<ResolvedType>,
@@ -195,7 +195,7 @@ pub enum IrExpr {
     /// `CallClosure`.
     FunctionCall {
         /// Function path (preserved for diagnostics and as a fallback
-        /// when resolution fails — e.g. cross-module calls).
+        /// when resolution fails: e.g. cross-module calls).
         path: Vec<String>,
         /// Resolved target. `None` for genuinely external paths or when
         /// resolution couldn't bind. Backends key on this id to dispatch
@@ -293,8 +293,8 @@ pub enum IrExpr {
 }
 ```
 
-`IrMatchArm` and `IrBlockStatement` — referenced from `Match` and `Block`
-above — are defined on the [Match Arms & Block Statements](blocks.md) page.
+`IrMatchArm` and `IrBlockStatement`: referenced from `Match` and `Block`
+above: are defined on the [Match Arms & Block Statements](blocks.md) page.
 
 ## Type Contract
 
@@ -302,7 +302,7 @@ The `ty` field is guaranteed correct after lowering:
 
 | Expression | Type |
 | ---------- | ---- |
-| `Literal { value: Number(_), .. }` | `Primitive(I32 / I64 / F32 / F64)` — picked from the literal's suffix or source-syntax default (integer → `I32`, float → `F64`) |
+| `Literal { value: Number(_), .. }` | `Primitive(I32 / I64 / F32 / F64)`: picked from the literal's suffix or source-syntax default (integer → `I32`, float → `F64`) |
 | `Literal { value: String(_), .. }` | `Primitive(String)` |
 | `Literal { value: Boolean(_), .. }` | `Primitive(Boolean)` |
 | `BinaryOp { op: Add/Sub/Mul/Div/Mod, .. }` | Same as operands |

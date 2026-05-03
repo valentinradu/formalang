@@ -30,7 +30,7 @@ pub struct StructDef {
 }
 ```
 
-Trait conformance is declared separately via `impl Trait for Type` blocks —
+Trait conformance is declared separately via `impl Trait for Type` blocks;
 not inline on the struct definition.
 
 ### StructField
@@ -80,7 +80,7 @@ pub struct ImplDef {
 instantiates a generic trait (`impl Container<I32> for Box`).
 Empty for non-generic traits and inherent impls.
 
-The `functions` vector contains [`FnDef`](functions.md#fndef) values —
+The `functions` vector contains [`FnDef`](functions.md#fndef) values;
 their parameter shape and conventions are documented on the
 [Functions & Parameters](functions.md) page.
 

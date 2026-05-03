@@ -178,7 +178,7 @@ pub enum Literal {
 
 ## NumberLiteral
 
-Discriminated payload for a numeric literal — preserves the exact
+Discriminated payload for a numeric literal: preserves the exact
 integer digits as `i128` (so `i64`-and-narrower targets round-trip
 without precision loss) or the float bits as `f64`. Carries the
 optional source-level type suffix and the integer-vs-float source-

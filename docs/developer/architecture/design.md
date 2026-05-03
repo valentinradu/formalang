@@ -2,7 +2,7 @@
 
 FormaLang is a **pure compiler frontend library** written in Rust. It
 parses `.fv` source files, validates them, and produces an Intermediate
-Representation (IR). Code generation is **not built in** — backends are
+Representation (IR). Code generation is **not built in**: backends are
 external and plug in via the `IrPass`/`Backend` trait system.
 
 ```text
@@ -12,7 +12,7 @@ external and plug in via the `IrPass`/`Backend` trait system.
 ## Single-Crate Design
 
 The compiler is a single Rust crate (`formalang`). All phases share
-types directly — no IPC, serialization, or process boundaries.
+types directly: no IPC, serialization, or process boundaries.
 
 ## Logic Model
 

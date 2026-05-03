@@ -341,7 +341,7 @@ mat_yellow = make_toon_material(
 # but with the spec dialed almost off — avoids a hot spot on the sphere surface.
 # Cavity: AO-driven gradient. Gear teeth give strong AO at corners between
 # walls; smaller distance is enough.
-mat_cavity = make_cavity_material("Cavity", "#a8884a", "#e6c684", ao_distance=0.3)
+mat_cavity = make_cavity_material("Cavity", "#7a6234", "#b89058", ao_distance=0.3)
 
 # Bottom layer: bottom face at z=0, top face at z=LAYER_H
 bottom = make_rounded_prism(

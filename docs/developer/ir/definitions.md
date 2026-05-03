@@ -1,7 +1,7 @@
 # Definition Types
 
 Top-level definitions stored in the per-type vectors on
-[`IrModule`](module.md). Functions live on a separate page —
+[`IrModule`](module.md). Functions live on a separate page;
 see [Functions](functions.md). Module-level let bindings appear
 at the bottom of this page as [`IrLet`](#irlet).
 
@@ -80,7 +80,7 @@ pub struct IrEnumVariant {
 
 ## ImplTarget
 
-Identifies what an impl block implements — a struct or an enum.
+Identifies what an impl block implements: a struct or an enum.
 
 ```rust
 pub enum ImplTarget {
@@ -163,7 +163,7 @@ pub struct IrGenericParam {
     pub name: String,
 
     /// Trait constraints. Each entry carries the constrained trait
-    /// id plus zero or more concrete arg types — empty when the
+    /// id plus zero or more concrete arg types: empty when the
     /// trait isn't generic (`T: Container`), populated for
     /// generic-trait constraints (`T: Container<I32>`).
     pub constraints: Vec<IrTraitRef>,
