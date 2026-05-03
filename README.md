@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-  <img src="website/logo-180.png" alt="FormaLang" width="200">
+  <img src="https://formalang.org/logo-180.png" alt="FormaLang" width="200">
 </p>
 
 <h3 align="center">A statically typed, declarative DSL for Rust applications</h3>
