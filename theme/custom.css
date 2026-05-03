@@ -14,12 +14,13 @@
 /* ───────── Typography ───────── */
 
 /* mdBook's general.css sets `:root { font-size: 62.5% }` so 1rem = 10px.
-   To bump every rem-based size by 25% in one place, override :root with
-   62.5% * 1.25 = 78.125%. Targeting `html` here would lose the cascade —
-   `:root` is a pseudo-class (specificity 0,1,0) and outranks `html`
-   (specificity 0,0,1) regardless of source order. */
+   Bump it by 1.10x (62.5% * 1.10 = 68.75%) so docs read slightly larger
+   than mdBook's default without overshooting the landing page's 1.25x
+   scale. Targeting `html` here would lose the cascade — `:root` is a
+   pseudo-class (specificity 0,1,0) and outranks `html` (specificity
+   0,0,1) regardless of source order. */
 :root {
-    font-size: 78.125%;
+    font-size: 68.75%;
 }
 
 html {

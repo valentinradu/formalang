@@ -92,7 +92,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.0.2-beta"
+formalang = "0.0.3-beta"
 ```
 
 Compile a source string:

@@ -146,16 +146,20 @@
     if (typeof hljs !== "undefined") {
         hljs.registerLanguage("formalang", formalang);
         hljs.registerLanguage("fv", formalang);
-        // mdBook calls hljs.highlightAll() before our script loads when
-        // additional-js is appended. Re-run highlighting on every
-        // <code class="language-formalang"> we now know how to parse.
+        // mdBook ships highlight.js v10 (only `highlightBlock`).
+        // v11+ renamed it to `highlightElement`. Use whichever exists
+        // so the script works on both upstream versions.
+        const highlight = hljs.highlightElement || hljs.highlightBlock;
+        // mdBook calls hljs.initHighlightingOnLoad() before our script
+        // loads. Re-run highlighting on every code block we now know
+        // how to parse.
         document
             .querySelectorAll('code.language-formalang, code.language-fv')
             .forEach(function (el) {
                 // Reset hljs's "already highlighted" marker before re-running.
                 el.dataset.highlighted = "";
                 el.classList.remove("hljs");
-                hljs.highlightElement(el);
+                highlight.call(hljs, el);
             });
     }
 })();

@@ -27,8 +27,12 @@
 - `impl Trait for Type` conformance blocks
 - Enum definitions (with associated data, generics)
 - `extern fn` declarations (with `"C"` / `"system"` ABI selection)
-- `extern impl` blocks
+- `extern impl` blocks (including `extern impl String`,
+  `extern impl I32`, etc. on primitive receivers)
 - Function definitions with optional overloading
+- Parameter conventions (`mut`, `sink`) on regular and closure params
+- Default parameter values (`fn f(x: I32 = 0)`); arity checks treat
+  defaulted params as optional
 - Codegen attribute prefixes (`inline`, `no_inline`, `cold`)
 - Let bindings (file-level, with `pub`, `mut`)
 - Generic parameters on structs, traits, enums
@@ -58,6 +62,9 @@
 - Nested generics, generic arity validation
 - Monomorphisation pass (`MonomorphisePass`) clones definitions per
   unique argument tuple and devirtualises trait calls on concrete receivers
+- Cross-module monomorphisation: imported items (functions, impls,
+  pub `let`s, generic types) are inlined into the entry module under
+  qualified names so backends see one self-contained `IrModule`
 
 **Module System**:
 
@@ -74,6 +81,13 @@
 - Trait conformance validation
 - Cycle detection
 - Function overload resolution
+
+**Source Spans** (for tooling / source maps / DWARF):
+
+- Every `IrExpr`, definition, and `IrBlockStatement` carries an
+  `IrSpan { start, end, file: FileId }`
+- `IrModule.file_table` resolves `FileId` to a `PathBuf`; cross-module
+  clones have their `FileId`s remapped onto the entry module's table
 
 **Serde**:
 
