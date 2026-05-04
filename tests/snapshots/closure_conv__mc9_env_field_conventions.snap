@@ -4,6 +4,100 @@ expression: env_structs
 ---
 [
     IrStruct {
+        name: "Array",
+        visibility: Public,
+        traits: [],
+        fields: [],
+        generic_params: [
+            IrGenericParam {
+                name: "T",
+                constraints: [],
+            },
+        ],
+        doc: None,
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
+    },
+    IrStruct {
+        name: "Dictionary",
+        visibility: Public,
+        traits: [],
+        fields: [],
+        generic_params: [
+            IrGenericParam {
+                name: "K",
+                constraints: [],
+            },
+            IrGenericParam {
+                name: "V",
+                constraints: [],
+            },
+        ],
+        doc: None,
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
+    },
+    IrStruct {
+        name: "Range",
+        visibility: Public,
+        traits: [],
+        fields: [],
+        generic_params: [
+            IrGenericParam {
+                name: "T",
+                constraints: [],
+            },
+        ],
+        doc: None,
+        span: IrSpan {
+            span: Span {
+                start: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: Location {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            },
+            file: FileId(
+                0,
+            ),
+        },
+    },
+    IrStruct {
         name: "__ClosureEnv0",
         visibility: Private,
         traits: [],

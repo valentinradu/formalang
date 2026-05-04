@@ -5,6 +5,97 @@ use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
 use crate::ast::{Expr, File};
 
+/// Apply a `param -> concrete` substitution map structurally to a
+/// `SemType`, but only for names that appear in `param_names` (the
+/// active generic-parameter set). Used by `specialise_generic_return`
+/// so `fn f<T>(xs: [T]) -> T?` returns the substituted `I32?` instead
+/// of `T?`.
+fn substitute_named_in_sem(
+    ty: &SemType,
+    bindings: &HashMap<String, SemType>,
+    param_names: &std::collections::HashSet<String>,
+) -> SemType {
+    let mut out = ty.clone();
+    for (name, concrete) in bindings {
+        if !param_names.contains(name) {
+            continue;
+        }
+        out = out.substitute_named(name, concrete);
+    }
+    out
+}
+
+/// Walk `pattern` (a struct field's declared `SemType` mentioning
+/// `Named(T)` placeholders for type parameters) alongside `concrete`
+/// (the inferred argument type) and record each `T -> concrete` binding
+/// into `out`. Used by `infer_struct_type_args` to recover concrete
+/// type arguments from a call like `Box(value: 7)`.
+///
+/// `Named(name)` is the form `SemType::from_ast` emits for a bare AST
+/// `Type::Ident(name)` when the name is not a primitive — so for the
+/// purposes of type-arg inference we treat any `Named` whose name is
+/// among the struct's generic parameters as a placeholder. Callers
+/// filter the resulting bindings to the parameter set.
+fn unify_sem(pattern: &SemType, concrete: &SemType, out: &mut HashMap<String, SemType>) {
+    match (pattern, concrete) {
+        (SemType::Named(name), other) => {
+            out.entry(name.clone()).or_insert_with(|| other.clone());
+        }
+        (SemType::Array(p_inner), SemType::Array(c_inner))
+        | (SemType::Optional(p_inner), SemType::Optional(c_inner)) => {
+            unify_sem(p_inner, c_inner, out);
+        }
+        (SemType::Tuple(p_fields), SemType::Tuple(c_fields)) => {
+            for ((_, pt), (_, ct)) in p_fields.iter().zip(c_fields.iter()) {
+                unify_sem(pt, ct, out);
+            }
+        }
+        (
+            SemType::Dictionary {
+                key: p_key,
+                value: p_val,
+            },
+            SemType::Dictionary {
+                key: c_key,
+                value: c_val,
+            },
+        ) => {
+            unify_sem(p_key, c_key, out);
+            unify_sem(p_val, c_val, out);
+        }
+        (
+            SemType::Generic {
+                base: p_base,
+                args: p_args,
+            },
+            SemType::Generic {
+                base: c_base,
+                args: c_args,
+            },
+        ) if p_base == c_base => {
+            for (pa, ca) in p_args.iter().zip(c_args.iter()) {
+                unify_sem(pa, ca, out);
+            }
+        }
+        (
+            SemType::Closure {
+                params: p_params,
+                return_ty: p_ret,
+            },
+            SemType::Closure {
+                params: c_params,
+                return_ty: c_ret,
+            },
+        ) => {
+            for (pt, ct) in p_params.iter().zip(c_params.iter()) {
+                unify_sem(pt, ct, out);
+            }
+            unify_sem(p_ret, c_ret, out);
+        }
+        _ => {}
+    }
+}
+
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn infer_type_invocation(
         &self,
@@ -30,19 +121,30 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .rev()
                     .find_map(|frame| frame.get(&name).cloned())
             };
-            let ty_str =
+            let resolved_ty =
                 scope_lookup.or_else(|| self.local_let_bindings.get(&name).map(|(t, _)| t.clone()));
-            if let Some(t) = ty_str {
-                if let SemType::Closure { return_ty, .. } = SemType::from_legacy_string(&t) {
-                    return *return_ty;
-                }
+            if let Some(SemType::Closure { return_ty, .. }) = resolved_ty {
+                return *return_ty;
             }
         }
 
-        if self.symbols.is_struct(&name) {
-            // Struct instantiation — return the struct type, with generic args if present
+        if self.symbols.is_struct_qualified(&name) {
+            // Struct instantiation — return the struct type, with generic args
+            // if present. When `type_args` is empty for a generic struct, try
+            // inferring them from the call's named-argument expressions so
+            // `Box(value: 7)` reaches downstream as `Box<I32>` and field
+            // accesses substitute correctly. The lookup is qualified so
+            // `geometry::Point(x: 1, y: 2)` reaches the inline-module
+            // struct.
             if type_args.is_empty() {
-                SemType::Named(name)
+                if let Some(inferred) = self.infer_struct_type_args(&name, args, file) {
+                    SemType::Generic {
+                        base: name,
+                        args: inferred,
+                    }
+                } else {
+                    SemType::Named(name)
+                }
             } else {
                 SemType::Generic {
                     base: name,
@@ -60,7 +162,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // parameter (`fn id<T>(x: T) -> T`), substitute the
             // inferred concrete type from a matching argument so the
             // call site sees `I32` instead of the placeholder `T`.
-            // Other shapes (`[T]`, `T -> U`, etc.) fall through and
+            // Other shapes (`[T]`, `(T) -> U`, etc.) fall through and
             // keep the original generic-param string — extending
             // this to compound shapes lives with the broader generic-
             // function inference work.
@@ -94,11 +196,75 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// If the function is generic and its declared return type is a
-    /// bare generic-parameter name, substitute the inferred type from
-    /// the matching argument. Used by the call-site inference path so
-    /// `let n: I32 = identity(1)` doesn't surface `T` to the
-    /// type-mismatch checker.
+    /// Infer the type arguments for a struct constructor invoked
+    /// without explicit `<...>`. For each generic parameter on the
+    /// struct, looks for any field whose declared AST type unifies
+    /// against the corresponding lowered argument's inferred SemType
+    /// and records the binding. Returns the inferred argument list
+    /// when every parameter is bound, `None` otherwise.
+    pub(super) fn infer_struct_type_args(
+        &self,
+        struct_name: &str,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
+    ) -> Option<Vec<SemType>> {
+        let info = self.symbols.get_struct_qualified(struct_name)?;
+        if info.generics.is_empty() {
+            return None;
+        }
+        let param_names: Vec<String> = info
+            .generics
+            .iter()
+            .map(|p| p.name.name.clone())
+            .collect();
+        let fields: Vec<(String, crate::ast::Type)> = info
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect();
+        let mut bindings: std::collections::HashMap<String, SemType> =
+            std::collections::HashMap::new();
+        for (name_opt, expr) in args {
+            let Some(arg_name) = name_opt.as_ref() else {
+                continue;
+            };
+            let Some((_, declared_ast)) = fields.iter().find(|(n, _)| n == &arg_name.name) else {
+                continue;
+            };
+            let declared_sem = SemType::from_ast(declared_ast);
+            let arg_sem = self.infer_type_sem(expr, file);
+            unify_sem(&declared_sem, &arg_sem, &mut bindings);
+        }
+        let mut out = Vec::with_capacity(param_names.len());
+        for name in &param_names {
+            out.push(bindings.remove(name)?);
+        }
+        Some(out)
+    }
+
+    /// Public wrapper used by the constructor validator to suppress the
+    /// `MissingGenericArguments` diagnostic when type-arg inference can
+    /// fully cover the struct's generic parameters from the call's
+    /// named arguments.
+    pub(in crate::semantic) fn can_infer_struct_type_args(
+        &self,
+        struct_name: &str,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
+    ) -> bool {
+        self.infer_struct_type_args(struct_name, args, file).is_some()
+    }
+
+    /// Specialise a generic function's return type by unifying every
+    /// declared parameter type against the matching argument's inferred
+    /// type, then substituting each generic parameter binding into the
+    /// raw return.
+    ///
+    /// Handles compound returns: `-> T`, `-> T?`, `-> [T]`,
+    /// `-> [K: V]`, `-> Option<T>`, `-> (a: T, b: U)`, `-> T -> U`, …
+    /// — every shape `unify_sem` walks. Used by the call-site inference
+    /// path so a `fn first<T>(xs: [T]) -> T?` call returns the
+    /// instantiated `I32?` instead of leaking `T?` to the type checker.
     fn specialise_generic_return(
         &self,
         func_info: &super::super::symbol_table::FunctionInfo,
@@ -109,31 +275,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if func_info.generics.is_empty() {
             return raw_ret;
         }
-        // Only a bare generic parameter (`-> T`) qualifies for the
-        // shortcut substitution. Compound shapes (`[T]`, `T -> U`,
-        // ...) are handled by the broader generic-function inference
-        // path elsewhere.
-        let SemType::Named(ref param_name) = raw_ret else {
-            return raw_ret;
-        };
-        if !func_info
+        let param_names: std::collections::HashSet<String> = func_info
             .generics
             .iter()
-            .any(|g| g.name.name == *param_name)
-        {
-            return raw_ret;
-        }
-        // Find the first parameter whose declared type is exactly
-        // this generic param name; the corresponding argument's
-        // inferred type is the substitution.
+            .map(|g| g.name.name.clone())
+            .collect();
+        let mut bindings: HashMap<String, SemType> = HashMap::new();
         for (i, param) in func_info.params.iter().enumerate() {
-            let Some(declared) = &param.ty else { continue };
-            let crate::ast::Type::Ident(ident) = declared else {
+            let Some(declared_ast) = &param.ty else {
                 continue;
             };
-            if ident.name != *param_name {
-                continue;
-            }
             let arg_expr = args
                 .iter()
                 .find_map(|(n, e)| {
@@ -142,11 +293,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .map(|_| e)
                 })
                 .or_else(|| args.get(i).map(|(_, e)| e));
-            if let Some(arg) = arg_expr {
-                return self.infer_type_sem(arg, file);
-            }
+            let Some(arg) = arg_expr else { continue };
+            let declared_sem = SemType::from_ast(declared_ast);
+            let arg_sem = self.infer_type_sem(arg, file);
+            unify_sem(&declared_sem, &arg_sem, &mut bindings);
         }
-        raw_ret
+        substitute_named_in_sem(&raw_ret, &bindings, &param_names)
     }
 
     /// Resolve a qualified function path (`a::b::compute`) by walking
@@ -185,6 +337,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
+    /// Type-driven entry point for match-arm scope construction. Routes
+    /// `Optional<T>` scrutinees to the synthetic `.some(T)` / `.none`
+    /// arms used by the Rust-style `if let` desugaring; everything else
+    /// falls back to `build_match_arm_scope` keyed on the bare enum
+    /// name plus the receiver's generic args.
+    pub(super) fn build_match_arm_scope_for_type(
+        &self,
+        scrutinee_ty: &SemType,
+        pattern: &crate::ast::Pattern,
+    ) -> HashMap<String, SemType> {
+        use crate::ast::Pattern;
+        if let SemType::Optional(inner) = scrutinee_ty {
+            let mut frame = HashMap::new();
+            if let Pattern::Variant { name, bindings } = pattern {
+                if name.name == "some" {
+                    if let Some(b) = bindings.first() {
+                        frame.insert(b.name.clone(), (**inner).clone());
+                    }
+                }
+            }
+            return frame;
+        }
+        let stripped = scrutinee_ty.strip_optional();
+        let (enum_name, receiver_args): (String, Vec<SemType>) = match &stripped {
+            SemType::Generic { base, args } => (base.clone(), args.clone()),
+            SemType::Named(n) => (n.clone(), Vec::new()),
+            SemType::Primitive(_)
+            | SemType::Array(_)
+            | SemType::Optional(_)
+            | SemType::Tuple(_)
+            | SemType::Dictionary { .. }
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => (stripped.display(), Vec::new()),
+        };
+        self.build_match_arm_scope(&enum_name, pattern, &receiver_args)
+    }
+
     /// Build a per-arm inference scope from a match pattern's bindings.
     /// `enum_name` is the (optionally optional-stripped) name of the
     /// scrutinee's type. For a `Variant { name, bindings }` pattern with
@@ -193,11 +384,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// imported enums fall back through the module cache. Returns an
     /// empty map for `Wildcard` and for variants that can't be resolved
     /// (the body then falls back to existing inference behaviour).
+    ///
+    /// `receiver_args` carries the scrutinee's generic instantiation
+    /// (e.g. `[I32, I32]` for `Result<I32, I32>`); when non-empty, the
+    /// variant payload types have their `T`/`E` references substituted
+    /// against the matching enum's generic parameter names so binding
+    /// references inside the arm body resolve to concrete types.
     pub(super) fn build_match_arm_scope(
         &self,
         enum_name: &str,
         pattern: &crate::ast::Pattern,
-    ) -> HashMap<String, String> {
+        receiver_args: &[SemType],
+    ) -> HashMap<String, SemType> {
         use crate::ast::Pattern;
         let mut frame = HashMap::new();
         let Pattern::Variant { name, bindings } = pattern else {
@@ -206,31 +404,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let variant_field_tys = self
             .lookup_enum_variant_field_types(enum_name, &name.name)
             .unwrap_or_default();
+        let generic_param_names: Vec<String> = if receiver_args.is_empty() {
+            Vec::new()
+        } else {
+            self.symbols
+                .get_generics(enum_name)
+                .map(|g| g.iter().map(|p| p.name.name.clone()).collect())
+                .unwrap_or_default()
+        };
         for (i, ident) in bindings.iter().enumerate() {
             if let Some(ty) = variant_field_tys.get(i) {
-                frame.insert(ident.name.clone(), ty.clone());
+                let mut sem = ty.clone();
+                if !generic_param_names.is_empty() {
+                    for (param, arg) in generic_param_names.iter().zip(receiver_args.iter()) {
+                        sem = sem.substitute_named(param, arg);
+                    }
+                }
+                frame.insert(ident.name.clone(), sem);
             }
         }
         frame
     }
 
-    /// Look up an enum variant's field types as type-strings, in the
+    /// Look up an enum variant's field types as `SemType`, in the
     /// current symbol table first, then through any imported module
     /// cache. Returns `None` if the enum or variant isn't found.
     fn lookup_enum_variant_field_types(
         &self,
         enum_name: &str,
         variant_name: &str,
-    ) -> Option<Vec<String>> {
+    ) -> Option<Vec<SemType>> {
         if let Some(info) = self.symbols.enums.get(enum_name) {
             if let Some(fields) = info.variant_fields.get(variant_name) {
-                return Some(fields.iter().map(|f| Self::type_to_string(&f.ty)).collect());
+                return Some(fields.iter().map(|f| SemType::from_ast(&f.ty)).collect());
             }
         }
         for (_, symbols) in self.module_cache.values() {
             if let Some(info) = symbols.enums.get(enum_name) {
                 if let Some(fields) = info.variant_fields.get(variant_name) {
-                    return Some(fields.iter().map(|f| Self::type_to_string(&f.ty)).collect());
+                    return Some(fields.iter().map(|f| SemType::from_ast(&f.ty)).collect());
                 }
             }
         }

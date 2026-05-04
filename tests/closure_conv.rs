@@ -13,10 +13,10 @@ use formalang::{compile_to_ir, IrPass, Pipeline};
 /// test, kept in one place so each snapshot exercises the same input.
 const TWO_CLOSURES_SOURCE: &str = r"
     pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-        |x: I32| x + n
+        (x: I32) -> x + n
     }
 
-    let format_tag: String -> String = |t: String| t
+    let format_tag: (String) -> String = (t: String) -> t
 ";
 
 /// mc3 — synthesizes one capture-environment struct per closure.
@@ -27,7 +27,7 @@ const TWO_CLOSURES_SOURCE: &str = r"
 #[test]
 fn mc3_synthesizes_capture_env_structs() {
     let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
-    let original_struct_count = module.structs.len();
+    let original_struct_count = module.user_structs().count();
 
     let converted = ClosureConversionPass::new()
         .run(module)
@@ -151,19 +151,19 @@ fn mc6_no_residual_closure_nodes() {
 fn numbering_follows_documented_walk_order() {
     let source = r"
         // Two module-level let-closures: become ClosureEnv0 / ClosureEnv1.
-        let let_a: I32 -> I32 = |x: I32| x
-        let let_b: String -> String = |s: String| s
+        let let_a: (I32) -> I32 = (x: I32) -> x
+        let let_b: (String) -> String = (s: String) -> s
 
         // Function-body closure: ClosureEnv2.
         pub fn fn_c() -> (I32) -> I32 {
-            |x: I32| x
+            (x: I32) -> x
         }
 
         // Impl-method closure: ClosureEnv3.
         struct Holder { value: I32 = 0 }
         impl Holder {
             fn impl_d(self) -> (I32) -> I32 {
-                |x: I32| x
+                (x: I32) -> x
             }
         }
     ";
@@ -249,7 +249,7 @@ fn numbering_follows_documented_walk_order() {
 fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
     let source = r"
         pub fn make_curried(sink n: I32) -> (I32) -> (I32) -> I32 {
-            |x: I32| |y: I32| x + y + n
+            (x: I32) -> (y: I32) -> x + y + n
         }
     ";
     let module = compile_to_ir(source).expect("nested closure should compile");
@@ -317,11 +317,11 @@ fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
 fn mc10_closure_rich_fixture_survives_pipeline() {
     let source = r"
         // No-capture closure.
-        let trivial: I32 -> I32 = |x: I32| x
+        let trivial: (I32) -> I32 = (x: I32) -> x
 
         // Sink-capture closure (returns a closure capturing the param).
         pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
+            (x: I32) -> x + n
         }
 
         // Module-level Let + Mut captures.
@@ -585,14 +585,14 @@ fn walk_sub_exprs(e: &formalang::ir::IrExpr, visit: &mut dyn FnMut(&formalang::i
 fn mc9_env_field_convention_preserves_sink_and_mut() {
     let source = r"
         pub fn make_sink_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
+            (x: I32) -> x + n
         }
 
         let mut counter: I32 = 0
         let bump: () -> I32 = () -> counter
     ";
     let module = compile_to_ir(source).expect("should compile to IR");
-    let original_struct_count = module.structs.len();
+    let original_struct_count = module.user_structs().count();
 
     let converted = ClosureConversionPass::new()
         .run(module)
@@ -613,7 +613,7 @@ fn mc9_env_field_convention_preserves_sink_and_mut() {
 fn mc5_let_shadowing_blocks_env_rewrite() {
     let source = r"
         pub fn make(sink n: I32) -> (I32) -> I32 {
-            |x: I32| (
+            (x: I32) -> (
                 let n: I32 = 100
                 in x + n
             )
@@ -645,7 +645,7 @@ fn mc5_let_shadowing_blocks_env_rewrite() {
 fn closure_invocation_lowers_to_call_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub fn run() -> I32 {
-            let f: I32 -> I32 = |x: I32| x + 1
+            let f: (I32) -> I32 = (x: I32) -> x + 1
             f(5)
         }
     ";
@@ -681,7 +681,7 @@ fn closure_invocation_lowers_to_call_closure() -> Result<(), Box<dyn std::error:
 fn closure_invocation_survives_closure_conv() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub fn run() -> I32 {
-            let f: I32 -> I32 = |x: I32| x + 1
+            let f: (I32) -> I32 = (x: I32) -> x + 1
             f(5)
         }
     ";

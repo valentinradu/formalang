@@ -130,8 +130,6 @@ fn irmodule_enum_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::FunctionId;
-
     let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
@@ -147,10 +145,11 @@ fn irmodule_function_id_returns_correct_id() -> Result<(), Box<dyn std::error::E
         .into());
     }
 
-    // Also test FunctionId direct indexing
-    let f = module
-        .get_function(FunctionId(0))
-        .ok_or("function not found")?;
+    // Direct indexing through `function_id` round-trips. We don't hard-
+    // code FunctionId(0) here because the prelude registers built-in
+    // functions (e.g. `assert`) at the front of `module.functions`, so
+    // the slot of a user-authored function is no longer fixed.
+    let f = module.get_function(id).ok_or("function not found")?;
     if f.name != "add" {
         return Err(format!("expected {:?} but got {:?}", "add", f.name).into());
     }
@@ -249,13 +248,18 @@ fn resolved_type_display_name_enum() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn resolved_type_display_name_array() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ResolvedType;
-
-    let module = formalang::ir::IrModule::new();
-    let inner = ResolvedType::Primitive(PrimitiveType::I32);
-    let ty = ResolvedType::Array(Box::new(inner));
-    let name = ty.display_name(&module);
+    let module = formalang::compile_to_ir("struct Holder { items: [I32] }")
+        .map_err(|e| format!("{e:?}"))?;
+    let field_ty = &module
+        .structs
+        .iter()
+        .find(|s| s.name == "Holder")
+        .ok_or("Holder")?
+        .fields
+        .first()
+        .ok_or("field")?
+        .ty;
+    let name = field_ty.display_name(&module);
     if name != "[I32]" {
         return Err(format!("expected {:?}, got {:?}", "[I32]", name).into());
     }
@@ -264,13 +268,18 @@ fn resolved_type_display_name_array() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn resolved_type_display_name_optional() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ResolvedType;
-
-    let module = formalang::ir::IrModule::new();
-    let inner = ResolvedType::Primitive(PrimitiveType::String);
-    let ty = ResolvedType::Optional(Box::new(inner));
-    let name = ty.display_name(&module);
+    let module = formalang::compile_to_ir("struct Holder { name: String? }")
+        .map_err(|e| format!("{e:?}"))?;
+    let field_ty = &module
+        .structs
+        .iter()
+        .find(|s| s.name == "Holder")
+        .ok_or("Holder")?
+        .fields
+        .first()
+        .ok_or("field")?
+        .ty;
+    let name = field_ty.display_name(&module);
     if name != "String?" {
         return Err(format!("expected {:?}, got {:?}", "String?", name).into());
     }
@@ -378,15 +387,18 @@ fn resolved_type_display_name_external_with_args() -> Result<(), Box<dyn std::er
 
 #[test]
 fn resolved_type_display_name_dictionary() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ast::PrimitiveType;
-    use formalang::ResolvedType;
-
-    let module = formalang::ir::IrModule::new();
-    let ty = ResolvedType::Dictionary {
-        key_ty: Box::new(ResolvedType::Primitive(PrimitiveType::String)),
-        value_ty: Box::new(ResolvedType::Primitive(PrimitiveType::I32)),
-    };
-    let name = ty.display_name(&module);
+    let module = formalang::compile_to_ir("struct Holder { entries: [String: I32] }")
+        .map_err(|e| format!("{e:?}"))?;
+    let field_ty = &module
+        .structs
+        .iter()
+        .find(|s| s.name == "Holder")
+        .ok_or("Holder")?
+        .fields
+        .first()
+        .ok_or("field")?
+        .ty;
+    let name = field_ty.display_name(&module);
     if name != "[String: I32]" {
         return Err(format!("expected {:?}, got {:?}", "[String: I32]", name).into());
     }
@@ -476,8 +488,8 @@ fn irmodule_rebuild_indices_after_struct_filter() -> Result<(), Box<dyn std::err
         .run(ir)
         .map_err(|e| format!("pass should succeed: {e:?}"))?;
 
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     if result.struct_id("Keep").is_none() {
         return Err("struct 'Keep' should exist after filter pass".into());
@@ -500,7 +512,7 @@ fn irexpr_ty_returns_type_from_literal() -> Result<(), Box<dyn std::error::Error
     let source = "struct A { x: I32 = 42 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
-    let s = module.structs.first().ok_or("no structs")?;
+    let s = module.user_structs().next().ok_or("no structs")?;
     let field = s.fields.first().ok_or("no fields")?;
     let expr = field.default.as_ref().ok_or("should have default")?;
     let ty = expr.ty();
@@ -523,7 +535,7 @@ fn irexpr_ty_returns_type_from_binary_op() -> Result<(), Box<dyn std::error::Err
     let source = "struct A { x: Boolean = 1 < 2 }";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
 
-    let s = module.structs.first().ok_or("no structs")?;
+    let s = module.user_structs().next().ok_or("no structs")?;
     let field = s.fields.first().ok_or("no fields")?;
     let expr = field.default.as_ref().ok_or("should have default")?;
     let ty = expr.ty();
@@ -845,7 +857,7 @@ fn dce_eliminate_dead_code_full_module() -> Result<(), Box<dyn std::error::Error
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
 
-    let os = optimized.structs.first().ok_or("no structs")?;
+    let os = optimized.user_structs().next().ok_or("no structs")?;
     let default = os
         .fields
         .first()
@@ -927,7 +939,7 @@ fn fold_constants_arithmetic_subtraction() -> Result<(), Box<dyn std::error::Err
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -958,7 +970,7 @@ fn fold_constants_arithmetic_division() -> Result<(), Box<dyn std::error::Error>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -989,7 +1001,7 @@ fn fold_constants_arithmetic_modulo() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1020,7 +1032,7 @@ fn fold_constants_comparison_lt_becomes_bool() -> Result<(), Box<dyn std::error:
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1051,7 +1063,7 @@ fn fold_constants_comparison_ge_becomes_bool() -> Result<(), Box<dyn std::error:
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1082,7 +1094,7 @@ fn fold_constants_boolean_and() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1113,7 +1125,7 @@ fn fold_constants_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1144,7 +1156,7 @@ fn fold_constants_if_constant_true() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1175,7 +1187,7 @@ fn fold_constants_if_constant_false_with_else() -> Result<(), Box<dyn std::error
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1206,7 +1218,7 @@ fn fold_constants_unary_negation() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1237,7 +1249,7 @@ fn fold_constants_unary_not() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1297,7 +1309,7 @@ fn fold_constants_eq_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1328,7 +1340,7 @@ fn fold_constants_ne_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -1357,12 +1369,17 @@ fn fold_constants_ne_comparison() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn visitor_walk_module_visits_all_structs() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::{walk_module, IrStruct, IrVisitor, StructId};
+    use formalang::ir::{walk_module, IrModule, IrStruct, IrVisitor, StructId};
 
-    struct Counter(usize);
-    impl IrVisitor for Counter {
-        fn visit_struct(&mut self, _id: StructId, _s: &IrStruct) {
-            self.0 += 1;
+    struct Counter<'a> {
+        module: &'a IrModule,
+        count: usize,
+    }
+    impl<'a> IrVisitor for Counter<'a> {
+        fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
+            if !self.module.is_prelude_struct(id) {
+                self.count += 1;
+            }
         }
     }
 
@@ -1372,10 +1389,13 @@ fn visitor_walk_module_visits_all_structs() -> Result<(), Box<dyn std::error::Er
         struct C { z: Boolean }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
-    let mut counter = Counter(0);
+    let mut counter = Counter {
+        module: &module,
+        count: 0,
+    };
     walk_module(&mut counter, &module);
-    if counter.0 != 3 {
-        return Err(format!("expected {:?} but got {:?}", 3, counter.0).into());
+    if counter.count != 3 {
+        return Err(format!("expected {:?} but got {:?}", 3, counter.count).into());
     }
     Ok(())
 }
@@ -1395,8 +1415,20 @@ fn visitor_walk_module_visits_enums_and_variants() -> Result<(), Box<dyn std::er
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut counter = VariantCounter(0);
     walk_module(&mut counter, &module);
-    if counter.0 != 3 {
-        return Err(format!("expected {:?} but got {:?}", 3, counter.0).into());
+    // Visitor walks every enum (including the prelude `Optional<T>`),
+    // so subtract its variants to count only user-defined ones.
+    let user_variants: usize = module.user_enums().map(|e| e.variants.len()).sum();
+    if user_variants != 3 {
+        return Err(format!("expected {:?} but got {:?}", 3, user_variants).into());
+    }
+    // Sanity-check the visitor: it sees user variants plus the prelude
+    // `Optional<T>`'s `some`/`none`.
+    if counter.0 < user_variants {
+        return Err(format!(
+            "visitor saw {} variants, expected at least {} from user enums",
+            counter.0, user_variants
+        )
+        .into());
     }
     Ok(())
 }
@@ -1416,23 +1448,42 @@ fn visitor_walk_module_visits_fields() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut collector = FieldNameCollector(Vec::new());
     walk_module(&mut collector, &module);
-    if collector.0.len() != 3 {
-        return Err(format!("expected {:?} but got {:?}", 3, collector.0.len()).into());
+    // Visitor walks every struct/enum (including prelude built-ins), so
+    // count only the user-authored struct fields directly.
+    let user_field_count: usize = module.user_structs().map(|s| s.fields.len()).sum();
+    if user_field_count != 3 {
+        return Err(format!("expected {:?} but got {:?}", 3, user_field_count).into());
+    }
+    if !collector.0.contains(&"x".to_string())
+        || !collector.0.contains(&"y".to_string())
+        || !collector.0.contains(&"z".to_string())
+    {
+        return Err(format!(
+            "expected visitor to see x/y/z fields, got {:?}",
+            collector.0
+        )
+        .into());
     }
     Ok(())
 }
 
 #[test]
 fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::error::Error>> {
-    use formalang::ir::{walk_module, IrFunction, IrImpl, IrVisitor};
+    use formalang::ir::{walk_module, IrFunction, IrImpl, IrModule, IrVisitor};
 
-    struct ImplFnCounter {
+    struct ImplFnCounter<'a> {
+        module: &'a IrModule,
         impls: usize,
         functions: usize,
     }
-    impl IrVisitor for ImplFnCounter {
+    impl<'a> IrVisitor for ImplFnCounter<'a> {
         fn visit_impl(&mut self, i: &IrImpl) {
-            if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+            let user_target = match i.target {
+                formalang::ir::ImplTarget::Primitive(_) => false,
+                formalang::ir::ImplTarget::Struct(id) => !self.module.is_prelude_struct(id),
+                formalang::ir::ImplTarget::Enum(id) => !self.module.is_prelude_enum(id),
+            };
+            if user_target {
                 self.impls += 1;
             }
         }
@@ -1450,6 +1501,7 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut counter = ImplFnCounter {
+        module: &module,
         impls: 0,
         functions: 0,
     };
@@ -1457,13 +1509,17 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
     if counter.impls != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, counter.impls).into());
     }
-    // Directly count user-impl methods so the prelude's `extern impl
-    // <Primitive>` blocks (which carry six methods on String) don't
-    // inflate the visitor count.
+    // Directly count user-impl methods, filtering prelude `extern impl`
+    // blocks (Primitive impls plus impls on the prelude built-in
+    // `Array`/`Dictionary`/`Range`/`Optional`).
     let user_method_count: usize = module
         .impls
         .iter()
-        .filter(|i| !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)))
+        .filter(|i| match i.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .map(|i| i.functions.len())
         .sum();
     if user_method_count != 2 {
@@ -2036,8 +2092,8 @@ fn dce_via_pipeline_match_expression() -> Result<(), Box<dyn std::error::Error>>
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2052,8 +2108,8 @@ fn dce_via_pipeline_enum_inst_in_default() -> Result<(), Box<dyn std::error::Err
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2068,8 +2124,8 @@ fn dce_via_pipeline_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>>
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2083,8 +2139,8 @@ fn dce_via_pipeline_tuple_in_default() -> Result<(), Box<dyn std::error::Error>>
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2104,8 +2160,8 @@ fn dce_via_pipeline_block_expression_in_default() -> Result<(), Box<dyn std::err
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2178,7 +2234,7 @@ fn fold_constants_gt_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -2208,7 +2264,7 @@ fn fold_constants_le_comparison() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -2238,7 +2294,7 @@ fn fold_constants_boolean_eq() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -2268,7 +2324,7 @@ fn fold_constants_boolean_ne() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let expr = fs
         .fields
         .first()
@@ -2322,7 +2378,7 @@ fn fold_constants_tuple_with_constant_elements() -> Result<(), Box<dyn std::erro
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
 
-    let fs = folded.structs.first().ok_or("no structs")?;
+    let fs = folded.user_structs().next().ok_or("no structs")?;
     let field = fs.fields.first().ok_or("no fields")?;
     let expr = field.default.as_ref().ok_or("default")?;
     if let IrExpr::Tuple { fields, .. } = expr {
@@ -2352,8 +2408,8 @@ fn fold_constants_match_expression_preserved() -> Result<(), Box<dyn std::error:
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.structs.len()).into());
+    if folded.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2407,8 +2463,8 @@ fn fold_constants_method_call_in_impl() -> Result<(), Box<dyn std::error::Error>
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.structs.len()).into());
+    if folded.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2428,8 +2484,8 @@ fn fold_constants_block_expression_in_default() -> Result<(), Box<dyn std::error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.structs.len()).into());
+    if folded.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2444,8 +2500,8 @@ fn fold_constants_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
-    if folded.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.structs.len()).into());
+    if folded.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
     }
     Ok(())
 }
@@ -2546,7 +2602,8 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
                     span: formalang::ir::IrSpan::default(),
                 },
             ],
-            ty: ResolvedType::Array(Box::new(num_ty.clone())),
+            // Synthetic test: visitor only counts literals.
+            ty: ResolvedType::Error,
 
             span: formalang::ir::IrSpan::default(),
         }),
@@ -2556,7 +2613,7 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
 
             span: formalang::ir::IrSpan::default(),
         }),
-        ty: ResolvedType::Array(Box::new(num_ty)),
+        ty: ResolvedType::Error,
 
         span: formalang::ir::IrSpan::default(),
     };
@@ -2778,13 +2835,12 @@ fn visitor_walk_expr_visits_dict_literal_entries() -> Result<(), Box<dyn std::er
                 span: formalang::ir::IrSpan::default(),
             },
         )],
-        ty: ResolvedType::Dictionary {
-            key_ty: Box::new(str_ty),
-            value_ty: Box::new(num_ty),
-        },
+        // Synthetic test: visitor only counts literals.
+        ty: ResolvedType::Error,
 
         span: formalang::ir::IrSpan::default(),
     };
+    let _ = (&str_ty, &num_ty);
 
     let mut counter = LiteralCounter(0);
     walk_expr(&mut counter, &expr);
@@ -2815,10 +2871,8 @@ fn visitor_walk_expr_visits_dict_access() -> Result<(), Box<dyn std::error::Erro
 
     let dict_expr = IrExpr::DictLiteral {
         entries: vec![],
-        ty: ResolvedType::Dictionary {
-            key_ty: Box::new(str_ty.clone()),
-            value_ty: Box::new(num_ty.clone()),
-        },
+        // Synthetic test: visitor only counts literals.
+        ty: ResolvedType::Error,
 
         span: formalang::ir::IrSpan::default(),
     };
@@ -3344,8 +3398,8 @@ fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, true);
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -3376,14 +3430,14 @@ fn irexpr_ty_covers_all_variants_via_ir() -> Result<(), Box<dyn std::error::Erro
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let binding = module.get_let("arr").ok_or("arr")?;
     let ty = binding.value.ty();
-    if !(matches!(ty, formalang::ResolvedType::Array(_))) {
-        return Err("assertion failed".into());
+    if module.array_element_ty(ty).is_none() {
+        return Err(format!("expected Array<...>, got {ty:?}").into());
     }
 
     // Tuple
     let source2 = "struct A { t: (x: I32, y: I32) = (x: 1, y: 2) }";
     let module2 = compile_to_ir(source2).map_err(|e| format!("should compile: {e:?}"))?;
-    let s2 = module2.structs.first().ok_or("no structs")?;
+    let s2 = module2.user_structs().next().ok_or("no structs")?;
     let field = s2.fields.first().ok_or("no fields")?;
     let expr = field.default.as_ref().ok_or("default")?;
     let ty2 = expr.ty();

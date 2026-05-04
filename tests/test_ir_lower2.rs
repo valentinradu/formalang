@@ -49,13 +49,12 @@ fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::
     // expected single named parameter.
     let source = r"
         struct Config {
-            transform: (I32) -> I32 = |x: I32| 42
+            transform: (I32) -> I32 = (x: I32) -> 42
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -158,8 +157,7 @@ fn test_lower_block_tuple_destructuring() -> Result<(), Box<dyn std::error::Erro
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -187,8 +185,8 @@ fn test_lower_block_struct_destructuring() -> Result<(), Box<dyn std::error::Err
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .structs
-        .get(1)
+        .user_structs()
+        .nth(1)
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -215,8 +213,7 @@ fn test_lower_block_array_destructuring() -> Result<(), Box<dyn std::error::Erro
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -420,7 +417,7 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("index out of bounds")?;
     let func = impl_block
         .functions
@@ -455,7 +452,7 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = &module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("index out of bounds")?;
     let func = impl_block
         .functions
@@ -488,7 +485,7 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     // Body should contain SelfFieldRef
@@ -520,7 +517,7 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     let IrExpr::Reference { path, .. } = func.body.as_ref().expect("expected function body") else {
@@ -624,15 +621,18 @@ fn test_lower_let_type_inferred_from_expr() -> Result<(), Box<dyn std::error::Er
 fn test_lower_dict_access_type_resolution() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let dict: [String: I32] = ["key": 1]
-        let val: I32 = dict["key"]
+        let val: I32? = dict["key"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module.lets.iter().find(|l| l.name == "val").ok_or("val")?;
     let IrExpr::DictAccess { .. } = &binding.value else {
         return Err(format!("Expected DictAccess, got {:?}", binding.value).into());
     };
-    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::I32)) {
-        return Err(format!("Expected I32 value type from dict, got {:?}", binding.ty).into());
+    let inner = module
+        .optional_inner_ty(&binding.ty)
+        .ok_or_else(|| format!("expected Optional<...>, got {:?}", binding.ty))?;
+    if !matches!(inner, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("Expected Optional<I32> value type from dict, got Optional<{inner:?}>").into());
     }
     Ok(())
 }
@@ -677,12 +677,12 @@ fn test_lower_empty_array() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Audit #41: an annotated empty-array let should lift the
     // annotation's element type into the IR Array node so backends see
-    // `Array(I32)`, not `Array(Never)`.
-    let ResolvedType::Array(inner) = ty else {
-        return Err(format!("expected Array type, got {ty:?}").into());
-    };
-    if !matches!(inner.as_ref(), ResolvedType::Primitive(PrimitiveType::I32)) {
-        return Err(format!("expected Array(I32), got Array({inner:?})").into());
+    // `Array<I32>`, not `Array<Never>`.
+    let inner = module
+        .array_element_ty(ty)
+        .ok_or_else(|| format!("expected Array<...>, got {ty:?}"))?;
+    if !matches!(inner, ResolvedType::Primitive(PrimitiveType::I32)) {
+        return Err(format!("expected Array<I32>, got Array<{inner:?}>").into());
     }
     Ok(())
 }
@@ -756,8 +756,7 @@ fn test_lower_block_with_no_statements() -> Result<(), Box<dyn std::error::Error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -840,7 +839,12 @@ fn test_lower_dce_on_impl_functions() -> Result<(), Box<dyn std::error::Error>> 
         .impls
         .iter()
         .find(|i| {
-            !i.functions.is_empty() && !matches!(i.target, formalang::ir::ImplTarget::Primitive(_))
+            !i.functions.is_empty()
+                && match i.target {
+                    formalang::ir::ImplTarget::Primitive(_) => false,
+                    formalang::ir::ImplTarget::Struct(id) => !optimized.is_prelude_struct(id),
+                    formalang::ir::ImplTarget::Enum(id) => !optimized.is_prelude_enum(id),
+                }
         })
         .ok_or("impl")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
@@ -927,8 +931,7 @@ fn test_lower_optional_struct_field() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -963,7 +966,7 @@ fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Er
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("no impl block")?;
     let func = impl_block
         .functions
@@ -1024,7 +1027,7 @@ fn test_lower_method_call_static_dispatch_on_struct_instance(
 fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
+            (x: I32) -> x + n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1049,7 +1052,7 @@ fn test_closure_captures_simple() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_no_captures_when_pure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         pub fn square() -> (I32) -> I32 {
-            |x: I32| x * x
+            (x: I32) -> x * x
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1073,7 +1076,7 @@ fn test_closure_does_not_capture_own_params() -> Result<(), Box<dyn std::error::
     // The closure's own parameters must not appear in its capture list.
     let source = r"
         pub fn combine(sink a: I32, sink b: I32) -> (I32) -> I32 {
-            |x: I32| x + a + b
+            (x: I32) -> x + a + b
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1102,7 +1105,7 @@ fn test_closure_captures_inherit_sink_param_convention() -> Result<(), Box<dyn s
     // (so backends know ownership transferred to the closure).
     let source = r"
         pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
+            (x: I32) -> x + n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;

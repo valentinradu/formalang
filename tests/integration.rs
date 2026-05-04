@@ -334,7 +334,7 @@ fn test_closure_type_no_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Transformer {
-            transform: String -> I32
+            transform: (String) -> I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -345,7 +345,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            compute: I32, I32 -> I32
+            compute: (I32, I32) -> I32
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -356,7 +356,7 @@ fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_optional_closure_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            callback: (String -> Boolean)?
+            callback: ((String) -> Boolean)?
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -596,7 +596,7 @@ fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let double = x -> 2
+        let double = (x) -> 2
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
@@ -605,7 +605,7 @@ fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let add = x, y -> 0
+        let add = (x, y) -> 0
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
@@ -614,7 +614,7 @@ fn test_closure_multi_params() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        let greet = name: String -> "Hello"
+        let greet = (name: String) -> "Hello"
     "#;
     compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
@@ -1033,12 +1033,17 @@ fn test_struct_with_multiple_fields() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level `mut` is rejected by the parser; mutability lives on
+    // bindings only (`let mut`). This test pins the rejection.
     let source = r"
         struct Counter {
             mut value: I32
         }
     ";
-    compile(source).map_err(|e| fmt_errs(&e))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected parser to reject `mut` in field position".into());
+    }
     Ok(())
 }
 
@@ -1178,14 +1183,12 @@ fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>
     if !notes.optional {
         return Err("notes field should be optional".into());
     }
-    let retry = task
+    // Field-level `mut` was removed; just verify retry_count exists.
+    let _retry = task
         .fields
         .iter()
         .find(|f| f.name == "retry_count")
         .ok_or("retry_count missing")?;
-    if !retry.mutable {
-        return Err("retry_count should be mutable".into());
-    }
 
     // Standalone functions
     if !module.functions.iter().any(|f| f.name == "clamp") {

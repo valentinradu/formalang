@@ -93,17 +93,10 @@ pub(super) fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiatio
     // try to look up the outer key (the mapping keys hold fully-rewritten
     // inner types, so we must rewrite inner before outer lookup).
     match ty {
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            rewrite_type(inner, mapping);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 rewrite_type(t, mapping);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            rewrite_type(key_ty, mapping);
-            rewrite_type(value_ty, mapping);
         }
         ResolvedType::Closure {
             param_tys,
@@ -249,16 +242,12 @@ pub(super) fn receiver_to_base(ty: &ResolvedType) -> Option<GenericBase> {
     match ty {
         ResolvedType::Struct(id) => Some(GenericBase::Struct(*id)),
         ResolvedType::Enum(id) => Some(GenericBase::Enum(*id)),
-        ResolvedType::Optional(inner) => receiver_to_base(inner),
+        ResolvedType::Generic { base, .. } => Some(*base),
         ResolvedType::Primitive(_)
         | ResolvedType::Trait(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
         | ResolvedType::Tuple(_)
-        | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error => None,
     }

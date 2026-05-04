@@ -57,18 +57,15 @@ impl IrLowerer<'_> {
         // literal entry values. Same mechanism as the destructuring
         // let path; see `lower_array_destructuring_let`.
         let saved_expected = self.expected_value_type.take();
-        self.expected_value_type = let_binding
+        let lowered_annotation = let_binding
             .type_annotation
             .as_ref()
-            .map(|t| self.lower_type(t))
-            .filter(|t| {
-                matches!(
-                    t,
-                    ResolvedType::Array(_)
-                        | ResolvedType::Tuple(_)
-                        | ResolvedType::Dictionary { .. }
-                )
-            });
+            .map(|t| self.lower_type(t));
+        self.expected_value_type = lowered_annotation.as_ref().cloned().filter(|t| {
+            matches!(t, ResolvedType::Tuple(_))
+                || self.array_element_ty(t).is_some()
+                || self.dictionary_kv_ty(t).is_some()
+        });
         let mut value = self.lower_expr(&let_binding.value);
         self.expected_value_type = saved_expected;
         self.expected_closure_type = saved_closure;
@@ -78,30 +75,29 @@ impl IrLowerer<'_> {
         } else {
             self.symbols
                 .get_let_type(ident_name)
-                .map(str::to_string)
+                .map(crate::semantic::sem_type::SemType::display)
                 .and_then(|s| self.string_to_resolved_type(&s))
                 .unwrap_or_else(|| value.ty().clone())
         };
-        // an empty array literal lowers to `Array(Never)`
-        // because it has no elements to seed the element type from.
-        // When the binding is annotated `[T]`, retype the value's
-        // `Array(Never)` to `Array(T)` so backends and downstream IR
-        // passes see a concrete element type instead of Never.
-        if let (
-            IrExpr::Array {
-                elements, ty: vty, ..
-            },
-            ResolvedType::Array(annotated_elem),
-        ) = (&mut value, &ty)
+        // An empty array literal lowers to `Array<Never>`. When the
+        // binding is annotated `[T]`, retype the value's array generic
+        // to `Array<T>` so backends and downstream IR passes see a
+        // concrete element type instead of Never.
+        if let IrExpr::Array {
+            elements, ty: vty, ..
+        } = &mut value
         {
-            if elements.is_empty()
-                && matches!(
-                    vty,
-                    ResolvedType::Array(boxed)
-                        if matches!(**boxed, ResolvedType::Primitive(PrimitiveType::Never))
-                )
-            {
-                *vty = ResolvedType::Array(annotated_elem.clone());
+            if elements.is_empty() {
+                if let (Some(value_elem), Some(ann_elem)) = (
+                    self.array_element_ty(vty),
+                    self.array_element_ty(&ty),
+                ) {
+                    if matches!(value_elem, ResolvedType::Primitive(PrimitiveType::Never)) {
+                        if let Some(retyped) = self.array_of(ann_elem) {
+                            *vty = retyped;
+                        }
+                    }
+                }
             }
         }
         self.module.add_let(IrLet {

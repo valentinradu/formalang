@@ -1,5 +1,6 @@
 use crate::ast::{FnSig, GenericParam, Type, Visibility};
 use crate::location::Span;
+use crate::semantic::sem_type::SemType;
 use std::collections::HashMap;
 
 /// Information about a trait with field requirements
@@ -27,8 +28,11 @@ pub struct TraitInfo {
 pub struct LetInfo {
     pub visibility: Visibility,
     pub span: Span,
-    /// Inferred type of the binding (optional, computed during semantic analysis)
-    pub inferred_type: Option<String>,
+    /// Type of the binding, as resolved during semantic analysis. Set
+    /// by `infer_let_types` once it has either an annotated type or
+    /// the value's inferred type to fold in. `None` only between the
+    /// initial registration and that pass.
+    pub inferred_type: Option<SemType>,
     /// Joined `///` doc comments preceding this binding.
     pub doc: Option<String>,
 }

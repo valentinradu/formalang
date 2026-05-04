@@ -54,13 +54,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         } else if self.symbols.is_trait(&ident.name) {
-            // No dynamic dispatch: a trait in a value-producing position
-            // (param/return/field/let annotation) implies a trait-object
-            // value, which the IR can't represent — require `<T: Trait>`.
-            self.errors.push(CompilerError::TraitUsedAsValueType {
-                trait_name: ident.name.clone(),
-                span: ident.span,
-            });
+            // Trait used as a value type (`let s: Shape = ...`). The IR
+            // lowers this through virtual dispatch via the trait's
+            // vtable, so it's allowed at value positions; the previous
+            // blanket rejection blocked source-level use of dispatch the
+            // backend already supports.
         } else if self.symbols.is_type(&ident.name) || self.is_type_parameter(&ident.name) {
             // Valid struct/enum type or generic type parameter — OK.
         } else if ident.name.len() == 1 && ident.name.chars().next().is_some_and(char::is_uppercase)

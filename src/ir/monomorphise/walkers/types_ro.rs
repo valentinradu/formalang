@@ -70,7 +70,10 @@ fn walk_impl_types(imp: &IrImpl, visit: &mut impl FnMut(&ResolvedType)) {
     }
 }
 
-fn walk_function_types(f: &IrFunction, visit: &mut impl FnMut(&ResolvedType)) {
+pub(in crate::ir::monomorphise) fn walk_function_types(
+    f: &IrFunction,
+    visit: &mut impl FnMut(&ResolvedType),
+) {
     for p in &f.params {
         if let Some(ty) = &p.ty {
             visit(ty);
@@ -98,7 +101,10 @@ fn walk_field_types(f: &IrField, visit: &mut impl FnMut(&ResolvedType)) {
     clippy::too_many_lines,
     reason = "exhaustive walk over every IrExpr variant; splitting hides the structural recursion"
 )]
-fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
+pub(in crate::ir::monomorphise) fn walk_expr_types(
+    expr: &IrExpr,
+    visit: &mut impl FnMut(&ResolvedType),
+) {
     visit(expr.ty());
     match expr {
         IrExpr::Tuple { fields, .. } => {
@@ -106,7 +112,17 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
                 walk_expr_types(e, visit);
             }
         }
-        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
+        IrExpr::StructInst {
+            type_args, fields, ..
+        } => {
+            for ta in type_args {
+                visit(ta);
+            }
+            for (_, _, e) in fields {
+                walk_expr_types(e, visit);
+            }
+        }
+        IrExpr::EnumInst { fields, .. } => {
             for (_, _, e) in fields {
                 walk_expr_types(e, visit);
             }
@@ -145,6 +161,9 @@ fn walk_expr_types(expr: &IrExpr, visit: &mut impl FnMut(&ResolvedType)) {
         } => {
             walk_expr_types(scrutinee, visit);
             for arm in arms {
+                for (_, _, binding_ty) in &arm.bindings {
+                    visit(binding_ty);
+                }
                 walk_expr_types(&arm.body, visit);
             }
         }

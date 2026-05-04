@@ -4,13 +4,18 @@
 
 use formalang::compile_to_ir;
 
-/// Count user-defined impls, excluding the prelude's `extern impl
-/// <Primitive>` blocks (which are inlined into every module since SB-7).
+/// Count user-defined impls, excluding both the prelude's `extern impl
+/// <Primitive>` blocks and the prelude's built-in compound impls
+/// (`Array`, `Dictionary`, `Range`, `Optional`).
 fn user_impl_count(module: &formalang::ir::IrModule) -> usize {
     module
         .impls
         .iter()
-        .filter(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .filter(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .count()
 }
 
@@ -22,14 +27,14 @@ fn user_impl_count(module: &formalang::ir::IrModule) -> usize {
 fn test_lower_empty_source() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir("");
     let module = result.map_err(|e| format!("{e:?}"))?;
-    if !module.structs.is_empty() {
-        return Err("assertion failed".into());
+    if module.user_structs().count() != 0 {
+        return Err("assertion failed: user-defined structs should be empty".into());
     }
     if !module.traits.is_empty() {
         return Err("assertion failed".into());
     }
-    if !module.enums.is_empty() {
-        return Err("assertion failed".into());
+    if module.user_enums().count() != 0 {
+        return Err("assertion failed: user-defined enums should be empty".into());
     }
     if user_impl_count(&module) != 0 {
         return Err("assertion failed".into());
@@ -43,10 +48,10 @@ fn test_lower_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
-    let point = &module.structs.first().ok_or("index out of bounds")?;
+    let point = &module.user_structs().next().ok_or("index out of bounds")?;
     if point.name != "Point" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -82,10 +87,10 @@ fn test_lower_struct_with_string_field() -> Result<(), Box<dyn std::error::Error
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
-    let user = &module.structs.first().ok_or("index out of bounds")?;
+    let user = &module.user_structs().next().ok_or("index out of bounds")?;
     if user.name != "User" {
         return Err(format!("expected {:?} but got {:?}", "User", user.name).into());
     }
@@ -109,12 +114,11 @@ fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Erro
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -125,8 +129,7 @@ fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Erro
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
             module
-                .structs
-                .first()
+                .user_structs().next()
                 .ok_or("index out of bounds")?
                 .fields
                 .first()
@@ -145,12 +148,11 @@ fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -161,8 +163,7 @@ fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
             module
-                .structs
-                .first()
+                .user_structs().next()
                 .ok_or("index out of bounds")?
                 .fields
                 .first()
@@ -181,12 +182,11 @@ fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Err
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -205,26 +205,13 @@ fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
-fn test_lower_struct_with_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
+fn test_lower_struct_with_mutable_field_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level mutability was removed; mutability now lives on the
+    // binding (`let mut`). The parser must reject `mut` inside a struct
+    // field declaration.
     let source = "struct Counter { mut count: I32 }";
-    let result = compile_to_ir(source);
-    let module = result.map_err(|e| format!("{e:?}"))?;
-
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
-    }
-    let field = &module
-        .structs
-        .first()
-        .ok_or("index out of bounds")?
-        .fields
-        .first()
-        .ok_or("index out of bounds")?;
-    if field.name != "count" {
-        return Err(format!("expected {:?} but got {:?}", "count", field.name).into());
-    }
-    if !(field.mutable) {
-        return Err("assertion failed".into());
+    if compile_to_ir(source).is_ok() {
+        return Err("expected `mut` in field position to be rejected".into());
     }
     Ok(())
 }
@@ -235,12 +222,11 @@ fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     if !module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -256,12 +242,11 @@ fn test_lower_private_struct() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -369,10 +354,10 @@ fn test_lower_simple_enum() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.enums.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.enums.len()).into());
+    if module.user_enums().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_enums().count()).into());
     }
-    let status = &module.enums.first().ok_or("index out of bounds")?;
+    let status = &module.user_enums().next().ok_or("index out of bounds")?;
     if status.name != "Status" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -416,10 +401,10 @@ fn test_lower_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.enums.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.enums.len()).into());
+    if module.user_enums().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_enums().count()).into());
     }
-    let result_enum = &module.enums.first().ok_or("index out of bounds")?;
+    let result_enum = &module.user_enums().next().ok_or("index out of bounds")?;
     if result_enum.name != "Result" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -490,7 +475,7 @@ fn test_lower_enum_mixed_variants() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    let option = &module.enums.first().ok_or("index out of bounds")?;
+    let option = &module.user_enums().next().ok_or("index out of bounds")?;
     if option.variants.first().ok_or("index out of bounds")?.name != "none" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -546,8 +531,7 @@ fn test_lower_public_enum() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if !module
-        .enums
-        .first()
+        .user_enums().next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -698,8 +682,8 @@ fn test_lower_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
     // Impl block is explicitly defined
     if user_impl_count(&module) != 1 {
@@ -720,8 +704,7 @@ fn test_lower_impl_with_literal() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -750,11 +733,11 @@ fn test_lower_struct_implementing_trait() -> Result<(), Box<dyn std::error::Erro
     if module.traits.len() != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, module.traits.len()).into());
     }
-    if module.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
     }
 
-    let user = &module.structs.first().ok_or("index out of bounds")?;
+    let user = &module.user_structs().next().ok_or("index out of bounds")?;
     if user.name != "User" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -778,7 +761,7 @@ fn test_lower_struct_with_multiple_traits() -> Result<(), Box<dyn std::error::Er
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     // Verify struct lowered correctly even without trait composition syntax
-    let person = &module.structs.first().ok_or("index out of bounds")?;
+    let person = &module.user_structs().next().ok_or("index out of bounds")?;
     if person.name != "Person" {
         return Err(format!("expected Person, got {:?}", person.name).into());
     }
@@ -798,7 +781,7 @@ fn test_lower_generic_struct() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    let box_struct = &module.structs.first().ok_or("index out of bounds")?;
+    let box_struct = &module.user_structs().next().ok_or("index out of bounds")?;
     if box_struct.name != "Box" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -884,7 +867,7 @@ fn test_lower_generic_enum() -> Result<(), Box<dyn std::error::Error>> {
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    let maybe = &module.enums.first().ok_or("index out of bounds")?;
+    let maybe = &module.user_enums().next().ok_or("index out of bounds")?;
     if maybe.name != "Maybe" {
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
@@ -922,7 +905,7 @@ fn test_lower_multiple_generic_params() -> Result<(), Box<dyn std::error::Error>
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    let pair = &module.structs.first().ok_or("index out of bounds")?;
+    let pair = &module.user_structs().next().ok_or("index out of bounds")?;
     if pair.generic_params.len() != 2 {
         return Err(format!("expected {:?} but got {:?}", 2, pair.generic_params.len()).into());
     }
@@ -981,11 +964,11 @@ fn test_lower_multiple_definitions() -> Result<(), Box<dyn std::error::Error>> {
     if module.traits.len() != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, module.traits.len()).into());
     }
-    if module.structs.len() != 2 {
-        return Err(format!("expected {:?} but got {:?}", 2, module.structs.len()).into());
+    if module.user_structs().count() != 2 {
+        return Err(format!("expected {:?} but got {:?}", 2, module.user_structs().count()).into());
     }
-    if module.enums.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.enums.len()).into());
+    if module.user_enums().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, module.user_enums().count()).into());
     }
     Ok(())
 }
@@ -999,8 +982,8 @@ fn test_lower_struct_referencing_another() -> Result<(), Box<dyn std::error::Err
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
-    if module.structs.len() != 2 {
-        return Err(format!("expected {:?} but got {:?}", 2, module.structs.len()).into());
+    if module.user_structs().count() != 2 {
+        return Err(format!("expected {:?} but got {:?}", 2, module.user_structs().count()).into());
     }
 
     // Book should have an Author field with struct type
@@ -1057,8 +1040,7 @@ fn test_lower_field_with_default_number() -> Result<(), Box<dyn std::error::Erro
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1083,8 +1065,7 @@ fn test_lower_field_with_default_string() -> Result<(), Box<dyn std::error::Erro
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1102,8 +1083,7 @@ fn test_lower_field_with_default_boolean() -> Result<(), Box<dyn std::error::Err
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1159,8 +1139,7 @@ fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1168,13 +1147,12 @@ fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     if field.name != "rows" {
         return Err(format!("expected {:?} but got {:?}", "rows", field.name).into());
     }
-    // Should be Array(Array(Primitive(I32)))
-    if let formalang::ir::ResolvedType::Array(inner) = &field.ty {
-        if !matches!(inner.as_ref(), formalang::ir::ResolvedType::Array(_)) {
-            return Err("expected inner Array type".into());
-        }
-    } else {
-        return Err("Expected nested array type".into());
+    // Should be Array<Array<I32>>.
+    let inner = module
+        .array_element_ty(&field.ty)
+        .ok_or("expected outer Array<...>")?;
+    if module.array_element_ty(inner).is_none() {
+        return Err("expected inner Array<...>".into());
     }
     Ok(())
 }
@@ -1226,55 +1204,81 @@ use formalang::ir::{
     clippy::struct_field_names,
     reason = "counter fields all end in _count by design"
 )]
-struct TypeCounter {
+struct TypeCounter<'m> {
+    module: &'m formalang::ir::IrModule,
     struct_count: usize,
     trait_count: usize,
     enum_count: usize,
     field_count: usize,
     impl_count: usize,
     variant_count: usize,
+    /// True while walking inside a prelude built-in struct/enum so we
+    /// can also skip its fields and variants.
+    inside_prelude_def: bool,
 }
 
-impl TypeCounter {
-    const fn new() -> Self {
+impl<'m> TypeCounter<'m> {
+    const fn new(module: &'m formalang::ir::IrModule) -> Self {
         Self {
+            module,
             struct_count: 0,
             trait_count: 0,
             enum_count: 0,
             field_count: 0,
             impl_count: 0,
             variant_count: 0,
+            inside_prelude_def: false,
         }
     }
 }
 
-impl IrVisitor for TypeCounter {
-    fn visit_struct(&mut self, _id: StructId, _s: &IrStruct) {
-        self.struct_count = self.struct_count.saturating_add(1);
+impl IrVisitor for TypeCounter<'_> {
+    fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
+        if self.module.is_prelude_struct(id) {
+            self.inside_prelude_def = true;
+        } else {
+            self.inside_prelude_def = false;
+            self.struct_count = self.struct_count.saturating_add(1);
+        }
     }
 
     fn visit_trait(&mut self, _id: TraitId, _t: &IrTrait) {
+        self.inside_prelude_def = false;
         self.trait_count = self.trait_count.saturating_add(1);
     }
 
-    fn visit_enum(&mut self, _id: EnumId, _e: &IrEnum) {
-        self.enum_count = self.enum_count.saturating_add(1);
+    fn visit_enum(&mut self, id: EnumId, _e: &IrEnum) {
+        if self.module.is_prelude_enum(id) {
+            self.inside_prelude_def = true;
+        } else {
+            self.inside_prelude_def = false;
+            self.enum_count = self.enum_count.saturating_add(1);
+        }
     }
 
     fn visit_field(&mut self, _f: &IrField) {
-        self.field_count = self.field_count.saturating_add(1);
+        if !self.inside_prelude_def {
+            self.field_count = self.field_count.saturating_add(1);
+        }
     }
 
     fn visit_impl(&mut self, i: &IrImpl) {
-        // Exclude prelude `extern impl <Primitive>` blocks so the
-        // counts in tests below stay in terms of user-authored impls.
-        if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+        // Skip prelude impls (`extern impl <Primitive>` and the built-
+        // in compound impls on Array / Dictionary / Range / Optional).
+        let is_prelude = match i.target {
+            formalang::ir::ImplTarget::Primitive(_) => true,
+            formalang::ir::ImplTarget::Struct(id) => self.module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => self.module.is_prelude_enum(id),
+        };
+        if !is_prelude {
             self.impl_count = self.impl_count.saturating_add(1);
         }
     }
 
     fn visit_enum_variant(&mut self, _v: &IrEnumVariant) {
-        self.variant_count = self.variant_count.saturating_add(1);
+        if !self.inside_prelude_def {
+            self.variant_count = self.variant_count.saturating_add(1);
+        }
     }
 }
 
@@ -1283,7 +1287,7 @@ fn test_visitor_counts_structs() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct A { } struct B { } struct C { }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.struct_count != 3 {
@@ -1301,7 +1305,7 @@ fn test_visitor_counts_traits() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait X { } trait Y { }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.trait_count != 2 {
@@ -1319,7 +1323,7 @@ fn test_visitor_counts_enums() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum E1 { a } enum E2 { b } enum E3 { c }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.enum_count != 3 {
@@ -1337,7 +1341,7 @@ fn test_visitor_counts_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Point { x: I32, y: I32, z: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.field_count != 3 {
@@ -1355,7 +1359,7 @@ fn test_visitor_counts_variants() -> Result<(), Box<dyn std::error::Error>> {
     let source = "enum Color { red, green, blue, yellow }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.variant_count != 4 {
@@ -1378,7 +1382,7 @@ fn test_visitor_counts_impls() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.impl_count != 2 {
@@ -1397,7 +1401,7 @@ fn test_visitor_mixed_definitions() -> Result<(), Box<dyn std::error::Error>> {
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.struct_count != 1 {
@@ -1452,7 +1456,7 @@ fn test_visitor_enum_variant_fields() -> Result<(), Box<dyn std::error::Error>> 
     let source = "enum Option { none, some(value: I32) }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     // 2 variants
@@ -1479,7 +1483,7 @@ fn test_visitor_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
     let source = "trait Entity { id: I32, name: String }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let mut counter = TypeCounter::new();
+    let mut counter = TypeCounter::new(&module);
     walk_module(&mut counter, &module);
 
     if counter.trait_count != 1 {
@@ -1505,20 +1509,19 @@ fn test_visitor_trait_fields() -> Result<(), Box<dyn std::error::Error>> {
 
 use formalang::ir::ResolvedType;
 
-fn type_name(ty: &ResolvedType) -> String {
+fn type_name(ty: &ResolvedType, module: &formalang::ir::IrModule) -> String {
+    if module.array_element_ty(ty).is_some() {
+        return "Array".to_string();
+    }
     match ty {
         ResolvedType::Primitive(p) => format!("{p:?}"),
         ResolvedType::Struct(_) => "Struct".to_string(),
         ResolvedType::Enum(_) => "Enum".to_string(),
-        ResolvedType::Array(_) => "Array".to_string(),
         ResolvedType::Trait(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
         | ResolvedType::External { .. }
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error => "Other".to_string(),
     }
@@ -1532,8 +1535,7 @@ fn test_expr_type_literal_string() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1541,8 +1543,8 @@ fn test_expr_type_literal_string() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "String" {
-        return Err(format!("expected {:?} but got {:?}", "String", type_name(expr.ty())).into());
+    if type_name(expr.ty(), &module) != "String" {
+        return Err(format!("expected {:?} but got {:?}", "String", type_name(expr.ty(), &module)).into());
     }
     Ok(())
 }
@@ -1555,8 +1557,7 @@ fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1564,8 +1565,8 @@ fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "I32" {
-        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty())).into());
+    if type_name(expr.ty(), &module) != "I32" {
+        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty(), &module)).into());
     }
     Ok(())
 }
@@ -1578,8 +1579,7 @@ fn test_expr_type_literal_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1587,11 +1587,11 @@ fn test_expr_type_literal_boolean() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -1606,8 +1606,7 @@ fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1615,8 +1614,8 @@ fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Array" {
-        return Err(format!("expected {:?} but got {:?}", "Array", type_name(expr.ty())).into());
+    if type_name(expr.ty(), &module) != "Array" {
+        return Err(format!("expected {:?} but got {:?}", "Array", type_name(expr.ty(), &module)).into());
     }
     Ok(())
 }
@@ -1631,16 +1630,17 @@ fn test_expr_type_struct_instantiation() -> Result<(), Box<dyn std::error::Error
 
     let expr = module
         .structs
-        .get(1)
-        .ok_or("index out of bounds")?
+        .iter()
+        .find(|s| s.name == "Container")
+        .ok_or("Container not found")?
         .fields
         .first()
         .ok_or("index out of bounds")?
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Struct" {
-        return Err(format!("expected {:?} but got {:?}", "Struct", type_name(expr.ty())).into());
+    if type_name(expr.ty(), &module) != "Struct" {
+        return Err(format!("expected {:?} but got {:?}", "Struct", type_name(expr.ty(), &module)).into());
     }
     Ok(())
 }
@@ -1658,8 +1658,7 @@ fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1671,8 +1670,7 @@ fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
     }
     // The expression has a type
     let _ty = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1692,8 +1690,7 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1702,8 +1699,8 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
         .as_ref()
         .ok_or("expected Some")?;
     // Arithmetic results in I32
-    if type_name(expr.ty()) != "I32" {
-        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty())).into());
+    if type_name(expr.ty(), &module) != "I32" {
+        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty(), &module)).into());
     }
     Ok(())
 }
@@ -1716,8 +1713,7 @@ fn test_expr_type_binary_comparison() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1726,11 +1722,11 @@ fn test_expr_type_binary_comparison() -> Result<(), Box<dyn std::error::Error>> 
         .as_ref()
         .ok_or("expected Some")?;
     // Comparison results in Boolean
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -1746,7 +1742,7 @@ fn test_resolved_type_display_primitive() -> Result<(), Box<dyn std::error::Erro
     let source = "struct S { n: I32, s: String, b: Boolean }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let s = &module.structs.first().ok_or("index out of bounds")?;
+    let s = &module.user_structs().next().ok_or("index out of bounds")?;
     if s.fields
         .first()
         .ok_or("index out of bounds")?
@@ -1809,7 +1805,7 @@ fn test_resolved_type_display_array() -> Result<(), Box<dyn std::error::Error>> 
     let source = "struct S { items: [String] }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let s = &module.structs.first().ok_or("index out of bounds")?;
+    let s = &module.user_structs().next().ok_or("index out of bounds")?;
     if s.fields
         .first()
         .ok_or("index out of bounds")?
@@ -1836,7 +1832,7 @@ fn test_resolved_type_display_optional() -> Result<(), Box<dyn std::error::Error
     let source = "struct S { maybe: String? }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let s = &module.structs.first().ok_or("index out of bounds")?;
+    let s = &module.user_structs().next().ok_or("index out of bounds")?;
     if s.fields
         .first()
         .ok_or("index out of bounds")?
@@ -1927,7 +1923,7 @@ fn test_resolved_type_display_nested_array() -> Result<(), Box<dyn std::error::E
     let source = "struct S { matrix: [[I32]] }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let s = &module.structs.first().ok_or("index out of bounds")?;
+    let s = &module.user_structs().next().ok_or("index out of bounds")?;
     if s.fields
         .first()
         .ok_or("index out of bounds")?
@@ -1961,8 +1957,7 @@ fn test_lower_if_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1984,8 +1979,7 @@ fn test_lower_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2011,8 +2005,7 @@ fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2048,8 +2041,7 @@ fn test_lower_let_expression() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2075,8 +2067,7 @@ fn test_lower_enum_instantiation_simple() -> Result<(), Box<dyn std::error::Erro
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2107,8 +2098,7 @@ fn test_lower_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::E
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2153,8 +2143,7 @@ fn test_lower_inferred_enum_instantiation() -> Result<(), Box<dyn std::error::Er
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2188,8 +2177,7 @@ fn test_lower_tuple_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2238,8 +2226,7 @@ fn test_lower_binary_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2261,8 +2248,7 @@ fn test_lower_binary_multiplication() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2284,8 +2270,7 @@ fn test_lower_binary_logical_and() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2296,11 +2281,11 @@ fn test_lower_binary_logical_and() -> Result<(), Box<dyn std::error::Error>> {
     if !(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. })) {
         return Err("assertion failed".into());
     }
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -2315,8 +2300,7 @@ fn test_lower_binary_logical_or() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2327,11 +2311,11 @@ fn test_lower_binary_logical_or() -> Result<(), Box<dyn std::error::Error>> {
     if !(matches!(expr, formalang::ir::IrExpr::BinaryOp { .. })) {
         return Err("assertion failed".into());
     }
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -2346,8 +2330,7 @@ fn test_lower_binary_less_than() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2355,11 +2338,11 @@ fn test_lower_binary_less_than() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -2374,8 +2357,7 @@ fn test_lower_binary_greater_than() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2383,11 +2365,11 @@ fn test_lower_binary_greater_than() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
-    if type_name(expr.ty()) != "Boolean" {
+    if type_name(expr.ty(), &module) != "Boolean" {
         return Err(format!(
             "expected {:?} but got {:?}",
             "Boolean",
-            type_name(expr.ty())
+            type_name(expr.ty(), &module)
         )
         .into());
     }
@@ -2707,7 +2689,7 @@ fn test_lower_generic_wrapper_struct() -> Result<(), Box<dyn std::error::Error>>
     let source = "struct Wrapper<T> { value: T }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let wrapper = &module.structs.first().ok_or("index out of bounds")?;
+    let wrapper = &module.user_structs().next().ok_or("index out of bounds")?;
     if wrapper.name != "Wrapper" {
         return Err(format!("expected {:?} but got {:?}", "Wrapper", wrapper.name).into());
     }
@@ -2745,7 +2727,7 @@ fn test_lower_generic_struct_multiple_params() -> Result<(), Box<dyn std::error:
     let source = "struct Pair<A, B> { first: A, second: B }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let pair = &module.structs.first().ok_or("index out of bounds")?;
+    let pair = &module.user_structs().next().ok_or("index out of bounds")?;
     if pair.generic_params.len() != 2 {
         return Err(format!("expected {:?} but got {:?}", 2, pair.generic_params.len()).into());
     }
@@ -2836,7 +2818,7 @@ fn test_resolved_type_display_type_param() -> Result<(), Box<dyn std::error::Err
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let box_struct = &module.structs.first().ok_or("index out of bounds")?;
+    let box_struct = &module.user_structs().next().ok_or("index out of bounds")?;
     // Type parameter T should display as "T"
     if box_struct
         .fields
@@ -2999,13 +2981,9 @@ struct Main {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
@@ -3106,13 +3084,9 @@ struct Item {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
@@ -3183,13 +3157,9 @@ struct Wrapper {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
@@ -3276,13 +3246,9 @@ struct Container {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
         | ResolvedType::Tuple(_)
         | ResolvedType::Generic { .. }
         | ResolvedType::TypeParam(_)
-        | ResolvedType::Dictionary { .. }
         | ResolvedType::Closure { .. }
         | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
@@ -3458,44 +3424,20 @@ struct Collection {
         .ok_or("not found")?;
     let items_field = &collection.fields.first().ok_or("index out of bounds")?;
 
-    match &items_field.ty {
-        ResolvedType::Array(inner) => match inner.as_ref() {
-            ResolvedType::External { name, .. } => {
-                if name != "Item" {
-                    return Err(format!(
-                        "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
-                        name, "Item"
-                    )
-                    .into());
-                }
+    let inner = module
+        .array_element_ty(&items_field.ty)
+        .ok_or_else(|| format!("expected Array<...>, got {:?}", items_field.ty))?;
+    match inner {
+        ResolvedType::External { name, .. } => {
+            if name != "Item" {
+                return Err(format!(
+                    "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
+                    name, "Item"
+                )
+                .into());
             }
-            other @ (ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }
-            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
-        },
-        other @ (ResolvedType::Primitive(_)
-        | ResolvedType::Struct(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
-        | ResolvedType::Tuple(_)
-        | ResolvedType::Generic { .. }
-        | ResolvedType::TypeParam(_)
-        | ResolvedType::External { .. }
-        | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }
-        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
+        }
+        other => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3524,44 +3466,20 @@ struct Container {
         .ok_or("not found")?;
     let item_field = &container.fields.first().ok_or("index out of bounds")?;
 
-    match &item_field.ty {
-        ResolvedType::Optional(inner) => match inner.as_ref() {
-            ResolvedType::External { name, .. } => {
-                if name != "Item" {
-                    return Err(format!(
-                        "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
-                        name, "Item"
-                    )
-                    .into());
-                }
+    let inner = module
+        .optional_inner_ty(&item_field.ty)
+        .ok_or_else(|| format!("expected Optional<...>, got {:?}", item_field.ty))?;
+    match inner {
+        ResolvedType::External { name, .. } => {
+            if name != "Item" {
+                return Err(format!(
+                    "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
+                    name, "Item"
+                )
+                .into());
             }
-            other @ (ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::Dictionary { .. }
-            | ResolvedType::Closure { .. }
-            | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
-        },
-        other @ (ResolvedType::Primitive(_)
-        | ResolvedType::Struct(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Tuple(_)
-        | ResolvedType::Generic { .. }
-        | ResolvedType::TypeParam(_)
-        | ResolvedType::External { .. }
-        | ResolvedType::Dictionary { .. }
-        | ResolvedType::Closure { .. }
-        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
+        }
+        other => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3658,13 +3576,9 @@ struct Main {
             ResolvedType::Primitive(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error => {}
         }
@@ -3709,11 +3623,6 @@ struct Main {
                     collect_struct_ids(arg, ids);
                 }
             }
-            ResolvedType::Array(inner)
-            | ResolvedType::Range(inner)
-            | ResolvedType::Optional(inner) => {
-                collect_struct_ids(inner, ids);
-            }
             ResolvedType::Tuple(fields) => {
                 for (_, ty) in fields {
                     collect_struct_ids(ty, ids);
@@ -3729,7 +3638,6 @@ struct Main {
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::TypeParam(_)
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error => {}
         }
@@ -3742,7 +3650,9 @@ struct Main {
         }
     }
 
-    // All collected StructIds must be valid (in bounds)
+    // All collected StructIds must be valid (in bounds across the full
+    // struct table — including prelude built-ins, which sit before any
+    // user-defined struct).
     for id in all_ids {
         if (id.0 as usize) >= module.structs.len() {
             return Err(format!(
@@ -3768,8 +3678,8 @@ struct Main {
 fn test_get_struct_returns_none_for_invalid_id() -> Result<(), Box<dyn std::error::Error>> {
     let source = "struct Only { value: I32 }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    if module.structs.len() != 1 {
-        return Err(format!("expected 1 struct, got {}", module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected 1 struct, got {}", module.user_structs().count()).into());
     }
     let invalid_id = StructId(u32::MAX);
     if module.get_struct(invalid_id).is_some() {
@@ -3825,14 +3735,10 @@ struct Container { h: Helper = Helper(name: "test") }
             other @ (ResolvedType::Primitive(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         }
@@ -3859,8 +3765,7 @@ struct Item { status: Status = Status.active }
     let module = compile_to_ir_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -3896,14 +3801,10 @@ struct Item { status: Status = Status.active }
             other @ (ResolvedType::Primitive(_)
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
         }
@@ -3925,8 +3826,9 @@ struct Container { p: Point = Point(x: 1, y: 2) }
 
     let expr = module
         .structs
-        .get(1)
-        .ok_or("index out of bounds")?
+        .iter()
+        .find(|s| s.name == "Container")
+        .ok_or("Container not found")?
         .fields
         .first()
         .ok_or("index out of bounds")?
@@ -4198,7 +4100,7 @@ fn test_dict_literal_lowering() -> Result<(), Box<dyn std::error::Error>> {
     struct DictFinder {
         found: bool,
         entry_count: usize,
-        type_ok: bool,
+        ty: Option<ResolvedType>,
     }
 
     impl IrVisitor for DictFinder {
@@ -4206,7 +4108,7 @@ fn test_dict_literal_lowering() -> Result<(), Box<dyn std::error::Error>> {
             if let IrExpr::DictLiteral { entries, ty, .. } = e {
                 self.found = true;
                 self.entry_count = entries.len();
-                self.type_ok = matches!(ty, ResolvedType::Dictionary { .. });
+                self.ty = Some(ty.clone());
             }
             formalang::ir::walk_expr_children(self, e);
         }
@@ -4215,15 +4117,16 @@ fn test_dict_literal_lowering() -> Result<(), Box<dyn std::error::Error>> {
     let mut finder = DictFinder {
         found: false,
         entry_count: 0,
-        type_ok: false,
+        ty: None,
     };
     walk_module(&mut finder, &module);
 
     if !(finder.found) {
         return Err("Should find DictLiteral".into());
     }
-    if !finder.type_ok {
-        return Err("expected Dictionary type".into());
+    let ty = finder.ty.as_ref().ok_or("expected dict type")?;
+    if module.dictionary_kv_ty(ty).is_none() {
+        return Err(format!("expected Dictionary type, got {ty:?}").into());
     }
     if finder.entry_count != 2 {
         return Err(format!("Should have 2 entries, got {}", finder.entry_count).into());
@@ -4239,9 +4142,10 @@ fn test_dict_literal_lowering() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dict_access_lowering() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{walk_module, IrExpr, IrVisitor};
 
+    // Dictionary indexing returns `T?` so the field type matches.
     let source = r#"
         let data: [String: I32] = ["a": 1]
-        struct Config { value: I32 = data["a"] }
+        struct Config { value: I32? = data["a"] }
         let cfg: Config = Config()
     "#;
 
@@ -4278,35 +4182,25 @@ fn test_dict_type_lowering() -> Result<(), Box<dyn std::error::Error>> {
     ";
 
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
-    let container = &module.structs.first().ok_or("index out of bounds")?;
+    let container = module
+        .structs
+        .iter()
+        .find(|s| s.name == "Container")
+        .ok_or("Container not found")?;
     let data_field = container
         .fields
         .iter()
         .find(|f| f.name == "data")
         .ok_or("not found")?;
 
-    match &data_field.ty {
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            if !(matches!(key_ty.as_ref(), ResolvedType::Primitive(_))) {
-                return Err("assertion failed".into());
-            }
-            if !(matches!(value_ty.as_ref(), ResolvedType::Primitive(_))) {
-                return Err("assertion failed".into());
-            }
-        }
-        other @ (ResolvedType::Primitive(_)
-        | ResolvedType::Struct(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::Array(_)
-        | ResolvedType::Range(_)
-        | ResolvedType::Optional(_)
-        | ResolvedType::Tuple(_)
-        | ResolvedType::Generic { .. }
-        | ResolvedType::TypeParam(_)
-        | ResolvedType::External { .. }
-        | ResolvedType::Closure { .. }
-        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
+    let (key_ty, value_ty) = module
+        .dictionary_kv_ty(&data_field.ty)
+        .ok_or_else(|| format!("expected Dictionary<...>, got {:?}", data_field.ty))?;
+    if !matches!(key_ty, ResolvedType::Primitive(_)) {
+        return Err("expected primitive key type".into());
+    }
+    if !matches!(value_ty, ResolvedType::Primitive(_)) {
+        return Err("expected primitive value type".into());
     }
     Ok(())
 }

@@ -223,7 +223,10 @@ impl Counter {
     let counter_impl = module
         .impls
         .iter()
-        .find(|i| matches!(i.target, formalang::ir::ImplTarget::Struct(_)))
+        .find(|i| match i.target {
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            _ => false,
+        })
         .ok_or("Counter impl missing")?;
     if counter_impl.is_extern {
         return Err("expected regular impl to have is_extern=false".into());

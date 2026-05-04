@@ -12,8 +12,13 @@ silent wrongness in place for compat", pick the fix.
 Concretely, when doing correctness work:
 
 - Prefer hard errors (`CompilerError::InternalError`, `TooManyDefinitions`,
-  etc.) over silent placeholder types (`ResolvedType::TypeParam("Unknown")`,
-  empty enum variants, trait-id sentinel `0`, wildcard `Unknown` match-all).
+  etc.) over silent placeholder types or magic-string sentinels. The
+  `"Unknown"` string sentinel and the `ResolvedType::TypeParam("Unknown")`
+  shape were both retired in favour of structural variants
+  (`ResolvedType::Error` for IR, `SemType::Unknown` plus
+  `is_indeterminate()` for semantic). New code should match
+  structurally, not on stringified names. Empty enum variants and the
+  trait-id sentinel `0` are still banned as placeholders.
 - Surface gaps loudly instead of masking them with a "documented design
   choice" comment. If a branch is unreachable under a real invariant, make
   that explicit; if it *is* reachable but produces nonsense, raise an error.

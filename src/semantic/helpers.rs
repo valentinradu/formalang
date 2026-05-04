@@ -73,43 +73,6 @@ pub(crate) fn depth_zero_colon_index(s: &str) -> Option<usize> {
     None
 }
 
-/// Parse a tuple type string like `(a: I32, b: String)` into a flat list
-/// of field type strings `["I32", "String"]`. Commas inside nested
-/// generics/tuples/arrays are respected.
-pub(crate) fn parse_tuple_field_types(ty: &str) -> Vec<String> {
-    let trimmed = ty.trim();
-    if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
-        return Vec::new();
-    }
-    let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
-    let mut fields = Vec::new();
-    let mut depth: u32 = 0;
-    let mut start = 0;
-    for (i, ch) in inner.char_indices() {
-        match ch {
-            '(' | '[' | '<' => depth = depth.saturating_add(1),
-            ')' | ']' | '>' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                fields.push(inner[start..i].to_string());
-                start = i.saturating_add(1);
-            }
-            _ => {}
-        }
-    }
-    if start < inner.len() {
-        fields.push(inner[start..].to_string());
-    }
-    fields
-        .into_iter()
-        .map(|part| {
-            let p = part.trim();
-            // Strip leading `name:` from "name: Type"
-            p.split_once(':')
-                .map_or_else(|| p.to_string(), |(_, ty)| ty.trim().to_string())
-        })
-        .collect()
-}
-
 fn collect_bindings_recursive(pattern: &BindingPattern, bindings: &mut Vec<PatternBinding>) {
     match pattern {
         BindingPattern::Simple(ident) => {

@@ -2514,9 +2514,9 @@ fn test_find_block_expr_content() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_find_closure_expr() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"let f = |x: I32| x";
+    let source = r"let f = (x: I32) -> x";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
-    let offset = offset_of(source, "|x:")?;
+    let offset = offset_of(source, "(x:")?;
     let ctx = find_node_at_offset(&file, offset);
     if !matches!(
         ctx.node,

@@ -458,9 +458,23 @@ fn test_struct_many_fields() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_with_modifiers() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+    // Field-level mutability is no longer supported; mutability lives on bindings.
+    // The parser must reject `mut` in struct field position.
+    let mut_source = r"
         struct Full {
             mut count: I32,
+            content: String,
+        }
+    ";
+    assert!(
+        compile(mut_source).is_err(),
+        "expected parser to reject `mut` in struct field"
+    );
+
+    // Other field forms (optional, default) still parse.
+    let source = r"
+        struct Full {
+            count: I32,
             content: String,
             optional: String?,
             default: I32 = 0
@@ -541,7 +555,7 @@ fn test_optional_dictionary() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_chain() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> I32 -> Boolean }";
+    let source = "struct A { callback: (String) -> ((I32) -> Boolean) }";
     compile(source).map_err(|e| format!("Closure chain: {e:?}"))?;
     Ok(())
 }
@@ -1130,7 +1144,7 @@ struct User {
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let user = module.structs.first().ok_or("expected User struct")?;
+    let user = module.user_structs().next().ok_or("expected User struct")?;
     let name_field = user
         .fields
         .iter()
@@ -1184,7 +1198,7 @@ enum Event {
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
-    let event = module.enums.first().ok_or("expected Event enum")?;
+    let event = module.user_enums().next().ok_or("expected Event enum")?;
     let click = event
         .variants
         .iter()

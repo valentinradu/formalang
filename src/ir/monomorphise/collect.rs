@@ -70,17 +70,10 @@ pub(super) fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiati
             }
             out.insert((*base, args.clone()));
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            collect_from_type(inner, out);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 collect_from_type(t, out);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            collect_from_type(key_ty, out);
-            collect_from_type(value_ty, out);
         }
         ResolvedType::Closure {
             param_tys,

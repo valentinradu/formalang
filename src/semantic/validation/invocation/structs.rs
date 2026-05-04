@@ -52,10 +52,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             } else if actual == 0 && expected > 0 {
-                self.errors.push(CompilerError::MissingGenericArguments {
-                    name: name.to_string(),
-                    span,
-                });
+                // Try inferring type args from the named arg expressions
+                // so `Box(value: 7)` doesn't need an explicit `<I32>`.
+                // If inference can't cover every parameter, surface the
+                // original error.
+                if !self.can_infer_struct_type_args(name, args, file) {
+                    self.errors.push(CompilerError::MissingGenericArguments {
+                        name: name.to_string(),
+                        span,
+                    });
+                }
             } else {
                 self.errors.push(CompilerError::GenericArityMismatch {
                     name: name.to_string(),

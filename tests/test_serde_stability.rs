@@ -192,7 +192,7 @@ fn test_ir_closure_captures_roundtrip() -> Result<(), Box<dyn std::error::Error>
     // Closures include a `captures` field in the IR; verify it survives a round-trip.
     let source = r"
 pub fn make_counter(sink n: I32) -> (I32) -> I32 {
-    |x: I32| x + n
+    (x: I32) -> x + n
 }
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
@@ -241,8 +241,13 @@ pub let default_age: I32 = 0
 ";
     let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let json = serde_json::to_string(&module).map_err(|e| format!("serialize: {e}"))?;
-    let restored: formalang::IrModule =
+    let mut restored: formalang::IrModule =
         serde_json::from_str(&json).map_err(|e| format!("deserialize: {e}"))?;
+    // The private name->id index maps are `#[serde(skip)]`, so after a
+    // round-trip the prelude lookups (`Array`, `Dictionary`, `Range`,
+    // `Optional`) need to be rebuilt for `user_structs()`/`user_enums()`
+    // to filter prelude built-ins correctly.
+    restored.rebuild_indices();
 
     // Re-serialise and compare for byte-for-byte stability.
     let json2 = serde_json::to_string(&restored).map_err(|e| format!("re-serialize: {e}"))?;
@@ -251,13 +256,13 @@ pub let default_age: I32 = 0
     }
 
     // Spot-check the structure: counts and at least one non-trivial variant.
-    if restored.structs.len() != module.structs.len() {
+    if restored.user_structs().count() != module.user_structs().count() {
         return Err("struct count changed across round-trip".into());
     }
     if restored.traits.len() != module.traits.len() {
         return Err("trait count changed across round-trip".into());
     }
-    if restored.enums.len() != module.enums.len() {
+    if restored.user_enums().count() != module.user_enums().count() {
         return Err("enum count changed across round-trip".into());
     }
     let enum_def = restored

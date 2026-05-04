@@ -60,7 +60,7 @@ pub enum ResolvedType {
     ///
     /// Each element is `(convention, type)`: convention constrains the
     /// **caller** of the closure. Event-handler shapes like
-    /// `String -> Event` use this variant with the enum return type.
+    /// `(String) -> Event` use this variant with the enum return type.
     Closure {
         param_tys: Vec<(ParamConvention, ResolvedType)>,
         return_ty: Box<ResolvedType>,
@@ -71,8 +71,7 @@ pub enum ResolvedType {
     /// code still needs to materialise *some* `ResolvedType` to keep walking
     /// the AST. Backends should treat `Error` as unreachable: if it survives
     /// to code generation, the compile would already have returned the
-    /// associated `CompilerError` to the caller. Replaced the previous
-    /// stringly-typed `TypeParam("Unknown")` sentinel.
+    /// associated `CompilerError` to the caller.
     Error,
 }
 ```
@@ -118,9 +117,9 @@ pub enum GenericBase {
 | `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
 | `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
 | `[String: I32]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(I32) }` |
-| `String, I32 -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(I32))], return_ty: Primitive(Boolean) }` |
-| `mut I32 -> Boolean` | `Closure { param_tys: [(Mut, Primitive(I32))], return_ty: Primitive(Boolean) }` |
-| `sink String -> Boolean` | `Closure { param_tys: [(Sink, Primitive(String))], return_ty: Primitive(Boolean) }` |
+| `(String, I32) -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(I32))], return_ty: Primitive(Boolean) }` |
+| `(mut I32) -> Boolean` | `Closure { param_tys: [(Mut, Primitive(I32))], return_ty: Primitive(Boolean) }` |
+| `(sink String) -> Boolean` | `Closure { param_tys: [(Sink, Primitive(String))], return_ty: Primitive(Boolean) }` |
 
 ## Display Names
 

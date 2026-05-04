@@ -168,28 +168,10 @@ fn unify_types(param: &ResolvedType, arg: &ResolvedType, subs: &mut HashMap<Stri
         (ResolvedType::TypeParam(name), concrete) => {
             subs.entry(name.clone()).or_insert_with(|| concrete.clone());
         }
-        (ResolvedType::Array(p), ResolvedType::Array(a))
-        | (ResolvedType::Range(p), ResolvedType::Range(a))
-        | (ResolvedType::Optional(p), ResolvedType::Optional(a)) => {
-            unify_types(p, a, subs);
-        }
         (ResolvedType::Tuple(ps), ResolvedType::Tuple(as_)) => {
             for ((_, p), (_, a)) in ps.iter().zip(as_.iter()) {
                 unify_types(p, a, subs);
             }
-        }
-        (
-            ResolvedType::Dictionary {
-                key_ty: pk,
-                value_ty: pv,
-            },
-            ResolvedType::Dictionary {
-                key_ty: ak,
-                value_ty: av,
-            },
-        ) => {
-            unify_types(pk, ak, subs);
-            unify_types(pv, av, subs);
         }
         (
             ResolvedType::Closure {
@@ -222,13 +204,7 @@ fn unify_types(param: &ResolvedType, arg: &ResolvedType, subs: &mut HashMap<Stri
 fn contains_type_param(ty: &ResolvedType) -> bool {
     match ty {
         ResolvedType::TypeParam(_) => true,
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            contains_type_param(inner)
-        }
         ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| contains_type_param(t)),
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            contains_type_param(key_ty) || contains_type_param(value_ty)
-        }
         ResolvedType::Closure {
             param_tys,
             return_ty,

@@ -161,6 +161,25 @@ true || false && false   // true (AND before OR)
 user.age > 18 && user.verified  // Field access → comparison → AND
 ```
 
+## Indexing
+
+Both array indexing (`xs[i]`) and dictionary lookup (`d[k]`) return an
+optional value (`T?`). The bound may be missing for an array index and
+the key may be absent from a dictionary, so the result is wrapped in an
+optional and the caller is responsible for handling the `nil` case.
+
+```formalang
+let xs: [I32] = [1, 2, 3]
+let first: I32? = xs[0]      // I32?, not I32
+
+let cfg: [String: I32] = ["timeout": 30]
+let t: I32? = cfg["timeout"] // same shape
+```
+
+If you need a non-optional value, supply a fallback at the call site
+(e.g. via a host helper that yields a default) or pin the type at the
+boundary so the optional is part of the public signature.
+
 ## Range Operator
 
 The `..` operator produces a range from a start value (inclusive) to an end

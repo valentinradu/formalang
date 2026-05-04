@@ -10,7 +10,7 @@ expression: "(make_curried_body, outer_lifted_body)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    0,
+                    3,
                 ),
             ),
             type_args: [],
@@ -54,7 +54,7 @@ expression: "(make_curried_body, outer_lifted_body)"
             ],
             ty: Struct(
                 StructId(
-                    0,
+                    3,
                 ),
             ),
             span: IrSpan {
@@ -65,9 +65,9 @@ expression: "(make_curried_body, outer_lifted_body)"
                         column: 13,
                     },
                     end: Location {
-                        offset: 108,
+                        offset: 114,
                         line: 3,
-                        column: 40,
+                        column: 46,
                     },
                 },
                 file: FileId(
@@ -106,9 +106,9 @@ expression: "(make_curried_body, outer_lifted_body)"
                     column: 13,
                 },
                 end: Location {
-                    offset: 108,
+                    offset: 114,
                     line: 3,
-                    column: 40,
+                    column: 46,
                 },
             },
             file: FileId(
@@ -123,7 +123,7 @@ expression: "(make_curried_body, outer_lifted_body)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    1,
+                    4,
                 ),
             ),
             type_args: [],
@@ -181,7 +181,7 @@ expression: "(make_curried_body, outer_lifted_body)"
                             ),
                             ty: Struct(
                                 StructId(
-                                    0,
+                                    3,
                                 ),
                             ),
                             span: IrSpan {
@@ -231,20 +231,20 @@ expression: "(make_curried_body, outer_lifted_body)"
             ],
             ty: Struct(
                 StructId(
-                    1,
+                    4,
                 ),
             ),
             span: IrSpan {
                 span: Span {
                     start: Location {
-                        offset: 90,
+                        offset: 93,
                         line: 3,
-                        column: 22,
+                        column: 25,
                     },
                     end: Location {
-                        offset: 108,
+                        offset: 114,
                         line: 3,
-                        column: 40,
+                        column: 46,
                     },
                 },
                 file: FileId(
@@ -268,14 +268,14 @@ expression: "(make_curried_body, outer_lifted_body)"
         span: IrSpan {
             span: Span {
                 start: Location {
-                    offset: 90,
+                    offset: 93,
                     line: 3,
-                    column: 22,
+                    column: 25,
                 },
                 end: Location {
-                    offset: 108,
+                    offset: 114,
                     line: 3,
-                    column: 40,
+                    column: 46,
                 },
             },
             file: FileId(

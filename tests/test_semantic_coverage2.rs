@@ -112,7 +112,7 @@ fn test_mutable_field_chain_rejects_non_mutable_literal() -> Result<(), Box<dyn 
 fn test_mutable_let_binding_assignment() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: I32 = 0
+            count: I32 = 0
         }
         impl Counter {
             fn increment() -> I32 {
@@ -679,9 +679,10 @@ fn test_let_field_access_dependency() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_let_dict_access_dependency() -> Result<(), Box<dyn std::error::Error>> {
+    // Dict access is partial; it returns `T?`, not `T`.
     let source = r#"
         let data: [String: I32] = ["key": 42]
-        let val: I32 = data["key"]
+        let val: I32? = data["key"]
     "#;
     compile(source).map_err(|e| format!("Dict access in let binding: {e:?}"))?;
     Ok(())
@@ -766,7 +767,7 @@ fn test_block_expression_with_multiple_lets() -> Result<(), Box<dyn std::error::
 fn test_block_expression_with_assign() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: I32 = {
+            count: I32 = {
                 let mut x: I32 = 0
                 x = 5
                 x = 10

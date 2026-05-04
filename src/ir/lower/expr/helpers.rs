@@ -12,24 +12,20 @@ use std::collections::HashMap;
 /// `Generic { base, args }` so the impl method's return type
 /// (declared in terms of the struct's generic params) gets the
 /// concrete instantiation's type arguments.
-fn substitute_typeparam_in_resolved(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) {
+pub(in crate::ir::lower::expr) fn substitute_typeparam_in_resolved(
+    ty: &mut ResolvedType,
+    subs: &HashMap<String, ResolvedType>,
+) {
     match ty {
         ResolvedType::TypeParam(name) => {
             if let Some(concrete) = subs.get(name) {
                 *ty = concrete.clone();
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            substitute_typeparam_in_resolved(inner, subs);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 substitute_typeparam_in_resolved(t, subs);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            substitute_typeparam_in_resolved(key_ty, subs);
-            substitute_typeparam_in_resolved(value_ty, subs);
         }
         ResolvedType::Closure {
             param_tys,
@@ -96,17 +92,89 @@ impl IrLowerer<'_> {
                 }
                 ResolvedType::Primitive(PrimitiveType::Never)
             }
+            // Generic receiver (`Pair<I32, I32>`): peel to the base struct,
+            // look up the field, and substitute the struct's `TypeParam`
+            // references with the concrete argument tuple.
+            ResolvedType::Generic {
+                base: crate::ir::GenericBase::Struct(struct_id),
+                args,
+            } => {
+                if let Some(struct_def) = self.module.get_struct(*struct_id) {
+                    let generic_params: Vec<String> = struct_def
+                        .generic_params
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .collect();
+                    for field in &struct_def.fields {
+                        if field.name == field_name {
+                            let mut ty = field.ty.clone();
+                            let subs: HashMap<String, ResolvedType> = generic_params
+                                .into_iter()
+                                .zip(args.iter().cloned())
+                                .collect();
+                            substitute_typeparam_in_resolved(&mut ty, &subs);
+                            return ty;
+                        }
+                    }
+                    self.errors.push(CompilerError::InternalError {
+                        detail: format!(
+                            "IR lowering: struct `{}` has no field `{field_name}`",
+                            struct_def.name
+                        ),
+                        span: self.current_span,
+                    });
+                } else {
+                    self.errors.push(CompilerError::InternalError {
+                        detail: format!(
+                            "IR lowering: struct id {} out of bounds during field access `{field_name}`",
+                            struct_id.0
+                        ),
+                        span: self.current_span,
+                    });
+                }
+                ResolvedType::Primitive(PrimitiveType::Never)
+            }
+            // Named-field tuple receiver: look the field up by name.
+            ResolvedType::Tuple(fields) => {
+                for (n, t) in fields {
+                    if n == field_name {
+                        return t.clone();
+                    }
+                }
+                self.errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "IR lowering: tuple has no field `{field_name}` ({object_ty:?})"
+                    ),
+                    span: self.current_span,
+                });
+                ResolvedType::Primitive(PrimitiveType::Never)
+            }
+            // `TypeParam` receiver: a generic-parameter-typed value
+            // (e.g. `<T: Tagged>` and `t.name`). Resolve the field
+            // through any trait the parameter is bounded by.
+            ResolvedType::TypeParam(name) => {
+                if let Some(trait_id) = self.find_trait_for_field(name, field_name) {
+                    if let Some(trait_def) = self.module.get_trait(trait_id) {
+                        if let Some(field) =
+                            trait_def.fields.iter().find(|f| f.name == field_name)
+                        {
+                            return field.ty.clone();
+                        }
+                    }
+                }
+                self.errors.push(CompilerError::InternalError {
+                    detail: format!(
+                        "IR lowering: cannot access field `{field_name}` on TypeParam(`{name}`)"
+                    ),
+                    span: self.current_span,
+                });
+                ResolvedType::Primitive(PrimitiveType::Never)
+            }
             ResolvedType::Primitive(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
-            | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. } => {
                 self.errors.push(CompilerError::InternalError {
                     detail: format!(
@@ -283,13 +351,11 @@ impl IrLowerer<'_> {
             }
         }
         if let ResolvedType::Trait(trait_id) = receiver_ty {
-            if let Some(trait_def) = self.module.get_trait(*trait_id) {
-                if let Some(sig) = trait_def.methods.iter().find(|m| m.name == method_name) {
-                    return sig
-                        .return_type
-                        .clone()
-                        .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
-                }
+            // Walk the trait's own method list plus every composed
+            // (super-)trait so methods inherited from a parent trait
+            // resolve through the child trait's vtable.
+            if let Some(ret) = self.find_trait_method_return_in_chain(*trait_id, method_name) {
+                return ret;
             }
         }
 
@@ -300,6 +366,47 @@ impl IrLowerer<'_> {
             span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
+    }
+
+    /// Walk a trait's own methods and every composed (super-)trait
+    /// chain looking for `method_name`. Used by trait-typed dispatch
+    /// so a method declared on a parent trait resolves through a child
+    /// trait. Returns the method's declared return type when found.
+    fn find_trait_method_return_in_chain(
+        &self,
+        trait_id: crate::ir::TraitId,
+        method_name: &str,
+    ) -> Option<ResolvedType> {
+        let mut visited: std::collections::HashSet<crate::ir::TraitId> =
+            std::collections::HashSet::new();
+        self.find_trait_method_return_visiting(trait_id, method_name, &mut visited)
+    }
+
+    fn find_trait_method_return_visiting(
+        &self,
+        trait_id: crate::ir::TraitId,
+        method_name: &str,
+        visited: &mut std::collections::HashSet<crate::ir::TraitId>,
+    ) -> Option<ResolvedType> {
+        if !visited.insert(trait_id) {
+            return None;
+        }
+        let trait_def = self.module.get_trait(trait_id)?;
+        if let Some(sig) = trait_def.methods.iter().find(|m| m.name == method_name) {
+            return Some(
+                sig.return_type
+                    .clone()
+                    .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never)),
+            );
+        }
+        for parent_id in trait_def.composed_traits.clone() {
+            if let Some(ret) =
+                self.find_trait_method_return_visiting(parent_id, method_name, visited)
+            {
+                return Some(ret);
+            }
+        }
+        None
     }
 
     /// Resolve the return type of a function call.

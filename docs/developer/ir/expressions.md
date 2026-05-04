@@ -233,7 +233,7 @@ pub enum IrExpr {
         ty: ResolvedType,
     },
 
-    /// Closure expression: `|x: f32, y: f32| x + y`.
+    /// Closure expression: `(x: f32, y: f32) -> x + y`.
     ///
     /// Convention on each parameter constrains the **caller** of the
     /// closure (`Mut` requires a mutable argument; `Sink` moves it).

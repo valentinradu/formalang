@@ -54,17 +54,10 @@ pub(super) fn collect_external_from_type(
             // never reaches the backend.
             out.insert((module_path.clone(), name.clone(), type_args.clone()));
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            collect_external_from_type(inner, out);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 collect_external_from_type(t, out);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            collect_external_from_type(key_ty, out);
-            collect_external_from_type(value_ty, out);
         }
         ResolvedType::Closure {
             param_tys,

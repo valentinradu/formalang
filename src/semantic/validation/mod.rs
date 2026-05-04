@@ -11,8 +11,9 @@
 //!   closure-binding calls, and module-visibility checks for qualified paths.
 //! - [`method_call`]: receiver / argument convention checks plus method
 //!   existence lookup (local impls, trait impls, generics, qualified types).
-//! - [`control_flow`]: match exhaustiveness, enum instantiation, and the
-//!   optional-condition auto-binding for `if`.
+//! - [`control_flow`]: match exhaustiveness and enum-instantiation
+//!   field checks. Optional unwrap-and-bind is the `if let` form
+//!   (parsed as a match) — there is no implicit auto-bind on `if`.
 //! - [`structs`]: struct field type/required checks and field mutability.
 //! - [`closures`]: closure escape / capture validation; also exposes the
 //!   shared free-variable walk used to populate capture lists.
@@ -102,16 +103,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
-            let ty_str = param
-                .ty
-                .as_ref()
-                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
+            let param_sem = param.ty.as_ref().map_or(
+                crate::semantic::sem_type::SemType::Unknown,
+                crate::semantic::sem_type::SemType::from_ast,
+            );
             let mutable = matches!(
                 param.convention,
                 crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
             );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, mutable));
+                .insert(param.name.name.clone(), (param_sem, mutable));
             self.current_fn_param_conventions
                 .insert(param.name.name.clone(), param.convention);
             // Register closure-typed parameters so they're callable inside the body.
@@ -162,7 +163,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if !nil_to_optional
                     && !inner_to_optional
                     && !inferred_sem.is_indeterminate()
-                    && declared != "Unknown"
                     && !self.type_strings_compatible(&declared, &inferred)
                 {
                     self.errors.push(crate::error::CompilerError::TypeMismatch {

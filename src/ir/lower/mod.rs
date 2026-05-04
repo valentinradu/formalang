@@ -53,7 +53,7 @@ use std::collections::HashMap;
 /// let source = "pub struct User { name: String }";
 /// let (ast, analyzer) = compile_with_analyzer(source).unwrap();
 /// let ir = lower_to_ir(&ast, analyzer.symbols()).unwrap();
-/// assert_eq!(ir.structs.len(), 1);
+/// assert_eq!(ir.user_structs().count(), 1);
 /// ```
 pub fn lower_to_ir(ast: &File, symbols: &SymbolTable) -> Result<IrModule, Vec<CompilerError>> {
     let mut lowerer = IrLowerer::new(symbols);

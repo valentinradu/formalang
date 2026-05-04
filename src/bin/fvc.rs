@@ -10,7 +10,7 @@
     reason = "CLI binary: printing to stdout/stderr is the intended output mechanism"
 )]
 
-use formalang::{compile_to_ir_with_resolver, report_errors, FileSystemResolver};
+use formalang::{compile_to_ir_with_resolver, report_errors, FileSystemResolver, Pipeline};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -170,7 +170,22 @@ fn check_command(input_path: &str, module_root: Option<PathBuf>) -> ExitCode {
 
     let resolver = FileSystemResolver::new(resolve_base_dir(input_path, module_root));
 
-    match compile_to_ir_with_resolver(&source, resolver) {
+    // Drive the full canonical IR pipeline so `fvc check` only reports
+    // OK on IR that is actually backend-consumable. Frontend-only
+    // success (`compile_to_ir_with_resolver`) lets a number of
+    // structural problems through — unresolved references, surviving
+    // generic templates, ill-formed dispatch — that the downstream
+    // passes (`ResolveReferencesPass`, the rest of `for_codegen`)
+    // catch. Failing here means the IR isn't usable; reporting OK
+    // now means it is.
+    let module = match compile_to_ir_with_resolver(&source, resolver) {
+        Ok(m) => m,
+        Err(errors) => {
+            eprintln!("{}", report_errors(&errors, &source, input_path));
+            return ExitCode::from(1);
+        }
+    };
+    match Pipeline::for_codegen().run(module) {
         Ok(ir) => {
             let duration = start.elapsed();
             println!(

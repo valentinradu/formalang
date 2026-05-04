@@ -9,14 +9,31 @@ use crate::location::Span;
 use super::expr_walk::iter_expr_children_mut;
 use super::walkers::walk_module_types_mut;
 
+/// True for the prelude-shipped generic carriers (`Array`, `Dictionary`,
+/// `Range`). They have non-empty `generic_params` like every other
+/// generic, but `mod.rs` keeps them in `module.structs` after compaction
+/// because `Generic { base, args }` is their canonical post-pass shape.
+/// The remap must keep their slots in lockstep with that retain — naively
+/// dropping them would let surviving structs renumber onto prelude
+/// positions.
+fn is_prelude_struct_name(name: &str) -> bool {
+    matches!(name, "Array" | "Dictionary" | "Range")
+}
+
+fn is_prelude_enum_name(name: &str) -> bool {
+    name == "Optional"
+}
+
 /// Build an old-id → new-id remap table for structs. Structs with non-empty
 /// `generic_params` become `None` (they will be dropped on compaction);
-/// surviving structs map to their new post-compaction position.
+/// surviving structs (including the prelude-shipped generic carriers, which
+/// survive despite carrying `generic_params`) map to their new
+/// post-compaction position.
 pub(super) fn build_struct_remap(module: &IrModule) -> Vec<Option<StructId>> {
     let mut out = Vec::with_capacity(module.structs.len());
     let mut next: u32 = 0;
     for s in &module.structs {
-        if s.generic_params.is_empty() {
+        if s.generic_params.is_empty() || is_prelude_struct_name(&s.name) {
             out.push(Some(StructId(next)));
             next = next.saturating_add(1);
         } else {
@@ -26,12 +43,13 @@ pub(super) fn build_struct_remap(module: &IrModule) -> Vec<Option<StructId>> {
     out
 }
 
-/// Matching remap for enums.
+/// Matching remap for enums. Keeps `Optional` in lockstep with the retain
+/// in `mod.rs`, same rationale as [`build_struct_remap`].
 pub(super) fn build_enum_remap(module: &IrModule) -> Vec<Option<EnumId>> {
     let mut out = Vec::with_capacity(module.enums.len());
     let mut next: u32 = 0;
     for e in &module.enums {
-        if e.generic_params.is_empty() {
+        if e.generic_params.is_empty() || is_prelude_enum_name(&e.name) {
             out.push(Some(EnumId(next)));
             next = next.saturating_add(1);
         } else {
@@ -378,17 +396,10 @@ fn remap_type(
                 *id = new;
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            remap_type(inner, struct_remap, enum_remap, trait_remap);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 remap_type(t, struct_remap, enum_remap, trait_remap);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            remap_type(key_ty, struct_remap, enum_remap, trait_remap);
-            remap_type(value_ty, struct_remap, enum_remap, trait_remap);
         }
         ResolvedType::Closure {
             param_tys,

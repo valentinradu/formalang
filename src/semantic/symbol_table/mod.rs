@@ -113,12 +113,10 @@ impl SymbolTable {
         self.functions.get(name).map_or(&[], |v| v.as_slice())
     }
 
-    /// Get the inferred type of a let binding
+    /// Get the inferred type of a let binding.
     #[must_use]
-    pub fn get_let_type(&self, name: &str) -> Option<&str> {
-        self.lets
-            .get(name)
-            .and_then(|info| info.inferred_type.as_deref())
+    pub fn get_let_type(&self, name: &str) -> Option<&crate::semantic::sem_type::SemType> {
+        self.lets.get(name).and_then(|info| info.inferred_type.as_ref())
     }
 
     /// Find a symbol in any table (functions are excluded — they allow overloads)
@@ -190,6 +188,14 @@ impl SymbolTable {
         }
 
         None
+    }
+
+    /// Check whether a name resolves to a struct, including
+    /// module-qualified paths like `geometry::Point`. Use this in
+    /// dispatch / inference paths that may see a qualified call.
+    #[must_use]
+    pub fn is_struct_qualified(&self, name: &str) -> bool {
+        self.get_struct_qualified(name).is_some()
     }
 
     /// Check if a name is a struct

@@ -21,10 +21,12 @@ pub struct User {
   nickname: String?
 }
 
-// With mutable fields
+// All struct fields share the binding's mutability. There is no
+// per-field `mut` modifier; to update any field of a value, the
+// binding must be `let mut`.
 pub struct Counter {
-  mut count: I32,    // Mutable field (can be updated)
-  label: String         // Immutable field
+  count: I32,
+  label: String
 }
 
 // Generic struct

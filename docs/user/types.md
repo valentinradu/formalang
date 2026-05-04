@@ -94,6 +94,12 @@ pub let user1 = User(
 )
 ```
 
+`Optional<T>` behaves like a built-in two-variant enum with `.some(T)`
+and `.none`. To consume the inner value, use the Rust-style `if let`
+form documented in [Control Flow](control-flow.md), or `match` against
+`.some(x)` / `.none` arms directly. Both branches are required when
+the result is used as a value, so the type-checker can unify them.
+
 ## Dictionary Types
 
 Key-value mappings using bracket syntax with colon:
@@ -158,7 +164,9 @@ for item in items {
 ## Closure Types
 
 Closure types define function signatures for callbacks and transformations.
-For closure *expressions*, see [Closures](closures.md).
+The parameter list is **always parenthesised**, even for a single parameter,
+so every `->` in the language is preceded by `)`. For closure
+*expressions*, see [Closures](closures.md).
 
 ```formalang
 pub struct Controls<E> {
@@ -166,43 +174,43 @@ pub struct Controls<E> {
   onPress: () -> E,
 
   // Single parameter (default / let convention)
-  onChange: String -> E,
+  onChange: (String) -> E,
 
-  // Multiple parameters (comma-separated, no parens needed)
-  onResize: I32, I32 -> E,
+  // Multiple parameters
+  onResize: (I32, I32) -> E,
 
   // mut parameter: caller must pass a mutable binding
-  onScale: mut I32 -> E,
+  onScale: (mut I32) -> E,
 
   // sink parameter: caller's binding is consumed (moved)
-  onSubmit: sink String -> E,
+  onSubmit: (sink String) -> E,
 
   // Optional closure (can be nil)
-  onFocus: (String -> E)?,
+  onFocus: ((String) -> E)?,
 
   // Closure returning optional
-  validate: String -> Boolean?
+  validate: (String) -> Boolean?
 }
 ```
 
 **Type syntax**:
 
-| Parameters           | Syntax              | Example                        |
-| -------------------- | ------------------- | ------------------------------ |
-| None                 | `() -> T`           | `() -> Event`                  |
-| One (default)        | `T -> U`            | `String -> Event`              |
-| One (mut)            | `mut T -> U`        | `mut I32 -> Event`             |
-| One (sink)           | `sink T -> U`       | `sink String -> Event`         |
-| Multiple             | `T, U -> V`         | `I32, I32 -> Point`            |
-| Mixed conventions    | `mut T, sink U -> V`| `mut I32, sink String -> V`    |
+| Parameters        | Syntax                       | Example                          |
+| ----------------- | ---------------------------- | -------------------------------- |
+| None              | `() -> T`                    | `() -> Event`                    |
+| One (default)     | `(T) -> U`                   | `(String) -> Event`              |
+| One (mut)         | `(mut T) -> U`               | `(mut I32) -> Event`             |
+| One (sink)        | `(sink T) -> U`              | `(sink String) -> Event`         |
+| Multiple          | `(T, U) -> V`                | `(I32, I32) -> Point`            |
+| Mixed conventions | `(mut T, sink U) -> V`       | `(mut I32, sink String) -> V`    |
 
 **Rules**:
 
-- Arrow `->` separates parameters from return type
-- Multiple parameters are comma-separated (no parentheses required)
-- Empty parameters require parentheses: `() -> T`
-- Convention keywords (`mut`, `sink`) precede the type in the type position
-- Parser uses `->` to determine grouping in ambiguous contexts
+- The parameter list is always parenthesised — even with one parameter
+  — and every `->` in the language is preceded by `)`.
+- Multiple parameters are comma-separated inside the parens.
+- Convention keywords (`mut`, `sink`) precede the type in the type
+  position.
 
 ## Generic Types
 

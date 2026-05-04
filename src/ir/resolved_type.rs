@@ -48,22 +48,18 @@ pub enum ResolvedType {
     /// Reference to an enum definition
     Enum(EnumId),
 
-    /// Array type: `[T]`
-    Array(Box<Self>),
-
-    /// Range type: `T..T` — an iterable sequence over numeric `T`. Used
-    /// as the type of `start..end` expressions and the iterator type
-    /// consumed by `for x in start..end { ... }` loops. Backends choose
-    /// between a native range type or a counted-loop desugaring.
-    Range(Box<Self>),
-
-    /// Optional type: `T?`
-    Optional(Box<Self>),
-
     /// Named tuple type: `(name1: T1, name2: T2)`
     Tuple(Vec<(String, Self)>),
 
-    /// Generic type instantiation: `Box<String>` or `Option<I32>`.
+    /// Generic type instantiation: `Box<String>`, `Optional<I32>`, etc.
+    ///
+    /// The four built-in compound types are also represented through
+    /// this variant: `[T]` is `Generic { base: Struct(prelude_array_id), args: [T] }`,
+    /// `T?` is `Generic { base: Enum(prelude_optional_id), args: [T] }`,
+    /// `[K: V]` is `Generic { base: Struct(prelude_dictionary_id), args: [K, V] }`,
+    /// and `start..end` produces `Generic { base: Struct(prelude_range_id), args: [T] }`.
+    /// The prelude declares those built-ins as ordinary generic
+    /// definitions so dispatch and lookup are uniform with user types.
     Generic { base: GenericBase, args: Vec<Self> },
 
     /// Unresolved type parameter (e.g., `T` in a generic definition).
@@ -97,12 +93,6 @@ pub enum ResolvedType {
         type_args: Vec<Self>,
     },
 
-    /// Dictionary type: `[K: V]` — maps keys of type K to values of type V.
-    Dictionary {
-        key_ty: Box<Self>,
-        value_ty: Box<Self>,
-    },
-
     /// Closure/function type: `(T1, T2) -> R`. Represents a general
     /// closure type with multiple parameters for arbitrary pure functions.
     Closure {
@@ -115,15 +105,10 @@ pub enum ResolvedType {
     /// Produced by IR lowering when an upstream `CompilerError` has
     /// already been pushed (e.g. `UndefinedType`, `InternalError`) but
     /// the surrounding lowering code still needs to materialise *some*
-    /// `ResolvedType` to keep walking the AST. Replaces the previous
-    /// stringly-typed `TypeParam("Unknown")` sentinel, which collided
-    /// with any user-defined type literally named `Unknown` and made
-    /// downstream "is this an error or a real type-param?" checks
-    /// ambiguous.
-    ///
-    /// Backends should treat `Error` as unreachable: if it survives to
-    /// code generation, the compile would already have returned the
-    /// associated `CompilerError` to the caller.
+    /// `ResolvedType` to keep walking the AST. Backends should treat
+    /// `Error` as unreachable: if it survives to code generation, the
+    /// compile would already have returned the associated
+    /// `CompilerError` to the caller.
     Error,
 }
 
@@ -155,13 +140,6 @@ impl ResolvedType {
             Self::Enum(id) => module
                 .get_enum(*id)
                 .map_or_else(|| format!("<invalid-enum-{}>", id.0), |e| e.name.clone()),
-            Self::Array(inner) => format!("[{}]", inner.display_name(module)),
-            Self::Range(inner) => format!(
-                "{}..{}",
-                inner.display_name(module),
-                inner.display_name(module)
-            ),
-            Self::Optional(inner) => format!("{}?", inner.display_name(module)),
             Self::Tuple(fields) => {
                 let fields_str: Vec<_> = fields
                     .iter()
@@ -170,6 +148,33 @@ impl ResolvedType {
                 format!("({})", fields_str.join(", "))
             }
             Self::Generic { base, args } => {
+                // Surface-syntax sugar for the four built-in compound
+                // types: render `[T]`, `T?`, `[K: V]`, `start..end`
+                // instead of `Array<T>`/`Optional<T>`/etc.
+                if let GenericBase::Enum(id) = base {
+                    if Some(*id) == module.prelude_optional_id() && args.len() == 1 {
+                        return format!("{}?", args[0].display_name(module));
+                    }
+                }
+                if let GenericBase::Struct(id) = base {
+                    if Some(*id) == module.prelude_array_id() && args.len() == 1 {
+                        return format!("[{}]", args[0].display_name(module));
+                    }
+                    if Some(*id) == module.prelude_dictionary_id() && args.len() == 2 {
+                        return format!(
+                            "[{}: {}]",
+                            args[0].display_name(module),
+                            args[1].display_name(module)
+                        );
+                    }
+                    if Some(*id) == module.prelude_range_id() && args.len() == 1 {
+                        return format!(
+                            "{}..{}",
+                            args[0].display_name(module),
+                            args[0].display_name(module)
+                        );
+                    }
+                }
                 let base_name = match base {
                     GenericBase::Struct(id) => module
                         .get_struct(*id)
@@ -195,13 +200,6 @@ impl ResolvedType {
                         type_args.iter().map(|a| a.display_name(module)).collect();
                     format!("{}<{}>", name, args_str.join(", "))
                 }
-            }
-            Self::Dictionary { key_ty, value_ty } => {
-                format!(
-                    "[{}: {}]",
-                    key_ty.display_name(module),
-                    value_ty.display_name(module)
-                )
             }
             Self::Closure {
                 param_tys,

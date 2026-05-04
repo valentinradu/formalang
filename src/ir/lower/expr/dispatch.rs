@@ -41,13 +41,9 @@ impl IrLowerer<'_> {
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error => None,
         };
@@ -102,19 +98,11 @@ impl IrLowerer<'_> {
         }
 
         if let ResolvedType::Trait(trait_id) = receiver_ty {
-            // Tier-1 item E2: trait values are banned at semantic time
-            // (TraitUsedAsValueType). A receiver of `ResolvedType::Trait`
-            // means semantic let one through — surface as an
-            // InternalError instead of silently emitting Virtual
-            // dispatch that the language doesn't otherwise permit.
-            self.errors.push(CompilerError::InternalError {
-                detail: format!(
-                    "IR lowering: receiver type `Trait({})` reached method dispatch — \
-                     semantic should have rejected the trait value at the call site",
-                    trait_id.0
-                ),
-                span: self.current_span,
-            });
+            // Trait-typed receiver: emit virtual dispatch through the
+            // trait's vtable. Semantic accepts trait values at let /
+            // param / return positions; the backend resolves the
+            // call_indirect via the per-trait vtable for the concrete
+            // type stored in the binding.
             return DispatchKind::Virtual {
                 trait_id: *trait_id,
                 method_name: method_name.to_string(),
@@ -207,6 +195,32 @@ impl IrLowerer<'_> {
     /// param is not in any active scope (e.g. a lowering invariant was
     /// violated upstream) — this matches the pre-#12 behaviour so we don't
     /// regress on cases where the scope hasn't been populated.
+    /// Walk the active generic scopes for `param_name` and return the
+    /// first constraint trait that declares a field named `field_name`.
+    /// Used by `resolve_field_type` when the receiver is a generic-param
+    /// value and we need to resolve a field access through one of its
+    /// trait bounds (e.g. `<T: Tagged>` and `t.name`).
+    pub(super) fn find_trait_for_field(
+        &self,
+        param_name: &str,
+        field_name: &str,
+    ) -> Option<TraitId> {
+        for frame in self.generic_scopes.iter().rev() {
+            if let Some(param) = frame.iter().find(|p| p.name == param_name) {
+                for constraint in &param.constraints {
+                    let idx = constraint.trait_id.0 as usize;
+                    if let Some(trait_def) = self.module.traits.get(idx) {
+                        if trait_def.fields.iter().any(|f| f.name == field_name) {
+                            return Some(constraint.trait_id);
+                        }
+                    }
+                }
+                return None;
+            }
+        }
+        None
+    }
+
     pub(super) fn find_trait_for_method(
         &mut self,
         param_name: &str,

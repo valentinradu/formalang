@@ -20,7 +20,6 @@ use funcs::{fn_def_parser, fn_params_parser, fn_sig_parser, function_def_parser}
 
 use super::exprs::expr_parser;
 use super::ident_parser;
-use super::mutability_parser;
 use super::span_from_simple;
 use super::types::type_parser;
 use super::visibility_parser;
@@ -171,21 +170,25 @@ where
         .map(std::option::Option::unwrap_or_default)
 }
 
-/// Parse a field definition: mut? name: Type
+/// Parse a field definition: name: Type
 ///
 /// leading `///` doc comments are captured into `FieldDef.doc`.
+///
+/// Field-level mutability was removed: mutability is a property of the
+/// binding (`let mut`), not of a field declaration. The `mutable` bool
+/// on `FieldDef` is kept for serialisation stability and is always
+/// `false` at parse time.
 pub(super) fn field_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FieldDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
-        .then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
-        .map_with(|(((doc, mutable), name), ty), e| FieldDef {
-            mutable,
+        .map_with(|((doc, name), ty), e| FieldDef {
+            mutable: false,
             name,
             ty,
             doc,
@@ -307,17 +310,21 @@ where
         })
 }
 
-/// Parse a single struct field: mut? name: Type? = default
+/// Parse a single struct field: name: Type? = default
 ///
 /// leading `///` doc comments are captured into
 /// `StructField.doc` instead of being silently dropped.
+///
+/// Field-level mutability was removed: mutability is a property of the
+/// binding (`let mut`), not the field declaration. The `mutable` bool
+/// on `StructField` is kept for serialisation stability and is always
+/// `false` at parse time. Writing `mut field: T` is a parse error.
 pub(super) fn struct_field_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, StructField, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     super::doc_comments_parser()
-        .then(mutability_parser())
         .then(ident_parser())
         .then_ignore(just(Token::Colon).labelled("':'"))
         .then(type_parser().labelled("type"))
@@ -326,12 +333,12 @@ where
                 .ignore_then(expr_parser().labelled("default value"))
                 .or_not(),
         )
-        .map_with(|((((doc, mutable), name), ty), default), e| {
+        .map_with(|(((doc, name), ty), default), e| {
             // Check if type is optional
             let optional = matches!(ty, Type::Optional(_));
 
             StructField {
-                mutable,
+                mutable: false,
                 name,
                 ty,
                 optional,

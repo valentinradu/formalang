@@ -446,7 +446,7 @@ fn closure_capture_binding_id_points_at_outer_introducing_binding() -> TestResul
     let module = resolved(
         r"
         pub fn make_adder(sink n: I32) -> (I32) -> I32 {
-            |x: I32| x + n
+            (x: I32) -> x + n
         }
         ",
     )?;

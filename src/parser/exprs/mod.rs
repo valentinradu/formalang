@@ -9,7 +9,7 @@ pub(super) use patterns::match_arm_parser;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
-use crate::ast::{BlockStatement, ClosureParam, Expr, Ident, Literal, ParamConvention};
+use crate::ast::{BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention, Pattern};
 use crate::lexer::Token;
 
 use super::block_statements_to_expr;
@@ -248,9 +248,9 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Closure expression: () -> expr, x -> expr, x, y -> expr, x: T -> expr
-        // Also supports pipe syntax: |x, y| expr, |x: T, y: T| -> T { body }
-        // Closure parameter: [mut|sink]? identifier with optional type annotation
+        // Closure expression: every form is `( params ) -> body`. Parens are
+        // mandatory even for a single parameter so every `->` in the language
+        // is preceded by `)`. Empty `()` is the no-arg form.
         let closure_convention = choice((
             just(Token::Mut).to(ParamConvention::Mut),
             just(Token::Sink).to(ParamConvention::Sink),
@@ -268,52 +268,17 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // No-param closure: () -> expr
-        let no_param_closure = just(Token::LParen)
-            .ignore_then(just(Token::RParen))
-            .ignore_then(just(Token::Arrow))
-            .ignore_then(expr.clone())
-            .map_with(|body, e| Expr::ClosureExpr {
-                params: vec![],
-                return_type: None,
-                body: Box::new(body),
-                span: span_from_simple(e.span()),
-            });
-
-        // Single or multi-param closure: x -> expr OR x, y -> expr OR x: T -> expr
-        let param_closure = closure_param
+        let paren_closure = closure_param
             .clone()
             .separated_by(just(Token::Comma))
-            .at_least(1)
+            .allow_trailing()
             .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
             .then_ignore(just(Token::Arrow))
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::ClosureExpr {
                 params,
                 return_type: None,
-                body: Box::new(body),
-                span: span_from_simple(e.span()),
-            });
-
-        // Pipe-delimited closure: |params| -> type { body } or |params| { body } or |params| expr
-        // Also handles || { body } for empty params
-        let pipe_closure = just(Token::Pipe)
-            .ignore_then(
-                closure_param
-                    .clone()
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .collect::<Vec<_>>(),
-            )
-            .then_ignore(just(Token::Pipe))
-            .then(
-                // Optional return type: -> Type
-                just(Token::Arrow).ignore_then(type_parser()).or_not(),
-            )
-            .then(expr.clone())
-            .map_with(|((params, return_type), body), e| Expr::ClosureExpr {
-                params,
-                return_type,
                 body: Box::new(body),
                 span: span_from_simple(e.span()),
             });
@@ -402,8 +367,48 @@ where
 
         // If expression: if condition { then } else { else }
         // Also handles else-if chains: if cond { } else if cond { } else { }
+        // and Rust-style if-let: if let pat = optional { then } else { else }
+        // — desugared at parse time to a match on .some/.none.
         let if_expr = recursive(|if_expr_rec| {
-            just(Token::If)
+            let if_let_form = just(Token::If)
+                .ignore_then(just(Token::Let))
+                .ignore_then(ident_parser())
+                .then_ignore(just(Token::Equals))
+                .then(expr.clone())
+                .then(block_body.clone())
+                .then_ignore(just(Token::Else))
+                .then(if_expr_rec.clone().or(block_body.clone()))
+                .map_with(|(((binding, value_expr), then_body), else_body), e| {
+                    let span = span_from_simple(e.span());
+                    let some_arm = MatchArm {
+                        pattern: Pattern::Variant {
+                            name: Ident {
+                                name: "some".to_string(),
+                                span,
+                            },
+                            bindings: vec![binding],
+                        },
+                        body: then_body,
+                        span,
+                    };
+                    let none_arm = MatchArm {
+                        pattern: Pattern::Variant {
+                            name: Ident {
+                                name: "none".to_string(),
+                                span,
+                            },
+                            bindings: vec![],
+                        },
+                        body: else_body,
+                        span,
+                    };
+                    Expr::MatchExpr {
+                        scrutinee: Box::new(value_expr),
+                        arms: vec![some_arm, none_arm],
+                        span,
+                    }
+                });
+            let plain_if = just(Token::If)
                 .ignore_then(expr.clone())
                 .then(block_body.clone())
                 .then(
@@ -419,7 +424,8 @@ where
                     then_branch: Box::new(then_branch),
                     else_branch: else_branch.map(Box::new),
                     span: span_from_simple(e.span()),
-                })
+                });
+            if_let_form.or(plain_if)
         });
 
         // Match expression: match scrutinee { pattern: expr, ... }
@@ -471,12 +477,10 @@ where
             let_expr,      // Let expressions
             block_body,    // Block expressions: { let x = 1; expr }
             array_or_dict, // Handles both array and dictionary literals
+            paren_closure.labelled("closure expression"), // (x) -> expr — before tuple/grouped so the trailing `->` wins
             tuple,         // Must come before grouped (tuple is more specific)
             grouped,
-            pipe_closure.labelled("closure expression"), // |x| expr or |x, y| -> T { body }
-            no_param_closure.labelled("closure expression"), // () -> expr (must come before other closures and tuples)
-            param_closure.labelled("closure expression"), // x -> expr (must come before reference since starts with ident)
-            inferred_enum_instantiation,                  // .variant is most specific
+            inferred_enum_instantiation, // .variant is most specific
             enum_instantiation, // Must come before invocation and reference (Type.variant(...))
             invocation, // Unified struct instantiation / function call - resolved in semantic analysis
             reference,  // Most general (ident), now includes 'self'

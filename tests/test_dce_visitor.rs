@@ -141,8 +141,7 @@ fn test_dce_expr_binary_op_both_sides() -> Result<(), Box<dyn std::error::Error>
     let optimized = eliminate_dead_code(&module, false);
     // After DCE: constant true -> takes 1 + 2
     let default_val = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -196,8 +195,7 @@ fn test_dce_expr_array_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -235,8 +233,7 @@ fn test_dce_expr_tuple_with_dead_code() -> Result<(), Box<dyn std::error::Error>
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -283,8 +280,7 @@ fn test_dce_expr_match_arms() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -321,8 +317,7 @@ fn test_dce_expr_function_call_with_dead_code_args() -> Result<(), Box<dyn std::
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -395,8 +390,8 @@ fn test_dce_expr_struct_inst_with_dead_code() -> Result<(), Box<dyn std::error::
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .get(1)
+        .user_structs()
+        .nth(1)
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -435,8 +430,7 @@ fn test_dce_expr_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -465,8 +459,7 @@ fn test_dce_expr_dict_literal_with_dead_code() -> Result<(), Box<dyn std::error:
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -497,7 +490,7 @@ fn test_dce_expr_dict_literal_with_dead_code() -> Result<(), Box<dyn std::error:
 fn test_dce_expr_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let lookup: [String: I32] = ["key": 42]
-        let val: I32 = lookup["key"]
+        let val: I32? = lookup["key"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -520,8 +513,7 @@ fn test_dce_expr_block_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -554,7 +546,7 @@ fn test_dce_expr_block_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_dce_block_assign_statement() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: I32 = {
+            count: I32 = {
                 let mut x: I32 = if true { 0 } else { 99 }
                 x = if false { 5 } else { 10 }
                 x
@@ -564,8 +556,7 @@ fn test_dce_block_assign_statement() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -607,8 +598,7 @@ fn test_dce_block_expr_statement() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -710,7 +700,8 @@ fn test_dce_pass_default_creates_with_remove_true() -> Result<(), Box<dyn std::e
 // Visitor: walk_module_children covers structs, traits, enums, impls, lets
 // =============================================================================
 
-struct CountingVisitor {
+struct CountingVisitor<'m> {
+    module: &'m formalang::ir::IrModule,
     structs: usize,
     traits: usize,
     enums: usize,
@@ -720,11 +711,15 @@ struct CountingVisitor {
     fields: usize,
     enum_variants: usize,
     exprs: usize,
+    /// True while walking inside a prelude built-in struct/enum so we
+    /// can also skip its fields and variants.
+    inside_prelude_def: bool,
 }
 
-impl CountingVisitor {
-    const fn new() -> Self {
+impl<'m> CountingVisitor<'m> {
+    const fn new(module: &'m formalang::ir::IrModule) -> Self {
         Self {
+            module,
             structs: 0,
             traits: 0,
             enums: 0,
@@ -734,27 +729,47 @@ impl CountingVisitor {
             fields: 0,
             enum_variants: 0,
             exprs: 0,
+            inside_prelude_def: false,
         }
     }
 }
 
-impl IrVisitor for CountingVisitor {
-    fn visit_struct(&mut self, _id: StructId, _s: &IrStruct) {
-        self.structs = self.structs.saturating_add(1);
+impl IrVisitor for CountingVisitor<'_> {
+    fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
+        if self.module.is_prelude_struct(id) {
+            self.inside_prelude_def = true;
+        } else {
+            self.inside_prelude_def = false;
+            self.structs = self.structs.saturating_add(1);
+        }
     }
     fn visit_trait(&mut self, _id: TraitId, _t: &formalang::ir::IrTrait) {
+        self.inside_prelude_def = false;
         self.traits = self.traits.saturating_add(1);
     }
-    fn visit_enum(&mut self, _id: EnumId, _e: &IrEnum) {
-        self.enums = self.enums.saturating_add(1);
+    fn visit_enum(&mut self, id: EnumId, _e: &IrEnum) {
+        if self.module.is_prelude_enum(id) {
+            self.inside_prelude_def = true;
+        } else {
+            self.inside_prelude_def = false;
+            self.enums = self.enums.saturating_add(1);
+        }
     }
     fn visit_enum_variant(&mut self, _v: &IrEnumVariant) {
-        self.enum_variants = self.enum_variants.saturating_add(1);
+        if !self.inside_prelude_def {
+            self.enum_variants = self.enum_variants.saturating_add(1);
+        }
     }
     fn visit_impl(&mut self, i: &IrImpl) {
-        // Skip the prelude's `extern impl <Primitive>` blocks so user-impl
+        // Skip the prelude's `extern impl <Primitive>` blocks and the
+        // built-in impls on Array/Dictionary/Range/Optional so user-impl
         // counts in this test stay at the source-declared values.
-        if !matches!(i.target, formalang::ir::ImplTarget::Primitive(_)) {
+        let is_prelude = match i.target {
+            formalang::ir::ImplTarget::Primitive(_) => true,
+            formalang::ir::ImplTarget::Struct(id) => self.module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => self.module.is_prelude_enum(id),
+        };
+        if !is_prelude {
             self.impls = self.impls.saturating_add(1);
         }
     }
@@ -765,7 +780,9 @@ impl IrVisitor for CountingVisitor {
         self.lets = self.lets.saturating_add(1);
     }
     fn visit_field(&mut self, _f: &IrField) {
-        self.fields = self.fields.saturating_add(1);
+        if !self.inside_prelude_def {
+            self.fields = self.fields.saturating_add(1);
+        }
     }
     fn visit_expr(&mut self, e: &IrExpr) {
         self.exprs = self.exprs.saturating_add(1);
@@ -788,7 +805,7 @@ fn test_visitor_walk_full_module() -> Result<(), Box<dyn std::error::Error>> {
         pub let pi: I32 = 3
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let mut visitor = CountingVisitor::new();
+    let mut visitor = CountingVisitor::new(&module);
     walk_module(&mut visitor, &module);
 
     if visitor.structs != 1 {
@@ -1058,7 +1075,7 @@ fn test_visitor_walk_dict_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_visitor_walk_dict_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let lookup: [String: I32] = ["x": 1]
-        let val: I32 = lookup["x"]
+        let val: I32? = lookup["x"]
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();
@@ -1241,12 +1258,18 @@ struct SelectiveVisitor {
 
 impl IrVisitor for SelectiveVisitor {
     fn visit_module(&mut self, module: &formalang::ir::IrModule) {
-        // Only visit structs, skipping everything else
+        // Only visit structs, skipping everything else. Skip prelude
+        // built-ins (`Array`, `Dictionary`, `Range`) so the count stays
+        // at the source-declared value.
         for (idx, s) in module.structs.iter().enumerate() {
             let Ok(raw_id) = u32::try_from(idx) else {
                 continue;
             };
-            self.visit_struct(StructId(raw_id), s);
+            let id = StructId(raw_id);
+            if module.is_prelude_struct(id) {
+                continue;
+            }
+            self.visit_struct(id, s);
         }
     }
 
@@ -1286,8 +1309,7 @@ fn test_walk_block_statement_let() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     // Walk the block expression and count sub-expressions
     let default = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1315,7 +1337,7 @@ fn test_walk_block_statement_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_walk_block_statement_assign() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Counter { mut count: I32 = {
+        struct Counter { count: I32 = {
             let mut x: I32 = 0
             x = 5
             x
@@ -1323,8 +1345,7 @@ fn test_walk_block_statement_assign() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let default = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1361,8 +1382,7 @@ fn test_walk_block_statement_expr() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let default = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1418,8 +1438,7 @@ fn test_dce_if_constant_true_no_else() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1443,7 +1462,7 @@ fn test_dce_analyze_struct_in_closure() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         struct Point { x: I32 = 0 }
         struct Config {
-            callback: (I32) -> I32 = |n: I32| n
+            callback: (I32) -> I32 = (n: I32) -> n
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1472,7 +1491,7 @@ fn test_visitor_walk_multiple_fields() -> Result<(), Box<dyn std::error::Error>>
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
-    let mut visitor = CountingVisitor::new();
+    let mut visitor = CountingVisitor::new(&module);
     walk_module(&mut visitor, &module);
     if visitor.fields < 2 {
         return Err(format!(

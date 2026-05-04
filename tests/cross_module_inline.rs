@@ -83,15 +83,12 @@ fn non_generic_struct_inlined() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn has_external(ty: &ResolvedType) -> bool {
+    // Built-in compound types ride through `ResolvedType::Generic`; the
+    // `Generic` arm walks every payload so a bare `External` inside any
+    // of them is detected.
     match ty {
         ResolvedType::External { .. } => true,
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            has_external(inner)
-        }
         ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| has_external(t)),
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            has_external(key_ty) || has_external(value_ty)
-        }
         ResolvedType::Closure {
             param_tys,
             return_ty,

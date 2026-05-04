@@ -10,10 +10,10 @@
 //!   and friends) consulted by later passes when resolving type references
 //!   inside generic-aware contexts.
 
-use super::helpers::{parse_tuple_field_types, strip_array_type};
 use super::module_resolver::ModuleResolver;
+use super::sem_type::SemType;
 use super::SemanticAnalyzer;
-use crate::ast::{ArrayPatternElement, BindingPattern, Definition, File, Statement};
+use crate::ast::{Definition, File, Statement};
 use crate::error::CompilerError;
 use std::collections::{HashMap, HashSet};
 
@@ -73,81 +73,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
     /// Pass 1.6: Infer let binding types
     /// Infer the type of each let binding from its value expression, preferring
-    /// the explicit type annotation when one is present.
+    /// the explicit type annotation when one is present. Each binding in a
+    /// destructuring pattern picks up the [`SemType`] at its pattern position
+    /// (array element, tuple field, struct field) via
+    /// [`Self::pattern_binding_types`]; simple patterns get the full source type.
     pub(super) fn infer_let_types(&mut self, file: &File) {
         for statement in &file.statements {
             if let Statement::Let(let_binding) = statement {
-                let source_type = let_binding.type_annotation.as_ref().map_or_else(
-                    || self.infer_type(&let_binding.value, file),
-                    Self::type_to_string,
+                let source_ty = let_binding.type_annotation.as_ref().map_or_else(
+                    || self.infer_type_sem(&let_binding.value, file),
+                    SemType::from_ast,
                 );
-                // Each binding in a destructuring pattern gets the type of the
-                // position it extracts (array element, tuple field, struct field).
-                // Simple patterns get the full source type.
-                let resolved = self.resolve_pattern_types(&let_binding.pattern, &source_type);
-                for (name, ty) in resolved {
+                for (name, ty) in
+                    self.pattern_binding_types(&let_binding.pattern, &source_ty, file)
+                {
                     self.symbols.set_let_type(&name, ty);
-                }
-            }
-        }
-    }
-
-    /// Resolve per-binding types for a destructuring pattern given the
-    /// source type string. Falls back to the source type for bindings whose
-    /// position cannot be resolved (e.g., unknown struct field).
-    fn resolve_pattern_types(
-        &self,
-        pattern: &BindingPattern,
-        source_ty: &str,
-    ) -> Vec<(String, String)> {
-        let mut out = Vec::new();
-        self.collect_pattern_types_inner(pattern, source_ty, &mut out);
-        out
-    }
-
-    fn collect_pattern_types_inner(
-        &self,
-        pattern: &BindingPattern,
-        source_ty: &str,
-        out: &mut Vec<(String, String)>,
-    ) {
-        match pattern {
-            BindingPattern::Simple(ident) => {
-                out.push((ident.name.clone(), source_ty.to_string()));
-            }
-            BindingPattern::Array { elements, .. } => {
-                let element_ty = strip_array_type(source_ty).unwrap_or(source_ty);
-                for element in elements {
-                    match element {
-                        ArrayPatternElement::Binding(inner) => {
-                            self.collect_pattern_types_inner(inner, element_ty, out);
-                        }
-                        ArrayPatternElement::Rest(Some(ident)) => {
-                            out.push((ident.name.clone(), source_ty.to_string()));
-                        }
-                        ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {}
-                    }
-                }
-            }
-            BindingPattern::Tuple { elements, .. } => {
-                let field_types = parse_tuple_field_types(source_ty);
-                for (idx, element) in elements.iter().enumerate() {
-                    let inner_ty = field_types
-                        .get(idx)
-                        .map_or(source_ty, std::string::String::as_str);
-                    self.collect_pattern_types_inner(element, inner_ty, out);
-                }
-            }
-            BindingPattern::Struct { fields, .. } => {
-                for field in fields {
-                    let binding_ident = field.alias.as_ref().unwrap_or(&field.name);
-                    let field_ty = self
-                        .symbols
-                        .structs
-                        .get(source_ty)
-                        .and_then(|s| s.fields.iter().find(|f| f.name == field.name.name))
-                        .map_or_else(|| source_ty.to_string(), |f| Self::type_to_string(&f.ty));
-                    out.push((binding_ident.name.clone(), field_ty));
                 }
             }
         }

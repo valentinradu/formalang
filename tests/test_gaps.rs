@@ -346,7 +346,7 @@ fn test_closure_type_inferred() -> Result<(), Box<dyn std::error::Error>> {
     // Closure x -> x with declared type I32 -> I32 should compile
     // The inferred type "I32 -> I32" now matches the annotation
     let source = r"
-        let f: I32 -> I32 = x -> x
+        let f: (I32) -> I32 = (x) -> x
     ";
     compile(source).map_err(|e| format!("should succeed: {e:?}"))?;
     Ok(())
@@ -360,7 +360,7 @@ fn test_closure_body_mismatched_return_type_rejected() -> Result<(), Box<dyn std
     // annotation seeds the param's type and the body is type-checked
     // against the declared return type.
     let source = r"
-        let f: I32 -> Boolean = x -> x + 1
+        let f: (I32) -> Boolean = (x) -> x + 1
     ";
     let err = compile(source)
         .err()
@@ -379,7 +379,7 @@ fn test_closure_body_correct_return_type_accepted() -> Result<(), Box<dyn std::e
     // Audit2 B9 positive case: an untyped-param closure whose body
     // returns the declared type still compiles.
     let source = r"
-        let f: I32 -> I32 = x -> x + 1
+        let f: (I32) -> I32 = (x) -> x + 1
     ";
     compile(source).map_err(|e| format!("expected success, got {e:?}"))?;
     Ok(())
@@ -475,10 +475,10 @@ fn test_closure_arg_to_function_picks_up_expected_param_types(
     use formalang::ast::PrimitiveType;
     use formalang::ir::ResolvedType;
     let source = r"
-        fn apply(f: I32 -> I32, x: I32) -> I32 {
+        fn apply(f: (I32) -> I32, x: I32) -> I32 {
             x
         }
-        let result: I32 = apply(x -> x, 1)
+        let result: I32 = apply((x) -> x, 1)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     // Find the `result` let; its value is the FunctionCall to apply.
@@ -512,12 +512,12 @@ fn test_closure_arg_to_method_picks_up_expected_param_types(
     let source = r"
         struct Engine { rpm: I32 = 0 }
         impl Engine {
-            fn run(self, f: I32 -> I32) -> I32 {
+            fn run(self, f: (I32) -> I32) -> I32 {
                 self.rpm
             }
         }
         let e: Engine = Engine()
-        let result: I32 = e.run(x -> x)
+        let result: I32 = e.run((x) -> x)
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let result_let = module
@@ -946,9 +946,11 @@ fn test_tuple_returned_with_closure_capturing_local_rejected(
 
 #[test]
 fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    // Trait used in generic-type position (`Drawable<X>`) is still
+    // rejected; only the bare `Drawable` form lowers via vtable.
     let source = r"
-        trait Drawable { fn draw(self) -> I32 }
-        fn render(d: Drawable) -> I32 { 0 }
+        trait Drawable<T> { fn draw(self) -> T }
+        fn render(d: Drawable<I32>) -> I32 { 0 }
     ";
     let errors = compile(source)
         .err()
@@ -967,10 +969,10 @@ fn test_trait_as_function_param_type_rejected() -> Result<(), Box<dyn std::error
 #[test]
 fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { fn draw(self) -> I32 }
+        trait Drawable<T> { fn draw(self) -> T }
         struct Circle { r: I32 }
-        impl Drawable for Circle { fn draw(self) -> I32 { 0 } }
-        let d: Drawable = Circle(r: 1)
+        impl Drawable<I32> for Circle { fn draw(self) -> I32 { 0 } }
+        let d: Drawable<I32> = Circle(r: 1)
     ";
     let errors = compile(source)
         .err()
@@ -989,8 +991,8 @@ fn test_trait_as_let_annotation_rejected() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn test_trait_as_struct_field_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Drawable { fn draw(self) -> I32 }
-        struct Container { d: Drawable }
+        trait Drawable<T> { fn draw(self) -> T }
+        struct Container { d: Drawable<I32> }
     ";
     let errors = compile(source)
         .err()
@@ -1174,16 +1176,20 @@ fn test_generic_trait_specialises() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
     // The impl block targets Number2 with the specialised trait_id.
-    let number2_id = result
-        .structs
-        .iter()
-        .position(|s| s.name == "Number2")
-        .and_then(|i| u32::try_from(i).ok().map(formalang::StructId))
-        .ok_or("Number2 missing")?;
+    // Find it by the (now specialised) trait_ref pointing at the Eq__N2_*
+    // trait — id-based struct lookups aren't reliable post-compaction
+    // because prelude built-in structs share the same vector and the
+    // remap doesn't compact their positions.
     let imp = result
         .impls
         .iter()
-        .find(|i| matches!(i.target, formalang::ir::ImplTarget::Struct(id) if id == number2_id))
+        .find(|i| {
+            i.trait_ref.as_ref().is_some_and(|tr| {
+                result
+                    .get_trait(tr.trait_id)
+                    .is_some_and(|t| t.name.starts_with("Eq__"))
+            })
+        })
         .ok_or("Number2 impl missing")?;
     let tr_ref = imp.trait_ref.as_ref().ok_or("impl missing trait_ref")?;
     if !tr_ref.args.is_empty() {
@@ -1261,7 +1267,11 @@ fn test_impl_method_attribute() -> Result<(), Box<dyn std::error::Error>> {
     let imp = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("no user impl")?;
     let next = imp
         .functions

@@ -212,8 +212,6 @@ pub enum Token {
     And,
     #[token("||")]
     Or,
-    #[token("|")]
-    Pipe,
     #[token("!")]
     Bang,
     #[token("?")]
@@ -321,7 +319,6 @@ impl Token {
             Self::Ge => ">=",
             Self::And => "&&",
             Self::Or => "||",
-            Self::Pipe => "|",
             Self::Bang => "!",
             Self::Question => "?",
             Self::Arrow => "->",
@@ -403,7 +400,6 @@ impl std::fmt::Display for Token {
             | Self::Ge
             | Self::And
             | Self::Or
-            | Self::Pipe
             | Self::Bang
             | Self::Question
             | Self::Arrow

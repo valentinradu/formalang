@@ -45,7 +45,7 @@ impl IrLowerer<'_> {
         match expr {
             Expr::Literal { value: lit, .. } => IrExpr::Literal {
                 value: lit.clone(),
-                ty: Self::literal_type(lit),
+                ty: self.literal_type(lit),
                 span: self.current_ir_span(),
             },
             Expr::Invocation {

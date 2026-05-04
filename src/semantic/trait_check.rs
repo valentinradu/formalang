@@ -371,25 +371,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 )
             }
             Type::Closure { params, ret } => {
-                if params.is_empty() {
-                    format!("() -> {}", Self::type_to_string(ret))
-                } else if let Some((_, only_param)) = params.first().filter(|_| params.len() == 1) {
-                    format!(
-                        "{} -> {}",
-                        Self::type_to_string(only_param),
-                        Self::type_to_string(ret)
-                    )
-                } else {
-                    let param_types: Vec<String> = params
-                        .iter()
-                        .map(|(_, p)| Self::type_to_string(p))
-                        .collect();
-                    format!(
-                        "{} -> {}",
-                        param_types.join(", "),
-                        Self::type_to_string(ret)
-                    )
-                }
+                let param_types: Vec<String> = params
+                    .iter()
+                    .map(|(_, p)| Self::type_to_string(p))
+                    .collect();
+                format!(
+                    "({}) -> {}",
+                    param_types.join(", "),
+                    Self::type_to_string(ret)
+                )
             }
         }
     }
@@ -404,6 +394,49 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn type_strings_compatible(&self, expected: &str, actual: &str) -> bool {
         if expected == actual {
             return true;
+        }
+
+        // Concrete-to-trait upcast: `expected` is a trait, `actual` is a
+        // struct (or enum) implementing it. Lets a `let s: Shape = ...`
+        // accept a `Square` value, and lets two if-branches of distinct
+        // concrete types unify against a trait-typed surrounding context
+        // (the if-branch checker calls this in both directions).
+        if self.symbols.is_trait(expected) {
+            let actual_base = actual.trim_end_matches('?');
+            let actual_simple = actual_base.split_once('<').map_or(actual_base, |(n, _)| n);
+            if self
+                .symbols
+                .get_all_traits_for_struct(actual_simple)
+                .contains(&expected.to_string())
+                || self
+                    .symbols
+                    .get_all_traits_for_enum(actual_simple)
+                    .contains(&expected.to_string())
+            {
+                return true;
+            }
+        }
+
+        // Two distinct concrete types that share at least one trait are
+        // accepted as branch-compatible (used by the if-branch checker
+        // when both arms construct different impl types of the same
+        // trait, and the surrounding context expects the trait).
+        {
+            let exp_simple = expected
+                .trim_end_matches('?')
+                .split_once('<')
+                .map_or_else(|| expected.trim_end_matches('?'), |(n, _)| n);
+            let act_simple = actual
+                .trim_end_matches('?')
+                .split_once('<')
+                .map_or_else(|| actual.trim_end_matches('?'), |(n, _)| n);
+            if self.symbols.is_struct(exp_simple) && self.symbols.is_struct(act_simple) {
+                let exp_traits = self.symbols.get_all_traits_for_struct(exp_simple);
+                let act_traits = self.symbols.get_all_traits_for_struct(act_simple);
+                if exp_traits.iter().any(|t| act_traits.contains(t)) {
+                    return true;
+                }
+            }
         }
 
         // `.variant(...)` syntax: enum type is inferred from context

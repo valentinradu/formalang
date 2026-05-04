@@ -306,12 +306,17 @@ fn test_optional_field() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_mutable_field() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level `mut` is rejected by the parser; mutability lives on
+    // bindings only (`let mut`). This test pins the rejection.
     let source = r"
         struct Counter {
             mut count: I32
         }
     ";
-    compile(source).map_err(|e| format!("Mutable field: {e:?}"))?;
+    let result = compile(source);
+    if result.is_ok() {
+        return Err("expected parser to reject `mut` in field position".into());
+    }
     Ok(())
 }
 
@@ -594,7 +599,7 @@ fn test_never_type() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            callback: String -> I32
+            callback: (String) -> I32
         }
     ";
     compile(source).map_err(|e| format!("Closure type single param: {e:?}"))?;
@@ -605,7 +610,7 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_type_no_return() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            action: String -> Never
+            action: (String) -> Never
         }
     ";
     compile(source).map_err(|e| format!("Closure type no return: {e:?}"))?;

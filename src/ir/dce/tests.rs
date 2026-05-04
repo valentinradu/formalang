@@ -13,8 +13,9 @@ fn test_eliminate_constant_true_branch() -> Result<(), Box<dyn std::error::Error
 
     let struct_def = optimized
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -46,8 +47,9 @@ fn test_eliminate_constant_false_branch() -> Result<(), Box<dyn std::error::Erro
 
     let struct_def = optimized
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -168,8 +170,9 @@ fn test_nested_dead_code_elimination() -> Result<(), Box<dyn std::error::Error>>
 
     let struct_def = optimized
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()

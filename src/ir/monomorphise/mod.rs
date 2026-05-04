@@ -45,7 +45,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::error::CompilerError;
-use crate::ir::{GenericBase, IrModule, StructId};
+use crate::ir::{GenericBase, IrModule, ResolvedType, StructId};
 use crate::location::Span;
 use crate::pipeline::IrPass;
 
@@ -198,9 +198,58 @@ impl IrPass for MonomorphisePass {
 
         // Phase 1: collect every `Generic { base, args }` instantiation in
         // the module. The worklist processes args recursively when a
-        // specialisation itself references more generics.
+        // specialisation itself references more generics. Prelude-shipped
+        // built-ins (`Optional`, `Array`, `Dictionary`, `Range`) are
+        // type carriers, not specialisable templates, so filter them out
+        // up front. Any nested args inside them stay on the worklist.
+        let prelude_skip: std::collections::HashSet<GenericBase> = [
+            module.prelude_array_id().map(GenericBase::Struct),
+            module.prelude_dictionary_id().map(GenericBase::Struct),
+            module.prelude_range_id().map(GenericBase::Struct),
+            module.prelude_optional_id().map(GenericBase::Enum),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        // Filter out:
+        //   - prelude built-ins (carriers, never specialised);
+        //   - instantiations whose args still contain `TypeParam`
+        //     (these come from inside generic-function bodies; the
+        //     containing function will be cloned by Phase 2d with
+        //     concrete args, and those concrete instantiations get
+        //     picked up at that point).
+        fn args_have_type_param(args: &[ResolvedType]) -> bool {
+            args.iter().any(contains_type_param)
+        }
+        fn contains_type_param(ty: &ResolvedType) -> bool {
+            match ty {
+                ResolvedType::TypeParam(_) => true,
+                ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| contains_type_param(t)),
+                ResolvedType::Closure {
+                    param_tys,
+                    return_ty,
+                } => {
+                    param_tys.iter().any(|(_, t)| contains_type_param(t))
+                        || contains_type_param(return_ty)
+                }
+                ResolvedType::Generic { args, .. } => args.iter().any(contains_type_param),
+                ResolvedType::External { type_args, .. } => {
+                    type_args.iter().any(contains_type_param)
+                }
+                ResolvedType::Primitive(_)
+                | ResolvedType::Struct(_)
+                | ResolvedType::Trait(_)
+                | ResolvedType::Enum(_)
+                | ResolvedType::Error => false,
+            }
+        }
         let initial = collect_all_instantiations(&module);
-        let mut worklist: VecDeque<Instantiation> = initial.into_iter().collect();
+        let mut worklist: VecDeque<Instantiation> = initial
+            .into_iter()
+            .filter(|(base, args)| {
+                !prelude_skip.contains(base) && !args_have_type_param(args)
+            })
+            .collect();
         let mut mapping: HashMap<Instantiation, GenericBase> = HashMap::new();
 
         while let Some(inst) = worklist.pop_front() {
@@ -267,6 +316,46 @@ impl IrPass for MonomorphisePass {
             return Err(errors);
         }
 
+        // Phase 2d-bis: cloned function bodies may contain fresh
+        // `Generic { base, args }` instantiations that weren't in the
+        // original Phase 1 worklist (a generic body that constructs
+        // `Pair<T, T>` becomes `Pair<I32, I32>` after the clone for
+        // T=I32). Re-collect, specialise the new arrivals, and rewrite
+        // so those references reach concrete struct/enum ids.
+        let post_clone_initial = collect_all_instantiations(&module);
+        let mut post_worklist: VecDeque<Instantiation> = post_clone_initial
+            .into_iter()
+            .filter(|(base, args)| {
+                !prelude_skip.contains(base)
+                    && !args_have_type_param(args)
+                    && !mapping.contains_key(&(*base, args.clone()))
+            })
+            .collect();
+        while let Some(inst) = post_worklist.pop_front() {
+            if mapping.contains_key(&inst) {
+                continue;
+            }
+            match specialise(&mut module, &inst) {
+                Ok((spec_base, more)) => {
+                    mapping.insert(inst, spec_base);
+                    post_worklist.extend(
+                        more.into_iter()
+                            .filter(|(b, a)| !prelude_skip.contains(b) && !args_have_type_param(a)),
+                    );
+                }
+                Err(e) => {
+                    errors.push(e);
+                    mapping.insert(inst, GenericBase::Struct(StructId(u32::MAX)));
+                }
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        rewrite_module(&mut module, &mapping);
+        let post_impl_remap = specialise_impls(&mut module, &mapping);
+        rewrite_dispatch_impl_ids(&mut module, &post_impl_remap);
+
         // Phase 2e: devirtualise. FormaLang has no dynamic dispatch
         // (Tier-1 item E2 bans trait values at semantic time), so any
         // `DispatchKind::Virtual` whose receiver became concrete after
@@ -289,8 +378,21 @@ impl IrPass for MonomorphisePass {
             drop_specialised_generic_impls(&mut module, &struct_remap, &enum_remap);
         apply_remaps(&mut module, &struct_remap, &enum_remap, &trait_remap)?;
         apply_impl_index_remap(&mut module, &impl_index_remap);
-        module.structs.retain(|s| s.generic_params.is_empty());
-        module.enums.retain(|e| e.generic_params.is_empty());
+        // Compaction normally drops every generic template (its uses
+        // were specialised in Phase 2). The four prelude-shipped
+        // built-in carriers (`Optional`, `Array`, `Dictionary`, `Range`)
+        // are exempt: they're never specialised — `Generic { base, args }`
+        // is their canonical post-pass shape — so they have to survive
+        // for dispatch and lookup to keep working.
+        let is_prelude_builtin = |name: &str| {
+            matches!(name, "Array" | "Dictionary" | "Range" | "Optional")
+        };
+        module
+            .structs
+            .retain(|s| s.generic_params.is_empty() || is_prelude_builtin(&s.name));
+        module
+            .enums
+            .retain(|e| e.generic_params.is_empty() || is_prelude_builtin(&e.name));
         module.traits.retain(|t| t.generic_params.is_empty());
         // Tier-1 Phase 2e: generic-function compaction mirrors the
         // struct/enum rules. Originals with non-empty `generic_params`

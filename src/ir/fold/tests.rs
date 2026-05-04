@@ -13,8 +13,9 @@ fn test_fold_numeric_addition() -> Result<(), Box<dyn std::error::Error>> {
     // Check the default was folded
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -45,8 +46,9 @@ fn test_fold_numeric_multiplication() -> Result<(), Box<dyn std::error::Error>> 
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -77,8 +79,9 @@ fn test_fold_chained_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -110,8 +113,9 @@ fn test_fold_boolean_and() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -142,8 +146,9 @@ fn test_fold_boolean_or() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -174,8 +179,9 @@ fn test_fold_comparison() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -206,8 +212,9 @@ fn test_fold_if_constant_condition() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()
@@ -286,8 +293,9 @@ fn test_fold_string_concat() -> Result<(), Box<dyn std::error::Error>> {
 
     let struct_def = folded
         .structs
-        .first()
-        .ok_or("expected at least one struct")?;
+        .iter()
+        .find(|s| s.name == "Config")
+        .ok_or("expected Config struct")?;
     let field = struct_def
         .fields
         .first()

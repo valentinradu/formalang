@@ -336,16 +336,17 @@ fn test_let_dep_via_block_with_expr_statement() -> Result<(), Box<dyn std::error
 
 #[test]
 fn test_mutable_struct_instantiation_with_mutable_let() -> Result<(), Box<dyn std::error::Error>> {
-    // struct has a mut field; we pass a mutable let binding — should succeed
+    // Field-level mutability is gone. Passing a mutable let binding into a
+    // plain field still has to compile; this test now asserts the simpler
+    // baseline.
     let source = r"
         struct Config {
-            mut value: I32 = 0
+            value: I32 = 0
         }
         let mut x: I32 = 42
         let cfg: Config = Config(value: x)
     ";
     let result = compile(source);
-    // Should succeed: mut field gets mut value
     result.map_err(|e| format!("mutable struct with mutable let should compile: {e:?}"))?;
     Ok(())
 }
@@ -371,27 +372,17 @@ fn test_mutable_struct_instantiation_with_immutable_let() -> Result<(), Box<dyn 
 
 #[test]
 fn test_mutable_field_path_chain() -> Result<(), Box<dyn std::error::Error>> {
-    // Tests that is_field_chain_mutable, get_let_type, is_struct_field_mutable, get_field_type
-    // are all exercised via a mut field chain assignment
+    // Field-level mutability has been removed from the language; this test
+    // now exercises the read side of a nested struct chain (the original
+    // mismatch trigger no longer exists).
     let source = r"
-        struct Inner { mut val: I32 = 0 }
-        struct Outer { mut inner: Inner = Inner(val: 0) }
+        struct Inner { val: I32 = 0 }
+        struct Outer { inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
-        let mut inner2: Inner = Inner(val: 0)
+        let inner2: Inner = Inner(val: 0)
         let cfg: Outer = Outer(inner: inner2)
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "mutable field path chain: expected MutabilityMismatch: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("nested struct chain should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -418,7 +409,7 @@ fn test_assignment_to_struct_field_in_block() -> Result<(), Box<dyn std::error::
     // We try to assign to self.field inside impl block to exercise is_expr_mutable
     let source = r"
         struct Counter {
-            mut count: I32 = 0
+            count: I32 = 0
         }
         impl Counter {
             fn reset() -> I32 {
@@ -437,7 +428,7 @@ fn test_assignment_checks_group_expr_mutability() -> Result<(), Box<dyn std::err
     // assignment target is a grouped expression containing a mutable reference
     let source = r"
         struct Cfg {
-            mut count: I32 = {
+            count: I32 = {
                 let mut x: I32 = 0
                 x = 5
                 x
@@ -916,7 +907,7 @@ fn test_local_let_binding_mutability_in_block() -> Result<(), Box<dyn std::error
     // A local let binding inside a block - exercises is_let_mutable for local bindings
     let source = r"
         struct Cfg {
-            mut val: I32 = {
+            val: I32 = {
                 let mut x: I32 = 5
                 x = 10
                 x
@@ -933,26 +924,16 @@ fn test_local_let_binding_mutability_in_block() -> Result<(), Box<dyn std::error
 
 #[test]
 fn test_immutable_root_multi_field_path() -> Result<(), Box<dyn std::error::Error>> {
-    // Root let is immutable, field path access — is_expr_mutable returns false early
+    // Field-level mutability is gone; this just exercises that nested
+    // field-path reads compile cleanly with the new field syntax.
     let source = r"
-        struct Inner { mut val: I32 = 0 }
-        struct Outer { mut inner: Inner = Inner(val: 0) }
+        struct Inner { val: I32 = 0 }
+        struct Outer { inner: Inner = Inner(val: 0) }
         let outer: Outer = Outer(inner: Inner(val: 0))
-        struct Config { mut result: I32 = 0 }
+        struct Config { result: I32 = 0 }
         let cfg: Config = Config(result: outer.inner.val)
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for immutable root multi-field: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("immutable root multi-field path read: {e:?}"))?;
     Ok(())
 }
 
@@ -962,23 +943,14 @@ fn test_immutable_root_multi_field_path() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_is_expr_mutable_for_expression() -> Result<(), Box<dyn std::error::Error>> {
-    // ForExpr result is not mutable — assigning it to a mut field should fail
+    // Field-level mutability is gone; the original mismatch path is no
+    // longer reachable. We keep the for-expression smoke test by asserting
+    // it lowers cleanly into a struct field of type [I32].
     let source = r"
-        struct Config { mut items: [I32] = [1, 2, 3] }
+        struct Config { items: [I32] = [1, 2, 3] }
         let c: Config = Config(items: for x in [1, 2, 3] { x })
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for for-expr: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("for expr in struct field: {e:?}"))?;
     Ok(())
 }
 
@@ -990,7 +962,7 @@ fn test_is_expr_mutable_for_expression() -> Result<(), Box<dyn std::error::Error
 fn test_is_expr_mutable_group_expr() -> Result<(), Box<dyn std::error::Error>> {
     // A grouped expression containing a mutable let — should propagate mutability
     let source = r"
-        struct Config { mut val: I32 = 0 }
+        struct Config { val: I32 = 0 }
         let mut x: I32 = 5
         let cfg: Config = Config(val: (x))
     ";
@@ -1004,23 +976,13 @@ fn test_is_expr_mutable_group_expr() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_dict_literal_not_mutable() -> Result<(), Box<dyn std::error::Error>> {
-    // Dict literal is never mutable
+    // Field-level mutability is gone; the original mismatch is no longer
+    // raised. Smoke-check that a dict-literal default flows into a field.
     let source = r#"
-        struct Config { mut data: [String: I32] = ["key": 42] }
+        struct Config { data: [String: I32] = ["key": 42] }
         let cfg: Config = Config(data: ["new": 1])
     "#;
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for dict literal: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("dict literal in struct field: {e:?}"))?;
     Ok(())
 }
 
@@ -1030,26 +992,16 @@ fn test_dict_literal_not_mutable() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_field_access_mutability_check() -> Result<(), Box<dyn std::error::Error>> {
-    // Field access on a mutable struct — exercises FieldAccess branch of is_expr_mutable
+    // Field-level mutability is gone; the FieldAccess mutability branch no
+    // longer raises a mismatch here. Keep the field-chain smoke test.
     let source = r"
         struct Inner { val: I32 }
-        struct Outer { mut inner: Inner = Inner(val: 0) }
+        struct Outer { inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
-        struct Cfg { mut result: I32 = 0 }
+        struct Cfg { result: I32 = 0 }
         let cfg: Cfg = Cfg(result: outer.inner.val)
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for field access chain: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("field access chain: {e:?}"))?;
     Ok(())
 }
 
@@ -1059,24 +1011,14 @@ fn test_field_access_mutability_check() -> Result<(), Box<dyn std::error::Error>
 
 #[test]
 fn test_let_expr_mutability() -> Result<(), Box<dyn std::error::Error>> {
-    // LetExpr — mutability delegates to its body
+    // Field-level mutability is gone. The original mismatch is no longer
+    // raised. Smoke-check that a let-expression body lowers into a field.
     let source = r"
-        struct Config { mut val: I32 = 0 }
+        struct Config { val: I32 = 0 }
         let cfg: Config = Config(val: (let x: I32 = 5
         in x))
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for let expr: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("let-expr in struct field: {e:?}"))?;
     Ok(())
 }
 
@@ -1089,7 +1031,7 @@ fn test_mutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
     // File-level mutable let binding — exercises is_let_mutable
     let source = r"
         let mut x: I32 = 10
-        struct Config { mut val: I32 = 0 }
+        struct Config { val: I32 = 0 }
         let cfg: Config = Config(val: x)
     ";
     compile(source)
@@ -1115,50 +1057,29 @@ fn test_immutable_file_level_let() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_field_chain_mutable_full_chain() -> Result<(), Box<dyn std::error::Error>> {
-    // Full mutable chain: mut root -> mut field -> mut subfield
+    // Field-level mutability is gone; the mismatch trigger no longer fires.
+    // Smoke-check that a nested struct chain compiles.
     let source = r"
-        struct Inner { mut val: I32 = 0 }
-        struct Outer { mut inner: Inner = Inner(val: 5) }
+        struct Inner { val: I32 = 0 }
+        struct Outer { inner: Inner = Inner(val: 5) }
         let mut outer: Outer = Outer(inner: Inner(val: 5))
     ";
-    // MutabilityMismatch is expected here since Inner literal has immutable val arg
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for mutable full chain: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("nested struct chain should compile: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_field_chain_immutable_field_in_chain() -> Result<(), Box<dyn std::error::Error>> {
-    // Chain where middle field is immutable
+    // Field-level mutability is gone; the original mismatch no longer fires.
+    // Keep the field-chain smoke test.
     let source = r"
         struct Inner { val: I32 }
-        struct Outer { mut inner: Inner = Inner(val: 0) }
+        struct Outer { inner: Inner = Inner(val: 0) }
         let mut outer: Outer = Outer(inner: Inner(val: 0))
-        struct Config { mut result: I32 = 0 }
+        struct Config { result: I32 = 0 }
         let cfg: Config = Config(result: outer.inner.val)
     ";
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "expected MutabilityMismatch for immutable field in chain: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("MutabilityMismatch") {
-        return Err(format!("wrong error: {err}").into());
-    }
+    compile(source).map_err(|e| format!("immutable field in chain: {e:?}"))?;
     Ok(())
 }
 

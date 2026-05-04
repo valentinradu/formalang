@@ -16,9 +16,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         let is_optional = obj_type.is_optional();
         let stripped = obj_type.strip_optional();
-        // Strip generic args like Container<T> -> Container for struct lookup.
-        let lookup_name: &str = match &stripped {
-            SemType::Generic { base, .. } | SemType::Named(base) => base.as_str(),
+        // Tuple receivers are matched by named field, not by struct
+        // lookup. `(x: I32, y: I32).x` returns the I32 directly without
+        // routing through `get_struct`.
+        if let SemType::Tuple(fields) = &stripped {
+            for (n, t) in fields {
+                if n == field_name {
+                    return if is_optional {
+                        SemType::optional_of(t.clone())
+                    } else {
+                        t.clone()
+                    };
+                }
+            }
+            return SemType::Unknown;
+        }
+        // Strip generic args like Container<T> -> Container for struct lookup,
+        // but keep the args so the field's declared type (which may reference
+        // the struct's type parameters) gets substituted before being returned.
+        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = match &stripped {
+            SemType::Generic { base, args } => (base.as_str(), args.clone()),
+            SemType::Named(base) => (base.as_str(), Vec::new()),
             SemType::Primitive(_)
             | SemType::Array(_)
             | SemType::Optional(_)
@@ -29,15 +47,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | SemType::InferredEnum
             | SemType::Nil => return SemType::Unknown,
         };
+        let substitute = |ty: SemType| -> SemType {
+            if receiver_type_args.is_empty() {
+                return ty;
+            }
+            let generics = self.symbols.get_generics(lookup_name).unwrap_or_default();
+            let mut out = ty;
+            for (i, param) in generics.iter().enumerate() {
+                if let Some(arg) = receiver_type_args.get(i) {
+                    out = out.substitute_named(&param.name.name, arg);
+                }
+            }
+            out
+        };
         let wrap = |ty: SemType| -> SemType {
+            let ty = substitute(ty);
             if is_optional {
                 SemType::optional_of(ty)
             } else {
                 ty
             }
         };
-        // Top-level struct lookup.
-        if let Some(struct_info) = self.symbols.get_struct(lookup_name) {
+        // Top-level struct lookup, qualified-name aware so
+        // `geometry::Point` field accesses resolve through the inline
+        // module's symbol table.
+        if let Some(struct_info) = self.symbols.get_struct_qualified(lookup_name) {
             for field in &struct_info.fields {
                 if field.name == field_name {
                     return wrap(SemType::from_ast(&field.ty));
@@ -67,6 +101,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             if let Some(ty) = Self::lookup_field_in_modules(symbols, lookup_name, field_name) {
                 return wrap(ty);
+            }
+        }
+        // Generic-parameter receiver: look at every trait the parameter
+        // is bounded by and search its declared fields. So
+        // `fn name_of<T: Tagged>(item: T) -> String { item.name }`
+        // resolves `item.name` against `Tagged`'s `name: String`.
+        if let Some(constraints) = self.get_type_parameter_constraints(lookup_name) {
+            for trait_name in &constraints {
+                if let Some(trait_info) = self.symbols.get_trait(trait_name) {
+                    if let Some(field) =
+                        trait_info.fields.iter().find(|f| f.name == field_name)
+                    {
+                        return wrap(SemType::from_ast(&field.ty));
+                    }
+                }
             }
         }
         SemType::Unknown
@@ -113,30 +162,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if receiver_type.is_indeterminate() {
             return SemType::Unknown;
         }
-        let is_optional = receiver_type.is_optional();
-        let stripped = receiver_type.strip_optional();
-        // Receiver-side generic args (`Box<I32>` → `["I32"]`)
-        // for substituting the impl method's `TypeParam` references
-        // with concrete types.
-        // Borrow the printable name of a primitive so SB-3 dispatch can
-        // route `s.len()` (`s: String`) through `extern impl String { ... }`
-        // alongside the existing struct/enum lookup paths.
+        // The four built-in compound shapes (`Array<T>`, `Optional<T>`,
+        // `Dictionary<K, V>`, `Range<T>`) route to the prelude-defined
+        // generic structs/enum so methods declared in `extern impl` for
+        // those names dispatch uniformly with user types. Optional is
+        // matched on the un-stripped value so `opt.is_some()` lands on
+        // `Optional`, not on its inner `T`. See `src/prelude.fv`.
         let primitive_name_holder: String;
-        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = match &stripped {
-            SemType::Generic { base, args } => (base.as_str(), args.clone()),
-            SemType::Named(base) => (base.as_str(), Vec::new()),
-            SemType::Primitive(p) => {
-                primitive_name_holder = format!("{p:?}");
-                (primitive_name_holder.as_str(), Vec::new())
+        let dispatch_match: Option<(&str, Vec<SemType>)> = match receiver_type {
+            SemType::Optional(inner) => Some(("Optional", vec![(**inner).clone()])),
+            _ => None,
+        };
+        let (is_optional, stripped) = if dispatch_match.is_some() {
+            // Optional is itself the dispatch receiver; don't post-wrap.
+            (false, receiver_type.clone())
+        } else {
+            (receiver_type.is_optional(), receiver_type.strip_optional())
+        };
+        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = if let Some(d) = dispatch_match
+        {
+            d
+        } else {
+            match &stripped {
+                SemType::Generic { base, args } => (base.as_str(), args.clone()),
+                SemType::Named(base) => (base.as_str(), Vec::new()),
+                SemType::Primitive(p) => {
+                    primitive_name_holder = format!("{p:?}");
+                    (primitive_name_holder.as_str(), Vec::new())
+                }
+                SemType::Array(inner) => ("Array", vec![(**inner).clone()]),
+                SemType::Dictionary { key, value } => {
+                    ("Dictionary", vec![(**key).clone(), (**value).clone()])
+                }
+                SemType::Optional(_)
+                | SemType::Tuple(_)
+                | SemType::Closure { .. }
+                | SemType::Unknown
+                | SemType::InferredEnum
+                | SemType::Nil => return SemType::Unknown,
             }
-            SemType::Array(_)
-            | SemType::Optional(_)
-            | SemType::Tuple(_)
-            | SemType::Dictionary { .. }
-            | SemType::Closure { .. }
-            | SemType::Unknown
-            | SemType::InferredEnum
-            | SemType::Nil => return SemType::Unknown,
         };
 
         let substitute = |ret: SemType| -> SemType {
@@ -198,7 +262,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        // Closure-typed struct field: `f.onPress()` where the struct
+        // declares `onPress: () -> E`. The call's return type is the
+        // closure's return type.
+        if let Some(field_ty) = self.find_struct_field_type(lookup_name, method_name) {
+            if let crate::ast::Type::Closure { ret, .. } = field_ty {
+                return wrap_if_optional(SemType::from_ast(&ret));
+            }
+        }
         SemType::Unknown
+    }
+
+    /// Find a field on the named struct, returning its declared AST
+    /// type. Used by closure-field invocation inference.
+    fn find_struct_field_type(
+        &self,
+        struct_name: &str,
+        field_name: &str,
+    ) -> Option<crate::ast::Type> {
+        if let Some(info) = self.symbols.get_struct(struct_name) {
+            for f in &info.fields {
+                if f.name == field_name {
+                    return Some(f.ty.clone());
+                }
+            }
+        }
+        for (_, symbols) in self.module_cache.values() {
+            if let Some(info) = symbols.get_struct(struct_name) {
+                for f in &info.fields {
+                    if f.name == field_name {
+                        return Some(f.ty.clone());
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Search impl blocks in a file for `method_name` on `type_name`.
@@ -231,35 +329,57 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Tries two interpretations of `type_name`:
     /// 1. As a trait name itself — used when resolving methods on a
-    ///    generic type parameter via its trait constraints.
+    ///    generic type parameter via its trait constraints. Walks the
+    ///    trait's own methods plus every composed (super-)trait.
     /// 2. As a struct name — walks every trait the struct implements
-    ///    and searches their methods.
+    ///    (which, via `get_all_traits_for_struct`, already includes
+    ///    inherited supertraits).
     fn find_trait_method_return(&self, type_name: &str, method_name: &str) -> Option<SemType> {
-        if let Some(trait_info) = self.symbols.get_trait(type_name) {
-            for method in &trait_info.methods {
-                if method.name.name == method_name {
-                    return Some(
-                        method
-                            .return_type
-                            .as_ref()
-                            .map_or(SemType::Nil, SemType::from_ast),
-                    );
-                }
+        if self.symbols.get_trait(type_name).is_some() {
+            if let Some(ret) = self.find_in_trait_chain(
+                type_name,
+                method_name,
+                &mut std::collections::HashSet::new(),
+            ) {
+                return Some(ret);
             }
         }
         let trait_names = self.symbols.get_all_traits_for_struct(type_name);
         for trait_name in trait_names {
-            if let Some(trait_info) = self.symbols.get_trait(&trait_name) {
-                for method in &trait_info.methods {
-                    if method.name.name == method_name {
-                        return Some(
-                            method
-                                .return_type
-                                .as_ref()
-                                .map_or(SemType::Nil, SemType::from_ast),
-                        );
-                    }
-                }
+            if let Some(ret) = self.find_in_trait_chain(
+                &trait_name,
+                method_name,
+                &mut std::collections::HashSet::new(),
+            ) {
+                return Some(ret);
+            }
+        }
+        None
+    }
+
+    fn find_in_trait_chain(
+        &self,
+        trait_name: &str,
+        method_name: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Option<SemType> {
+        if !visited.insert(trait_name.to_string()) {
+            return None;
+        }
+        let trait_info = self.symbols.get_trait(trait_name)?;
+        for method in &trait_info.methods {
+            if method.name.name == method_name {
+                return Some(
+                    method
+                        .return_type
+                        .as_ref()
+                        .map_or(SemType::Nil, SemType::from_ast),
+                );
+            }
+        }
+        for parent in &trait_info.composed_traits {
+            if let Some(ret) = self.find_in_trait_chain(parent, method_name, visited) {
+                return Some(ret);
             }
         }
         None

@@ -110,11 +110,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let Some(first) = path.first() else {
                 return;
             };
-            // Root must be something we can infer a type for.
+            // Root must be something we can infer a type for. Both module-level
+            // lets and local bindings carry a structural `SemType`; render with
+            // `display()` so the chain validator sees a uniform name shape.
             let root_type_string = if let Some(ty) = self.symbols.get_let_type(&first.name) {
-                ty.to_string()
+                ty.display()
             } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
-                ty.clone()
+                ty.display()
             } else {
                 return;
             };

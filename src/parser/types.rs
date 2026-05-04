@@ -148,8 +148,10 @@ where
                 }
             });
 
-        // Closure type: () -> T, T -> U, mut T -> U, or T, mut U -> V
-        // Convention prefix on each param type position
+        // Closure type: every form is `( params ) -> ret`. Parens are
+        // mandatory (including for a single param) so every `->` is
+        // preceded by `)` — the same rule that governs closure expressions.
+        // Conventions (`mut`, `sink`) prefix the type they apply to.
         let closure_convention = choice((
             just(Token::Mut).to(ParamConvention::Mut),
             just(Token::Sink).to(ParamConvention::Sink),
@@ -157,23 +159,13 @@ where
         .or_not()
         .map(|c| c.unwrap_or(ParamConvention::Let));
 
-        // No-param closure: () -> ReturnType
-        let no_param_closure = just(Token::LParen)
-            .ignore_then(just(Token::RParen))
-            .ignore_then(just(Token::Arrow))
-            .ignore_then(type_ref.clone())
-            .map(|ret| Type::Closure {
-                params: vec![],
-                ret: Box::new(ret),
-            });
-
-        // Single or multi-param closure: [mut|sink]? Type -> ReturnType OR [mut|sink]? Type, ...
-        let param_closure = closure_convention
+        let paren_closure = closure_convention
             .clone()
-            .then(optionable_type.clone())
+            .then(type_ref.clone())
             .separated_by(just(Token::Comma))
-            .at_least(1)
+            .allow_trailing()
             .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
             .then_ignore(just(Token::Arrow))
             .then(type_ref)
             .map(|(params, ret)| Type::Closure {
@@ -181,7 +173,8 @@ where
                 ret: Box::new(ret),
             });
 
-        // Try closure types first (more specific), then fall back to regular type
-        choice((no_param_closure, param_closure, optionable_type)).labelled("type")
+        // Try closure first; falls back to a regular type if there is no
+        // trailing `->`.
+        choice((paren_closure, optionable_type)).labelled("type")
     })
 }

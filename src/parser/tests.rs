@@ -727,9 +727,9 @@ fn test_closure_type_no_params() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_type_str("String -> Event");
+    let result = parse_type_str("(String) -> Event");
     if result.is_err() {
-        return Err(format!("Failed to parse String -> Event: : {result:?}").into());
+        return Err(format!("Failed to parse (String) -> Event: : {result:?}").into());
     }
     let ty = result.map_err(|e| format!("{e:?}"))?;
     match ty {
@@ -773,9 +773,9 @@ fn test_closure_type_single_param() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_type_str("I32, I32 -> Point");
+    let result = parse_type_str("(I32, I32) -> Point");
     if result.is_err() {
-        return Err(format!("Failed to parse I32, I32 -> Point: : {result:?}").into());
+        return Err(format!("Failed to parse (I32, I32) -> Point: : {result:?}").into());
     }
     let ty = result.map_err(|e| format!("{e:?}"))?;
     match ty {
@@ -825,9 +825,9 @@ fn test_closure_type_multi_params() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_optional_closure_type() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_type_str("(String -> Event)?");
+    let result = parse_type_str("((String) -> Event)?");
     if result.is_err() {
-        return Err(format!("Failed to parse (String -> Event)?: : {result:?}").into());
+        return Err(format!("Failed to parse ((String) -> Event)?: : {result:?}").into());
     }
     let ty = result.map_err(|e| format!("{e:?}"))?;
     match ty {
@@ -923,9 +923,9 @@ fn test_closure_expr_no_params() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_expr_single_param() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_expr_from_let("x -> .changed(value: x)");
+    let result = parse_expr_from_let("(x) -> .changed(value: x)");
     if result.is_err() {
-        return Err(format!("Failed to parse x -> .changed(...): : {result:?}").into());
+        return Err(format!("Failed to parse (x) -> .changed(...): : {result:?}").into());
     }
     let expr = result.map_err(|e| format!("{e:?}"))?;
     match expr {
@@ -966,9 +966,9 @@ fn test_closure_expr_single_param() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_expr_multi_params() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_expr_from_let("w, h -> .resized(width: w, height: h)");
+    let result = parse_expr_from_let("(w, h) -> .resized(width: w, height: h)");
     if result.is_err() {
-        return Err(format!("Failed to parse w, h -> ...: {result:?}").into());
+        return Err(format!("Failed to parse (w, h) -> ...: {result:?}").into());
     }
     let expr = result.map_err(|e| format!("{e:?}"))?;
     match expr {
@@ -1010,9 +1010,9 @@ fn test_closure_expr_multi_params() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_expr_with_type_annotation() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_expr_from_let("x: String -> .textChanged(value: x)");
+    let result = parse_expr_from_let("(x: String) -> .textChanged(value: x)");
     if result.is_err() {
-        return Err(format!("Failed to parse x: String -> ...: : {result:?}").into());
+        return Err(format!("Failed to parse (x: String) -> ...: : {result:?}").into());
     }
     let expr = result.map_err(|e| format!("{e:?}"))?;
     match expr {

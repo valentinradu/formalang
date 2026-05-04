@@ -22,17 +22,20 @@ impl IrLowerer<'_> {
         elements: &[ast::ArrayPatternElement],
     ) {
         let saved_expected = self.expected_value_type.take();
-        self.expected_value_type = let_binding
+        let lowered_annotation = let_binding
             .type_annotation
             .as_ref()
-            .map(|t| self.lower_type(t))
-            .filter(|t| matches!(t, ResolvedType::Array(_)));
+            .map(|t| self.lower_type(t));
+        self.expected_value_type = lowered_annotation
+            .as_ref()
+            .filter(|t| self.array_element_ty(t).is_some())
+            .cloned();
         let value_expr = self.lower_expr(&let_binding.value);
         self.expected_value_type = saved_expected;
 
         let bad_recv = value_expr.ty().clone();
-        let elem_ty = if let ResolvedType::Array(inner) = &bad_recv {
-            (**inner).clone()
+        let elem_ty = if let Some(inner) = self.array_element_ty(&bad_recv) {
+            inner
         } else {
             self.internal_error_type_if_concrete(
                 &bad_recv,

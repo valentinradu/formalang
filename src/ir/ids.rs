@@ -9,7 +9,9 @@
 ///
 /// let source = "pub struct User { name: String }";
 /// let module = compile_to_ir(source).unwrap();
-/// let id = formalang::StructId(0);
+/// // Prelude built-ins (Array, Dictionary, Range) sit at ids 0..2;
+/// // resolve user types by name to skip them.
+/// let id = module.struct_id("User").expect("User exists");
 /// let struct_def = &module.structs[id.0 as usize];
 /// assert_eq!(struct_def.name, "User");
 /// ```
@@ -47,7 +49,9 @@ pub struct TraitId(pub u32);
 ///
 /// let source = "pub enum Status { active, inactive }";
 /// let module = compile_to_ir(source).unwrap();
-/// let id = formalang::EnumId(0);
+/// // The prelude `Optional<T>` enum sits at id 0; resolve user enums
+/// // by name to skip prelude built-ins.
+/// let id = module.enum_id("Status").expect("Status exists");
 /// let enum_def = &module.enums[id.0 as usize];
 /// assert_eq!(enum_def.name, "Status");
 /// ```
@@ -66,7 +70,7 @@ pub struct EnumId(pub u32);
 ///
 /// let source = "pub fn add(a: I32, b: I32) -> I32 { a + b }";
 /// let module = compile_to_ir(source).unwrap();
-/// let id = formalang::FunctionId(0);
+/// let id = module.function_id("add").expect("add exists");
 /// let func_def = &module.functions[id.0 as usize];
 /// assert_eq!(func_def.name, "add");
 /// ```

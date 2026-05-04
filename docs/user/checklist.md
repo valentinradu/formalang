@@ -16,7 +16,7 @@
 - Optional types (`Type?`)
 - Tuple types (named-only)
 - Generic types (`Type<T>`, `Type<T: Constraint>`)
-- Closure types (`T -> U`, `T, U -> V`, `() -> T`)
+- Closure types (`(T) -> U`, `(T, U) -> V`, `() -> T`)
 - Type inference
 
 **Definitions**:

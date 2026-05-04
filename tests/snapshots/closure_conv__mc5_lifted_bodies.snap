@@ -80,7 +80,7 @@ expression: lifted_bodies
                     ),
                     ty: Struct(
                         StructId(
-                            1,
+                            4,
                         ),
                     ),
                     span: IrSpan {

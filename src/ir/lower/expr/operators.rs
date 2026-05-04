@@ -30,7 +30,9 @@ impl IrLowerer<'_> {
             | BinaryOperator::Mul
             | BinaryOperator::Div
             | BinaryOperator::Mod => left_ir.ty().clone(),
-            BinaryOperator::Range => ResolvedType::Range(Box::new(left_ir.ty().clone())),
+            BinaryOperator::Range => self
+                .range_of(left_ir.ty().clone())
+                .unwrap_or(ResolvedType::Error),
         };
         IrExpr::BinaryOp {
             left: Box::new(left_ir),
@@ -98,7 +100,11 @@ impl IrLowerer<'_> {
                 reason = "len == 1 check above guarantees index 0"
             )]
             let name = &path_strs[0];
-            if let Some(let_type) = self.symbols.get_let_type(name).map(str::to_string) {
+            if let Some(let_type) = self
+                .symbols
+                .get_let_type(name)
+                .map(crate::semantic::sem_type::SemType::display)
+            {
                 // prefer the simple-name resolution; fall
                 // back to the value's known type for composite type
                 // strings the helper can't reparse (closures, tuples,
@@ -132,10 +138,47 @@ impl IrLowerer<'_> {
         //   2. a module-level `let` — needed for multi-segment paths like
         //      `sample.tags` where the single-segment LetRef branch above
         //      doesn't apply.
-        // For multi-segment paths, walk each subsequent segment as a field
-        // access so `u.x.y` resolves to `y`'s actual field type. A root
-        // segment that resolves to nothing is a real unresolved reference;
-        // surface it as `UndefinedReference` and return `Error`.
+        // For a multi-segment path whose root is a local binding, emit a
+        // chain of `FieldAccess` over a `LetRef` rather than keeping the
+        // joined path on `IrExpr::Reference`. The resolve-references
+        // pass only matches `Reference` paths against module-level
+        // symbols, so a multi-segment `b.value` would otherwise surface
+        // as `UndefinedReference("b::value")` even when `b` is a local.
+        let root_is_local = path_strs
+            .first()
+            .is_some_and(|n| self.lookup_local_binding(n).is_some());
+        if root_is_local && path_strs.len() > 1 {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "first()/lookup_local_binding above guarantee at least one segment"
+            )]
+            let root_name = path_strs[0].clone();
+            #[expect(
+                clippy::expect_used,
+                reason = "lookup_local_binding above proved this binding is in scope"
+            )]
+            let root_ty = self
+                .lookup_local_binding(&root_name)
+                .cloned()
+                .expect("root local binding present");
+            let mut current_expr = IrExpr::LetRef {
+                name: root_name,
+                binding_id: crate::ir::BindingId(0),
+                ty: root_ty,
+                span: self.current_ir_span(),
+            };
+            for seg in path_strs.iter().skip(1) {
+                let field_ty = self.resolve_field_type(current_expr.ty(), seg);
+                current_expr = IrExpr::FieldAccess {
+                    object: Box::new(current_expr),
+                    field: seg.clone(),
+                    field_idx: crate::ir::FieldIdx(0),
+                    ty: field_ty,
+                    span: self.current_ir_span(),
+                };
+            }
+            return current_expr;
+        }
         let root = path_strs.first().and_then(|n| {
             self.lookup_local_binding(n).cloned().or_else(|| {
                 self.module
@@ -174,6 +217,43 @@ impl IrLowerer<'_> {
         args: &[(Option<crate::ast::Ident>, Expr)],
     ) -> IrExpr {
         let receiver_ir = self.lower_expr(receiver);
+        // Closure-typed struct field: `f.onPress()` where the struct
+        // declares `onPress: () -> E`. Lower as a closure call on the
+        // field-access value, not as a method dispatch — there is no
+        // impl method to call.
+        if let Some(field_ty) = self.struct_field_closure_ty(receiver_ir.ty(), method_name) {
+            if let ResolvedType::Closure {
+                param_tys,
+                return_ty,
+            } = field_ty.clone()
+            {
+                let return_ty = (*return_ty).clone();
+                let lowered_args: Vec<(Option<String>, IrExpr)> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (label, expr))| {
+                        let saved_closure = self.expected_closure_type.take();
+                        self.expected_closure_type =
+                            param_tys.get(i).map(|(_, t)| t.clone());
+                        let lowered = self.lower_expr(expr);
+                        self.expected_closure_type = saved_closure;
+                        (label.as_ref().map(|l| l.name.clone()), lowered)
+                    })
+                    .collect();
+                return IrExpr::CallClosure {
+                    closure: Box::new(IrExpr::FieldAccess {
+                        object: Box::new(receiver_ir),
+                        field: method_name.to_string(),
+                        field_idx: crate::ir::FieldIdx(0),
+                        ty: field_ty,
+                        span: self.current_ir_span(),
+                    }),
+                    args: lowered_args,
+                    ty: return_ty,
+                    span: self.current_ir_span(),
+                };
+            }
+        }
         // same idea as the function-call path — pull the
         // method's expected param types so closure-literal arguments
         // get their `x` typed against what the method expects.
@@ -201,6 +281,35 @@ impl IrLowerer<'_> {
             ty,
             span: self.current_ir_span(),
         }
+    }
+
+    /// If the receiver's type names a struct and that struct has a
+    /// closure-typed field with the given name, return the field's
+    /// resolved type. Used by `lower_method_call` to detect the
+    /// `f.onPress()` (closure-field-invocation) pattern.
+    fn struct_field_closure_ty(
+        &self,
+        receiver_ty: &ResolvedType,
+        method_name: &str,
+    ) -> Option<ResolvedType> {
+        let struct_id = match receiver_ty {
+            ResolvedType::Struct(id) => *id,
+            ResolvedType::Generic {
+                base: crate::ir::GenericBase::Struct(id),
+                ..
+            } => *id,
+            _ => return None,
+        };
+        let struct_def = self.module.get_struct(struct_id)?;
+        for field in &struct_def.fields {
+            if field.name == method_name {
+                if matches!(field.ty, ResolvedType::Closure { .. }) {
+                    return Some(field.ty.clone());
+                }
+                return None;
+            }
+        }
+        None
     }
 
     /// find the IR function with the given name and
@@ -282,13 +391,9 @@ impl IrLowerer<'_> {
             ResolvedType::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
             ResolvedType::Primitive(_)
             | ResolvedType::Trait(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error => None,
         };

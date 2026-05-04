@@ -4,20 +4,92 @@ mod fields;
 use super::module_resolver::ModuleResolver;
 use super::sem_type::SemType;
 use super::SemanticAnalyzer;
-use crate::ast::{BinaryOperator, Definition, Expr, File, Literal, Statement, UnaryOperator};
+use crate::ast::{BinaryOperator, Expr, File, Literal, Statement, UnaryOperator};
 use std::collections::HashMap;
 
 use super::collect_bindings_from_pattern;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
-    /// Infer the type of an expression and return the legacy
-    /// string format. Thin bridge over [`Self::infer_type_sem`] —
-    /// callers in `validation.rs` still consume strings; step 4 will
-    /// migrate them and this wrapper goes away.
-    pub(super) fn infer_type(&self, expr: &Expr, file: &File) -> String {
-        self.infer_type_sem(expr, file).display()
+    /// Walk a destructuring pattern alongside the value's inferred type
+    /// and return each leaf binding paired with the type it should
+    /// receive. Without this, `let {field as alias} = value` previously
+    /// gave every alias the whole-struct type instead of the field's
+    /// type; the same shortcoming bit array and tuple patterns.
+    ///
+    /// Falls back to the value's whole type for any leaf the walk can't
+    /// resolve (rest patterns, unknown receivers, mismatched shapes), so
+    /// destructurings that the type system can't unpack still produce
+    /// usable bindings instead of "Unknown".
+    pub(in crate::semantic) fn pattern_binding_types(
+        &self,
+        pattern: &crate::ast::BindingPattern,
+        value_ty: &SemType,
+        file: &File,
+    ) -> Vec<(String, SemType)> {
+        let mut out = Vec::new();
+        self.walk_pattern_types(pattern, value_ty, file, &mut out);
+        out
     }
 
+    fn walk_pattern_types(
+        &self,
+        pattern: &crate::ast::BindingPattern,
+        value_ty: &SemType,
+        file: &File,
+        out: &mut Vec<(String, SemType)>,
+    ) {
+        use crate::ast::{ArrayPatternElement, BindingPattern};
+        match pattern {
+            BindingPattern::Simple(ident) => {
+                out.push((ident.name.clone(), value_ty.clone()));
+            }
+            BindingPattern::Struct { fields, .. } => {
+                for f in fields {
+                    let binding_name = f
+                        .alias
+                        .as_ref()
+                        .map_or_else(|| f.name.name.clone(), |a| a.name.clone());
+                    let field_ty = self.infer_field_type(value_ty, &f.name.name);
+                    out.push((binding_name, field_ty));
+                }
+            }
+            BindingPattern::Array { elements, .. } => {
+                let element_ty = match value_ty.strip_optional() {
+                    SemType::Array(inner) => *inner,
+                    _ => SemType::Unknown,
+                };
+                for elem in elements {
+                    match elem {
+                        ArrayPatternElement::Binding(inner_pat) => {
+                            self.walk_pattern_types(inner_pat, &element_ty, file, out);
+                        }
+                        ArrayPatternElement::Rest(Some(ident)) => {
+                            out.push((
+                                ident.name.clone(),
+                                SemType::Array(Box::new(element_ty.clone())),
+                            ));
+                        }
+                        ArrayPatternElement::Rest(None) | ArrayPatternElement::Wildcard => {}
+                    }
+                }
+            }
+            BindingPattern::Tuple { elements, .. } => {
+                let tuple_fields = match value_ty.strip_optional() {
+                    SemType::Tuple(fields) => fields,
+                    _ => Vec::new(),
+                };
+                for (i, inner_pat) in elements.iter().enumerate() {
+                    let elem_ty = tuple_fields
+                        .get(i)
+                        .map_or(SemType::Unknown, |(_, t)| t.clone());
+                    self.walk_pattern_types(inner_pat, &elem_ty, file, out);
+                }
+            }
+        }
+    }
+}
+
+impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Infer the type of an expression as a structural [`SemType`].
     #[expect(
         clippy::too_many_lines,
@@ -80,11 +152,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // an inference-scope frame so references inside the arm
                 // body resolve to concrete types instead of "Unknown".
                 let scrutinee_ty = self.infer_type_sem(scrutinee, file);
-                let scrutinee_str = scrutinee_ty.display();
-                let enum_name = scrutinee_str.trim_end_matches('?');
                 let mut types: Vec<SemType> = Vec::with_capacity(arms.len());
                 for arm in arms {
-                    let frame = self.build_match_arm_scope(enum_name, &arm.pattern);
+                    let frame = self.build_match_arm_scope_for_type(&scrutinee_ty, &arm.pattern);
                     self.inference_scope_stack.borrow_mut().push(frame);
                     types.push(self.infer_type_sem(&arm.body, file));
                     self.inference_scope_stack.borrow_mut().pop();
@@ -108,18 +178,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             Expr::DictAccess { dict, .. } => {
-                // extract V from a Dictionary shape.
-                // Structural unpacking; no string scanning needed.
+                // Both array indexing (`xs[i]`) and dictionary lookup
+                // (`d[k]`) yield an optional: the index can be out of
+                // range, the key can be absent. Wrap in Optional so the
+                // call site is forced to handle `nil`. SB-5 `s[i]` on a
+                // String stays `I32` because the desugaring routes to
+                // a method that returns a primitive byte.
                 let receiver = self.infer_type_sem(dict, file);
                 match receiver {
-                    SemType::Dictionary { value, .. } => *value,
-                    // SB-5: `s[i]` on String desugars to `byte_at(i): I32`.
+                    SemType::Dictionary { value, .. } => SemType::optional_of(*value),
+                    SemType::Array(element) => SemType::optional_of(*element),
                     SemType::Primitive(crate::ast::PrimitiveType::String) => {
                         SemType::Primitive(crate::ast::PrimitiveType::I32)
                     }
                     SemType::Primitive(_)
                     | SemType::Named(_)
-                    | SemType::Array(_)
                     | SemType::Optional(_)
                     | SemType::Tuple(_)
                     | SemType::Generic { .. }
@@ -148,10 +221,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Push closure params into the inference-scope stack so
                 // references inside the body resolve to their declared
                 // types instead of "Unknown".
-                let mut frame = HashMap::new();
+                let mut frame: HashMap<String, SemType> = HashMap::new();
                 for p in params {
                     if let Some(ty) = &p.ty {
-                        frame.insert(p.name.name.clone(), Self::type_to_string(ty));
+                        frame.insert(p.name.name.clone(), SemType::from_ast(ty));
                     }
                 }
                 self.inference_scope_stack.borrow_mut().push(frame);
@@ -172,28 +245,37 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Block {
                 statements, result, ..
             } => {
-                // walk the block's statements to push each
-                // let binding into the inference-scope stack before
-                // inferring the trailing expression. Without this the
-                // function-return-type check below loses sight of any
-                // bindings created inside a block body (validation
-                // tears them down before the post-body infer_type call).
-                let mut frame = HashMap::new();
+                // Push a frame and grow it statement-by-statement so each
+                // let binding is visible to the inference of the next
+                // statement's value. Without per-iteration growth, an
+                // alias chain like `let r = c` loses track of `c`'s type
+                // because `c` hasn't been pushed onto the stack yet at
+                // the time `r`'s value is inferred.
+                self.inference_scope_stack.borrow_mut().push(HashMap::new());
                 for stmt in statements {
                     if let crate::ast::BlockStatement::Let {
                         pattern, ty, value, ..
                     } = stmt
                     {
-                        let value_ty = ty.as_ref().map_or_else(
-                            || self.infer_type_sem(value, file).display(),
-                            Self::type_to_string,
+                        let value_sem = ty.as_ref().map_or_else(
+                            || self.infer_type_sem(value, file),
+                            SemType::from_ast,
                         );
-                        if let crate::ast::BindingPattern::Simple(ident) = pattern {
-                            frame.insert(ident.name.clone(), value_ty);
+                        // Destructure-aware: each leaf binding picks up
+                        // the type at its pattern position so that
+                        // `let {field as alias} = value` exposes alias
+                        // with the field's type, not the struct's.
+                        for (binding_name, binding_sem) in
+                            self.pattern_binding_types(pattern, &value_sem, file)
+                        {
+                            if let Some(top) =
+                                self.inference_scope_stack.borrow_mut().last_mut()
+                            {
+                                top.insert(binding_name, binding_sem);
+                            }
                         }
                     }
                 }
-                self.inference_scope_stack.borrow_mut().push(frame);
                 let out = self.infer_type_sem(result, file);
                 self.inference_scope_stack.borrow_mut().pop();
                 out
@@ -221,15 +303,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             reason = "five-branch resolution: if/else-if reads clearer than chained map_or_else"
         )]
         let root_type: SemType = if let Some(scope_ty) = scope_lookup {
-            SemType::from_legacy_string(&scope_ty)
+            scope_ty
         } else if first.name == "self" {
             self.current_impl_struct
                 .as_ref()
                 .map_or(SemType::Unknown, |s| SemType::Named(s.clone()))
         } else if let Some(let_type) = self.symbols.get_let_type(&first.name) {
-            SemType::from_legacy_string(let_type)
+            let_type.clone()
         } else if let Some((local_type, _mutable)) = self.local_let_bindings.get(&first.name) {
-            SemType::from_legacy_string(local_type)
+            local_type.clone()
         } else if let Some(ref struct_name) = self.current_impl_struct {
             // Top-level field reference in an impl body — resolve against self.
             self.symbols
@@ -376,82 +458,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         false
     }
 
-    /// Check if a field access chain is mutable
-    /// For path like `["profile", "email"]`, check that both profile and email fields are mutable
+    /// Check if a field access chain is mutable.
+    ///
+    /// Field-level mutability was removed; mutability lives entirely on
+    /// the binding (`let mut`). A chain is mutable iff the root binding
+    /// is — the field path itself adds no further restriction.
     pub(super) fn is_field_chain_mutable(
         &self,
-        root_name: &str,
-        field_path: &[crate::ast::Ident],
-        file: &File,
+        _root_name: &str,
+        _field_path: &[crate::ast::Ident],
+        _file: &File,
     ) -> bool {
-        if field_path.is_empty() {
-            return true;
-        }
-
-        // Get the type of the root to find which struct it refers to
-        let root_type = self.get_let_type(root_name, file);
-
-        // Check each field in the chain
-        let mut current_type = root_type;
-        for field_ident in field_path {
-            // Check if the current field is mutable in its type
-            if !Self::is_struct_field_mutable(&current_type, &field_ident.name, file) {
-                return false;
-            }
-
-            // Get the type of this field to continue checking the chain
-            current_type = Self::get_field_type(&current_type, &field_ident.name, file).display();
-        }
-
         true
     }
 
-    /// Get the type of a let binding
-    pub(super) fn get_let_type(&self, name: &str, file: &File) -> String {
-        for statement in &file.statements {
-            if let Statement::Let(let_binding) = statement {
-                // Check if the name is in any binding from this pattern
-                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
-                    if binding.name == name {
-                        return self.infer_type(&let_binding.value, file);
-                    }
-                }
-            }
-        }
-        "Unknown".to_string()
-    }
-
-    /// Check if a struct field is mutable
-    pub(super) fn is_struct_field_mutable(type_name: &str, field_name: &str, file: &File) -> bool {
-        for statement in &file.statements {
-            if let Statement::Definition(def) = statement {
-                if let Definition::Struct(struct_def) = &**def {
-                    if struct_def.name.name == type_name {
-                        for field in &struct_def.fields {
-                            if field.name.name == field_name {
-                                return field.mutable;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
-    pub(super) fn get_field_type(type_name: &str, field_name: &str, file: &File) -> SemType {
-        for statement in &file.statements {
-            if let Statement::Definition(def) = statement {
-                if let Definition::Struct(struct_def) = &**def {
-                    if struct_def.name.name == type_name {
-                        for field in &struct_def.fields {
-                            if field.name.name == field_name {
-                                return SemType::from_ast(&field.ty);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        SemType::Unknown
-    }
 }

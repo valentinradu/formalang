@@ -10,6 +10,7 @@ use super::qualified_types::{
 use crate::ast::{Definition, Expr, File, Statement};
 use crate::error::CompilerError;
 use crate::location::Span;
+use std::collections::HashSet;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate a method call expression
@@ -25,12 +26,40 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for (_, arg) in args {
             self.validate_expr(arg, file);
         }
-        let receiver_type = self.infer_type_sem(receiver, file).display();
+        let receiver_sem = self.infer_type_sem(receiver, file);
+        // The four built-in compound shapes route to the prelude-defined
+        // generic structs/enum so `xs.len()`, `opt.is_some()`, `d.len()`,
+        // `r.len()` resolve through the same machinery as user types.
+        // See `src/prelude.fv`. Optional is checked first so a bare
+        // `opt.is_some()` (without auto-strip) lands on Optional, not on
+        // its inner T.
+        // Indeterminate receivers (`SemType::Unknown` or types
+        // containing `Unknown` anywhere) skip method validation —
+        // there's nothing to check until inference resolves them.
+        if receiver_sem.is_indeterminate() {
+            return;
+        }
+        let receiver_type = match &receiver_sem {
+            crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
+            crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
+            crate::semantic::sem_type::SemType::Dictionary { .. } => "Dictionary".to_string(),
+            _ => receiver_sem.display(),
+        };
         if let Some(fn_def) = Self::find_method_fn_def(&receiver_type, &method.name, file) {
             let params = fn_def.params.clone();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
             self.validate_fn_param_conventions_args(&params, args, span, file);
-        } else if !self.method_exists_on_type(&receiver_type, &method.name, file) {
+        } else if self.method_exists_on_type(&receiver_type, &method.name, file) {
+            // Method exists in a trait/impl block — convention checks on
+            // those signatures still happen via `find_method_fn_def`
+            // when the impl is in-file; cross-module impls are accepted
+            // without further checks here.
+        } else if self.struct_field_is_closure(&receiver_type, &method.name, file) {
+            // Calling a closure-typed field of a struct: `f.onPress()`
+            // where `onPress: () -> E`. The convention checks for the
+            // closure's own params live in the closure-binding maps,
+            // populated when the field was registered.
+        } else {
             self.errors.push(CompilerError::UndefinedReference {
                 name: format!("method '{}' on type '{}'", method.name, receiver_type),
                 span,
@@ -44,9 +73,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         method_name: &str,
         file: &'f File,
     ) -> Option<&'f crate::ast::FnDef> {
-        if type_name == "Unknown" || type_name.contains("Unknown") {
-            return None;
-        }
         for stmt in &file.statements {
             if let crate::ast::Statement::Definition(def) = stmt {
                 if let crate::ast::Definition::Impl(impl_def) = &**def {
@@ -185,13 +211,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         method_name: &str,
         file: &File,
     ) -> bool {
-        // Skip validation for unknown types (chained method calls where we can't infer intermediate types)
-        if type_name == "Unknown" || type_name.contains("Unknown") {
-            return true;
-        }
-        // Strip optional marker and generic args for lookups
+        // Strip optional marker and generic args for lookups. Callers
+        // that have a `SemType` to hand are responsible for not calling
+        // this on indeterminate types; the previous `== "Unknown"`
+        // string sentinel was retired with the `local_let_bindings`
+        // migration.
         let base = type_name.trim_end_matches('?');
         let lookup = base.split_once('<').map_or(base, |(n, _)| n);
+
+        // Trait-typed receiver: a `let s: Shape = ...` then `s.area()` must
+        // resolve against the trait's declared method set, including
+        // methods inherited from any composed (super-)traits. The
+        // IR/backend turns this into virtual dispatch via the trait's
+        // vtable, but the semantic check has to acknowledge the method
+        // exists first.
+        if self.symbols.get_trait(lookup).is_some()
+            && self.trait_chain_has_method(lookup, method_name, &mut HashSet::new())
+        {
+            return true;
+        }
 
         // Check if it's a struct with an impl block containing the method
         if self.symbols.is_struct(lookup) {
@@ -384,6 +422,94 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     | Definition::Module(_)
                     | Definition::Function(_) => {}
                 }
+            }
+        }
+        false
+    }
+
+    /// Whether the named struct has a closure-typed field with the
+    /// given name. Lets `f.onPress()` resolve to "invoke the closure
+    /// stored in `f.onPress`" when `onPress: () -> E` is a struct field
+    /// rather than an impl method. The receiver's full type-string is
+    /// stripped of `?` and any generic args before the lookup.
+    fn struct_field_is_closure(&self, type_name: &str, field_name: &str, file: &File) -> bool {
+        let base = type_name.trim_end_matches('?');
+        let lookup = base.split_once('<').map_or(base, |(n, _)| n);
+        let mut found = false;
+        let scan = |defs: &[crate::ast::Definition]| {
+            let mut hit = false;
+            for def in defs {
+                if let crate::ast::Definition::Struct(s) = def {
+                    if s.name.name == lookup {
+                        for f in &s.fields {
+                            if f.name.name == field_name
+                                && matches!(f.ty, crate::ast::Type::Closure { .. })
+                            {
+                                hit = true;
+                            }
+                        }
+                    }
+                }
+            }
+            hit
+        };
+        let in_file: Vec<crate::ast::Definition> = file
+            .statements
+            .iter()
+            .filter_map(|s| {
+                if let Statement::Definition(d) = s {
+                    Some((**d).clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if scan(&in_file) {
+            return true;
+        }
+        for (cached_file, _) in self.module_cache.values() {
+            let cached_defs: Vec<crate::ast::Definition> = cached_file
+                .statements
+                .iter()
+                .filter_map(|s| {
+                    if let Statement::Definition(d) = s {
+                        Some((**d).clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if scan(&cached_defs) {
+                found = true;
+                break;
+            }
+        }
+        found
+    }
+
+    /// Walk a trait's own methods plus every composed (super-)trait
+    /// looking for `method_name`. The visited-set guards against cyclic
+    /// trait composition (which is rejected upstream but the walker
+    /// stays defensive). Used by `method_exists_on_type` so a call on
+    /// a trait-typed binding finds methods inherited from parents.
+    fn trait_chain_has_method(
+        &self,
+        trait_name: &str,
+        method_name: &str,
+        visited: &mut HashSet<String>,
+    ) -> bool {
+        if !visited.insert(trait_name.to_string()) {
+            return false;
+        }
+        let Some(info) = self.symbols.get_trait(trait_name) else {
+            return false;
+        };
+        if info.methods.iter().any(|m| m.name.name == method_name) {
+            return true;
+        }
+        for parent in &info.composed_traits {
+            if self.trait_chain_has_method(parent, method_name, visited) {
+                return true;
             }
         }
         false

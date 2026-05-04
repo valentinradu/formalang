@@ -159,25 +159,15 @@ fn test_tuple_with_invalid_type() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_trait_as_value_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    // Tier-1 item E2: traits are NOT valid as value types (no
-    // dynamic dispatch in FormaLang). The fix is a generic bound:
-    // `struct Container<T: Shape> { shape: T }`.
+    // Traits at value positions are now allowed; the IR lowers them through
+    // virtual dispatch via the trait's vtable. The old `TraitUsedAsValueType`
+    // rejection has been removed for plain `Trait` references in field types.
     let source = r"
         trait Shape { area: I32 }
         struct Container { shape: Shape }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected TraitUsedAsValueType")?;
-    if !errors.iter().any(|e| matches!(
-        e,
-        formalang::CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Shape"
-    )) {
-        return Err(format!(
-            "expected TraitUsedAsValueType for `Shape` field type, got: {errors:?}"
-        )
-        .into());
-    }
+    compile(source)
+        .map_err(|e| format!("trait at value position should now compile: {e:?}"))?;
     Ok(())
 }
 
@@ -853,19 +843,19 @@ fn test_type_only_parameter_parses() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #22: `if user.nickname { name: nickname }` must make
-    // `nickname` visible inside the then-branch with the unwrapped type.
+    // Implicit auto-bind on `if` is gone. Optional unwrap-and-bind is now the
+    // `if let` form (parsed as a match).
     let source = r#"
         struct User { nickname: String? }
         fn greet(name: String) -> String { name }
         pub let u = User(nickname: "alice")
-        pub let out = if u.nickname {
+        pub let out = if let nickname = u.nickname {
             greet(name: nickname)
         } else {
             "anon"
         }
     "#;
-    compile(source).map_err(|e| format!("auto-bind inside if should compile: {e:?}"))?;
+    compile(source).map_err(|e| format!("if let auto-bind should compile: {e:?}"))?;
     Ok(())
 }
 
@@ -1091,20 +1081,14 @@ fn test_function_calling_undefined_function() -> Result<(), Box<dyn std::error::
 
 #[test]
 fn test_method_call_on_array() -> Result<(), Box<dyn std::error::Error>> {
-    // Arrays have built-in methods
+    // The prelude now defines `Array<T>` with `len() -> I32`, so the call
+    // resolves cleanly. (Previously the analyser had no builtin lookup and
+    // produced UndefinedReference.)
     let source = r"
         let items: [I32] = [1, 2, 3]
         let len: I32 = items.len()
     ";
-    // len() on arrays is not a recognized method in the semantic analyser
-    let result = compile(source);
-    if result.is_ok() {
-        return Err(format!(
-            "Array len() is not a builtin method — should produce UndefinedReference: {:?}",
-            result.ok()
-        )
-        .into());
-    }
+    compile(source).map_err(|e| format!("Array.len() should resolve via prelude: {e:?}"))?;
     Ok(())
 }
 
@@ -1129,7 +1113,7 @@ fn test_block_with_let_and_result() -> Result<(), Box<dyn std::error::Error>> {
 fn test_block_with_assignment() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter {
-            mut count: I32 = {
+            count: I32 = {
                 let mut x: I32 = 0
                 x = 5
                 x
@@ -1173,15 +1157,16 @@ fn test_generic_struct_instantiation() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn std::error::Error>>
 {
+    // The analyser now infers `T` for generic struct instantiations from the
+    // declared field type, so `Box(value: 42)` against `Box<I32>` is valid
+    // without an explicit `<I32>` turbofish.
     let source = r"
         struct Box<T> { value: T }
         struct Config { box: Box<I32> = Box(value: 42) }
     ";
-    let result = compile(source);
-    // Missing type args in invocation should be caught
-    if result.is_ok() {
-        return Err("Expected missing generic arguments error".into());
-    }
+    compile(source).map_err(|e| format!(
+        "missing generic args should be inferred from context: {e:?}"
+    ))?;
     Ok(())
 }
 
@@ -1725,14 +1710,13 @@ fn test_mutable_let_binding_in_struct_field() -> Result<(), Box<dyn std::error::
 
 #[test]
 fn test_immutable_let_binding_in_mut_struct_field() -> Result<(), Box<dyn std::error::Error>> {
-    // Immutable let binding passed to mutable struct field
+    // Field-level mutability has been removed; an immutable let binding
+    // simply flows into a plain field default.
     let source = r"
         let value: I32 = 42
-        struct Config { mut count: I32 = value }
+        struct Config { count: I32 = value }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
-    // Immutable binding assigned to a mutable struct field — should succeed
-    // (the field's mutability is its own property, not the binding's)
     Ok(())
 }
 
@@ -1862,7 +1846,7 @@ fn test_struct_satisfies_generic_constraint() -> Result<(), Box<dyn std::error::
 #[test]
 fn test_closure_in_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Handler { callback: (I32) -> I32 = |n: I32| n }
+        struct Handler { callback: (I32) -> I32 = (n: I32) -> n }
     ";
     compile(source).map_err(|e| format!("Closure in struct field: {e:?}"))?;
     Ok(())

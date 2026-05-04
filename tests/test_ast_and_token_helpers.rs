@@ -75,7 +75,7 @@ fn test_expr_span_dict_access() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_span_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let add = x, y -> 0
+        let add = (x, y) -> 0
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -496,7 +496,7 @@ fn test_closure_type_in_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Mapper {
-            transform: String -> I32
+            transform: (String) -> I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -507,7 +507,7 @@ fn test_closure_with_params() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Reducer {
-            reduce: I32, I32 -> I32
+            reduce: (I32, I32) -> I32
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -518,7 +518,7 @@ fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Factory {
-            create: String -> (I32 -> Boolean)
+            create: (String) -> ((I32) -> Boolean)
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -633,12 +633,17 @@ fn test_extern_field_optional() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_mut_field_basic() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level `mut` has been removed; mutability lives on bindings.
+    // The parser must reject `mut` in struct field position.
     let source = r"
         struct Counter {
             mut count: I32
         }
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    assert!(
+        compile(source).is_err(),
+        "expected parser to reject `mut` in struct field"
+    );
     Ok(())
 }
 
@@ -649,7 +654,10 @@ fn test_mut_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
             mut count: I32 = 0
         }
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    assert!(
+        compile(source).is_err(),
+        "expected parser to reject `mut` in struct field"
+    );
     Ok(())
 }
 
@@ -1088,9 +1096,12 @@ fn test_module_enum_with_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_error_struct_missing_generic_args() -> Result<(), Box<dyn std::error::Error>> {
+    // Need a case where T cannot be inferred from named-arg expressions.
+    // Here T appears only in a phantom-style position with a default, so
+    // `Empty()` provides nothing for inference to latch onto.
     let source = r#"
-        struct Box<T> { value: T }
-        struct Container { box: Box<String> = Box(value: "test") }
+        struct Empty<T> { value: T? = nil }
+        struct Container { e: Empty<String> = Empty() }
     "#;
     let errors = compile(source)
         .err()
@@ -1629,8 +1640,8 @@ fn test_type_mismatch_tuple() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_type_mismatch_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        trait Handler { callback: String -> I32 }
-        struct MyHandler { callback: I32 -> String }
+        trait Handler { callback: (String) -> I32 }
+        struct MyHandler { callback: (I32) -> String }
         impl Handler for MyHandler {}
     ";
     let errors = compile(source)
@@ -1799,7 +1810,7 @@ fn test_inferred_enum_in_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_multiple_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { reducer: I32, I32 -> I32 }
+        struct A { reducer: (I32, I32) -> I32 }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1817,7 +1828,7 @@ fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_returning_closure_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct A { factory: String -> (I32 -> Boolean) }
+        struct A { factory: (String) -> ((I32) -> Boolean) }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())

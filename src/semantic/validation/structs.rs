@@ -76,13 +76,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // T is compatible with T? (implicit wrapping)
             let inner_to_optional =
                 declared.ends_with('?') && declared.trim_end_matches('?') == inferred.as_str();
-            // declared can still be a string with "Unknown" in it (e.g. unresolved
-            // type annotation); preserve the legacy guard for that case.
-            let declared_indeterminate = declared.contains("Unknown");
             if !nil_to_optional
                 && !inner_to_optional
                 && !inferred_sem.is_indeterminate()
-                && !declared_indeterminate
                 && !self.type_strings_compatible(declared, &inferred)
             {
                 self.errors.push(CompilerError::TypeMismatch {
@@ -138,28 +134,32 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
+    /// Walk the struct's named arguments and run closure-escape
+    /// analysis on any closure-typed field: a closure stored in a struct
+    /// field escapes with the struct, so its captures must be marked
+    /// consumed.
+    ///
+    /// Field-level mutability was removed; the previous mutability
+    /// matching between the field and the caller's binding is gone.
     pub(super) fn validate_struct_mutability(
         &mut self,
         struct_name: &str,
         args: &[(crate::ast::Ident, Expr)],
         file: &File,
-        span: Span,
+        _span: Span,
     ) {
-        // Collect closure-typed field names and mutability info from the struct def,
-        // dropping the borrow before mutating `self` for escape tracking.
-        let struct_info: Option<Vec<(String, bool, bool)>> = {
+        let struct_info: Option<Vec<(String, bool)>> = {
             let mut found = None;
             for statement in &file.statements {
                 if let Statement::Definition(def) = statement {
                     if let Definition::Struct(struct_def) = &**def {
                         if struct_def.name.name == struct_name {
-                            let info: Vec<(String, bool, bool)> = struct_def
+                            let info: Vec<(String, bool)> = struct_def
                                 .fields
                                 .iter()
                                 .map(|f| {
                                     (
                                         f.name.name.clone(),
-                                        f.mutable,
                                         matches!(f.ty, crate::ast::Type::Closure { .. }),
                                     )
                                 })
@@ -170,20 +170,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            // Fall back to module cache if not found in current file.
             if found.is_none() {
                 for (cached_file, _) in self.module_cache.values() {
                     for statement in &cached_file.statements {
                         if let Statement::Definition(def) = statement {
                             if let Definition::Struct(struct_def) = &**def {
                                 if struct_def.name.name == struct_name {
-                                    let info: Vec<(String, bool, bool)> = struct_def
+                                    let info: Vec<(String, bool)> = struct_def
                                         .fields
                                         .iter()
                                         .map(|f| {
                                             (
                                                 f.name.name.clone(),
-                                                f.mutable,
                                                 matches!(f.ty, crate::ast::Type::Closure { .. }),
                                             )
                                         })
@@ -205,19 +203,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         };
         for (arg_name, arg_expr) in args {
-            let Some((_, field_mutable, field_is_closure)) =
-                fields.iter().find(|(n, _, _)| n == &arg_name.name)
+            let Some((_, field_is_closure)) =
+                fields.iter().find(|(n, _)| n == &arg_name.name)
             else {
                 continue;
             };
-            if *field_mutable && !self.is_expr_mutable(arg_expr, file) {
-                self.errors.push(CompilerError::MutabilityMismatch {
-                    param: arg_name.name.clone(),
-                    span,
-                });
-            }
-            // Escape analysis: a closure value stored in a struct field escapes
-            // with the struct — mark its captures as consumed.
             if *field_is_closure {
                 self.escape_closure_value(arg_expr);
             }

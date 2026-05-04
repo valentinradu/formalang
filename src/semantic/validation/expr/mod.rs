@@ -125,26 +125,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(condition, file);
-                // For optional conditions like `if user.nickname`, expose the
-                // unwrapped value to the then-branch under its trailing name.
-                let (auto_binding_name, auto_binding_prev) =
-                    self.bind_optional_auto_binding(condition, file);
+                // To bind the inner value of an optional in the truthy
+                // branch, use Rust-style `if let pat = optional { … }
+                // else { … }` — see `docs/user/control-flow.md`.
                 // Snapshot consumed_bindings; the post-join union is
                 // conservative (may over-report UseAfterSink, never miss).
                 let pre_if = self.consumed_bindings.clone();
                 self.validate_expr(then_branch, file);
-                // Restore any auto-binding we installed before entering the
-                // else branch (which does not see the unwrapped binding).
-                if let Some(name) = auto_binding_name.as_ref() {
-                    match auto_binding_prev {
-                        Some(prev) => {
-                            self.local_let_bindings.insert(name.clone(), prev);
-                        }
-                        None => {
-                            self.local_let_bindings.remove(name);
-                        }
-                    }
-                }
                 // after_then takes over `self.consumed_bindings`; swap pre_if in
                 // so the else branch starts from pre-branch state.
                 let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
@@ -273,13 +260,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if !obj_sem.is_unknown() {
                     // Field access on an optional type requires unwrapping
                     if let SemType::Optional(inner) = &obj_sem {
-                        let base = inner.display();
-                        if base != "Unknown" && self.symbols.get_struct(&base).is_some() {
-                            self.errors.push(CompilerError::OptionalUsedAsNonOptional {
-                                actual: obj_sem.display(),
-                                expected: base,
-                                span: *span,
-                            });
+                        if !inner.is_indeterminate() {
+                            let base = inner.display();
+                            if self.symbols.get_struct(&base).is_some() {
+                                self.errors.push(CompilerError::OptionalUsedAsNonOptional {
+                                    actual: obj_sem.display(),
+                                    expected: base,
+                                    span: *span,
+                                });
+                            }
                         }
                     } else {
                         // Field must exist on the struct

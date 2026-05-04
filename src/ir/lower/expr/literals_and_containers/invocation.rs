@@ -4,6 +4,7 @@
 //! to preceding non-defaulted params).
 
 use crate::ast::Expr;
+use crate::ir::lower::expr::helpers::substitute_typeparam_in_resolved;
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrBlockStatement, IrExpr, IrFunctionParam, ResolvedType};
 use std::collections::{HashMap, HashSet};
@@ -86,7 +87,100 @@ fn expr_references_any_name(expr: &IrExpr, names: &HashSet<String>) -> bool {
     }
 }
 
+/// Walk `pattern` (a struct field's declared type containing `TypeParam`s)
+/// alongside `concrete` (a lowered argument's type) and record each
+/// `TypeParam(name) -> concrete` binding into `out`. Conflicts (the same
+/// name bound to two different types) and shape mismatches are silently
+/// skipped — caller checks coverage afterwards.
+fn unify_type_args(
+    pattern: &ResolvedType,
+    concrete: &ResolvedType,
+    out: &mut HashMap<String, ResolvedType>,
+) {
+    match (pattern, concrete) {
+        (ResolvedType::TypeParam(name), other) => {
+            out.entry(name.clone()).or_insert_with(|| other.clone());
+        }
+        (ResolvedType::Tuple(p_fields), ResolvedType::Tuple(c_fields)) => {
+            for ((_, pt), (_, ct)) in p_fields.iter().zip(c_fields.iter()) {
+                unify_type_args(pt, ct, out);
+            }
+        }
+        (
+            ResolvedType::Generic {
+                args: p_args,
+                base: p_base,
+            },
+            ResolvedType::Generic {
+                args: c_args,
+                base: c_base,
+            },
+        ) if p_base == c_base => {
+            for (pa, ca) in p_args.iter().zip(c_args.iter()) {
+                unify_type_args(pa, ca, out);
+            }
+        }
+        (
+            ResolvedType::Closure {
+                param_tys: p_params,
+                return_ty: p_ret,
+            },
+            ResolvedType::Closure {
+                param_tys: c_params,
+                return_ty: c_ret,
+            },
+        ) => {
+            for ((_, pt), (_, ct)) in p_params.iter().zip(c_params.iter()) {
+                unify_type_args(pt, ct, out);
+            }
+            unify_type_args(p_ret, c_ret, out);
+        }
+        _ => {}
+    }
+}
+
 impl IrLowerer<'_> {
+    /// Infer the type arguments for a generic struct constructor invoked
+    /// without explicit `<...>`. Walks each generic parameter, finds a
+    /// field whose declared type mentions the param, and unifies it
+    /// against the corresponding lowered argument's type. Returns the
+    /// inferred argument vector when every parameter is bound, or an
+    /// empty vector when inference can't cover all of them (in which
+    /// case the caller falls back to the bare struct type).
+    fn infer_struct_type_args(
+        &self,
+        struct_id: crate::ir::StructId,
+        field_target: &HashMap<String, ResolvedType>,
+        named_fields: &[(String, crate::ir::FieldIdx, IrExpr)],
+    ) -> Vec<ResolvedType> {
+        let Some(struct_def) = self.module.get_struct(struct_id) else {
+            return Vec::new();
+        };
+        if struct_def.generic_params.is_empty() {
+            return Vec::new();
+        }
+        let param_names: Vec<String> = struct_def
+            .generic_params
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
+        let mut bindings: HashMap<String, ResolvedType> = HashMap::new();
+        for (arg_name, _, lowered) in named_fields {
+            let Some(declared) = field_target.get(arg_name) else {
+                continue;
+            };
+            unify_type_args(declared, lowered.ty(), &mut bindings);
+        }
+        let mut resolved = Vec::with_capacity(param_names.len());
+        for name in &param_names {
+            match bindings.get(name) {
+                Some(ty) => resolved.push(ty.clone()),
+                None => return Vec::new(),
+            }
+        }
+        resolved
+    }
+
     /// resolve a `ResolvedType` to its enum
     /// type-name (used as the inferred-enum target for a struct-arg
     /// expression). Returns the empty string for non-enum, non-optional-
@@ -96,17 +190,26 @@ impl IrLowerer<'_> {
             ResolvedType::Enum(eid) => module
                 .get_enum(*eid)
                 .map_or_else(String::new, |e| e.name.clone()),
-            ResolvedType::Optional(inner) => Self::enum_name_of(module, inner),
+            ResolvedType::Generic {
+                base: crate::ir::GenericBase::Enum(eid),
+                args,
+            } => {
+                // Optional<T>: peel to its T so an inferred-enum target on
+                // a `String?` field reaches the inner enum's variants.
+                if Some(*eid) == module.prelude_optional_id() && args.len() == 1 {
+                    return Self::enum_name_of(module, &args[0]);
+                }
+                module
+                    .get_enum(*eid)
+                    .map_or_else(String::new, |e| e.name.clone())
+            }
             ResolvedType::Primitive(_)
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
             | ResolvedType::Tuple(_)
             | ResolvedType::Generic { .. }
             | ResolvedType::TypeParam(_)
             | ResolvedType::External { .. }
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::Error => String::new(),
         }
@@ -131,14 +234,6 @@ impl IrLowerer<'_> {
             type_args.iter().map(|t| self.lower_type(t)).collect();
 
         if let Some(id) = self.module.struct_id(&name) {
-            let ty = if type_args_resolved.is_empty() {
-                ResolvedType::Struct(id)
-            } else {
-                ResolvedType::Generic {
-                    base: crate::ir::GenericBase::Struct(id),
-                    args: type_args_resolved.clone(),
-                }
-            };
             // build a name->type-name map of the
             // struct's fields so each named-arg lowers with the field's
             // declared type as the inferred-enum target. Without this,
@@ -180,9 +275,29 @@ impl IrLowerer<'_> {
                     })
                 })
                 .collect();
+            // Infer type args when the call site omits them. Walks each
+            // generic parameter, finds the first struct field whose
+            // declared type mentions the param, and unifies it against
+            // the corresponding lowered arg's type to recover a concrete
+            // binding (e.g. `Box(value: 7)` infers `Box<I32>`). Falls
+            // back to the bare struct type when inference can't fill
+            // every param.
+            let inferred_type_args: Vec<ResolvedType> = if type_args_resolved.is_empty() {
+                self.infer_struct_type_args(id, &field_target, &named_fields)
+            } else {
+                type_args_resolved.clone()
+            };
+            let ty = if inferred_type_args.is_empty() {
+                ResolvedType::Struct(id)
+            } else {
+                ResolvedType::Generic {
+                    base: crate::ir::GenericBase::Struct(id),
+                    args: inferred_type_args.clone(),
+                }
+            };
             IrExpr::StructInst {
                 struct_id: Some(id),
-                type_args: type_args_resolved,
+                type_args: inferred_type_args,
                 fields: named_fields,
                 ty,
                 span: self.current_ir_span(),
@@ -344,12 +459,35 @@ impl IrLowerer<'_> {
                 }
             }
             // Return type lookup uses the same id when available; the
-            // legacy bare-name lookup is the fallback for forward
-            // refs.
-            let ty = function_id
+            // bare-name lookup is the fallback for forward refs.
+            let mut ty = function_id
                 .and_then(|id| self.module.functions.get(id.0 as usize))
                 .and_then(|f| f.return_type.clone())
                 .unwrap_or_else(|| self.resolve_function_return_type(fn_name, &lowered_args));
+            // Substitute the callee's generic-parameter slots in the
+            // returned `ty` using the explicit `<...>` type arguments
+            // at the call site. Without this, a call like
+            // `pair_of<I32>(x: 3, y: 4)` keeps `Pair<T, T>` as its IR
+            // type slot until `MonomorphisePass`, and downstream uses
+            // (a `let p = …; p.first` field access typed at lowering
+            // time) carry `TypeParam(T)` until the leftover scanner
+            // surfaces them.
+            if !type_args_resolved.is_empty() {
+                if let Some(func) = function_id
+                    .and_then(|id| self.module.functions.get(id.0 as usize))
+                    .filter(|f| !f.generic_params.is_empty())
+                {
+                    if func.generic_params.len() == type_args_resolved.len() {
+                        let subs: HashMap<String, ResolvedType> = func
+                            .generic_params
+                            .iter()
+                            .zip(type_args_resolved.iter())
+                            .map(|(p, a)| (p.name.clone(), a.clone()))
+                            .collect();
+                        substitute_typeparam_in_resolved(&mut ty, &subs);
+                    }
+                }
+            }
 
             if needs_let_wrapper {
                 // Build let bindings for each preceding non-defaulted

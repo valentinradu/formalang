@@ -93,7 +93,7 @@ pub(super) fn let_info_to_hover(name: &str, info: &LetInfo) -> HoverInfo {
     let vis = vis_prefix(info.visibility);
     let signature = info.inferred_type.as_ref().map_or_else(
         || format!("{vis}let {name}"),
-        |ty| format!("{vis}let {name}: {ty}"),
+        |ty| format!("{vis}let {name}: {}", ty.display()),
     );
 
     HoverInfo {
@@ -160,11 +160,7 @@ fn format_type_brief(ty: &crate::ast::Type) -> String {
         }
         Type::Closure { params, ret } => {
             let parts: Vec<String> = params.iter().map(|(_, p)| format_type_brief(p)).collect();
-            if parts.is_empty() {
-                format!("() -> {}", format_type_brief(ret))
-            } else {
-                format!("{} -> {}", parts.join(", "), format_type_brief(ret))
-            }
+            format!("({}) -> {}", parts.join(", "), format_type_brief(ret))
         }
     }
 }

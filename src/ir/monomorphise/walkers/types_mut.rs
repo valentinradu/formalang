@@ -100,8 +100,16 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
     // Visit this node's type first, then descend into children.
     match expr {
         IrExpr::Literal { ty, .. } => visit(ty),
-        IrExpr::StructInst { fields, ty, .. } => {
+        IrExpr::StructInst {
+            fields,
+            type_args,
+            ty,
+            ..
+        } => {
             visit(ty);
+            for ta in type_args {
+                visit(ta);
+            }
             for (_, _, e) in fields {
                 walk_expr_types_mut_inner(e, visit);
             }
@@ -175,6 +183,9 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
             visit(ty);
             walk_expr_types_mut_inner(scrutinee, visit);
             for arm in arms {
+                for (_, _, binding_ty) in &mut arm.bindings {
+                    visit(binding_ty);
+                }
                 walk_expr_types_mut_inner(&mut arm.body, visit);
             }
         }

@@ -512,14 +512,14 @@ fn test_multiple_traits() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> Boolean }";
+    let source = "struct A { callback: (String) -> Boolean }";
     compile(source).map_err(|e| format!("Closure single param: {e:?}"))?;
     Ok(())
 }
 
 #[test]
 fn test_closure_returning_closure() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { callback: String -> (I32 -> Boolean) }";
+    let source = "struct A { callback: (String) -> ((I32) -> Boolean) }";
     compile(source).map_err(|e| format!("Closure returning closure: {e:?}"))?;
     Ok(())
 }

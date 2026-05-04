@@ -26,7 +26,7 @@
 //!     type Error = std::convert::Infallible;
 //!
 //!     fn generate(&self, module: &IrModule) -> Result<Vec<String>, Self::Error> {
-//!         Ok(module.structs.iter().map(|s| s.name.clone()).collect())
+//!         Ok(module.user_structs().map(|s| s.name.clone()).collect())
 //!     }
 //! }
 //!
@@ -82,7 +82,7 @@ use crate::ir::IrModule;
 /// let source = "pub struct User { name: String }";
 /// let ir = compile_to_ir(source).unwrap();
 /// let result = KeepPublicStructs.run(ir).unwrap();
-/// assert_eq!(result.structs.len(), 1);
+/// assert_eq!(result.user_structs().count(), 1);
 /// ```
 pub trait IrPass {
     /// A short name identifying this pass, used in error messages.
@@ -125,7 +125,7 @@ pub trait IrPass {
 ///     type Error = std::convert::Infallible;
 ///
 ///     fn generate(&self, module: &IrModule) -> Result<usize, Self::Error> {
-///         Ok(module.enums.len())
+///         Ok(module.user_enums().count())
 ///     }
 /// }
 ///

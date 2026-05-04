@@ -293,8 +293,8 @@ Expr::ForExpr
 **FormaLang source:**
 
 ```formalang
-let add = |x: I32, y: I32| x + y
-let scale: mut I32 -> I32 = mut n -> n
+let add = (x: I32, y: I32) -> x + y
+let scale: (mut I32) -> I32 = (mut n) -> n
 ```
 
 **AST structure:**
@@ -308,7 +308,7 @@ Statement::Let                          // let add = ...
     │   └── [1] ClosureParam { convention: Let, name: "y", ty: Some(I32) }
     └── body: Expr::BinaryOp { op: Add, ... }
 
-Statement::Let                          // let scale: mut I32 -> I32 = ...
+Statement::Let                          // let scale: (mut I32) -> I32 = ...
 ├── pattern: BindingPattern::Simple("scale")
 ├── type_annotation: Some(Type::Closure {
 │       params: [(Mut, I32)],

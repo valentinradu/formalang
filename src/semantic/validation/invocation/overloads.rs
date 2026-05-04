@@ -132,16 +132,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.infer_type_sem(expr, file)
             });
 
-            let first_param_type = params
+            let first_param_sem = params
                 .iter()
                 .find(|p| p.name.name != "self")
                 .and_then(|p| p.ty.as_ref())
-                .map_or_else(|| "Unknown".to_string(), Self::type_to_string);
+                .map_or(SemType::Unknown, SemType::from_ast);
 
-            // Unknown means we can't tell — accept it (conservative)
-            first_arg_sem.is_unknown()
-                || first_param_type == "Unknown"
-                || self.type_strings_compatible(&first_param_type, &first_arg_sem.display())
+            // Indeterminate either side means we can't tell — accept it
+            // (conservative). `is_unknown` returns true only for the bare
+            // `SemType::Unknown` variant; deeper compound types
+            // containing `Unknown` are caught by `is_indeterminate`.
+            first_arg_sem.is_indeterminate()
+                || first_param_sem.is_indeterminate()
+                || self.type_strings_compatible(&first_param_sem.display(), &first_arg_sem.display())
         } else {
             // Mixed labeled/unlabeled args have no defined match — overload
             // resolution is all-labeled (mode A) or all-unlabeled (mode B).

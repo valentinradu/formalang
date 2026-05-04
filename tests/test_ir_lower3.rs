@@ -57,8 +57,7 @@ fn test_lower_block_let_tuple_pattern() -> Result<(), Box<dyn std::error::Error>
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()
@@ -112,7 +111,7 @@ fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>>
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("no impl block")?;
     let get_x = impl_block
         .functions
@@ -182,7 +181,7 @@ fn test_lower_enum_impl_targets_enum_id() -> Result<(), Box<dyn std::error::Erro
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
     if func.name != "is_circle" {
@@ -227,8 +226,7 @@ fn test_lower_closure_inferred_enum_no_context() -> Result<(), Box<dyn std::erro
         return Err("Module should contain the Button struct".into());
     }
     let field = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()
@@ -275,7 +273,7 @@ fn test_lower_inferred_enum_in_struct_field_default() -> Result<(), Box<dyn std:
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
-    let config = module.structs.first().ok_or("expected Config")?;
+    let config = module.user_structs().next().ok_or("expected Config")?;
     let initial = config
         .fields
         .iter()
@@ -324,16 +322,15 @@ fn test_lower_closure_type_in_struct() -> Result<(), Box<dyn std::error::Error>>
     // A closure type in a struct field exercises lower_type for Closure variant
     let source = r"
         struct Config {
-            handler: (I32) -> I32 = |x: I32| 42
+            handler: (I32) -> I32 = (x: I32) -> 42
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    if module.structs.len() != 1 {
-        return Err(format!("expected exactly one struct, got {}", module.structs.len()).into());
+    if module.user_structs().count() != 1 {
+        return Err(format!("expected exactly one struct, got {}", module.user_structs().count()).into());
     }
     let field = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()
@@ -369,7 +366,7 @@ fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::E
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| !matches!(imp.target, formalang::ir::ImplTarget::Primitive(_)))
+        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
         .ok_or("no impl block")?;
     let func = impl_block.functions.first().ok_or("no function")?;
     // Body should be x + y (BinaryOp of two SelfFieldRefs)
@@ -447,7 +444,7 @@ fn test_lower_generic_param_type() -> Result<(), Box<dyn std::error::Error>> {
         struct Box<T> { inner: T }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    let s = module.structs.first().ok_or("no struct")?;
+    let s = module.user_structs().next().ok_or("no struct")?;
     if s.generic_params.len() != 1 {
         return Err(format!("Expected 1 generic param, got {}", s.generic_params.len()).into());
     }
@@ -469,14 +466,13 @@ fn test_lower_optional_type_in_field() -> Result<(), Box<dyn std::error::Error>>
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let age_field = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .iter()
         .find(|f| f.name == "age")
         .ok_or("age field not found")?;
-    if !matches!(age_field.ty, ResolvedType::Optional(_)) {
+    if module.optional_inner_ty(&age_field.ty).is_none() {
         return Err(format!("Expected Optional type, got {:?}", age_field.ty).into());
     }
     Ok(())
@@ -495,8 +491,7 @@ fn test_lower_unknown_function_call() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()
@@ -525,13 +520,12 @@ fn test_lower_dictionary_type_in_field() -> Result<(), Box<dyn std::error::Error
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let field = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()
         .ok_or("no field")?;
-    if !matches!(field.ty, ResolvedType::Dictionary { .. }) {
+    if module.dictionary_kv_ty(&field.ty).is_none() {
         return Err(format!("Expected Dictionary type, got {:?}", field.ty).into());
     }
     Ok(())
@@ -678,8 +672,7 @@ fn test_lower_struct_field_numeric_default() -> Result<(), Box<dyn std::error::E
     let module = compile_to_ir(source)
         .map_err(|e| format!("struct with numeric default should compile: {e:?}"))?;
     let expr = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("no struct")?
         .fields
         .first()

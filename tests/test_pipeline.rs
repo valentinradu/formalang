@@ -19,7 +19,7 @@ impl Backend for StructNameCollector {
     type Error = std::convert::Infallible;
 
     fn generate(&self, module: &IrModule) -> Result<Vec<String>, Self::Error> {
-        Ok(module.structs.iter().map(|s| s.name.clone()).collect())
+        Ok(module.user_structs().map(|s| s.name.clone()).collect())
     }
 }
 
@@ -30,7 +30,7 @@ impl Backend for EnumCounter {
     type Error = std::convert::Infallible;
 
     fn generate(&self, module: &IrModule) -> Result<usize, Self::Error> {
-        Ok(module.enums.len())
+        Ok(module.user_enums().count())
     }
 }
 
@@ -120,8 +120,8 @@ fn pipeline_default_is_same_as_new() -> Result<(), Box<dyn std::error::Error>> {
     let result = p
         .run(ir)
         .map_err(|e| format!("run should succeed: {e:?}"))?;
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
     Ok(())
 }
@@ -143,10 +143,10 @@ fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::E
         .run(ir)
         .map_err(|e| format!("run should succeed: {e:?}"))?;
 
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
-    let first_struct = result.structs.first().ok_or("index out of bounds")?;
+    let first_struct = result.user_structs().next().ok_or("index out of bounds")?;
     if first_struct.name != "Visible" {
         return Err(format!("expected {:?} but got {:?}", "Visible", first_struct.name).into());
     }
@@ -170,13 +170,12 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
     let result = pipeline
         .run(ir)
         .map_err(|e| format!("run should succeed: {e:?}"))?;
-    if result.structs.len() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.structs.len()).into());
+    if result.user_structs().count() != 1 {
+        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
     }
 
     let field = result
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -499,13 +498,16 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
         fn generate(&self, module: &IrModule) -> Result<(usize, usize), Self::Error> {
             use formalang::ir::{EnumId, IrEnum, IrStruct, TraitId};
 
-            struct Counter {
+            struct Counter<'m> {
+                module: &'m IrModule,
                 structs: usize,
                 traits: usize,
             }
-            impl IrVisitor for Counter {
-                fn visit_struct(&mut self, _id: StructId, _s: &IrStruct) {
-                    self.structs += 1;
+            impl IrVisitor for Counter<'_> {
+                fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
+                    if !self.module.is_prelude_struct(id) {
+                        self.structs += 1;
+                    }
                 }
                 fn visit_trait(&mut self, _id: TraitId, _t: &formalang::ir::IrTrait) {
                     self.traits += 1;
@@ -514,6 +516,7 @@ fn pipeline_emit_with_visitor_backend() -> Result<(), Box<dyn std::error::Error>
             }
 
             let mut counter = Counter {
+                module,
                 structs: 0,
                 traits: 0,
             };
@@ -630,7 +633,7 @@ fn test_monomorphise_specialises_generic_impl_block() -> Result<(), Box<dyn std:
     // methods after compaction.
     let source = r"
         pub struct Box<T> { value: T }
-        impl Box {
+        impl Box<T> {
             fn get(self) -> T { self.value }
         }
         pub let b: Box<I32> = Box<I32>(value: 1)
@@ -736,7 +739,7 @@ fn test_monomorphise_rewrites_dispatch_impl_ids() -> Result<(), Box<dyn std::err
     // to the cloned impl block (not the original generic-impl slot).
     let source = r"
         pub struct Box<T> { value: T }
-        impl Box {
+        impl Box<T> {
             fn get(self) -> T { self.value }
         }
         pub fn use_box() -> I32 {
@@ -863,7 +866,7 @@ fn suffixed_numeric_literals_thread_to_ir_with_concrete_types(
 
     // One field per width-tag suffix; default value is a literal carrying the
     // matching suffix. After IR lowering, each literal's `ty` should resolve
-    // to the suffix's PrimitiveType, not the legacy `I32` placeholder.
+    // to the suffix's PrimitiveType, not a fallback `I32` placeholder.
     let source = r"
         struct Sample {
             a: I32 = 42I32,
@@ -921,8 +924,7 @@ fn unsuffixed_integer_literal_defaults_to_i32() -> Result<(), Box<dyn std::error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let default = module
-        .structs
-        .first()
+        .user_structs().next()
         .ok_or("Sample missing")?
         .fields
         .first()
@@ -953,8 +955,7 @@ fn unsuffixed_float_literal_defaults_to_f64() -> Result<(), Box<dyn std::error::
     for (source, label) in cases {
         let module = compile_to_ir(source).map_err(|e| format!("{label} compile failed: {e:?}"))?;
         let default = module
-            .structs
-            .first()
+            .user_structs().next()
             .ok_or("struct missing")?
             .fields
             .first()
@@ -997,3 +998,4 @@ fn float_literal_default_rejects_i32_annotation() -> Result<(), Box<dyn std::err
     }
     Ok(())
 }
+

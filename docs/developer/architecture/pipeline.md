@@ -11,11 +11,14 @@ Source → Lexer → Parser → Semantic Analyzer → IR Lowering → (Plugin Sy
 - **Parser**: Builds AST from tokens with `chumsky` (Pratt precedence).
 - **Semantic Analyzer**: 6-pass validation (Pass 0 resolves modules, Passes
   1–5 build symbol tables, resolve types, validate expressions, validate
-  traits, detect cycles). Inference and validation operate on `SemType`,
-  a structural representation of type expressions that replaces the older
-  stringly-typed format and removes the `"Unknown"` / `"InferredEnum"` /
-  `"Nil"` sentinel-collision class of bugs. The `SymbolTable` boundary
-  with IR lowering and external consumers stays string-typed.
+  traits, detect cycles). Inference, validation, and the per-function
+  scratch state (`local_let_bindings`, `inference_scope_stack`) operate
+  on `SemType`, a structural type representation. There are no string
+  sentinels (`"Unknown"`, `"InferredEnum"`, `"Nil"`) inside the analyzer;
+  callers gate on `SemType::Unknown` / `is_indeterminate()` directly.
+  The `SymbolTable::LetInfo::inferred_type` slot is the only string-typed
+  storage that remains — it is the public boundary with IR lowering and
+  external consumers (LSP queries, downstream tooling).
 - **IR Lowering**: Converts the validated AST + symbol table into a
   fully type-resolved `IrModule`. Module nesting is **flattened in
   the per-type vectors**: inline `mod foo { struct Bar { ... } }`

@@ -293,8 +293,12 @@ impl SymbolTable {
         None
     }
 
-    /// Update the inferred type of a let binding
-    pub fn set_let_type(&mut self, name: &str, inferred_type: String) {
+    /// Update the inferred type of a let binding.
+    pub fn set_let_type(
+        &mut self,
+        name: &str,
+        inferred_type: crate::semantic::sem_type::SemType,
+    ) {
         if let Some(let_info) = self.lets.get_mut(name) {
             let_info.inferred_type = Some(inferred_type);
         }

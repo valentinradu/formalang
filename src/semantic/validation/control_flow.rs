@@ -1,5 +1,4 @@
-//! Match exhaustiveness, enum-instantiation field checks, and the
-//! optional-condition auto-binding helper used by `if`.
+//! Match exhaustiveness and enum-instantiation field checks.
 
 use super::super::module_resolver::ModuleResolver;
 use super::super::sem_type::SemType;
@@ -10,53 +9,6 @@ use crate::location::Span;
 use std::collections::HashSet;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
-    /// If `condition` is a reference or field access whose type is optional
-    /// (`T?`), install a local binding whose name matches the trailing
-    /// segment with the unwrapped type `T` and return the binding name
-    /// (plus the prior entry, if any, so the caller can restore it after
-    /// the then-branch). Otherwise returns (None, None).
-    pub(super) fn bind_optional_auto_binding(
-        &mut self,
-        condition: &Expr,
-        file: &File,
-    ) -> (Option<String>, Option<(String, bool)>) {
-        let cond_sem = self.infer_type_sem(condition, file);
-        let SemType::Optional(inner) = &cond_sem else {
-            return (None, None);
-        };
-        let unwrapped_owned = inner.display();
-        let unwrapped = unwrapped_owned.as_str();
-        let name_opt = match condition {
-            Expr::Reference { path, .. } => path.last().map(|id| id.name.clone()),
-            Expr::FieldAccess { field, .. } => Some(field.name.clone()),
-            Expr::Literal { .. }
-            | Expr::Invocation { .. }
-            | Expr::EnumInstantiation { .. }
-            | Expr::InferredEnumInstantiation { .. }
-            | Expr::Array { .. }
-            | Expr::Tuple { .. }
-            | Expr::BinaryOp { .. }
-            | Expr::UnaryOp { .. }
-            | Expr::ForExpr { .. }
-            | Expr::IfExpr { .. }
-            | Expr::MatchExpr { .. }
-            | Expr::Group { .. }
-            | Expr::DictLiteral { .. }
-            | Expr::DictAccess { .. }
-            | Expr::ClosureExpr { .. }
-            | Expr::LetExpr { .. }
-            | Expr::MethodCall { .. }
-            | Expr::Block { .. } => None,
-        };
-        let Some(name) = name_opt else {
-            return (None, None);
-        };
-        let prev = self.local_let_bindings.get(&name).cloned();
-        self.local_let_bindings
-            .insert(name.clone(), (unwrapped.to_string(), false));
-        (Some(name), prev)
-    }
-
     /// Validate match expression exhaustiveness
     pub(super) fn validate_match(
         &mut self,
@@ -65,28 +17,74 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Infer scrutinee type - must be an enum
-        let scrutinee_type = self.infer_type_sem(scrutinee, file).display();
+        // Infer scrutinee type - must be an enum, or an Optional<T>
+        // (treated as a synthetic two-variant enum `.some(T)` / `.none`).
+        let scrutinee_sem = self.infer_type_sem(scrutinee, file);
 
         // Skip when type is unknown (field access, method calls — IR lowering handles these)
-        if scrutinee_type == "Unknown" {
+        if matches!(scrutinee_sem, SemType::Unknown) {
             return;
         }
 
+        // Optional acts as a built-in two-variant enum. The Rust-style
+        // `if let pattern = optional { … } else { … }` form parses into
+        // a match on `.some(pat)` / `.none`, so the validator treats
+        // Optional uniformly with user-defined enums here.
+        if matches!(scrutinee_sem, SemType::Optional(_)) {
+            let mut variants = std::collections::HashMap::new();
+            variants.insert("some".to_string(), (1usize, span));
+            variants.insert("none".to_string(), (0usize, span));
+            let scrutinee_type = "Optional".to_string();
+            return self.validate_match_arms_against_variants(
+                &scrutinee_type,
+                arms,
+                span,
+                &variants,
+            );
+        }
+
+        // The bare type name to look up; for a generic-instantiated enum like
+        // `Result<I32, I32>` this peels back to `Result` so the enum lookup
+        // and arm-validation succeed against the underlying definition.
+        let lookup_name: String = match &scrutinee_sem {
+            SemType::Generic { base, .. } => base.clone(),
+            SemType::Named(n) => n.clone(),
+            SemType::Primitive(_)
+            | SemType::Array(_)
+            | SemType::Optional(_)
+            | SemType::Tuple(_)
+            | SemType::Dictionary { .. }
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => scrutinee_sem.display(),
+        };
+
         // Check if scrutinee is an enum (look it up in symbol table)
-        if !self.symbols.is_enum(&scrutinee_type) {
+        if !self.symbols.is_enum(&lookup_name) {
             self.errors.push(CompilerError::MatchNotEnum {
-                actual: scrutinee_type,
+                actual: scrutinee_sem.display(),
                 span,
             });
             return;
         }
 
         // Get enum variants from symbol table
-        let variants = match self.symbols.get_enum_variants(&scrutinee_type) {
+        let variants = match self.symbols.get_enum_variants(&lookup_name) {
             Some(v) => v.clone(),
             None => return, // Should not happen if is_enum returned true
         };
+        let scrutinee_type = lookup_name;
+        self.validate_match_arms_against_variants(&scrutinee_type, arms, span, &variants);
+    }
+
+    fn validate_match_arms_against_variants(
+        &mut self,
+        scrutinee_type: &str,
+        arms: &[crate::ast::MatchArm],
+        span: Span,
+        variants: &std::collections::HashMap<String, (usize, Span)>,
+    ) {
 
         // Collect all variant names from match arms
         let mut covered_variants = HashSet::new();
@@ -105,11 +103,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                     // Validate variant exists and arity matches
                     self.validate_match_arm(
-                        &scrutinee_type,
+                        scrutinee_type,
                         &name.name,
                         bindings.len(),
                         arm.span,
-                        &variants,
+                        variants,
                     );
                 }
                 crate::ast::Pattern::Wildcard => {

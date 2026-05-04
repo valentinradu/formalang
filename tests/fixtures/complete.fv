@@ -50,7 +50,7 @@ pub struct Task {
     status: Status,
     tags: [String],
     notes: String? = "none",
-    mut retry_count: I32 = 0
+    retry_count: I32 = 0
 }
 
 pub struct Config {
@@ -174,7 +174,7 @@ let (x, y) = coords
 // =============================================================================
 
 let metadata: [String: String] = ["version": "1.0", "env": "test"]
-let version: String = metadata["version"]
+let version: String? = metadata["version"]
 
 // =============================================================================
 // Binary operators — arithmetic, comparison, logical
@@ -217,14 +217,14 @@ let default_status: Status = .pending
 // Closure expression — default, mut, and sink conventions
 // =============================================================================
 
-let format_tag: String -> String = |t: String| "[" + t + "]"
+let format_tag: (String) -> String = (t: String) -> "[" + t + "]"
 let make_label: () -> String = () -> default_label
 
 // mut convention: callee receives an exclusive mutable view
-let bump_score: mut I32 -> I32 = mut n -> n
+let bump_score: (mut I32) -> I32 = (mut n) -> n
 
 // sink convention: callee takes ownership; caller cannot use arg after
-let consume_label: sink String -> String = sink s -> s
+let consume_label: (sink String) -> String = (sink s) -> s
 
 // =============================================================================
 // Block expression with local lets (parenthesised)

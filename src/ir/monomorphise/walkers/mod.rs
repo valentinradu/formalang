@@ -12,6 +12,6 @@ mod types_ro;
 
 pub(super) use spans::{walk_expr_spans_mut, walk_function_spans_mut};
 pub(super) use types_mut::{walk_expr_types_mut, walk_function_types_mut, walk_module_types_mut};
-pub(super) use types_ro::walk_module_types;
+pub(super) use types_ro::{walk_expr_types, walk_function_types, walk_module_types};
 
 pub(crate) use children::walk_expr_children_mut;

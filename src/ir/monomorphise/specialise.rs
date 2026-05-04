@@ -278,30 +278,12 @@ pub(super) fn type_suffix(ty: &ResolvedType, out: &mut String) {
         ResolvedType::Enum(id) => {
             let _ = write_usize(out, "E", usize::try_from(id.0).unwrap_or(0));
         }
-        ResolvedType::Array(inner) => {
-            out.push_str("Arr_");
-            type_suffix(inner, out);
-        }
-        ResolvedType::Range(inner) => {
-            out.push_str("Rng_");
-            type_suffix(inner, out);
-        }
-        ResolvedType::Optional(inner) => {
-            out.push_str("Opt_");
-            type_suffix(inner, out);
-        }
         ResolvedType::Tuple(fields) => {
             out.push_str("Tup");
             for (_, t) in fields {
                 out.push('_');
                 type_suffix(t, out);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            out.push_str("Dict_");
-            type_suffix(key_ty, out);
-            out.push('_');
-            type_suffix(value_ty, out);
         }
         ResolvedType::Closure {
             param_tys,
@@ -366,17 +348,10 @@ pub(super) fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, Reso
                 *ty = concrete.clone();
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            substitute_type(inner, subs);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 substitute_type(t, subs);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            substitute_type(key_ty, subs);
-            substitute_type(value_ty, subs);
         }
         ResolvedType::Closure {
             param_tys,

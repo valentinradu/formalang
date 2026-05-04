@@ -36,19 +36,10 @@ impl DeadCodeEliminator<'_> {
                     self.mark_used_in_type(arg);
                 }
             }
-            ResolvedType::Array(inner)
-            | ResolvedType::Range(inner)
-            | ResolvedType::Optional(inner) => {
-                self.mark_used_in_type(inner);
-            }
             ResolvedType::Tuple(fields) => {
                 for (_, field_ty) in fields {
                     self.mark_used_in_type(field_ty);
                 }
-            }
-            ResolvedType::Dictionary { key_ty, value_ty } => {
-                self.mark_used_in_type(key_ty);
-                self.mark_used_in_type(value_ty);
             }
             ResolvedType::Closure {
                 param_tys,
@@ -78,6 +69,14 @@ impl DeadCodeEliminator<'_> {
         reason = "exhaustive match over every IrExpr variant; splitting would hide the walk"
     )]
     pub(super) fn mark_used_in_expr(&mut self, expr: &IrExpr) {
+        // Mark every expression's type so the carriers reachable only
+        // through type slots (e.g. `Array<T>`/`Dictionary<K,V>` from
+        // `[1, 2, 3]` / `["k": v]` literals, `Optional<T>` from a `nil`
+        // value) survive DCE. Without this, post-(b) prelude built-ins
+        // get dropped because their carrier `StructId` is only ever
+        // referenced through expression types, never through a
+        // dedicated marking branch.
+        self.mark_used_in_type(expr.ty());
         match expr {
             IrExpr::StructInst {
                 struct_id,
@@ -237,7 +236,10 @@ impl DeadCodeEliminator<'_> {
     pub(super) fn mark_used_in_block_statement(&mut self, stmt: &crate::ir::IrBlockStatement) {
         use crate::ir::IrBlockStatement;
         match stmt {
-            IrBlockStatement::Let { value, .. } => {
+            IrBlockStatement::Let { value, ty, .. } => {
+                if let Some(annotated) = ty {
+                    self.mark_used_in_type(annotated);
+                }
                 self.mark_used_in_expr(value);
             }
             IrBlockStatement::Assign { target, value, .. } => {

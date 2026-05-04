@@ -7,7 +7,7 @@ use crate::ir::{simple_type_name, IrField, IrGenericParam, ResolvedType};
 
 /// A "simple" type name is a bare identifier (struct / enum / trait /
 /// generic param). Composite stringifications produced by semantic's
-/// `type_to_string` (`[T]`, `T?`, `T -> U`, `(a: T)`, `[K: V]`) contain
+/// `type_to_string` (`[T]`, `T?`, `(T) -> U`, `(a: T)`, `[K: V]`) contain
 /// punctuation that disqualifies them.
 fn is_simple_type_name(s: &str) -> bool {
     !s.is_empty()
@@ -15,12 +15,152 @@ fn is_simple_type_name(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
 }
 
+/// Replace each `TypeParam(name)` reference inside `ty` with the
+/// matching entry from `subs`. Used during match-pattern lowering on a
+/// generic-instantiated enum so binding payload types carry concrete
+/// substitutions (e.g. `T -> I32`) before reaching the IR.
+fn substitute_typeparams(
+    ty: &mut ResolvedType,
+    subs: &std::collections::HashMap<String, ResolvedType>,
+) {
+    match ty {
+        ResolvedType::TypeParam(name) => {
+            if let Some(concrete) = subs.get(name) {
+                *ty = concrete.clone();
+            }
+        }
+        ResolvedType::Tuple(fields) => {
+            for (_, t) in fields {
+                substitute_typeparams(t, subs);
+            }
+        }
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => {
+            for (_, t) in param_tys {
+                substitute_typeparams(t, subs);
+            }
+            substitute_typeparams(return_ty, subs);
+        }
+        ResolvedType::Generic { args, .. } => {
+            for a in args {
+                substitute_typeparams(a, subs);
+            }
+        }
+        ResolvedType::External { type_args, .. } => {
+            for a in type_args {
+                substitute_typeparams(a, subs);
+            }
+        }
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => {}
+    }
+}
+
 impl IrLowerer<'_> {
+    /// Construct `Optional<inner>` against the prelude-defined enum.
+    /// Returns `None` if the prelude hasn't been registered yet.
+    pub(super) fn optional_of(&self, inner: ResolvedType) -> Option<ResolvedType> {
+        let id = self.module.prelude_optional_id()?;
+        Some(ResolvedType::Generic {
+            base: crate::ir::GenericBase::Enum(id),
+            args: vec![inner],
+        })
+    }
+
+    /// Construct `Array<inner>` against the prelude-defined struct.
+    pub(super) fn array_of(&self, inner: ResolvedType) -> Option<ResolvedType> {
+        let id = self.module.prelude_array_id()?;
+        Some(ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args: vec![inner],
+        })
+    }
+
+    /// Construct `Dictionary<key, value>` against the prelude-defined struct.
+    pub(super) fn dictionary_of(
+        &self,
+        key: ResolvedType,
+        value: ResolvedType,
+    ) -> Option<ResolvedType> {
+        let id = self.module.prelude_dictionary_id()?;
+        Some(ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args: vec![key, value],
+        })
+    }
+
+    /// Construct `Range<inner>` against the prelude-defined struct.
+    pub(super) fn range_of(&self, inner: ResolvedType) -> Option<ResolvedType> {
+        let id = self.module.prelude_range_id()?;
+        Some(ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args: vec![inner],
+        })
+    }
+
+    /// If `ty` is `Array<T>`, return `T`.
+    pub(super) fn array_element_ty(&self, ty: &ResolvedType) -> Option<ResolvedType> {
+        let arr = self.module.prelude_array_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == arr && args.len() == 1 {
+                return Some(args[0].clone());
+            }
+        }
+        None
+    }
+
+    /// If `ty` is `Dictionary<K, V>`, return `(K, V)`.
+    pub(super) fn dictionary_kv_ty(
+        &self,
+        ty: &ResolvedType,
+    ) -> Option<(ResolvedType, ResolvedType)> {
+        let did = self.module.prelude_dictionary_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == did && args.len() == 2 {
+                return Some((args[0].clone(), args[1].clone()));
+            }
+        }
+        None
+    }
+
+    /// If `ty` is `Range<T>`, return `T`.
+    pub(super) fn range_element_ty(&self, ty: &ResolvedType) -> Option<ResolvedType> {
+        let rid = self.module.prelude_range_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == rid && args.len() == 1 {
+                return Some(args[0].clone());
+            }
+        }
+        None
+    }
+
+    /// Element type for any iterable receiver (`Array<T>` or `Range<T>`).
+    pub(super) fn iterator_element_ty(&self, ty: &ResolvedType) -> Option<ResolvedType> {
+        self.array_element_ty(ty).or_else(|| self.range_element_ty(ty))
+    }
+
     /// Best-effort conversion of a stringified type from the symbol
     /// table into a `ResolvedType`.
     ///
     /// Semantic stores let / inference types via `type_to_string`, which
-    /// produces full type expressions like `[I32]`, `String -> String`,
+    /// produces full type expressions like `[I32]`, `(String) -> String`,
     /// or `(x: I32, y: I32)`. This helper only handles the
     /// *simple* name cases (primitives, named structs/enums/traits, in-
     /// scope generic params); for anything composite it returns `None`
@@ -40,10 +180,9 @@ impl IrLowerer<'_> {
             "Regex" => Some(ResolvedType::Primitive(PrimitiveType::Regex)),
             "Never" => Some(ResolvedType::Primitive(PrimitiveType::Never)),
             // Inference's stringified marker for the `nil` literal —
-            // matches the IR representation in `lower_literal`.
-            "Nil" => Some(ResolvedType::Optional(Box::new(ResolvedType::Primitive(
-                PrimitiveType::Never,
-            )))),
+            // matches the IR representation in `lower_literal`. Produces
+            // `Optional<Never>` against the prelude enum.
+            "Nil" => self.optional_of(ResolvedType::Primitive(PrimitiveType::Never)),
             name if is_simple_type_name(name) => {
                 if let Some(id) = self.module.struct_id(name) {
                     Some(ResolvedType::Struct(id))
@@ -101,6 +240,16 @@ impl IrLowerer<'_> {
         enum_ty: &ResolvedType,
         variant_name: &str,
     ) -> Vec<ResolvedType> {
+        // Receiver-side type arguments for a `Generic` scrutinee — used to
+        // substitute the variant payload's `TypeParam` slots with concrete
+        // types so match-arm bindings carry the right type post-lowering.
+        // Optional<T> hits this path naturally now: it's the prelude-defined
+        // generic enum, so `.some(T)` / `.none` resolve through the normal
+        // enum lookup with substitution.
+        let receiver_args: &[ResolvedType] = match enum_ty {
+            ResolvedType::Generic { args, .. } => args,
+            _ => &[],
+        };
         let enum_id = match enum_ty {
             ResolvedType::Enum(id) => Some(*id),
             ResolvedType::Generic { base, .. } => match base {
@@ -114,11 +263,7 @@ impl IrLowerer<'_> {
             ResolvedType::Primitive(_)
             | ResolvedType::Struct(_)
             | ResolvedType::Trait(_)
-            | ResolvedType::Array(_)
-            | ResolvedType::Range(_)
-            | ResolvedType::Optional(_)
             | ResolvedType::Tuple(_)
-            | ResolvedType::Dictionary { .. }
             | ResolvedType::Closure { .. }
             | ResolvedType::External { .. }
             | ResolvedType::TypeParam(_)
@@ -127,7 +272,32 @@ impl IrLowerer<'_> {
         if let Some(id) = enum_id {
             if let Some(enum_def) = self.module.get_enum(id) {
                 if let Some(variant) = enum_def.variants.iter().find(|v| v.name == variant_name) {
-                    return variant.fields.iter().map(|f| f.ty.clone()).collect();
+                    let param_names: Vec<String> = if receiver_args.is_empty() {
+                        Vec::new()
+                    } else {
+                        enum_def
+                            .generic_params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect()
+                    };
+                    return variant
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let mut ty = f.ty.clone();
+                            if !param_names.is_empty() {
+                                let subs: std::collections::HashMap<String, ResolvedType> =
+                                    param_names
+                                        .iter()
+                                        .cloned()
+                                        .zip(receiver_args.iter().cloned())
+                                        .collect();
+                                substitute_typeparams(&mut ty, &subs);
+                            }
+                            ty
+                        })
+                        .collect();
                 }
             }
         }
@@ -233,16 +403,26 @@ impl IrLowerer<'_> {
             Type::Ident(ident) => {
                 let name = &ident.name;
 
-                // For path-qualified names like "alignment::Horizontal",
-                // try looking up just the last component
+                // For path-qualified names like `geom::Point`, the IR's
+                // symbol table registers the type under the fully
+                // qualified name. Try the full name first; fall back to
+                // the last segment so single-name references and primitive-
+                // name lookups still work.
                 let lookup_name = simple_type_name(name);
 
                 // Check if this is an external type
                 if let Some(external) = self.try_external_type(lookup_name, vec![]) {
                     return external;
                 }
-                // Otherwise try local types
-                if let Some(id) = self.module.struct_id(lookup_name) {
+                // Otherwise try local types — qualified name first, then
+                // the simple name.
+                if let Some(id) = self.module.struct_id(name) {
+                    ResolvedType::Struct(id)
+                } else if let Some(id) = self.module.trait_id(name) {
+                    ResolvedType::Trait(id)
+                } else if let Some(id) = self.module.enum_id(name) {
+                    ResolvedType::Enum(id)
+                } else if let Some(id) = self.module.struct_id(lookup_name) {
                     ResolvedType::Struct(id)
                 } else if let Some(id) = self.module.trait_id(lookup_name) {
                     ResolvedType::Trait(id)
@@ -317,9 +497,15 @@ impl IrLowerer<'_> {
                 ResolvedType::Error
             }
 
-            Type::Array(inner) => ResolvedType::Array(Box::new(self.lower_type(inner))),
+            Type::Array(inner) => {
+                let elem = self.lower_type(inner);
+                self.array_of(elem).unwrap_or(ResolvedType::Error)
+            }
 
-            Type::Optional(inner) => ResolvedType::Optional(Box::new(self.lower_type(inner))),
+            Type::Optional(inner) => {
+                let elem = self.lower_type(inner);
+                self.optional_of(elem).unwrap_or(ResolvedType::Error)
+            }
 
             Type::Tuple(fields) => ResolvedType::Tuple(
                 fields
@@ -328,10 +514,11 @@ impl IrLowerer<'_> {
                     .collect(),
             ),
 
-            Type::Dictionary { key, value } => ResolvedType::Dictionary {
-                key_ty: Box::new(self.lower_type(key)),
-                value_ty: Box::new(self.lower_type(value)),
-            },
+            Type::Dictionary { key, value } => {
+                let k = self.lower_type(key);
+                let v = self.lower_type(value);
+                self.dictionary_of(k, v).unwrap_or(ResolvedType::Error)
+            }
 
             Type::Closure { params, ret } => ResolvedType::Closure {
                 param_tys: params

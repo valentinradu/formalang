@@ -51,7 +51,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if !nil_to_optional
                     && !inner_to_optional
                     && !inferred_sem.is_indeterminate()
-                    && declared != "Unknown"
                     && !is_closure_pair
                     && !self.type_strings_compatible(&declared, &inferred)
                 {
@@ -85,13 +84,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         ) = (&let_binding.type_annotation, &let_binding.value)
         {
             if lit_params.len() == declared_params.len() {
-                let mut seed = HashMap::new();
+                let mut seed: HashMap<String, SemType> = HashMap::new();
                 for (lit, (_, dty)) in lit_params.iter().zip(declared_params.iter()) {
-                    let ty_str = lit
+                    let sem = lit
                         .ty
                         .as_ref()
-                        .map_or_else(|| Self::type_to_string(dty), Self::type_to_string);
-                    seed.insert(lit.name.name.clone(), ty_str);
+                        .map_or_else(|| SemType::from_ast(dty), SemType::from_ast);
+                    seed.insert(lit.name.name.clone(), sem);
                 }
                 self.inference_scope_stack.borrow_mut().push(seed);
                 let inferred_body_sem = self.infer_type_sem(body, file);
@@ -110,11 +109,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
-        // Register closure-typed module-level bindings for call-site enforcement
-        if let Some(Type::Closure { params, .. }) = &let_binding.type_annotation {
-            let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
-            // If the value is a closure literal, record its free
-            // variables so we can detect use-after-sink at call sites.
+        // Register closure-typed module-level bindings for call-site enforcement.
+        //
+        // Conventions can come from either the explicit type annotation
+        // (`let f: I32 -> I32 = ...`) or, when the let is unannotated, from
+        // the closure literal's own parameter list (`let f = |n: I32| n + 1`).
+        // Without the literal-based path, the call site `f(x)` resolves no
+        // overload and emits `UndefinedReference`.
+        let conventions_opt: Option<Vec<crate::ast::ParamConvention>> =
+            match (&let_binding.type_annotation, &let_binding.value) {
+                (Some(Type::Closure { params, .. }), _) => {
+                    Some(params.iter().map(|(c, _)| *c).collect())
+                }
+                (None, Expr::ClosureExpr { params, .. }) => {
+                    Some(params.iter().map(|p| p.convention).collect())
+                }
+                _ => None,
+            };
+        if let Some(conventions) = conventions_opt {
             let captures = if let Expr::ClosureExpr {
                 params: cparams,
                 body,
@@ -208,7 +220,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
                 continue;
             }
-            let inferred_ty = self.infer_type_sem(value, file).display();
+            let inferred_ty = self.infer_type_sem(value, file);
             // If annotated as a closure type, record param conventions for call-site enforcement
             if let Some(Type::Closure { params, .. }) = ty {
                 let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
@@ -270,49 +282,67 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     ..
                 } => {
                     self.validate_expr(value, file);
-                    let ty_str = ty.as_ref().map_or_else(
-                        || self.infer_type_sem(value, file).display(),
-                        |t| Self::type_to_string(t),
+                    let value_sem = ty.as_ref().map_or_else(
+                        || self.infer_type_sem(value, file),
+                        |t| SemType::from_ast(t),
                     );
-                    // Collect free variables once if this is a closure literal,
-                    // so we can reuse them across all bindings in the pattern.
-                    let captures = if matches!(ty, Some(Type::Closure { .. })) {
-                        if let Expr::ClosureExpr {
-                            params: cparams,
-                            body,
-                            ..
-                        } = value
-                        {
-                            let param_set: HashSet<String> =
-                                cparams.iter().map(|p| p.name.name.clone()).collect();
-                            Some(Self::collect_free_variables(body, &param_set))
-                        } else {
-                            None
-                        }
+                    // Collect free variables (captures) once when the value
+                    // is a closure literal, regardless of whether the let
+                    // carried an explicit closure type annotation. Without
+                    // this, the call-site validator can't recognise an
+                    // unannotated `let f = |...| ...; f(x)` as a closure
+                    // call and emits `UndefinedReference`.
+                    let captures = if let Expr::ClosureExpr {
+                        params: cparams,
+                        body,
+                        ..
+                    } = value
+                    {
+                        let param_set: HashSet<String> =
+                            cparams.iter().map(|p| p.name.name.clone()).collect();
+                        Some(Self::collect_free_variables(body, &param_set))
                     } else {
                         None
                     };
-                    for binding in collect_bindings_from_pattern(pattern) {
-                        if super::super::is_primitive_name(&binding.name) {
+                    let conventions_opt: Option<Vec<crate::ast::ParamConvention>> =
+                        match (ty.as_ref(), value) {
+                            (Some(Type::Closure { params, .. }), _) => {
+                                Some(params.iter().map(|(c, _)| *c).collect())
+                            }
+                            (None, Expr::ClosureExpr { params, .. }) => {
+                                Some(params.iter().map(|p| p.convention).collect())
+                            }
+                            _ => None,
+                        };
+                    let binding_pairs = self.pattern_binding_types(pattern, &value_sem, file);
+                    let binding_spans: std::collections::HashMap<String, crate::location::Span> =
+                        collect_bindings_from_pattern(pattern)
+                            .into_iter()
+                            .map(|b| (b.name, b.span))
+                            .collect();
+                    for (binding_name, binding_sem) in binding_pairs {
+                        if super::super::is_primitive_name(&binding_name) {
                             self.errors.push(CompilerError::PrimitiveRedefinition {
-                                name: binding.name.clone(),
-                                span: binding.span,
+                                name: binding_name.clone(),
+                                span: binding_spans
+                                    .get(&binding_name)
+                                    .copied()
+                                    .unwrap_or_default(),
                             });
                             continue;
                         }
-                        if let Some(Type::Closure { params, .. }) = ty {
-                            let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
+                        if let Some(conventions) = &conventions_opt {
                             self.closure_binding_conventions
-                                .insert(binding.name.clone(), conventions);
+                                .insert(binding_name.clone(), conventions.clone());
                         }
                         if let Some(caps) = &captures {
                             self.closure_binding_captures
-                                .insert(binding.name.clone(), caps.clone());
+                                .insert(binding_name.clone(), caps.clone());
                             self.fn_scope_closure_captures
-                                .insert(binding.name.clone(), caps.clone());
+                                .insert(binding_name.clone(), caps.clone());
                         }
                         self.local_let_bindings
-                            .insert(binding.name, (ty_str.clone(), *mutable));
+                            .insert(binding_name, (binding_sem, *mutable));
                     }
                 }
                 BlockStatement::Assign {

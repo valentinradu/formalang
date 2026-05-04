@@ -1,16 +1,60 @@
 // FormaLang compiler-shipped prelude.
 //
-// Declares the v1 String surface via `extern impl String { ... }`.
-// Each method is bodyless — backends provide implementations through
-// their existing extern-binding paths (wasm component imports, JS
-// runtime bindings, etc.).
+// Declares the language-shipped surface for built-in types. The
+// `extern impl` blocks declare methods host runtimes (formawasm,
+// JS, etc.) implement; bodies are intentionally absent.
 //
-// Contracts:
+// Built-in compound types are declared here as ordinary generic
+// definitions, exactly the way a user would write them. The parser
+// retains sugar (`T?`, `[T]`, `[K: V]`, `start..end`) that points at
+// these definitions, so adding methods later is a prelude-only edit.
+//
+// Contracts on String:
 // - `slice` is zero-copy. FormaLang strings are immutable end-to-end,
 //   so the new header may share backing memory with the source.
 // - `byte_at` and `slice` are byte-indexed, not code-point-indexed.
 //   `s[i]` desugars to `s.byte_at(i)` at lowering.
-// - All methods are `extern` — the compiler emits no body.
+
+// Optional<T> — discriminated absence. The `T?` sugar and the `nil`
+// literal both desugar to constructors of this enum.
+pub enum Optional<T> {
+    some(value: T),
+    none
+}
+
+extern impl Optional<T> {
+    fn is_some(self) -> Boolean
+    fn is_none(self) -> Boolean
+}
+
+// Array<T> — opaque generic container. The `[1, 2, 3]` literal and
+// the `[T]` type sugar both desugar to this struct. Layout
+// (ptr/len/cap) is the backend's responsibility and is not user-
+// visible; methods reach the runtime through extern impl.
+pub struct Array<T> {}
+
+extern impl Array<T> {
+    fn len(self) -> I32
+    fn is_empty(self) -> Boolean
+}
+
+// Dictionary<K, V> — opaque key-value map. The `["k": v]` literal
+// and the `[K: V]` type sugar both desugar to this struct.
+pub struct Dictionary<K, V> {}
+
+extern impl Dictionary<K, V> {
+    fn len(self) -> I32
+    fn is_empty(self) -> Boolean
+}
+
+// Range<T> — half-open numeric range produced by `start..end`. Used
+// as an iterator in `for i in 0..n { ... }`.
+pub struct Range<T> {}
+
+extern impl Range<T> {
+    fn len(self) -> I32
+    fn is_empty(self) -> Boolean
+}
 
 extern impl String {
     fn len(self) -> I32
@@ -20,3 +64,8 @@ extern impl String {
     fn contains(self, needle: String) -> Boolean
     fn byte_at(self, i: I32) -> I32
 }
+
+// Runtime-provided assertion. The host aborts when `condition` is
+// false; otherwise the call is a no-op. Examples and tests use this
+// to assert expected outputs without depending on a specific backend.
+pub extern fn assert(condition: Boolean)

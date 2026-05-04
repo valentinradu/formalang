@@ -146,12 +146,14 @@ pub struct User {
     name: String,
     email: String,
     nickname: String?,       // optional field
-    mut score: I32        // mutable field
+    score: I32
 }
 
 // Instantiate with named arguments
 let p = Point(x: 10, y: 20)
 let u = User(name: "Alice", email: "alice@example.com", nickname: nil, score: 0)
+// Mutability is a property of the binding, not the field; to mutate any
+// field of `u` you bind it with `let mut u = User(...)`.
 ```
 
 ### Methods (impl blocks)
@@ -232,6 +234,19 @@ impl Shape for Circle {
 pub trait NamedShape: Named + Shape {
     label: String
 }
+
+// A trait can also stand in as a value type. The IR lowers method
+// calls on a trait-typed binding through the trait's vtable, so two
+// branches that produce different concrete types implementing the
+// same trait unify cleanly.
+fn area(kind: I32, side: I32, w: I32, h: I32) -> I32 {
+    let s: Shape = if kind == 0 {
+        Square(name: "sq", color: "black", side: side)
+    } else {
+        Rectangle(name: "rect", color: "white", width: w, height: h)
+    }
+    s.area()
+}
 ```
 
 ### Enums
@@ -277,14 +292,27 @@ let empty: [String: Boolean] = [:]
 // Tuples (all fields must be named)
 let point = (x: 10, y: 20)
 let name = point.x
+
+// Indexing returns an Optional. The bound may be out of range or the
+// key absent, so `xs[i]` and `d[k]` yield `T?` / `V?`. Use `if let` to
+// consume the inner value.
+let timeout: I32? = config["timeout"]
+let first: String? = tags[0]
 ```
 
 ### Control Flow
 
 ```rust
-// if: also unwraps optionals automatically
-if user.nickname {
-    greet(name: nickname)
+// if: branches on a Boolean.
+if user.score > 0 {
+    greet(name: user.name)
+} else {
+    welcome()
+}
+
+// if let: Rust-style optional unwrap. Both branches required.
+if let nickname = user.nickname {
+    greet(name: nickname)        // nickname is bound to the unwrapped value
 } else {
     greet(name: user.name)
 }
@@ -294,7 +322,7 @@ for item in items {
     process(item: item)
 }
 
-// match: exhaustive, on enums
+// match: exhaustive, on enums (and on Optional, treated as .some / .none)
 match message {
     .text(content): display(value: content),
     .image(url, size): showImage(src: url),
@@ -315,30 +343,32 @@ pub enum Event {
 
 pub struct Button<E> {
     onPress:  () -> E,                  // no parameters
-    onChange: String -> E,              // single parameter
-    onResize: I32, I32 -> E,      // multiple parameters
-    onSubmit: (String -> E)?            // optional closure
+    onChange: (String) -> E,            // single parameter
+    onResize: (I32, I32) -> E,          // multiple parameters
+    onSubmit: ((String) -> E)?          // optional closure
 }
 ```
 
-Both arrow and pipe forms are accepted at expression sites:
+Closure expressions wrap their parameter list in parentheses — even
+for a single parameter — so every `->` in the language is preceded by
+`)`:
 
 ```rust
-// Arrow form (Swift-style); parameter types inferred
+// Untyped — parameter types come from the binding annotation or call context
 let onPress  = () -> .pressed
-let onChange = x -> .textChanged(value: x)
-let onResize = w, h -> .resized(width: w, height: h)
+let onChange = (x) -> .textChanged(value: x)
+let onResize = (w, h) -> .resized(width: w, height: h)
 
-// Pipe form (Rust-style); accepts explicit parameter types
-let increment = |n: I32| n + 1
-let combine   = |x: I32, y: I32| x + y
+// Typed parameters — annotate inline with `name: Type`
+let increment = (n: I32) -> n + 1
+let combine   = (x: I32, y: I32) -> x + y
 ```
 
 Closures capture values from their surrounding scope. The `ClosureConversionPass` lifts each closure into a top-level function plus a synthetic env struct, so backends only ever consume named functions.
 
 ```rust
-fn make_adder(sink n: I32) -> I32 -> I32 {
-    |x: I32| x + n           // captures n
+fn make_adder(sink n: I32) -> (I32) -> I32 {
+    (x: I32) -> x + n          // captures n
 }
 
 let add5 = make_adder(n: 5)
@@ -348,8 +378,8 @@ Closure parameters carry the same conventions as regular function parameters (`m
 
 ```rust
 pub struct Form<E> {
-    onScale:   mut I32 -> E,     // caller must pass a mutable binding
-    onConsume: sink String -> E     // caller's binding is moved
+    onScale:   (mut I32) -> E,    // caller must pass a mutable binding
+    onConsume: (sink String) -> E // caller's binding is moved
 }
 ```
 
@@ -381,6 +411,11 @@ pub enum Result<T, E> {
 
 let b = Box<String>(value: "hello")
 let r: Result<String, I32> = .ok(value: "success")
+
+// Type-argument inference: when every generic parameter shows up in a
+// field position, the type args can be omitted at the call site.
+let inferred = Box(value: 42)        // Box<I32>
+let pair = Pair(first: 10, second: true)  // Pair<I32, Boolean>
 ```
 
 ### Destructuring

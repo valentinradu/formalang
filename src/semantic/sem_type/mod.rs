@@ -1,62 +1,27 @@
-//! Structural representation of a type used by semantic inference and
-//! validation, replacing the legacy stringly-typed format.
-//!
-//! ## Why
-//!
-//! The legacy format encoded types as `String` (`"[T]"`, `"T?"`,
-//! `"Base<T1, T2>"`, ...) with three magic sentinels: `"Unknown"`,
-//! `"InferredEnum"`, `"Nil"`. Two real problems:
-//!
-//! 1. The sentinels collide with any user type literally named
-//!    `Unknown`, `InferredEnum`, or `Nil`. The IR layer fixed its
-//!    equivalent (`TypeParam("Unknown")`) by switching to
-//!    `ResolvedType::Error`; this module is the semantic-layer
-//!    counterpart.
-//! 2. Compositional reasoning (`contains("Unknown")`, `rfind(" -> ")`,
-//!    `strip_suffix('?')`) is fragile and quietly wrong on edge cases
-//!    like nested closures inside optionals.
-//!
-//! ## Bridge
-//!
-//! [`SemType`] mirrors the legacy format exactly under
-//! [`SemType::display`] and parses it back via
-//! [`SemType::from_legacy_string`]. Round-trip on every shape the
-//! existing codebase produces is guaranteed by the unit tests at the
-//! bottom of this module. The bridge lets us migrate one call site at a
-//! time without a flag day.
-//!
-//! ## Scope
+//! Structural representation of a type used by semantic inference,
+//! validation, and the symbol table. The canonical "type couldn't be
+//! determined" form is `SemType::Unknown`; there is no string-sentinel
+//! equivalent.
 //!
 //! `SemType` is ID-free on purpose: semantic analysis runs before IR
 //! lowering assigns IDs. Names are sufficient at this layer.
 //!
-//! ## Storage boundary
-//!
-//! Inference, validation, and the helpers they call are fully
-//! `SemType`-native. A few storage sites still hold the legacy string
-//! format — `local_let_bindings`, `inference_scope_stack`, and
-//! `SymbolTable::LetInfo::inferred_type` — and lazy-parse via
-//! [`Self::from_legacy_string`] at use. They were left string-typed
-//! deliberately: the symbol table is the contract with IR lowering and
-//! external consumers (LSP queries, downstream tooling), and the
-//! sentinel-collision risk that motivated this refactor lives at the
-//! *use* sites (now structural), not the storage sites. Migrating the
-//! storage would cross into `pub(crate)` API territory without
-//! removing any remaining bug surface.
+//! Storage: `SemanticAnalyzer::local_let_bindings`,
+//! `SemanticAnalyzer::inference_scope_stack`, and
+//! `SymbolTable::LetInfo::inferred_type` all hold `SemType` directly.
+//! No round-trip through display / parse.
 
-mod legacy_parse;
 #[cfg(test)]
 mod tests;
 
 use crate::ast::{ParamConvention, PrimitiveType, Type};
 
-/// Structural type used during semantic analysis.
-///
-/// Variants mirror the legacy string format; see [`Self::display`] for
-/// the textual rendering and [`Self::from_legacy_string`] for the
-/// parser that accepts the same shapes.
+/// Structural type used during semantic analysis. Re-exported from
+/// `lib.rs` so downstream tooling (LSP queries, custom analysis
+/// passes) can consume the analyzer's type information without
+/// stringly-typed round-trips.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) enum SemType {
+pub enum SemType {
     Primitive(PrimitiveType),
     /// User-defined struct, enum, trait, or generic-parameter name.
     Named(String),
@@ -76,14 +41,13 @@ pub(super) enum SemType {
         params: Vec<Self>,
         return_ty: Box<Self>,
     },
-    /// Type could not be determined; replaces the `"Unknown"` string
-    /// sentinel. Propagates through composition (any operation
-    /// involving `Unknown` yields `Unknown`).
+    /// Type could not be determined. Propagates through composition
+    /// (any operation involving `Unknown` yields `Unknown`); callers
+    /// gate on [`Self::is_indeterminate`].
     Unknown,
-    /// `.variant(...)` syntax whose enum is inferred from context;
-    /// replaces the `"InferredEnum"` sentinel.
+    /// `.variant(...)` syntax whose enum is inferred from context.
     InferredEnum,
-    /// `nil` literal; replaces the `"Nil"` sentinel.
+    /// `nil` literal.
     Nil,
 }
 
@@ -125,10 +89,9 @@ impl SemType {
     }
 
     /// True if this type contains `Unknown` or `InferredEnum` anywhere
-    /// in its structure. Replaces the legacy
-    /// `t.contains("Unknown") || t.contains("InferredEnum")` substring
-    /// check used by validation gating: both sentinels mean "cannot
-    /// validate this type yet, more inference needed".
+    /// in its structure. Validation paths use this to skip when
+    /// inference hasn't settled yet ("cannot validate this type yet,
+    /// more inference needed").
     pub(super) fn is_indeterminate(&self) -> bool {
         match self {
             Self::Unknown | Self::InferredEnum => true,
@@ -157,9 +120,10 @@ impl SemType {
         matches!(self, Self::Optional(_))
     }
 
-    /// Render to the legacy string format. Symmetric with
-    /// [`Self::from_legacy_string`].
-    pub(super) fn display(&self) -> String {
+    /// Render to a canonical string form (e.g. `[I32]`, `Box<T>`,
+    /// `(K) -> V`). Used for diagnostics, hover output, and IR-side
+    /// type-string parsing during lowering.
+    pub fn display(&self) -> String {
         match self {
             Self::Primitive(p) => primitive_name(*p).to_string(),
             Self::Named(n) => n.clone(),
@@ -183,14 +147,13 @@ impl SemType {
             Self::Dictionary { key, value } => {
                 format!("[{}: {}]", key.display(), value.display())
             }
-            Self::Closure { params, return_ty } => match params.split_first() {
-                None => format!("() -> {}", return_ty.display()),
-                Some((only, [])) => format!("{} -> {}", only.display(), return_ty.display()),
-                Some(_) => {
-                    let rendered: Vec<String> = params.iter().map(Self::display).collect();
-                    format!("{} -> {}", rendered.join(", "), return_ty.display())
-                }
-            },
+            // Closures always render with a parenthesised parameter list so
+            // every `->` in rendered output is preceded by `)` — matching
+            // the surface syntax.
+            Self::Closure { params, return_ty } => {
+                let rendered: Vec<String> = params.iter().map(Self::display).collect();
+                format!("({}) -> {}", rendered.join(", "), return_ty.display())
+            }
             Self::Unknown => "Unknown".to_string(),
             Self::InferredEnum => "InferredEnum".to_string(),
             Self::Nil => "Nil".to_string(),
@@ -293,11 +256,9 @@ impl SemType {
     }
 
     /// Substitute every standalone occurrence of [`Self::Named(param)`]
-    /// inside `self` with `concrete`. Replaces the legacy
-    /// `substitute_type_string` byte-walking implementation; this one
-    /// is structural so `T` in `Box<T>` is substituted but a substring
-    /// `T` inside a name like `TList` cannot match (different variant
-    /// shape).
+    /// inside `self` with `concrete`. Structural by design so `T` in
+    /// `Box<T>` is substituted but a substring `T` inside a name like
+    /// `TList` cannot match (different variant shape).
     pub(super) fn substitute_named(&self, param: &str, concrete: &Self) -> Self {
         match self {
             Self::Named(n) if n == param => concrete.clone(),

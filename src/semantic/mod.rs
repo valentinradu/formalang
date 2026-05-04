@@ -36,7 +36,7 @@ mod inference;
 mod module_collect;
 mod pass1_symbols;
 mod pattern_types;
-mod sem_type;
+pub mod sem_type;
 mod trait_check;
 mod type_resolution;
 mod validation;
@@ -59,6 +59,7 @@ pub(super) use helpers::{collect_bindings_from_pattern, strip_array_type};
 
 use module_resolver::ModuleResolver;
 use pattern_types::GenericScope;
+use sem_type::SemType;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -107,8 +108,10 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     loop_var_scopes: Vec<HashSet<String>>,
     /// Stack of closure parameter scopes (for tracking closure/event mapping params)
     closure_param_scopes: Vec<HashSet<String>>,
-    /// Local let bindings in current expression context: (type, mutable)
-    local_let_bindings: HashMap<String, (String, bool)>,
+    /// Local let bindings in current expression context: (type, mutable).
+    /// Types are stored structurally as [`SemType`] so boundary checks can
+    /// match on `SemType::Unknown` directly instead of comparing strings.
+    local_let_bindings: HashMap<String, (SemType, bool)>,
     /// Bindings consumed by a `sink` parameter call — cannot be used after
     consumed_bindings: HashSet<String>,
     /// Scoped overrides used during inference. When inferring the body of
@@ -117,10 +120,9 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// a frame here. `infer_type_reference` consults this stack first
     /// (innermost frame wins) before falling back to `local_let_bindings`.
     /// Wrapped in `RefCell` so the read-only `infer_type` family doesn't
-    /// have to thread `&mut self` through every helper.
-    ///
-    ///
-    pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, String>>>,
+    /// have to thread `&mut self` through every helper. Frame values are
+    /// [`SemType`] for the same reason as `local_let_bindings`.
+    pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, SemType>>>,
     /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
     closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
     /// Free-variable captures for closure-typed let bindings, used for

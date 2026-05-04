@@ -68,17 +68,10 @@ pub(super) fn externalise_imported_refs(
                 type_args: std::mem::take(args),
             };
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            externalise_imported_refs(inner, imported, module_path);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 externalise_imported_refs(t, imported, module_path);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            externalise_imported_refs(key_ty, imported, module_path);
-            externalise_imported_refs(value_ty, imported, module_path);
         }
         ResolvedType::Closure {
             param_tys,

@@ -34,24 +34,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
-            let ty_str = param.ty.as_ref().map_or_else(
+            let param_sem = param.ty.as_ref().map_or_else(
                 || {
                     if param.name.name == "self" {
                         self.current_impl_struct
-                            .clone()
-                            .unwrap_or_else(|| "Unknown".to_string())
+                            .as_ref()
+                            .map_or(crate::semantic::sem_type::SemType::Unknown, |s| {
+                                crate::semantic::sem_type::SemType::Named(s.clone())
+                            })
                     } else {
-                        "Unknown".to_string()
+                        crate::semantic::sem_type::SemType::Unknown
                     }
                 },
-                |ty| Self::type_to_string(ty),
+                crate::semantic::sem_type::SemType::from_ast,
             );
             let mutable = matches!(
                 param.convention,
                 crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
             );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, mutable));
+                .insert(param.name.name.clone(), (param_sem, mutable));
             self.current_fn_param_conventions
                 .insert(param.name.name.clone(), param.convention);
             // Register closure-typed parameters so they're callable inside the
@@ -125,16 +127,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(ty) = &param.ty {
                 self.validate_type(ty);
             }
-            let ty_str = param
-                .ty
-                .as_ref()
-                .map_or_else(|| "Unknown".to_string(), |ty| Self::type_to_string(ty));
+            let param_sem = param.ty.as_ref().map_or(
+                crate::semantic::sem_type::SemType::Unknown,
+                crate::semantic::sem_type::SemType::from_ast,
+            );
             let mutable = matches!(
                 param.convention,
                 crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
             );
             self.local_let_bindings
-                .insert(param.name.name.clone(), (ty_str, mutable));
+                .insert(param.name.name.clone(), (param_sem, mutable));
             self.current_fn_param_conventions
                 .insert(param.name.name.clone(), param.convention);
             if let Some(Type::Closure {

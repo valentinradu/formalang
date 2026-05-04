@@ -7,20 +7,21 @@
 //!
 //! ```
 //! use formalang::compile_to_ir;
-//! use formalang::ir::{IrVisitor, IrStruct, IrEnum, StructId, EnumId, walk_module};
+//! use formalang::ir::{IrVisitor, IrModule, IrStruct, IrEnum, StructId, EnumId, walk_module};
 //!
-//! struct TypeCounter {
+//! struct TypeCounter<'m> {
+//!     module: &'m IrModule,
 //!     struct_count: usize,
 //!     enum_count: usize,
 //! }
 //!
-//! impl IrVisitor for TypeCounter {
-//!     fn visit_struct(&mut self, _id: StructId, _s: &IrStruct) {
-//!         self.struct_count += 1;
+//! impl IrVisitor for TypeCounter<'_> {
+//!     fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
+//!         if !self.module.is_prelude_struct(id) { self.struct_count += 1; }
 //!     }
 //!
-//!     fn visit_enum(&mut self, _id: EnumId, _e: &IrEnum) {
-//!         self.enum_count += 1;
+//!     fn visit_enum(&mut self, id: EnumId, _e: &IrEnum) {
+//!         if !self.module.is_prelude_enum(id) { self.enum_count += 1; }
 //!     }
 //! }
 //!
@@ -29,7 +30,7 @@
 //! pub enum Status { active, inactive }
 //! "#;
 //! let module = compile_to_ir(source).unwrap();
-//! let mut counter = TypeCounter { struct_count: 0, enum_count: 0 };
+//! let mut counter = TypeCounter { module: &module, struct_count: 0, enum_count: 0 };
 //! walk_module(&mut counter, &module);
 //! assert_eq!(counter.struct_count, 1);
 //! assert_eq!(counter.enum_count, 1);

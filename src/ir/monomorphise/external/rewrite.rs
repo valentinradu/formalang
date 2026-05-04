@@ -37,17 +37,10 @@ fn rewrite_external_type(
                 *ty = new_ty.clone();
             }
         }
-        ResolvedType::Array(inner) | ResolvedType::Range(inner) | ResolvedType::Optional(inner) => {
-            rewrite_external_type(inner, mapping);
-        }
         ResolvedType::Tuple(fields) => {
             for (_, t) in fields {
                 rewrite_external_type(t, mapping);
             }
-        }
-        ResolvedType::Dictionary { key_ty, value_ty } => {
-            rewrite_external_type(key_ty, mapping);
-            rewrite_external_type(value_ty, mapping);
         }
         ResolvedType::Closure {
             param_tys,

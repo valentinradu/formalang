@@ -8,7 +8,7 @@ use crate::error::CompilerError;
 use crate::location::Span;
 
 use super::types::{IrEnum, IrFunction, IrImpl, IrLet, IrStruct, IrTrait};
-use super::{EnumId, FunctionId, ImplId, IrImport, StructId, TraitId};
+use super::{EnumId, FunctionId, ImplId, IrImport, ResolvedType, StructId, TraitId};
 
 /// The root IR node containing all definitions.
 ///
@@ -18,13 +18,13 @@ use super::{EnumId, FunctionId, ImplId, IrImport, StructId, TraitId};
 /// # Example
 ///
 /// ```
-/// use formalang::{compile_to_ir, StructId};
+/// use formalang::compile_to_ir;
 ///
 /// let source = "pub struct User { name: String }";
 /// let module = compile_to_ir(source).unwrap();
-/// let struct_id = StructId(0);
 ///
-/// // Look up a struct by ID (direct indexing)
+/// // Look up by name (skips prelude built-ins like Array, Dictionary, Range).
+/// let struct_id = module.struct_id("User").expect("User exists");
 /// let struct_def = &module.structs[struct_id.0 as usize];
 /// assert_eq!(struct_def.name, "User");
 ///
@@ -183,6 +183,158 @@ impl IrModule {
         self.enum_names.get(name).copied()
     }
 
+    /// Prelude-defined `Array<T>` struct id. The four built-in compound
+    /// types live in `src/prelude.fv` as ordinary generic definitions;
+    /// these accessors hand back the ids the lowering and IR walkers
+    /// need to identify built-ins without hardcoding name strings.
+    #[must_use]
+    pub fn prelude_array_id(&self) -> Option<StructId> {
+        self.struct_id("Array")
+    }
+
+    /// Prelude-defined `Dictionary<K, V>` struct id.
+    #[must_use]
+    pub fn prelude_dictionary_id(&self) -> Option<StructId> {
+        self.struct_id("Dictionary")
+    }
+
+    /// Prelude-defined `Range<T>` struct id.
+    #[must_use]
+    pub fn prelude_range_id(&self) -> Option<StructId> {
+        self.struct_id("Range")
+    }
+
+    /// Prelude-defined `Optional<T>` enum id.
+    #[must_use]
+    pub fn prelude_optional_id(&self) -> Option<EnumId> {
+        self.enum_id("Optional")
+    }
+
+    /// True iff `id` points at a prelude-defined built-in struct
+    /// (`Array`, `Dictionary`, `Range`).
+    #[must_use]
+    pub fn is_prelude_struct(&self, id: StructId) -> bool {
+        Some(id) == self.prelude_array_id()
+            || Some(id) == self.prelude_dictionary_id()
+            || Some(id) == self.prelude_range_id()
+    }
+
+    /// True iff `id` points at the prelude-defined `Optional<T>` enum.
+    #[must_use]
+    pub fn is_prelude_enum(&self, id: EnumId) -> bool {
+        Some(id) == self.prelude_optional_id()
+    }
+
+    /// Iterate over user-defined structs only, skipping the prelude
+    /// built-ins (`Array`, `Dictionary`, `Range`). Use this when a test
+    /// wants the user-authored structs without indexing past the
+    /// prelude's leading slots.
+    pub fn user_structs(&self) -> impl Iterator<Item = &IrStruct> {
+        let array = self.prelude_array_id();
+        let dict = self.prelude_dictionary_id();
+        let range = self.prelude_range_id();
+        self.structs.iter().enumerate().filter_map(move |(i, s)| {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "struct count fits in u32 by construction (add_struct guards the cast)"
+            )]
+            let id = StructId(i as u32);
+            if Some(id) == array || Some(id) == dict || Some(id) == range {
+                None
+            } else {
+                Some(s)
+            }
+        })
+    }
+
+    /// Iterate over user-defined enums only, skipping the prelude-built-in
+    /// `Optional<T>` enum.
+    pub fn user_enums(&self) -> impl Iterator<Item = &IrEnum> {
+        let optional = self.prelude_optional_id();
+        self.enums.iter().enumerate().filter_map(move |(i, e)| {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "enum count fits in u32 by construction (add_enum guards the cast)"
+            )]
+            let id = EnumId(i as u32);
+            if Some(id) == optional {
+                None
+            } else {
+                Some(e)
+            }
+        })
+    }
+
+    /// If `ty` is `Array<T>` (the prelude-defined struct), return `T`.
+    /// Built-in compound types share the `Generic` variant with user-
+    /// defined generics; these helpers let callers introspect by shape
+    /// without needing prelude IDs themselves.
+    #[must_use]
+    pub fn array_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType> {
+        let arr = self.prelude_array_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == arr && args.len() == 1 {
+                return args.first();
+            }
+        }
+        None
+    }
+
+    /// If `ty` is `Dictionary<K, V>`, return `(K, V)`.
+    #[must_use]
+    pub fn dictionary_kv_ty<'a>(
+        &self,
+        ty: &'a ResolvedType,
+    ) -> Option<(&'a ResolvedType, &'a ResolvedType)> {
+        let did = self.prelude_dictionary_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == did && args.len() == 2 {
+                return Some((&args[0], &args[1]));
+            }
+        }
+        None
+    }
+
+    /// If `ty` is `Range<T>`, return `T`.
+    #[must_use]
+    pub fn range_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType> {
+        let rid = self.prelude_range_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == rid && args.len() == 1 {
+                return args.first();
+            }
+        }
+        None
+    }
+
+    /// If `ty` is `Optional<T>`, return `T`.
+    #[must_use]
+    pub fn optional_inner_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType> {
+        let opt = self.prelude_optional_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Enum(id),
+            args,
+        } = ty
+        {
+            if *id == opt && args.len() == 1 {
+                return args.first();
+            }
+        }
+        None
+    }
+
     /// Add a struct and return its ID.
     #[expect(
         clippy::result_large_err,
@@ -307,7 +459,9 @@ impl IrModule {
         self.functions.get(id.0 as usize)
     }
 
-    /// Look up a function ID by name.
+    /// Look up a function ID by name. For overloaded names returns the id
+    /// of the first registered overload; callers that need to enumerate
+    /// every overload should walk [`Self::functions`] and filter by name.
     #[must_use]
     pub fn function_id(&self, name: &str) -> Option<FunctionId> {
         self.function_names.get(name).copied()
@@ -356,7 +510,9 @@ impl IrModule {
                 kind: "function",
                 span: Span::default(),
             })?;
-        self.function_names.insert(name, id);
+        // Preserve the first registration for overloaded names; later
+        // entries are still discoverable via the `functions` array.
+        self.function_names.entry(name).or_insert(id);
         self.functions.push(f);
         Ok(id)
     }
@@ -414,23 +570,21 @@ impl IrModule {
             );
         }
 
+        // Functions may legitimately share a name (overload resolution
+        // dispatches by parameter signature, not by name alone). The
+        // name-to-id index keeps only the first occurrence; callers that
+        // need every overload walk `functions` directly. Identical-
+        // signature duplicates are rejected upstream in semantic
+        // analysis, so anything that reaches IR is a valid overload set.
         self.function_names.clear();
         for (idx, f) in self.functions.iter().enumerate() {
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "checked by add_function which errors before len reaches u32::MAX"
             )]
-            let prev = self
-                .function_names
-                .insert(f.name.clone(), FunctionId(idx as u32));
-            // Functions may share names (overloaded dispatch); a
-            // debug-only trace keeps the invariant visible without
-            // breaking consumers that exploit overload resolution.
-            debug_assert!(
-                prev.is_none() || cfg!(test),
-                "duplicate function name `{}` in module; rebuild_indices will shadow earlier entries",
-                f.name
-            );
+            self.function_names
+                .entry(f.name.clone())
+                .or_insert(FunctionId(idx as u32));
         }
 
         self.let_names.clear();

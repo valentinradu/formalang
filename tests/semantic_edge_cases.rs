@@ -63,12 +63,17 @@ fn test_optional_field_with_default() -> Result<(), Box<dyn std::error::Error>> 
 
 #[test]
 fn test_mutable_optional_field() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level mutability has been removed; the parser must reject
+    // `mut` in struct field position.
     let source = r"
         struct State {
             mut current: String?
         }
     ";
-    compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+    assert!(
+        compile(source).is_err(),
+        "expected parser to reject `mut` in struct field"
+    );
     Ok(())
 }
 
@@ -338,7 +343,7 @@ fn test_nested_dictionary() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_field_type() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            onEvent: String -> Boolean
+            onEvent: (String) -> Boolean
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

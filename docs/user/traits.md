@@ -132,12 +132,12 @@ impl Extended for Item {
 
 ## Trait-Bounded Polymorphism
 
-FormaLang has **no dynamic dispatch**: a trait name in a value-
-producing type position (parameter, return, let annotation, struct
-field, closure params/return) is a compile-time error
-(`TraitUsedAsValueType`). Take a trait-constrained value through a
-generic-bounded parameter so the concrete type is known after
-monomorphisation:
+A trait can stand in as a value type at parameter, return, let
+annotation, struct field, and closure positions. Method calls on a
+trait-typed binding are lowered through the trait's per-trait vtable
+(virtual dispatch). When two if-branches construct different concrete
+types implementing the same trait, the if-expression unifies to that
+trait without an explicit cast.
 
 ```formalang
 pub trait Printable {
@@ -152,10 +152,23 @@ impl Printable for Doc {
   fn label(self) -> String { self.text }
 }
 
+// Static dispatch via a generic-bounded parameter — no vtable, the
+// concrete type is known after monomorphisation.
 fn print_it<T: Printable>(item: T) -> String {
   item.label()
 }
+
+// Virtual dispatch via a trait-typed binding — the receiver carries a
+// vtable index alongside its data; the call resolves at runtime.
+fn print_any(item: Printable) -> String {
+  item.label()
+}
 ```
+
+Pick whichever fits: bounded generics produce a separate specialised
+function per concrete type and avoid an indirect call; trait-typed
+bindings keep one function and dispatch through the vtable. Both forms
+are checked at compile time against the trait's method signatures.
 
 ### Generic Traits
 

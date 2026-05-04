@@ -427,15 +427,27 @@ fn test_use_single_item() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_with_all_field_modifiers() -> Result<(), Box<dyn std::error::Error>> {
+    // Field-level `mut` has been removed. Verify other field forms still
+    // compile, and that `mut` in field position is rejected.
     let source = r"
         struct Complex {
             required: String,
             optional: I32?,
-            mut mutable: Boolean,
+            mutable: Boolean,
             content: String
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
+
+    let mut_source = r"
+        struct Complex {
+            mut mutable: Boolean
+        }
+    ";
+    assert!(
+        compile(mut_source).is_err(),
+        "expected parser to reject `mut` field"
+    );
     Ok(())
 }
 
@@ -547,7 +559,7 @@ fn test_dictionary_literal_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_in_field() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Handler {
-            process: String -> I32
+            process: (String) -> I32
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -558,7 +570,7 @@ fn test_closure_in_field() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator {
-            operation: I32 -> I32
+            operation: (I32) -> I32
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

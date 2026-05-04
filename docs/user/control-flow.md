@@ -54,12 +54,6 @@ if isAdmin {
   showAdminPanel()
 }
 
-// Optional unwrapping (auto-unwrap)
-if user.nickname {
-  // nickname is unwrapped and available here
-  greet(name: nickname)
-}
-
 // Chained conditions
 if x > 100 {
   showLarge()
@@ -70,12 +64,27 @@ if x > 100 {
 }
 ```
 
-**Optional Unwrapping**:
+**Optionals in conditionals (`if let`)**:
 
-When the condition is an optional value:
+To consume an optional value, use `if let` to bind the inner value
+inside the truthy branch. The form is Rust-style: pattern, equals,
+optional expression, then both branches.
 
-- If not nil: unwraps and binds value in the true branch
-- If nil: takes the else branch (or returns nil)
+```formalang
+if let nickname = user.nickname {
+  // nickname is bound to the unwrapped String here
+  greet(name: nickname)
+} else {
+  // taken when user.nickname is nil
+  greet(name: user.name)
+}
+```
+
+`if let` requires both a `then` and an `else` branch, since the result
+type unifies the two. The else branch is taken when the optional is
+nil. Internally `if let pat = optional { … } else { … }` desugars to a
+match on `.some(pat)` and `.none`, so its semantics match a two-arm
+match expression.
 
 ## Match Expressions
 

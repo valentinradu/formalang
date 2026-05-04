@@ -22,11 +22,11 @@ impl IrLowerer<'_> {
                 self.expected_closure_type = saved;
                 lowered
             }
-            Some(
-                t @ (ResolvedType::Array(_)
-                | ResolvedType::Tuple(_)
-                | ResolvedType::Dictionary { .. }),
-            ) => {
+            Some(t)
+                if matches!(t, ResolvedType::Tuple(_))
+                    || self.array_element_ty(t).is_some()
+                    || self.dictionary_kv_ty(t).is_some() =>
+            {
                 let saved = self.expected_value_type.take();
                 self.expected_value_type = Some(t.clone());
                 let lowered = self.lower_expr(expr);
@@ -47,10 +47,10 @@ impl IrLowerer<'_> {
         // the search. Without this, un-annotated closure params nested
         // inside container-of-container annotations lower to
         // `ResolvedType::Error`.
-        let elem_expected: Option<ResolvedType> = match self.expected_value_type.take() {
-            Some(ResolvedType::Array(inner)) => Some(*inner),
-            _ => None,
-        };
+        let saved_expected = self.expected_value_type.take();
+        let elem_expected: Option<ResolvedType> = saved_expected
+            .as_ref()
+            .and_then(|t| self.array_element_ty(t));
         let lowered: Vec<IrExpr> = elements
             .iter()
             .map(|e| self.lower_with_expected(e, elem_expected.as_ref()))
@@ -65,7 +65,7 @@ impl IrLowerer<'_> {
         );
         IrExpr::Array {
             elements: lowered,
-            ty: ResolvedType::Array(Box::new(elem_ty)),
+            ty: self.array_of(elem_ty).unwrap_or(ResolvedType::Error),
             span: self.current_ir_span(),
         }
     }
@@ -118,10 +118,11 @@ impl IrLowerer<'_> {
         // nested-container `value_ty` (e.g. `[I32 -> I32]`) is forwarded
         // via `expected_value_type` so the inner array can peel and
         // continue down to the closure.
-        let value_expected: Option<ResolvedType> = match self.expected_value_type.take() {
-            Some(ResolvedType::Dictionary { value_ty, .. }) => Some(*value_ty),
-            _ => None,
-        };
+        let saved_expected = self.expected_value_type.take();
+        let value_expected: Option<ResolvedType> = saved_expected
+            .as_ref()
+            .and_then(|t| self.dictionary_kv_ty(t))
+            .map(|(_, v)| v);
         let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
             .iter()
             .map(|(k, v)| {
@@ -133,15 +134,14 @@ impl IrLowerer<'_> {
         // shape stays a `Dictionary`, so assignment to `let d: [K: V] = [:]`
         // matches via the existing structural compatibility check.
         let ty = if let Some((k, v)) = lowered_entries.first() {
-            ResolvedType::Dictionary {
-                key_ty: Box::new(k.ty().clone()),
-                value_ty: Box::new(v.ty().clone()),
-            }
+            self.dictionary_of(k.ty().clone(), v.ty().clone())
+                .unwrap_or(ResolvedType::Error)
         } else {
-            ResolvedType::Dictionary {
-                key_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Never)),
-                value_ty: Box::new(ResolvedType::Primitive(PrimitiveType::Never)),
-            }
+            self.dictionary_of(
+                ResolvedType::Primitive(PrimitiveType::Never),
+                ResolvedType::Primitive(PrimitiveType::Never),
+            )
+            .unwrap_or(ResolvedType::Error)
         };
         IrExpr::DictLiteral {
             entries: lowered_entries,
@@ -188,13 +188,19 @@ impl IrLowerer<'_> {
             };
         }
 
-        let ty = if let ResolvedType::Dictionary { value_ty, .. } = &receiver_ty {
-            (**value_ty).clone()
+        // Both array indexing and dictionary lookup yield an optional
+        // (the bound or key may be missing). Lower with `Optional<T>` /
+        // `Optional<V>` so the IR signature matches the language
+        // semantics; the runtime helper returns the optional cell.
+        let ty = if let Some(elem) = self.array_element_ty(&receiver_ty) {
+            self.optional_of(elem).unwrap_or(ResolvedType::Error)
+        } else if let Some((_, value)) = self.dictionary_kv_ty(&receiver_ty) {
+            self.optional_of(value).unwrap_or(ResolvedType::Error)
         } else {
             self.internal_error_type_if_concrete(
                 &receiver_ty,
                 format!(
-                    "dict-access receiver lowered to non-dictionary type {receiver_ty:?}; semantic should have caught this",
+                    "dict-access receiver lowered to non-indexable type {receiver_ty:?}; semantic should have caught this",
                 ),
             )
         };

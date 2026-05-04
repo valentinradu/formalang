@@ -210,7 +210,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         return_type: Option<&Type>,
         body: &Expr,
     ) {
-        // The legacy fast-path: function returns a closure type directly
+        // Fast-path: function returns a closure type directly
         // (`fn make() -> () -> I32`). The recursive walk handles every
         // concrete return shape — closure literals, references to
         // closure bindings, branches, blocks. Tier-1 escape extension
@@ -334,11 +334,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(declared) = return_type {
             // Push the closure's typed params so the body sees them while
             // inferring (otherwise references like `x + 1` resolve to
-            // `Unknown` and trip a spurious mismatch).
-            let mut frame = HashMap::new();
+            // `SemType::Unknown` and trip a spurious mismatch).
+            let mut frame: HashMap<String, crate::semantic::sem_type::SemType> = HashMap::new();
             for p in params {
                 if let Some(ty) = &p.ty {
-                    frame.insert(p.name.name.clone(), Self::type_to_string(ty));
+                    frame.insert(
+                        p.name.name.clone(),
+                        crate::semantic::sem_type::SemType::from_ast(ty),
+                    );
                 }
             }
             self.inference_scope_stack.borrow_mut().push(frame);

@@ -34,10 +34,10 @@ impl IrLowerer<'_> {
     ) -> IrExpr {
         let collection_ir = self.lower_expr(collection);
         let bad_collection = collection_ir.ty().clone();
-        let var_ty = if let ResolvedType::Array(inner) | ResolvedType::Range(inner) =
-            &bad_collection
-        {
-            (**inner).clone()
+        // For-loops iterate `Array<T>` and `Range<T>`; both are
+        // prelude-defined generic structs after the built-in unification.
+        let var_ty = if let Some(inner) = self.iterator_element_ty(&bad_collection) {
+            inner
         } else {
             self.internal_error_type_if_concrete(
                 &bad_collection,
@@ -60,7 +60,9 @@ impl IrLowerer<'_> {
             var_binding_id: crate::ir::BindingId(0),
             collection: Box::new(collection_ir),
             body: Box::new(body_ir.clone()),
-            ty: ResolvedType::Array(Box::new(body_ir.ty().clone())),
+            ty: self
+                .array_of(body_ir.ty().clone())
+                .unwrap_or(ResolvedType::Error),
             span: self.current_ir_span(),
         }
     }
@@ -239,8 +241,19 @@ impl IrLowerer<'_> {
                 value,
                 ..
             } => {
-                let ir_value = self.lower_expr(value);
                 let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
+                // Thread the let's declared closure type into the value
+                // lowering so an arrow-form literal (`n -> n * scale`)
+                // can pick up its parameter types from the annotation
+                // when the literal itself omits them.
+                let saved_closure = self.expected_closure_type.take();
+                if let Some(t) = &ir_ty {
+                    if matches!(t, ResolvedType::Closure { .. }) {
+                        self.expected_closure_type = Some(t.clone());
+                    }
+                }
+                let ir_value = self.lower_expr(value);
+                self.expected_closure_type = saved_closure;
                 match pattern {
                     BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
                         binding_id: crate::ir::BindingId(0),
@@ -283,8 +296,8 @@ impl IrLowerer<'_> {
         ir_value: &IrExpr,
     ) -> Vec<IrBlockStatement> {
         let bad_recv = ir_value.ty().clone();
-        let elem_ty = if let ResolvedType::Array(inner) = &bad_recv {
-            (**inner).clone()
+        let elem_ty = if let Some(inner) = self.array_element_ty(&bad_recv) {
+            inner
         } else {
             self.internal_error_type_if_concrete(
                 &bad_recv,

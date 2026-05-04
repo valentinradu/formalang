@@ -20,8 +20,9 @@
 //! "#;
 //!
 //! let module = compile_to_ir(source).unwrap();
-//! assert_eq!(module.structs.len(), 1);
-//! assert_eq!(module.structs[0].name, "User");
+//! assert_eq!(module.user_structs().count(), 1);
+//! let user = module.user_structs().next().unwrap();
+//! assert_eq!(user.name, "User");
 //! ```
 
 mod block;
