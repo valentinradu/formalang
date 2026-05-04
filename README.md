@@ -29,7 +29,7 @@
 
 ---
 
-You write `.fv` files; the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend.
+You write `.fv` files; the library parses and validates them, and you get a fully type-resolved IR back. What you do with that IR (generate code, drive a UI framework, configure a system) is up to your backend. The first such backend is [`formawasm`](https://github.com/valentinradu/formawasm), which lowers the IR to WebAssembly.
 
 ```text
 .fv source → formalang library → IrModule → your Backend → output
