@@ -36,7 +36,7 @@ pub(in crate::reporting) use generics::{
 };
 pub(in crate::reporting) use misc::{
     closure_capture_escapes_local_binding, expression_depth_exceeded, internal_error,
-    too_many_definitions, visibility_violation,
+    public_closure_field, too_many_definitions, visibility_violation,
 };
 pub(in crate::reporting) use mutability::{mutability_mismatch, use_after_sink};
 pub(in crate::reporting) use optional::{

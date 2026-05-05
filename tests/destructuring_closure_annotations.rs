@@ -70,7 +70,7 @@ fn struct_destructuring_threads_closure_annotation() -> TestResult {
     // pin the behaviour with a regression test alongside the new ones.
     let module = compile_to_ir(
         r"
-        pub struct Wrap { f: (I32) -> I32 }
+        struct Wrap { f: (I32) -> I32 }
         pub let {f}: Wrap = Wrap(f: (x) -> x)
         ",
     )

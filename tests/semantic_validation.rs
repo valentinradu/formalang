@@ -1058,3 +1058,98 @@ fn test_array_homogeneous_elements_compile() -> Result<(), Box<dyn std::error::E
     compile(source).map_err(|e| format!("Homogeneous array literals should compile: {e:?}"))?;
     Ok(())
 }
+
+#[test]
+fn test_pub_struct_rejects_closure_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub struct Form {
+            onPress: () -> Boolean
+        }
+    ";
+    let errors = compile(source).err().ok_or("expected compile error")?;
+    let hit = errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::PublicClosureField { owner, field, .. }
+                if owner == "struct Form" && field == "onPress"
+        )
+    });
+    if !hit {
+        return Err(format!(
+            "expected PublicClosureField for struct Form.onPress, got: {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_pub_enum_variant_rejects_closure_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub enum Event {
+            onChanged(handler: (String) -> Boolean)
+        }
+    ";
+    let errors = compile(source).err().ok_or("expected compile error")?;
+    let hit = errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::PublicClosureField { owner, field, .. }
+                if owner == "enum Event variant onChanged" && field == "handler"
+        )
+    });
+    if !hit {
+        return Err(format!(
+            "expected PublicClosureField for enum Event::onChanged.handler, got: {errors:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[test]
+fn test_private_struct_allows_closure_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        struct Form {
+            onPress: () -> Boolean
+        }
+    ";
+    compile(source)
+        .map_err(|e| format!("private struct with closure field should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_private_enum_allows_closure_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        enum Event {
+            onChanged(handler: (String) -> Boolean)
+        }
+    ";
+    compile(source)
+        .map_err(|e| format!("private enum variant with closure field should compile: {e:?}"))?;
+    Ok(())
+}
+
+#[test]
+fn test_pub_struct_in_module_rejects_closure_field() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        mod ui {
+            pub struct Form {
+                onPress: () -> Boolean
+            }
+        }
+    ";
+    let errors = compile(source).err().ok_or("expected compile error")?;
+    let hit = errors.iter().any(|e| {
+        matches!(
+            e,
+            CompilerError::PublicClosureField { owner, field, .. }
+                if owner == "struct Form" && field == "onPress"
+        )
+    });
+    if !hit {
+        return Err(format!("expected PublicClosureField inside module, got: {errors:?}").into());
+    }
+    Ok(())
+}

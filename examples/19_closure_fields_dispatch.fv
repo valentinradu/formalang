@@ -11,7 +11,7 @@ pub enum Event {
     submitted
 }
 
-pub struct Form {
+struct Form {
     onPress:  () -> Event,
     onChange: (String) -> Event,
     onSubmit: () -> Event

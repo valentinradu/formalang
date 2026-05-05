@@ -44,6 +44,25 @@ pub(in crate::reporting) fn visibility_violation<'a>(
         .with_help(format!("Make '{name}' public with the 'pub' keyword"))
 }
 
+pub(in crate::reporting) fn public_closure_field<'a>(
+    filename: &'a str,
+    span: Span,
+    owner: &'a str,
+    field: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E133")
+        .with_message(format!(
+            "'{owner}' is public and cannot have closure-typed field '{field}'"
+        ))
+        .with_label(label(filename, span).with_message(format!(
+            "field '{}' has a closure type",
+            field.fg(Color::Red)
+        )))
+        .with_help(
+            "Closures are an internal abstraction; replace the field with a non-closure type, or make the enclosing item private",
+        )
+}
+
 pub(in crate::reporting) fn closure_capture_escapes_local_binding<'a>(
     filename: &'a str,
     span: Span,

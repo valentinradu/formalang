@@ -169,7 +169,7 @@ so every `->` in the language is preceded by `)`. For closure
 *expressions*, see [Closures](closures.md).
 
 ```formalang
-pub struct Controls<E> {
+struct Controls<E> {
   // No parameters - returns E
   onPress: () -> E,
 

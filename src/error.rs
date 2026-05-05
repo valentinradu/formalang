@@ -361,6 +361,20 @@ pub enum CompilerError {
         target: PrimitiveType,
         span: Span,
     },
+
+    /// A `pub` struct or `pub` enum variant declares a field whose type is
+    /// a closure. Closures are an internal abstraction; they cannot be part
+    /// of a publicly exposed type because they have no stable representation
+    /// across the module / backend boundary.
+    #[error("'{owner}' is public and cannot have closure-typed field '{field}'")]
+    PublicClosureField {
+        /// Human-readable identity of the offending item, e.g.
+        /// `"struct Form"` or `"enum Event variant submitted"`.
+        owner: String,
+        /// Name of the closure-typed field.
+        field: String,
+        span: Span,
+    },
 }
 
 impl CompilerError {
@@ -431,7 +445,8 @@ impl CompilerError {
             | Self::VisibilityViolation { span, .. }
             | Self::ClosureCaptureEscapesLocalBinding { span, .. }
             | Self::InternalError { span, .. }
-            | Self::NumericOverflow { span, .. } => *span,
+            | Self::NumericOverflow { span, .. }
+            | Self::PublicClosureField { span, .. } => *span,
         }
     }
 }

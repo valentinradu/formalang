@@ -31,6 +31,7 @@ mod functions;
 mod invocation;
 mod let_and_block;
 mod method_call;
+mod public_closure_field;
 mod qualified_types;
 mod structs;
 
@@ -42,6 +43,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Pass 3: Validate expressions
     /// Validate operators and control flow without evaluation
     pub(in crate::semantic) fn validate_expressions(&mut self, file: &File) {
+        self.validate_public_closure_fields(file);
         for statement in &file.statements {
             match statement {
                 Statement::Let(let_binding) => self.validate_let_statement(let_binding, file),

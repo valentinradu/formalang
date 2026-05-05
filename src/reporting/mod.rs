@@ -278,6 +278,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::NumericOverflow {
             written, target, ..
         } => errors::numeric_overflow(filename, span, written, *target),
+        CompilerError::PublicClosureField { owner, field, .. } => {
+            errors_advanced::public_closure_field(filename, span, owner, field)
+        }
     }
 }
 

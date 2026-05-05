@@ -15,7 +15,7 @@ pub enum Event {
   submit
 }
 
-pub struct Form<E> {
+struct Form<E> {
   onChange:  (String) -> E,
   onResize:  (I32, I32) -> E,
   onSubmit:  () -> E,
@@ -64,6 +64,9 @@ impl Form {
   from the binding annotation or call context.
 - Convention on a closure param means the **caller of the closure**
   must satisfy it.
+- Closures are **internal-only**: a `pub struct` field, or a `pub enum`
+  variant field, cannot have a closure type. Drop the `pub` (so the type
+  stays inside its module), or replace the field with a non-closure type.
 
 ## Caller Constraints
 
