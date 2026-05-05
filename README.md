@@ -92,7 +92,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.0.3-beta"
+formalang = "0.0.4-beta"
 ```
 
 Compile a source string:
@@ -332,7 +332,7 @@ match message {
 
 ### Closures
 
-Closure types describe a callable shape; closure expressions construct one. Both use the same arrow syntax, with an alternative pipe form for expressions.
+Closure types describe a callable shape; closure expressions construct one. Both wrap their parameter list in parentheses so every `->` in the language is preceded by `)`.
 
 ```rust
 pub enum Event {
