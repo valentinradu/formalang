@@ -4,9 +4,3 @@
 # below 500. Goal: empty file.
 #
 # Format: <max_lines> <path-relative-to-repo-root>
-524 src/semantic/validation/method_call.rs
-532 src/semantic/trait_check.rs
-605 src/ir/lower/expr/literals_and_containers/invocation.rs
-547 src/ir/lower/types.rs
-602 src/ir/module.rs
-631 src/ir/dce/remap.rs
