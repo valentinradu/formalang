@@ -279,10 +279,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         pattern, ty, value, ..
                     } = stmt
                     {
-                        let value_sem = ty.as_ref().map_or_else(
-                            || self.infer_type_sem(value, file),
-                            SemType::from_ast,
-                        );
+                        let value_sem = ty
+                            .as_ref()
+                            .map_or_else(|| self.infer_type_sem(value, file), SemType::from_ast);
                         // Destructure-aware: each leaf binding picks up
                         // the type at its pattern position so that
                         // `let {field as alias} = value` exposes alias
@@ -290,9 +289,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         for (binding_name, binding_sem) in
                             self.pattern_binding_types(pattern, &value_sem, file)
                         {
-                            if let Some(top) =
-                                self.inference_scope_stack.borrow_mut().last_mut()
-                            {
+                            if let Some(top) = self.inference_scope_stack.borrow_mut().last_mut() {
                                 top.insert(binding_name, binding_sem);
                             }
                         }

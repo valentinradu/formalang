@@ -282,10 +282,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     ..
                 } => {
                     self.validate_expr(value, file);
-                    let value_sem = ty.as_ref().map_or_else(
-                        || self.infer_type_sem(value, file),
-                        SemType::from_ast,
-                    );
+                    let value_sem = ty
+                        .as_ref()
+                        .map_or_else(|| self.infer_type_sem(value, file), SemType::from_ast);
                     // Collect free variables (captures) once when the value
                     // is a closure literal, regardless of whether the let
                     // carried an explicit closure type annotation. Without

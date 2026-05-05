@@ -84,8 +84,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     || self.infer_type_sem(&let_binding.value, file),
                     SemType::from_ast,
                 );
-                for (name, ty) in
-                    self.pattern_binding_types(&let_binding.pattern, &source_ty, file)
+                for (name, ty) in self.pattern_binding_types(&let_binding.pattern, &source_ty, file)
                 {
                     self.symbols.set_let_type(&name, ty);
                 }

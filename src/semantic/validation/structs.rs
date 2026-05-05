@@ -203,8 +203,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         };
         for (arg_name, arg_expr) in args {
-            let Some((_, field_is_closure)) =
-                fields.iter().find(|(n, _)| n == &arg_name.name)
+            let Some((_, field_is_closure)) = fields.iter().find(|(n, _)| n == &arg_name.name)
             else {
                 continue;
             };

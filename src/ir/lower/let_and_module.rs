@@ -88,10 +88,9 @@ impl IrLowerer<'_> {
         } = &mut value
         {
             if elements.is_empty() {
-                if let (Some(value_elem), Some(ann_elem)) = (
-                    self.array_element_ty(vty),
-                    self.array_element_ty(&ty),
-                ) {
+                if let (Some(value_elem), Some(ann_elem)) =
+                    (self.array_element_ty(vty), self.array_element_ty(&ty))
+                {
                     if matches!(value_elem, ResolvedType::Primitive(PrimitiveType::Never)) {
                         if let Some(retyped) = self.array_of(ann_elem) {
                             *vty = retyped;

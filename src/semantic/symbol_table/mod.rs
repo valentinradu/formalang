@@ -116,7 +116,9 @@ impl SymbolTable {
     /// Get the inferred type of a let binding.
     #[must_use]
     pub fn get_let_type(&self, name: &str) -> Option<&crate::semantic::sem_type::SemType> {
-        self.lets.get(name).and_then(|info| info.inferred_type.as_ref())
+        self.lets
+            .get(name)
+            .and_then(|info| info.inferred_type.as_ref())
     }
 
     /// Find a symbol in any table (functions are excluded — they allow overloads)

@@ -9,7 +9,9 @@ pub(super) use patterns::match_arm_parser;
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
-use crate::ast::{BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention, Pattern};
+use crate::ast::{
+    BlockStatement, ClosureParam, Expr, Ident, Literal, MatchArm, ParamConvention, Pattern,
+};
 use crate::lexer::Token;
 
 use super::block_statements_to_expr;
@@ -474,11 +476,11 @@ where
             for_expr,
             if_expr,
             match_expr,
-            let_expr,      // Let expressions
-            block_body,    // Block expressions: { let x = 1; expr }
+            let_expr,                                     // Let expressions
+            block_body,                                   // Block expressions: { let x = 1; expr }
             array_or_dict, // Handles both array and dictionary literals
             paren_closure.labelled("closure expression"), // (x) -> expr — before tuple/grouped so the trailing `->` wins
-            tuple,         // Must come before grouped (tuple is more specific)
+            tuple, // Must come before grouped (tuple is more specific)
             grouped,
             inferred_enum_instantiation, // .variant is most specific
             enum_instantiation, // Must come before invocation and reference (Type.variant(...))

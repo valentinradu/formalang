@@ -212,11 +212,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if info.generics.is_empty() {
             return None;
         }
-        let param_names: Vec<String> = info
-            .generics
-            .iter()
-            .map(|p| p.name.name.clone())
-            .collect();
+        let param_names: Vec<String> = info.generics.iter().map(|p| p.name.name.clone()).collect();
         let fields: Vec<(String, crate::ast::Type)> = info
             .fields
             .iter()
@@ -252,7 +248,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         args: &[(Option<crate::ast::Ident>, Expr)],
         file: &File,
     ) -> bool {
-        self.infer_struct_type_args(struct_name, args, file).is_some()
+        self.infer_struct_type_args(struct_name, args, file)
+            .is_some()
     }
 
     /// Specialise a generic function's return type by unifying every

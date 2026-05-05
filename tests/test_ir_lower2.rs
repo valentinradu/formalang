@@ -54,7 +54,8 @@ fn test_lower_pipe_closure_in_struct_field_default() -> Result<(), Box<dyn std::
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -157,7 +158,8 @@ fn test_lower_block_tuple_destructuring() -> Result<(), Box<dyn std::error::Erro
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -213,7 +215,8 @@ fn test_lower_block_array_destructuring() -> Result<(), Box<dyn std::error::Erro
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -417,7 +420,11 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("index out of bounds")?;
     let func = impl_block
         .functions
@@ -452,7 +459,11 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = &module
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("index out of bounds")?;
     let func = impl_block
         .functions
@@ -485,7 +496,11 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     // Body should contain SelfFieldRef
@@ -517,7 +532,11 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("index out of bounds")?;
     let func = impl_block.functions.first().ok_or("index out of bounds")?;
     let IrExpr::Reference { path, .. } = func.body.as_ref().expect("expected function body") else {
@@ -632,7 +651,10 @@ fn test_lower_dict_access_type_resolution() -> Result<(), Box<dyn std::error::Er
         .optional_inner_ty(&binding.ty)
         .ok_or_else(|| format!("expected Optional<...>, got {:?}", binding.ty))?;
     if !matches!(inner, ResolvedType::Primitive(PrimitiveType::I32)) {
-        return Err(format!("Expected Optional<I32> value type from dict, got Optional<{inner:?}>").into());
+        return Err(format!(
+            "Expected Optional<I32> value type from dict, got Optional<{inner:?}>"
+        )
+        .into());
     }
     Ok(())
 }
@@ -756,7 +778,8 @@ fn test_lower_block_with_no_statements() -> Result<(), Box<dyn std::error::Error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -931,7 +954,8 @@ fn test_lower_optional_struct_field() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -966,7 +990,11 @@ fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Er
     let impl_block = module
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("no impl block")?;
     let func = impl_block
         .functions

@@ -42,9 +42,8 @@ impl LeftoverScanner {
             }
         }
 
-        let is_prelude_builtin = |name: &str| {
-            matches!(name, "Array" | "Dictionary" | "Range" | "Optional")
-        };
+        let is_prelude_builtin =
+            |name: &str| matches!(name, "Array" | "Dictionary" | "Range" | "Optional");
         let mut check = |ty: &ResolvedType| {
             if let Some(sample) = first_leftover(ty, module) {
                 self.note(sample);
@@ -194,7 +193,8 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule) -> Option<String> {
         module.prelude_range_id().map(GenericBase::Struct),
         module.prelude_optional_id().map(GenericBase::Enum),
     ];
-    let is_prelude_builtin = |base: &GenericBase| prelude_ids.iter().any(|p| p.as_ref() == Some(base));
+    let is_prelude_builtin =
+        |base: &GenericBase| prelude_ids.iter().any(|p| p.as_ref() == Some(base));
     match ty {
         ResolvedType::TypeParam(name) => Some(format!("unresolved TypeParam(`{name}`)")),
         ResolvedType::Generic { base, args } => {

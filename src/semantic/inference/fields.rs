@@ -110,9 +110,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(constraints) = self.get_type_parameter_constraints(lookup_name) {
             for trait_name in &constraints {
                 if let Some(trait_info) = self.symbols.get_trait(trait_name) {
-                    if let Some(field) =
-                        trait_info.fields.iter().find(|f| f.name == field_name)
-                    {
+                    if let Some(field) = trait_info.fields.iter().find(|f| f.name == field_name) {
                         return wrap(SemType::from_ast(&field.ty));
                     }
                 }
@@ -192,29 +190,29 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         } else {
             (receiver_type.is_optional(), receiver_type.strip_optional())
         };
-        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) = if let Some(d) = dispatch_match
-        {
-            d
-        } else {
-            match &stripped {
-                SemType::Generic { base, args } => (base.as_str(), args.clone()),
-                SemType::Named(base) => (base.as_str(), Vec::new()),
-                SemType::Primitive(p) => {
-                    primitive_name_holder = format!("{p:?}");
-                    (primitive_name_holder.as_str(), Vec::new())
+        let (lookup_name, receiver_type_args): (&str, Vec<SemType>) =
+            if let Some(d) = dispatch_match {
+                d
+            } else {
+                match &stripped {
+                    SemType::Generic { base, args } => (base.as_str(), args.clone()),
+                    SemType::Named(base) => (base.as_str(), Vec::new()),
+                    SemType::Primitive(p) => {
+                        primitive_name_holder = format!("{p:?}");
+                        (primitive_name_holder.as_str(), Vec::new())
+                    }
+                    SemType::Array(inner) => ("Array", vec![(**inner).clone()]),
+                    SemType::Dictionary { key, value } => {
+                        ("Dictionary", vec![(**key).clone(), (**value).clone()])
+                    }
+                    SemType::Optional(_)
+                    | SemType::Tuple(_)
+                    | SemType::Closure { .. }
+                    | SemType::Unknown
+                    | SemType::InferredEnum
+                    | SemType::Nil => return SemType::Unknown,
                 }
-                SemType::Array(inner) => ("Array", vec![(**inner).clone()]),
-                SemType::Dictionary { key, value } => {
-                    ("Dictionary", vec![(**key).clone(), (**value).clone()])
-                }
-                SemType::Optional(_)
-                | SemType::Tuple(_)
-                | SemType::Closure { .. }
-                | SemType::Unknown
-                | SemType::InferredEnum
-                | SemType::Nil => return SemType::Unknown,
-            }
-        };
+            };
 
         let substitute = |ret: SemType| -> SemType {
             if receiver_type_args.is_empty() {

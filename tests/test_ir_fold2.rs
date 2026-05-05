@@ -18,7 +18,8 @@ fn test_fold_numeric_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -45,7 +46,8 @@ fn test_fold_numeric_division() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -72,7 +74,8 @@ fn test_fold_numeric_modulo() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -99,7 +102,8 @@ fn test_fold_numeric_le() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -126,7 +130,8 @@ fn test_fold_numeric_gt() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -153,7 +158,8 @@ fn test_fold_numeric_ge() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -180,7 +186,8 @@ fn test_fold_numeric_eq() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -207,7 +214,8 @@ fn test_fold_numeric_ne() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -238,7 +246,8 @@ fn test_fold_boolean_eq() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -265,7 +274,8 @@ fn test_fold_boolean_ne() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -296,7 +306,8 @@ fn test_fold_numeric_negation() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -323,7 +334,8 @@ fn test_fold_boolean_not_false() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -355,7 +367,8 @@ fn test_fold_if_constant_false_no_else() -> Result<(), Box<dyn std::error::Error
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -427,7 +440,8 @@ fn test_fold_dict_literal_entries() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -513,7 +527,8 @@ fn test_fold_match_arm_bodies() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -592,7 +607,11 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
     let imp = folded
         .impls
         .iter()
-        .find(|imp| match imp.target { formalang::ir::ImplTarget::Primitive(_) => false, formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id), formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id), })
+        .find(|imp| match imp.target {
+            formalang::ir::ImplTarget::Primitive(_) => false,
+            formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
+            formalang::ir::ImplTarget::Enum(id) => !module.is_prelude_enum(id),
+        })
         .ok_or("no user impls in folded module")?;
     let compute = imp
         .functions
@@ -623,7 +642,8 @@ fn test_fold_closure_body() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -662,7 +682,8 @@ fn test_fold_block_let_statement() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -773,7 +794,8 @@ fn test_constant_folding_pass_via_pipeline() -> Result<(), Box<dyn std::error::E
     let result = pass.run(module);
     let folded = result.map_err(|e| format!("pass failed: {e:?}"))?;
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -817,7 +839,8 @@ fn test_fold_no_divide_by_zero() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -861,7 +884,8 @@ fn test_fold_no_modulo_by_zero() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -888,7 +912,8 @@ fn test_fold_negation_of_zero() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -919,7 +944,8 @@ fn test_fold_chain_with_divide_by_zero() -> Result<(), Box<dyn std::error::Error
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -944,7 +970,8 @@ fn struct_default_expr(
     folded: &formalang::ir::IrModule,
 ) -> Result<&IrExpr, Box<dyn std::error::Error>> {
     folded
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("no struct")?
         .fields
         .first()

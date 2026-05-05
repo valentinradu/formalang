@@ -50,8 +50,8 @@ fn assert_closure_param_is_i32(value: &IrExpr, label: &str) -> TestResult {
 
 #[test]
 fn array_destructuring_threads_closure_annotation() -> TestResult {
-    let module = compile_to_ir("pub let [f]: [(I32) -> I32] = [(x) -> x]")
-        .map_err(|e| format!("{e:?}"))?;
+    let module =
+        compile_to_ir("pub let [f]: [(I32) -> I32] = [(x) -> x]").map_err(|e| format!("{e:?}"))?;
     let f = module.lets.iter().find(|l| l.name == "f").ok_or("no f")?;
     assert_closure_param_is_i32(&f.value, "array")
 }

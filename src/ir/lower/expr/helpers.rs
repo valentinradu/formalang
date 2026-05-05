@@ -159,8 +159,7 @@ impl IrLowerer<'_> {
             ResolvedType::TypeParam(name) => {
                 if let Some(trait_id) = self.find_trait_for_field(name, field_name) {
                     if let Some(trait_def) = self.module.get_trait(trait_id) {
-                        if let Some(field) =
-                            trait_def.fields.iter().find(|f| f.name == field_name)
+                        if let Some(field) = trait_def.fields.iter().find(|f| f.name == field_name)
                         {
                             return field.ty.clone();
                         }

@@ -85,7 +85,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         variants: &std::collections::HashMap<String, (usize, Span)>,
     ) {
-
         // Collect all variant names from match arms
         let mut covered_variants = HashSet::new();
         let mut has_wildcard = false;

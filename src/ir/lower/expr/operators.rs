@@ -237,8 +237,7 @@ impl IrLowerer<'_> {
                     .enumerate()
                     .map(|(i, (label, expr))| {
                         let saved_closure = self.expected_closure_type.take();
-                        self.expected_closure_type =
-                            param_tys.get(i).map(|(_, t)| t.clone());
+                        self.expected_closure_type = param_tys.get(i).map(|(_, t)| t.clone());
                         let lowered = self.lower_expr(expr);
                         self.expected_closure_type = saved_closure;
                         (label.as_ref().map(|l| l.name.clone()), lowered)

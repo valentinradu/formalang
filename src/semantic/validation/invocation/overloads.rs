@@ -144,7 +144,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // containing `Unknown` are caught by `is_indeterminate`.
             first_arg_sem.is_indeterminate()
                 || first_param_sem.is_indeterminate()
-                || self.type_strings_compatible(&first_param_sem.display(), &first_arg_sem.display())
+                || self
+                    .type_strings_compatible(&first_param_sem.display(), &first_arg_sem.display())
         } else {
             // Mixed labeled/unlabeled args have no defined match — overload
             // resolution is all-labeled (mode A) or all-unlabeled (mode B).

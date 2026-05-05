@@ -42,8 +42,8 @@
 )]
 
 use formalang::ir::{
-    walk_block_statement, walk_expr_children, BindingId, DispatchKind, EnumId, GenericBase,
-    ImplId, ImplTarget, IrBlockStatement, IrExpr, IrField, IrFunction, IrModule, IrVisitor,
+    walk_block_statement, walk_expr_children, BindingId, DispatchKind, EnumId, GenericBase, ImplId,
+    ImplTarget, IrBlockStatement, IrExpr, IrField, IrFunction, IrModule, IrVisitor,
     ReferenceTarget, ResolvedType, StructId, TraitId,
 };
 use formalang::{compile_to_ir, Pipeline};
@@ -250,7 +250,9 @@ fn collect_bindings_in_expr(expr: &IrExpr, out: &mut HashSet<u32>) {
             }
             collect_bindings_in_expr(result, out);
         }
-        IrExpr::Match { arms, scrutinee, .. } => {
+        IrExpr::Match {
+            arms, scrutinee, ..
+        } => {
             collect_bindings_in_expr(scrutinee, out);
             for arm in arms {
                 for (_, bid, _) in &arm.bindings {

@@ -49,7 +49,12 @@ fn test_lower_simple_struct() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     let point = &module.user_structs().next().ok_or("index out of bounds")?;
     if point.name != "Point" {
@@ -88,7 +93,12 @@ fn test_lower_struct_with_string_field() -> Result<(), Box<dyn std::error::Error
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     let user = &module.user_structs().next().ok_or("index out of bounds")?;
     if user.name != "User" {
@@ -115,10 +125,16 @@ fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Erro
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -129,7 +145,8 @@ fn test_lower_struct_with_boolean_field() -> Result<(), Box<dyn std::error::Erro
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
             module
-                .user_structs().next()
+                .user_structs()
+                .next()
                 .ok_or("index out of bounds")?
                 .fields
                 .first()
@@ -149,10 +166,16 @@ fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -163,7 +186,8 @@ fn test_lower_struct_with_array_field() -> Result<(), Box<dyn std::error::Error>
         return Err(format!(
             "assertion failed: `(left == right)` left: `{:?}`, right: `{:?}`",
             module
-                .user_structs().next()
+                .user_structs()
+                .next()
                 .ok_or("index out of bounds")?
                 .fields
                 .first()
@@ -183,10 +207,16 @@ fn test_lower_struct_with_optional_field() -> Result<(), Box<dyn std::error::Err
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -223,10 +253,16 @@ fn test_lower_public_struct() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     if !module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -243,10 +279,16 @@ fn test_lower_private_struct() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -531,7 +573,8 @@ fn test_lower_public_enum() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if !module
-        .user_enums().next()
+        .user_enums()
+        .next()
         .ok_or("index out of bounds")?
         .visibility
         .is_public()
@@ -683,7 +726,12 @@ fn test_lower_impl_block() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
     // Impl block is explicitly defined
     if user_impl_count(&module) != 1 {
@@ -704,7 +752,8 @@ fn test_lower_impl_with_literal() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -734,7 +783,12 @@ fn test_lower_struct_implementing_trait() -> Result<(), Box<dyn std::error::Erro
         return Err(format!("expected {:?} but got {:?}", 1, module.traits.len()).into());
     }
     if module.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            module.user_structs().count()
+        )
+        .into());
     }
 
     let user = &module.user_structs().next().ok_or("index out of bounds")?;
@@ -965,7 +1019,12 @@ fn test_lower_multiple_definitions() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("expected {:?} but got {:?}", 1, module.traits.len()).into());
     }
     if module.user_structs().count() != 2 {
-        return Err(format!("expected {:?} but got {:?}", 2, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            2,
+            module.user_structs().count()
+        )
+        .into());
     }
     if module.user_enums().count() != 1 {
         return Err(format!("expected {:?} but got {:?}", 1, module.user_enums().count()).into());
@@ -983,7 +1042,12 @@ fn test_lower_struct_referencing_another() -> Result<(), Box<dyn std::error::Err
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     if module.user_structs().count() != 2 {
-        return Err(format!("expected {:?} but got {:?}", 2, module.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            2,
+            module.user_structs().count()
+        )
+        .into());
     }
 
     // Book should have an Author field with struct type
@@ -1040,7 +1104,8 @@ fn test_lower_field_with_default_number() -> Result<(), Box<dyn std::error::Erro
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1065,7 +1130,8 @@ fn test_lower_field_with_default_string() -> Result<(), Box<dyn std::error::Erro
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1083,7 +1149,8 @@ fn test_lower_field_with_default_boolean() -> Result<(), Box<dyn std::error::Err
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1139,7 +1206,8 @@ fn test_lower_nested_array_type() -> Result<(), Box<dyn std::error::Error>> {
     let module = result.map_err(|e| format!("{e:?}"))?;
 
     let field = &module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1531,7 +1599,8 @@ fn test_expr_type_literal_string() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1540,7 +1609,12 @@ fn test_expr_type_literal_string() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("expected Some")?;
     if type_name(expr.ty(), &module) != "String" {
-        return Err(format!("expected {:?} but got {:?}", "String", type_name(expr.ty(), &module)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "String",
+            type_name(expr.ty(), &module)
+        )
+        .into());
     }
     Ok(())
 }
@@ -1553,7 +1627,8 @@ fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1562,7 +1637,12 @@ fn test_expr_type_literal_number() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("expected Some")?;
     if type_name(expr.ty(), &module) != "I32" {
-        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty(), &module)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "I32",
+            type_name(expr.ty(), &module)
+        )
+        .into());
     }
     Ok(())
 }
@@ -1575,7 +1655,8 @@ fn test_expr_type_literal_boolean() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1602,7 +1683,8 @@ fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1611,7 +1693,12 @@ fn test_expr_type_array() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .ok_or("expected Some")?;
     if type_name(expr.ty(), &module) != "Array" {
-        return Err(format!("expected {:?} but got {:?}", "Array", type_name(expr.ty(), &module)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "Array",
+            type_name(expr.ty(), &module)
+        )
+        .into());
     }
     Ok(())
 }
@@ -1636,7 +1723,12 @@ fn test_expr_type_struct_instantiation() -> Result<(), Box<dyn std::error::Error
         .as_ref()
         .ok_or("expected Some")?;
     if type_name(expr.ty(), &module) != "Struct" {
-        return Err(format!("expected {:?} but got {:?}", "Struct", type_name(expr.ty(), &module)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "Struct",
+            type_name(expr.ty(), &module)
+        )
+        .into());
     }
     Ok(())
 }
@@ -1654,7 +1746,8 @@ fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1666,7 +1759,8 @@ fn test_expr_type_reference() -> Result<(), Box<dyn std::error::Error>> {
     }
     // The expression has a type
     let _ty = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1686,7 +1780,8 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1696,7 +1791,12 @@ fn test_expr_type_binary_arithmetic() -> Result<(), Box<dyn std::error::Error>> 
         .ok_or("expected Some")?;
     // Arithmetic results in I32
     if type_name(expr.ty(), &module) != "I32" {
-        return Err(format!("expected {:?} but got {:?}", "I32", type_name(expr.ty(), &module)).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            "I32",
+            type_name(expr.ty(), &module)
+        )
+        .into());
     }
     Ok(())
 }
@@ -1709,7 +1809,8 @@ fn test_expr_type_binary_comparison() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1953,7 +2054,8 @@ fn test_lower_if_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1975,7 +2077,8 @@ fn test_lower_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2001,7 +2104,8 @@ fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2037,7 +2141,8 @@ fn test_lower_let_expression() -> Result<(), Box<dyn std::error::Error>> {
         return Err("assertion failed".into());
     }
     if module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2063,7 +2168,8 @@ fn test_lower_enum_instantiation_simple() -> Result<(), Box<dyn std::error::Erro
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2094,7 +2200,8 @@ fn test_lower_enum_instantiation_with_data() -> Result<(), Box<dyn std::error::E
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2139,7 +2246,8 @@ fn test_lower_inferred_enum_instantiation() -> Result<(), Box<dyn std::error::Er
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2173,7 +2281,8 @@ fn test_lower_tuple_expression() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2222,7 +2331,8 @@ fn test_lower_binary_subtraction() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2244,7 +2354,8 @@ fn test_lower_binary_multiplication() -> Result<(), Box<dyn std::error::Error>> 
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2266,7 +2377,8 @@ fn test_lower_binary_logical_and() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2296,7 +2408,8 @@ fn test_lower_binary_logical_or() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2326,7 +2439,8 @@ fn test_lower_binary_less_than() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -2353,7 +2467,8 @@ fn test_lower_binary_greater_than() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -3777,7 +3892,8 @@ struct Item { status: Status = Status.active }
     let module = compile_to_ir_with_resolver(source, resolver).map_err(|e| format!("{e:?}"))?;
 
     let expr = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()

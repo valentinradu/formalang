@@ -248,8 +248,8 @@ fn resolved_type_display_name_enum() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn resolved_type_display_name_array() -> Result<(), Box<dyn std::error::Error>> {
-    let module = formalang::compile_to_ir("struct Holder { items: [I32] }")
-        .map_err(|e| format!("{e:?}"))?;
+    let module =
+        formalang::compile_to_ir("struct Holder { items: [I32] }").map_err(|e| format!("{e:?}"))?;
     let field_ty = &module
         .structs
         .iter()
@@ -489,7 +489,12 @@ fn irmodule_rebuild_indices_after_struct_filter() -> Result<(), Box<dyn std::err
         .map_err(|e| format!("pass should succeed: {e:?}"))?;
 
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     if result.struct_id("Keep").is_none() {
         return Err("struct 'Keep' should exist after filter pass".into());
@@ -2093,7 +2098,12 @@ fn dce_via_pipeline_match_expression() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2109,7 +2119,12 @@ fn dce_via_pipeline_enum_inst_in_default() -> Result<(), Box<dyn std::error::Err
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2125,7 +2140,12 @@ fn dce_via_pipeline_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2140,7 +2160,12 @@ fn dce_via_pipeline_tuple_in_default() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2161,7 +2186,12 @@ fn dce_via_pipeline_block_expression_in_default() -> Result<(), Box<dyn std::err
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2409,7 +2439,12 @@ fn fold_constants_match_expression_preserved() -> Result<(), Box<dyn std::error:
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
     if folded.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            folded.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2464,7 +2499,12 @@ fn fold_constants_method_call_in_impl() -> Result<(), Box<dyn std::error::Error>
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
     if folded.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            folded.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2485,7 +2525,12 @@ fn fold_constants_block_expression_in_default() -> Result<(), Box<dyn std::error
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
     if folded.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            folded.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -2501,7 +2546,12 @@ fn fold_constants_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);
     if folded.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, folded.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            folded.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -3399,7 +3449,12 @@ fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, true);
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }

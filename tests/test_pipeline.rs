@@ -121,7 +121,12 @@ fn pipeline_default_is_same_as_new() -> Result<(), Box<dyn std::error::Error>> {
         .run(ir)
         .map_err(|e| format!("run should succeed: {e:?}"))?;
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     Ok(())
 }
@@ -144,7 +149,12 @@ fn pipeline_run_returns_transformed_module() -> Result<(), Box<dyn std::error::E
         .map_err(|e| format!("run should succeed: {e:?}"))?;
 
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
     let first_struct = result.user_structs().next().ok_or("index out of bounds")?;
     if first_struct.name != "Visible" {
@@ -171,11 +181,17 @@ fn pipeline_run_with_multiple_passes_applies_in_order() -> Result<(), Box<dyn st
         .run(ir)
         .map_err(|e| format!("run should succeed: {e:?}"))?;
     if result.user_structs().count() != 1 {
-        return Err(format!("expected {:?} but got {:?}", 1, result.user_structs().count()).into());
+        return Err(format!(
+            "expected {:?} but got {:?}",
+            1,
+            result.user_structs().count()
+        )
+        .into());
     }
 
     let field = result
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -924,7 +940,8 @@ fn unsuffixed_integer_literal_defaults_to_i32() -> Result<(), Box<dyn std::error
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let default = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("Sample missing")?
         .fields
         .first()
@@ -955,7 +972,8 @@ fn unsuffixed_float_literal_defaults_to_f64() -> Result<(), Box<dyn std::error::
     for (source, label) in cases {
         let module = compile_to_ir(source).map_err(|e| format!("{label} compile failed: {e:?}"))?;
         let default = module
-            .user_structs().next()
+            .user_structs()
+            .next()
             .ok_or("struct missing")?
             .fields
             .first()
@@ -998,4 +1016,3 @@ fn float_literal_default_rejects_i32_annotation() -> Result<(), Box<dyn std::err
     }
     Ok(())
 }
-

@@ -141,7 +141,8 @@ fn test_dce_expr_binary_op_both_sides() -> Result<(), Box<dyn std::error::Error>
     let optimized = eliminate_dead_code(&module, false);
     // After DCE: constant true -> takes 1 + 2
     let default_val = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -195,7 +196,8 @@ fn test_dce_expr_array_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -233,7 +235,8 @@ fn test_dce_expr_tuple_with_dead_code() -> Result<(), Box<dyn std::error::Error>
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -280,7 +283,8 @@ fn test_dce_expr_match_arms() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -317,7 +321,8 @@ fn test_dce_expr_function_call_with_dead_code_args() -> Result<(), Box<dyn std::
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -430,7 +435,8 @@ fn test_dce_expr_enum_inst() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -459,7 +465,8 @@ fn test_dce_expr_dict_literal_with_dead_code() -> Result<(), Box<dyn std::error:
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -513,7 +520,8 @@ fn test_dce_expr_block_with_if() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -556,7 +564,8 @@ fn test_dce_block_assign_statement() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -598,7 +607,8 @@ fn test_dce_block_expr_statement() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1309,7 +1319,8 @@ fn test_walk_block_statement_let() -> Result<(), Box<dyn std::error::Error>> {
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     // Walk the block expression and count sub-expressions
     let default = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1345,7 +1356,8 @@ fn test_walk_block_statement_assign() -> Result<(), Box<dyn std::error::Error>> 
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let default = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1382,7 +1394,8 @@ fn test_walk_block_statement_expr() -> Result<(), Box<dyn std::error::Error>> {
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let default = module
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()
@@ -1438,7 +1451,8 @@ fn test_dce_if_constant_true_no_else() -> Result<(), Box<dyn std::error::Error>>
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
     let default = optimized
-        .user_structs().next()
+        .user_structs()
+        .next()
         .ok_or("index out of bounds")?
         .fields
         .first()

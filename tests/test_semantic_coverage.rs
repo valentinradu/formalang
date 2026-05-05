@@ -166,8 +166,7 @@ fn test_trait_as_value_type_rejected() -> Result<(), Box<dyn std::error::Error>>
         trait Shape { area: I32 }
         struct Container { shape: Shape }
     ";
-    compile(source)
-        .map_err(|e| format!("trait at value position should now compile: {e:?}"))?;
+    compile(source).map_err(|e| format!("trait at value position should now compile: {e:?}"))?;
     Ok(())
 }
 
@@ -1164,9 +1163,8 @@ fn test_generic_struct_missing_type_arg_in_instantiation() -> Result<(), Box<dyn
         struct Box<T> { value: T }
         struct Config { box: Box<I32> = Box(value: 42) }
     ";
-    compile(source).map_err(|e| format!(
-        "missing generic args should be inferred from context: {e:?}"
-    ))?;
+    compile(source)
+        .map_err(|e| format!("missing generic args should be inferred from context: {e:?}"))?;
     Ok(())
 }
 

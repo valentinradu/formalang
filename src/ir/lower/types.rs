@@ -159,7 +159,8 @@ impl IrLowerer<'_> {
 
     /// Element type for any iterable receiver (`Array<T>` or `Range<T>`).
     pub(super) fn iterator_element_ty(&self, ty: &ResolvedType) -> Option<ResolvedType> {
-        self.array_element_ty(ty).or_else(|| self.range_element_ty(ty))
+        self.array_element_ty(ty)
+            .or_else(|| self.range_element_ty(ty))
     }
 
     /// Best-effort conversion of a stringified type from the symbol

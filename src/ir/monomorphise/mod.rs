@@ -254,9 +254,7 @@ impl IrPass for MonomorphisePass {
         let initial = collect_all_instantiations(&module);
         let mut worklist: VecDeque<Instantiation> = initial
             .into_iter()
-            .filter(|(base, args)| {
-                !prelude_skip.contains(base) && !args_have_type_param(args)
-            })
+            .filter(|(base, args)| !prelude_skip.contains(base) && !args_have_type_param(args))
             .collect();
         let mut mapping: HashMap<Instantiation, GenericBase> = HashMap::new();
 
@@ -346,10 +344,10 @@ impl IrPass for MonomorphisePass {
             match specialise(&mut module, &inst) {
                 Ok((spec_base, more)) => {
                     mapping.insert(inst, spec_base);
-                    post_worklist.extend(
-                        more.into_iter()
-                            .filter(|(b, a)| !prelude_skip.contains(b) && !args_have_type_param(a)),
-                    );
+                    post_worklist
+                        .extend(more.into_iter().filter(|(b, a)| {
+                            !prelude_skip.contains(b) && !args_have_type_param(a)
+                        }));
                 }
                 Err(e) => {
                     errors.push(e);
@@ -392,9 +390,8 @@ impl IrPass for MonomorphisePass {
         // are exempt: they're never specialised — `Generic { base, args }`
         // is their canonical post-pass shape — so they have to survive
         // for dispatch and lookup to keep working.
-        let is_prelude_builtin = |name: &str| {
-            matches!(name, "Array" | "Dictionary" | "Range" | "Optional")
-        };
+        let is_prelude_builtin =
+            |name: &str| matches!(name, "Array" | "Dictionary" | "Range" | "Optional");
         module
             .structs
             .retain(|s| s.generic_params.is_empty() || is_prelude_builtin(&s.name));
