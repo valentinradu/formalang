@@ -111,8 +111,10 @@ impl IrLowerer<'_> {
             args,
         } = ty
         {
-            if *id == arr && args.len() == 1 {
-                return Some(args[0].clone());
+            if *id == arr {
+                if let [t] = args.as_slice() {
+                    return Some(t.clone());
+                }
             }
         }
         None
@@ -129,8 +131,10 @@ impl IrLowerer<'_> {
             args,
         } = ty
         {
-            if *id == did && args.len() == 2 {
-                return Some((args[0].clone(), args[1].clone()));
+            if *id == did {
+                if let [k, v] = args.as_slice() {
+                    return Some((k.clone(), v.clone()));
+                }
             }
         }
         None
@@ -144,8 +148,10 @@ impl IrLowerer<'_> {
             args,
         } = ty
         {
-            if *id == rid && args.len() == 1 {
-                return Some(args[0].clone());
+            if *id == rid {
+                if let [t] = args.as_slice() {
+                    return Some(t.clone());
+                }
             }
         }
         None
@@ -248,7 +254,15 @@ impl IrLowerer<'_> {
         // enum lookup with substitution.
         let receiver_args: &[ResolvedType] = match enum_ty {
             ResolvedType::Generic { args, .. } => args,
-            _ => &[],
+            ResolvedType::Primitive(_)
+            | ResolvedType::Struct(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => &[],
         };
         let enum_id = match enum_ty {
             ResolvedType::Enum(id) => Some(*id),

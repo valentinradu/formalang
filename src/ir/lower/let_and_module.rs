@@ -61,7 +61,7 @@ impl IrLowerer<'_> {
             .type_annotation
             .as_ref()
             .map(|t| self.lower_type(t));
-        self.expected_value_type = lowered_annotation.as_ref().cloned().filter(|t| {
+        self.expected_value_type = lowered_annotation.filter(|t| {
             matches!(t, ResolvedType::Tuple(_))
                 || self.array_element_ty(t).is_some()
                 || self.dictionary_kv_ty(t).is_some()

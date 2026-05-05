@@ -238,7 +238,7 @@ pub(super) fn specialise_impls(
 /// `ImplRemap`-aware type-to-base extraction. Returns the
 /// `GenericBase` of a concrete struct/enum receiver type (post Phase 2
 /// rewrite). Returns `None` for non-nominal types.
-pub(super) fn receiver_to_base(ty: &ResolvedType) -> Option<GenericBase> {
+pub(super) const fn receiver_to_base(ty: &ResolvedType) -> Option<GenericBase> {
     match ty {
         ResolvedType::Struct(id) => Some(GenericBase::Struct(*id)),
         ResolvedType::Enum(id) => Some(GenericBase::Enum(*id)),

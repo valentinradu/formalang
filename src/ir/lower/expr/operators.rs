@@ -57,6 +57,10 @@ impl IrLowerer<'_> {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single-pass reference resolution covers every binding shape (self, struct field, module-level let, local, function call); splitting would scatter the cases"
+    )]
     pub(super) fn lower_reference(&mut self, path: &[crate::ast::Ident]) -> IrExpr {
         let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
 
@@ -293,12 +297,20 @@ impl IrLowerer<'_> {
         method_name: &str,
     ) -> Option<ResolvedType> {
         let struct_id = match receiver_ty {
-            ResolvedType::Struct(id) => *id,
-            ResolvedType::Generic {
+            ResolvedType::Struct(id)
+            | ResolvedType::Generic {
                 base: crate::ir::GenericBase::Struct(id),
                 ..
             } => *id,
-            _ => return None,
+            ResolvedType::Primitive(_)
+            | ResolvedType::Trait(_)
+            | ResolvedType::Enum(_)
+            | ResolvedType::Tuple(_)
+            | ResolvedType::Generic { .. }
+            | ResolvedType::TypeParam(_)
+            | ResolvedType::External { .. }
+            | ResolvedType::Closure { .. }
+            | ResolvedType::Error => return None,
         };
         let struct_def = self.module.get_struct(struct_id)?;
         for field in &struct_def.fields {

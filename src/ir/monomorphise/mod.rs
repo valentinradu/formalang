@@ -104,6 +104,14 @@ impl IrPass for MonomorphisePass {
         "monomorphise"
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the pass is a single ordered phase pipeline; phase boundaries are commented inline"
+    )]
+    #[expect(
+        clippy::items_after_statements,
+        reason = "the inline `args_have_type_param` / `contains_type_param` helpers belong next to the closure that uses them"
+    )]
     fn run(&mut self, mut module: IrModule) -> Result<IrModule, Vec<CompilerError>> {
         let mut errors = Vec::new();
         // Tracks (imported_module_path, imported_impl_idx) → local_impl_idx

@@ -144,6 +144,10 @@ fn debug_with_sorted_string_maps<T: std::fmt::Debug>(value: &T) -> String {
     sort_string_keyed_blocks(&format!("{value:#?}"))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "byte index `i` is bounds-checked by the surrounding `while i < bytes.len()` guard"
+)]
 fn sort_string_keyed_blocks(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
@@ -166,6 +170,10 @@ fn sort_string_keyed_blocks(input: &str) -> String {
 /// If the brace at `start` opens a HashMap-shaped block (every entry is
 /// `"<key>": ...`), return `(end, sorted)`. Else return None and the
 /// caller leaves the block alone.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "byte index `end` is bounds-checked by the surrounding `while end < bytes.len()` guard"
+)]
 fn try_sort_block(input: &str, start: usize) -> Option<(usize, String)> {
     let bytes = input.as_bytes();
     let mut depth = 0i32;
@@ -231,6 +239,10 @@ fn try_sort_block(input: &str, start: usize) -> Option<(usize, String)> {
     Some((end, rebuilt))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "byte index `i` is bounded by `0..bytes.len()`"
+)]
 fn split_top_level_commas(body: &str) -> Vec<&str> {
     let bytes = body.as_bytes();
     let mut depth = 0i32;

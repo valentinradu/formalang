@@ -1200,10 +1200,6 @@ use formalang::ir::{
     StructId, TraitId,
 };
 
-#[expect(
-    clippy::struct_field_names,
-    reason = "counter fields all end in _count by design"
-)]
 struct TypeCounter<'m> {
     module: &'m formalang::ir::IrModule,
     struct_count: usize,
@@ -3437,7 +3433,15 @@ struct Collection {
                 .into());
             }
         }
-        other => return Err(format!("Unexpected variant: {other:?}").into()),
+        other @ (ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::Tuple(_)
+        | ResolvedType::Generic { .. }
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }
@@ -3479,7 +3483,15 @@ struct Container {
                 .into());
             }
         }
-        other => return Err(format!("Unexpected variant: {other:?}").into()),
+        other @ (ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::Tuple(_)
+        | ResolvedType::Generic { .. }
+        | ResolvedType::TypeParam(_)
+        | ResolvedType::Closure { .. }
+        | ResolvedType::Error) => return Err(format!("Unexpected variant: {other:?}").into()),
     }
     Ok(())
 }

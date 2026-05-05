@@ -225,7 +225,7 @@ impl Counter {
         .iter()
         .find(|i| match i.target {
             formalang::ir::ImplTarget::Struct(id) => !module.is_prelude_struct(id),
-            _ => false,
+            formalang::ir::ImplTarget::Enum(_) | formalang::ir::ImplTarget::Primitive(_) => false,
         })
         .ok_or("Counter impl missing")?;
     if counter_impl.is_extern {

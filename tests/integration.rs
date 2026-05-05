@@ -1119,10 +1119,6 @@ fn test_complete_program_compiles() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "end-to-end integration check asserting every IR section against a fixture"
-)]
 fn test_complete_program_lowers_to_ir() -> Result<(), Box<dyn std::error::Error>> {
     let source = include_str!("fixtures/complete.fv");
     let module = compile_to_ir(source)

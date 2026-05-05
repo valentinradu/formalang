@@ -1,7 +1,8 @@
 //! Structural representation of a type used by semantic inference,
-//! validation, and the symbol table. The canonical "type couldn't be
-//! determined" form is `SemType::Unknown`; there is no string-sentinel
-//! equivalent.
+//! validation, and the symbol table.
+//!
+//! The canonical "type couldn't be determined" form is
+//! `SemType::Unknown`; there is no string-sentinel equivalent.
 //!
 //! `SemType` is ID-free on purpose: semantic analysis runs before IR
 //! lowering assigns IDs. Names are sufficient at this layer.
@@ -16,11 +17,13 @@ mod tests;
 
 use crate::ast::{ParamConvention, PrimitiveType, Type};
 
-/// Structural type used during semantic analysis. Re-exported from
-/// `lib.rs` so downstream tooling (LSP queries, custom analysis
-/// passes) can consume the analyzer's type information without
+/// Structural type used during semantic analysis.
+///
+/// Re-exported from `lib.rs` so downstream tooling (LSP queries, custom
+/// analysis passes) can consume the analyzer's type information without
 /// stringly-typed round-trips.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum SemType {
     Primitive(PrimitiveType),
     /// User-defined struct, enum, trait, or generic-parameter name.

@@ -284,7 +284,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.validate_expr(value, file);
                     let value_sem = ty.as_ref().map_or_else(
                         || self.infer_type_sem(value, file),
-                        |t| SemType::from_ast(t),
+                        SemType::from_ast,
                     );
                     // Collect free variables (captures) once when the value
                     // is a closure literal, regardless of whether the let

@@ -161,12 +161,7 @@ fn rewrite_static_impl_ids(expr: &mut IrExpr, remap: &[Option<usize>]) {
 fn walk_expr_static_impl(expr: &mut IrExpr, remap: &[Option<usize>]) {
     use crate::ir::IrBlockStatement;
     match expr {
-        IrExpr::StructInst { fields, .. } => {
-            for (_, _, e) in fields {
-                rewrite_static_impl_ids(e, remap);
-            }
-        }
-        IrExpr::EnumInst { fields, .. } => {
+        IrExpr::StructInst { fields, .. } | IrExpr::EnumInst { fields, .. } => {
             for (_, _, e) in fields {
                 rewrite_static_impl_ids(e, remap);
             }

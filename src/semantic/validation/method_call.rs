@@ -43,7 +43,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
             crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
             crate::semantic::sem_type::SemType::Dictionary { .. } => "Dictionary".to_string(),
-            _ => receiver_sem.display(),
+            crate::semantic::sem_type::SemType::Primitive(_)
+            | crate::semantic::sem_type::SemType::Named(_)
+            | crate::semantic::sem_type::SemType::Tuple(_)
+            | crate::semantic::sem_type::SemType::Generic { .. }
+            | crate::semantic::sem_type::SemType::Closure { .. }
+            | crate::semantic::sem_type::SemType::Unknown
+            | crate::semantic::sem_type::SemType::InferredEnum
+            | crate::semantic::sem_type::SemType::Nil => receiver_sem.display(),
         };
         if let Some(fn_def) = Self::find_method_fn_def(&receiver_type, &method.name, file) {
             let params = fn_def.params.clone();

@@ -36,16 +36,14 @@ impl IrLowerer<'_> {
         let bad_collection = collection_ir.ty().clone();
         // For-loops iterate `Array<T>` and `Range<T>`; both are
         // prelude-defined generic structs after the built-in unification.
-        let var_ty = if let Some(inner) = self.iterator_element_ty(&bad_collection) {
-            inner
-        } else {
+        let var_ty = self.iterator_element_ty(&bad_collection).unwrap_or_else(|| {
             self.internal_error_type_if_concrete(
                 &bad_collection,
                 format!(
                     "for-loop collection lowered to non-iterable type {bad_collection:?}; semantic should have caught this",
                 ),
             )
-        };
+        });
         // Make the loop variable visible while lowering the body, so
         // references to `var` inside the body resolve to the iterator
         // element type instead of falling through to UndefinedReference.
@@ -296,14 +294,12 @@ impl IrLowerer<'_> {
         ir_value: &IrExpr,
     ) -> Vec<IrBlockStatement> {
         let bad_recv = ir_value.ty().clone();
-        let elem_ty = if let Some(inner) = self.array_element_ty(&bad_recv) {
-            inner
-        } else {
+        let elem_ty = self.array_element_ty(&bad_recv).unwrap_or_else(|| {
             self.internal_error_type_if_concrete(
                 &bad_recv,
                 format!("let array-destructure receiver lowered to non-array type {bad_recv:?}"),
             )
-        };
+        });
         elements
             .iter()
             .enumerate()

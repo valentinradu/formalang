@@ -199,7 +199,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Infer the type arguments for a struct constructor invoked
     /// without explicit `<...>`. For each generic parameter on the
     /// struct, looks for any field whose declared AST type unifies
-    /// against the corresponding lowered argument's inferred SemType
+    /// against the corresponding lowered argument's inferred [`SemType`]
     /// and records the binding. Returns the inferred argument list
     /// when every parameter is bound, `None` otherwise.
     pub(super) fn infer_struct_type_args(

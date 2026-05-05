@@ -640,10 +640,9 @@ fn test_mut_field_basic() -> Result<(), Box<dyn std::error::Error>> {
             mut count: I32
         }
     ";
-    assert!(
-        compile(source).is_err(),
-        "expected parser to reject `mut` in struct field"
-    );
+    if compile(source).is_ok() {
+        return Err("expected parser to reject `mut` in struct field".into());
+    }
     Ok(())
 }
 
@@ -654,10 +653,9 @@ fn test_mut_field_with_default() -> Result<(), Box<dyn std::error::Error>> {
             mut count: I32 = 0
         }
     ";
-    assert!(
-        compile(source).is_err(),
-        "expected parser to reject `mut` in struct field"
-    );
+    if compile(source).is_ok() {
+        return Err("expected parser to reject `mut` in struct field".into());
+    }
     Ok(())
 }
 
@@ -1099,10 +1097,10 @@ fn test_error_struct_missing_generic_args() -> Result<(), Box<dyn std::error::Er
     // Need a case where T cannot be inferred from named-arg expressions.
     // Here T appears only in a phantom-style position with a default, so
     // `Empty()` provides nothing for inference to latch onto.
-    let source = r#"
+    let source = r"
         struct Empty<T> { value: T? = nil }
         struct Container { e: Empty<String> = Empty() }
-    "#;
+    ";
     let errors = compile(source)
         .err()
         .ok_or("expected MissingGenericArguments error")?;

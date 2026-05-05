@@ -152,27 +152,32 @@ impl ResolvedType {
                 // types: render `[T]`, `T?`, `[K: V]`, `start..end`
                 // instead of `Array<T>`/`Optional<T>`/etc.
                 if let GenericBase::Enum(id) = base {
-                    if Some(*id) == module.prelude_optional_id() && args.len() == 1 {
-                        return format!("{}?", args[0].display_name(module));
+                    if Some(*id) == module.prelude_optional_id() {
+                        if let [t] = args.as_slice() {
+                            return format!("{}?", t.display_name(module));
+                        }
                     }
                 }
                 if let GenericBase::Struct(id) = base {
-                    if Some(*id) == module.prelude_array_id() && args.len() == 1 {
-                        return format!("[{}]", args[0].display_name(module));
+                    if Some(*id) == module.prelude_array_id() {
+                        if let [t] = args.as_slice() {
+                            return format!("[{}]", t.display_name(module));
+                        }
                     }
-                    if Some(*id) == module.prelude_dictionary_id() && args.len() == 2 {
-                        return format!(
-                            "[{}: {}]",
-                            args[0].display_name(module),
-                            args[1].display_name(module)
-                        );
+                    if Some(*id) == module.prelude_dictionary_id() {
+                        if let [k, v] = args.as_slice() {
+                            return format!(
+                                "[{}: {}]",
+                                k.display_name(module),
+                                v.display_name(module)
+                            );
+                        }
                     }
-                    if Some(*id) == module.prelude_range_id() && args.len() == 1 {
-                        return format!(
-                            "{}..{}",
-                            args[0].display_name(module),
-                            args[0].display_name(module)
-                        );
+                    if Some(*id) == module.prelude_range_id() {
+                        if let [t] = args.as_slice() {
+                            let r = t.display_name(module);
+                            return format!("{r}..{r}");
+                        }
                     }
                 }
                 let base_name = match base {

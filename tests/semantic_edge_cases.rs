@@ -70,10 +70,9 @@ fn test_mutable_optional_field() -> Result<(), Box<dyn std::error::Error>> {
             mut current: String?
         }
     ";
-    assert!(
-        compile(source).is_err(),
-        "expected parser to reject `mut` in struct field"
-    );
+    if compile(source).is_ok() {
+        return Err("expected parser to reject `mut` in struct field".into());
+    }
     Ok(())
 }
 

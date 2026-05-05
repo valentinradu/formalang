@@ -1375,7 +1375,7 @@ fn visitor_walk_module_visits_all_structs() -> Result<(), Box<dyn std::error::Er
         module: &'a IrModule,
         count: usize,
     }
-    impl<'a> IrVisitor for Counter<'a> {
+    impl IrVisitor for Counter<'_> {
         fn visit_struct(&mut self, id: StructId, _s: &IrStruct) {
             if !self.module.is_prelude_struct(id) {
                 self.count += 1;
@@ -1476,7 +1476,7 @@ fn visitor_walk_module_visits_impls_and_functions() -> Result<(), Box<dyn std::e
         impls: usize,
         functions: usize,
     }
-    impl<'a> IrVisitor for ImplFnCounter<'a> {
+    impl IrVisitor for ImplFnCounter<'_> {
         fn visit_impl(&mut self, i: &IrImpl) {
             let user_target = match i.target {
                 formalang::ir::ImplTarget::Primitive(_) => false,
@@ -2609,7 +2609,7 @@ fn visitor_walk_expr_visits_for_loop() -> Result<(), Box<dyn std::error::Error>>
         }),
         body: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
-            ty: num_ty.clone(),
+            ty: num_ty,
 
             span: formalang::ir::IrSpan::default(),
         }),

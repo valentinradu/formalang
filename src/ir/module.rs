@@ -296,8 +296,10 @@ impl IrModule {
             args,
         } = ty
         {
-            if *id == did && args.len() == 2 {
-                return Some((&args[0], &args[1]));
+            if *id == did {
+                if let [k, v] = args.as_slice() {
+                    return Some((k, v));
+                }
             }
         }
         None

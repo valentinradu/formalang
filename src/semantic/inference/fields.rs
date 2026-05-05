@@ -153,6 +153,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Searches impl blocks in the current file and module cache for a matching
     /// method. Falls back to trait method signatures for types that implement the
     /// trait. Returns "Unknown" when the method cannot be resolved.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single-pass receiver dispatch over the four built-in carriers + structural shapes; splitting would scatter the dispatch logic"
+    )]
     pub(super) fn infer_method_return_type(
         &self,
         receiver_type: &SemType,
@@ -171,7 +175,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let primitive_name_holder: String;
         let dispatch_match: Option<(&str, Vec<SemType>)> = match receiver_type {
             SemType::Optional(inner) => Some(("Optional", vec![(**inner).clone()])),
-            _ => None,
+            SemType::Primitive(_)
+            | SemType::Named(_)
+            | SemType::Array(_)
+            | SemType::Tuple(_)
+            | SemType::Generic { .. }
+            | SemType::Dictionary { .. }
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => None,
         };
         let (is_optional, stripped) = if dispatch_match.is_some() {
             // Optional is itself the dispatch receiver; don't post-wrap.
@@ -265,10 +278,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Closure-typed struct field: `f.onPress()` where the struct
         // declares `onPress: () -> E`. The call's return type is the
         // closure's return type.
-        if let Some(field_ty) = self.find_struct_field_type(lookup_name, method_name) {
-            if let crate::ast::Type::Closure { ret, .. } = field_ty {
-                return wrap_if_optional(SemType::from_ast(&ret));
-            }
+        if let Some(crate::ast::Type::Closure { ret, .. }) =
+            self.find_struct_field_type(lookup_name, method_name)
+        {
+            return wrap_if_optional(SemType::from_ast(&ret));
         }
         SemType::Unknown
     }

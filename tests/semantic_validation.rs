@@ -444,10 +444,9 @@ fn test_struct_with_all_field_modifiers() -> Result<(), Box<dyn std::error::Erro
             mut mutable: Boolean
         }
     ";
-    assert!(
-        compile(mut_source).is_err(),
-        "expected parser to reject `mut` field"
-    );
+    if compile(mut_source).is_ok() {
+        return Err("expected parser to reject `mut` field".into());
+    }
     Ok(())
 }
 

@@ -283,7 +283,24 @@ fn collect_bindings_in_expr(expr: &IrExpr, out: &mut HashSet<u32>) {
             }
             collect_bindings_in_expr(body, out);
         }
-        _ => recurse_children(expr, out),
+        IrExpr::Literal { .. }
+        | IrExpr::StructInst { .. }
+        | IrExpr::EnumInst { .. }
+        | IrExpr::Array { .. }
+        | IrExpr::Tuple { .. }
+        | IrExpr::Reference { .. }
+        | IrExpr::SelfFieldRef { .. }
+        | IrExpr::FieldAccess { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::BinaryOp { .. }
+        | IrExpr::UnaryOp { .. }
+        | IrExpr::If { .. }
+        | IrExpr::FunctionCall { .. }
+        | IrExpr::CallClosure { .. }
+        | IrExpr::MethodCall { .. }
+        | IrExpr::ClosureRef { .. }
+        | IrExpr::DictLiteral { .. }
+        | IrExpr::DictAccess { .. } => recurse_children(expr, out),
     }
 }
 
@@ -360,21 +377,22 @@ fn recurse_children(expr: &IrExpr, out: &mut HashSet<u32>) {
             collect_bindings_in_expr(dict, out);
             collect_bindings_in_expr(key, out);
         }
+        // The `Block / Match / For / Closure` cases are unreachable here:
+        // they're handled in the top-level `collect_bindings_in_expr` match.
+        // The remaining variants are leaves with no bindings to collect.
         IrExpr::ClosureRef { .. }
         | IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }
-        | IrExpr::LetRef { .. } => {}
-        IrExpr::Block { .. }
+        | IrExpr::LetRef { .. }
+        | IrExpr::Block { .. }
         | IrExpr::Match { .. }
         | IrExpr::For { .. }
-        | IrExpr::Closure { .. } => {
-            // handled in `collect_bindings_in_expr`'s top-level match
-        }
+        | IrExpr::Closure { .. } => {}
     }
 }
 
-impl<'m> IrVisitor for Anomalies<'m> {
+impl IrVisitor for Anomalies<'_> {
     fn visit_module(&mut self, module: &IrModule) {
         for s in &module.structs {
             self.check_name(&format!("struct `{}`", s.name), &s.name);
@@ -521,7 +539,24 @@ impl<'m> IrVisitor for Anomalies<'m> {
                     walk_block_statement(self, stmt);
                 }
             }
-            _ => {}
+            IrExpr::Literal { .. }
+            | IrExpr::StructInst { .. }
+            | IrExpr::EnumInst { .. }
+            | IrExpr::Array { .. }
+            | IrExpr::Tuple { .. }
+            | IrExpr::SelfFieldRef { .. }
+            | IrExpr::FieldAccess { .. }
+            | IrExpr::BinaryOp { .. }
+            | IrExpr::UnaryOp { .. }
+            | IrExpr::If { .. }
+            | IrExpr::For { .. }
+            | IrExpr::Match { .. }
+            | IrExpr::FunctionCall { .. }
+            | IrExpr::CallClosure { .. }
+            | IrExpr::Closure { .. }
+            | IrExpr::ClosureRef { .. }
+            | IrExpr::DictLiteral { .. }
+            | IrExpr::DictAccess { .. } => {}
         }
         walk_expr_children(self, e);
     }
@@ -552,8 +587,7 @@ fn discover_examples() -> Vec<PathBuf> {
 fn every_example_compiles_with_no_ir_anomalies() {
     let mut total_failures: Vec<String> = Vec::new();
     for path in discover_examples() {
-        let source = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let source = fs::read_to_string(&path).expect("example file readable");
         let module = match compile_to_ir(&source) {
             Ok(m) => m,
             Err(errors) => {

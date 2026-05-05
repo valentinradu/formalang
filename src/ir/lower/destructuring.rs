@@ -34,14 +34,12 @@ impl IrLowerer<'_> {
         self.expected_value_type = saved_expected;
 
         let bad_recv = value_expr.ty().clone();
-        let elem_ty = if let Some(inner) = self.array_element_ty(&bad_recv) {
-            inner
-        } else {
+        let elem_ty = self.array_element_ty(&bad_recv).unwrap_or_else(|| {
             self.internal_error_type_if_concrete(
                 &bad_recv,
                 format!("array-destructuring let receiver lowered to non-array type {bad_recv:?}"),
             )
-        };
+        });
         for (i, element) in elements.iter().enumerate() {
             if let Some(name) = Self::extract_array_pattern_name(element) {
                 #[expect(

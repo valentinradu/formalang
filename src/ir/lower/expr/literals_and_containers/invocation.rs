@@ -196,8 +196,10 @@ impl IrLowerer<'_> {
             } => {
                 // Optional<T>: peel to its T so an inferred-enum target on
                 // a `String?` field reaches the inner enum's variants.
-                if Some(*eid) == module.prelude_optional_id() && args.len() == 1 {
-                    return Self::enum_name_of(module, &args[0]);
+                if Some(*eid) == module.prelude_optional_id() {
+                    if let [t] = args.as_slice() {
+                        return Self::enum_name_of(module, t);
+                    }
                 }
                 module
                     .get_enum(*eid)
@@ -285,7 +287,7 @@ impl IrLowerer<'_> {
             let inferred_type_args: Vec<ResolvedType> = if type_args_resolved.is_empty() {
                 self.infer_struct_type_args(id, &field_target, &named_fields)
             } else {
-                type_args_resolved.clone()
+                type_args_resolved
             };
             let ty = if inferred_type_args.is_empty() {
                 ResolvedType::Struct(id)

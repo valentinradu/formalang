@@ -53,6 +53,10 @@ fn count_unresolved_targets(m: &IrModule) -> usize {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the inline FormaLang fixture covers a full surface in one program; splitting it would lose the integration coverage"
+)]
 fn complete_fv_has_no_error_types_through_the_full_pipeline() {
     // Inlined comprehensive program covering enums (with and without
     // data), traits, structs (optional / default fields), impls, free

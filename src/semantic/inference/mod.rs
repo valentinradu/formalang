@@ -31,6 +31,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         out
     }
 
+    #[expect(
+        clippy::only_used_in_recursion,
+        reason = "`file` is wired through in case future pattern arms (struct field defaults, etc.) need it; keeping the param stable"
+    )]
     fn walk_pattern_types(
         &self,
         pattern: &crate::ast::BindingPattern,
@@ -56,7 +60,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             BindingPattern::Array { elements, .. } => {
                 let element_ty = match value_ty.strip_optional() {
                     SemType::Array(inner) => *inner,
-                    _ => SemType::Unknown,
+                    SemType::Primitive(_)
+                    | SemType::Named(_)
+                    | SemType::Optional(_)
+                    | SemType::Tuple(_)
+                    | SemType::Generic { .. }
+                    | SemType::Dictionary { .. }
+                    | SemType::Closure { .. }
+                    | SemType::Unknown
+                    | SemType::InferredEnum
+                    | SemType::Nil => SemType::Unknown,
                 };
                 for elem in elements {
                     match elem {
@@ -76,7 +89,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             BindingPattern::Tuple { elements, .. } => {
                 let tuple_fields = match value_ty.strip_optional() {
                     SemType::Tuple(fields) => fields,
-                    _ => Vec::new(),
+                    SemType::Primitive(_)
+                    | SemType::Named(_)
+                    | SemType::Array(_)
+                    | SemType::Optional(_)
+                    | SemType::Generic { .. }
+                    | SemType::Dictionary { .. }
+                    | SemType::Closure { .. }
+                    | SemType::Unknown
+                    | SemType::InferredEnum
+                    | SemType::Nil => Vec::new(),
                 };
                 for (i, inner_pat) in elements.iter().enumerate() {
                     let elem_ty = tuple_fields
@@ -402,7 +424,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
                 // Check if all fields in the chain are mutable
                 // For user.profile.email, we need: user is mut, profile field is mut, email field is mut
-                self.is_field_chain_mutable(&first.name, &path[1..], file)
+                Self::is_field_chain_mutable(&first.name, &path[1..], file)
             }
 
             // Literals, arrays, tuples, invocations, binary/unary ops,
@@ -463,13 +485,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Field-level mutability was removed; mutability lives entirely on
     /// the binding (`let mut`). A chain is mutable iff the root binding
     /// is — the field path itself adds no further restriction.
-    pub(super) fn is_field_chain_mutable(
-        &self,
+    pub(super) const fn is_field_chain_mutable(
         _root_name: &str,
         _field_path: &[crate::ast::Ident],
         _file: &File,
     ) -> bool {
         true
     }
-
 }

@@ -61,6 +61,10 @@ impl IrLowerer<'_> {
     /// definition. Anything the semantic layer should have caught that
     /// still reaches here (missing field, field access on a non-struct
     /// type) records an `InternalError` so compilation fails loudly.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match over every ResolvedType variant; structural walk is the point"
+    )]
     pub(super) fn resolve_field_type(
         &mut self,
         object_ty: &ResolvedType,

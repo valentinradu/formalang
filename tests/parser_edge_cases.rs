@@ -466,10 +466,9 @@ fn test_struct_with_modifiers() -> Result<(), Box<dyn std::error::Error>> {
             content: String,
         }
     ";
-    assert!(
-        compile(mut_source).is_err(),
-        "expected parser to reject `mut` in struct field"
-    );
+    if compile(mut_source).is_ok() {
+        return Err("expected parser to reject `mut` in struct field".into());
+    }
 
     // Other field forms (optional, default) still parse.
     let source = r"
