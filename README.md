@@ -4,7 +4,7 @@
   <img src="https://formalang.org/logo-180.png" alt="FormaLang" width="200">
 </p>
 
-<h3 align="center">A statically typed, declarative DSL written in Rust</h3>
+<h3 align="center">A statically typed, declarative DSL compiler written in Rust</h3>
 
 <p align="center">
   <a href="https://crates.io/crates/formalang"><img src="https://img.shields.io/crates/v/formalang.svg?style=flat-square&color=cba6f7&label=crates.io" alt="crates.io"></a>
