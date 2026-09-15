@@ -82,8 +82,6 @@ impl IrLowerer<'_> {
             "F32" => Some(ResolvedType::Primitive(PrimitiveType::F32)),
             "F64" => Some(ResolvedType::Primitive(PrimitiveType::F64)),
             "Boolean" => Some(ResolvedType::Primitive(PrimitiveType::Boolean)),
-            "Path" => Some(ResolvedType::Primitive(PrimitiveType::Path)),
-            "Regex" => Some(ResolvedType::Primitive(PrimitiveType::Regex)),
             "Never" => Some(ResolvedType::Primitive(PrimitiveType::Never)),
             // Inference's stringified marker for the `nil` literal;
             // matches the IR representation in `lower_literal`. Produces

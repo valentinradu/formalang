@@ -211,11 +211,6 @@ pub enum Literal {
     /// Numeric literal: see [`NumberLiteral`] for the carried payload.
     Number(NumberLiteral),
     Boolean(bool),
-    Regex {
-        pattern: String,
-        flags: String,
-    },
-    Path(String),
     Nil,
 }
 

@@ -40,8 +40,6 @@ pub enum PrimitiveType {
     F32,
     F64,
     Boolean,
-    Path,
-    Regex,
     /// Uninhabited type: has no values.
     Never,
 }

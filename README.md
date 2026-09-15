@@ -124,8 +124,6 @@ let big: I64 = 9_223_372_036_854_775_807
 let ratio: F64 = 3.14
 let small: F32 = 0.5F32          // type-suffix pins literal precision
 let flag: Boolean = true
-let logo: Path = /assets/logo.svg
-let pattern: Regex = r/[a-z]+/i
 let nothing: String? = nil       // optional; any type can be made optional with ?
 ```
 

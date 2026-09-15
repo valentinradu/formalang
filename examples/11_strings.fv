@@ -1,7 +1,12 @@
-// 11 — String, Path, Regex primitives.
-// Targets: String concatenation (+), equality (==), prelude methods
-// (.len, .is_empty, .slice, .starts_with, .contains, byte_at via
-// `s[i]`), and the Path / Regex literal syntaxes.
+// 11 — The String primitive.
+// Targets: String concatenation (+), equality (==), and the prelude
+// methods (.len, .is_empty, .slice, .starts_with, .contains, plus
+// byte_at via `s[i]`).
+//
+// `Path` and `Regex` used to be primitives with their own literal
+// syntax. Neither had a single method, so nothing could act on one.
+// A file path is a String; a pattern belongs to the host, reached
+// through an `extern fn`.
 
 pub fn greet_len(role: I32) -> I32 {
     let role_name: String = if role == 0 {
@@ -41,12 +46,8 @@ pub fn contains_at(s: String) -> Boolean {
     s.contains(needle: "@")
 }
 
-pub fn logo_path() -> Path {
-    /assets/logo.svg
-}
-
-pub fn email_pattern() -> Regex {
-    r/[a-z]+@example.com/i
+pub fn logo_path() -> String {
+    "/assets/logo.svg"
 }
 
 pub fn run_checks() {
@@ -62,4 +63,5 @@ pub fn run_checks() {
     assert(condition: starts_with_h(s: "hi"))
     assert(condition: contains_at(s: "a@b"))
     assert(condition: !contains_at(s: "ab"))
+    assert(condition: logo_path().starts_with(prefix: "/assets"))
 }

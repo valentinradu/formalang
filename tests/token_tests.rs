@@ -2,7 +2,7 @@
 //!
 //! Targets: `is_keyword`, `as_str`, Display
 
-use formalang::lexer::{parse_regex, Lexer, Token};
+use formalang::lexer::{Lexer, Token};
 
 // =============================================================================
 // Token::is_keyword() Tests
@@ -167,8 +167,6 @@ fn test_token_as_str_complex() -> Result<(), Box<dyn std::error::Error>> {
         Token::String("test".to_string()),
         Token::Number(42.0.into()),
         Token::Ident("name".to_string()),
-        Token::Regex("r/test/".to_string()),
-        Token::Path("usr/bin".to_string()),
     ];
     for tok in cases {
         let got = tok.as_str();
@@ -188,8 +186,6 @@ fn test_token_display_literals() -> Result<(), Box<dyn std::error::Error>> {
     let cases = [
         (format!("{}", Token::String("test".to_string())), "string"),
         (format!("{}", Token::Number(42.0.into())), "number"),
-        (format!("{}", Token::Regex("r/test/".to_string())), "regex"),
-        (format!("{}", Token::Path("usr/bin".to_string())), "path"),
         (
             format!("{}", Token::Ident("name".to_string())),
             "identifier",
@@ -266,71 +262,6 @@ fn test_tokenize_string_trailing_backslash() -> Result<(), Box<dyn std::error::E
 }
 
 // =============================================================================
-// parse_regex Tests
-// =============================================================================
-
-#[test]
-fn test_parse_regex_valid() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_regex("r/hello/gi");
-    if result.is_none() {
-        return Err("assertion failed".into());
-    }
-    let (pattern, flags) = result.ok_or("expected Some")?;
-    if pattern != "hello" {
-        return Err(format!("expected {:?} but got {:?}", "hello", pattern).into());
-    }
-    if flags != "gi" {
-        return Err(format!("expected {:?} but got {:?}", "gi", flags).into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_parse_regex_no_flags() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_regex("r/test/");
-    if result.is_none() {
-        return Err("assertion failed".into());
-    }
-    let (pattern, flags) = result.ok_or("expected Some")?;
-    if pattern != "test" {
-        return Err(format!("expected {:?} but got {:?}", "test", pattern).into());
-    }
-    if !flags.is_empty() {
-        return Err(format!("expected {:?} but got {:?}", "", flags).into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_parse_regex_invalid_prefix() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_regex("/test/");
-    if result.is_some() {
-        return Err("expected None for invalid prefix".into());
-    }
-    Ok(())
-}
-
-#[test]
-fn test_parse_regex_complex_pattern() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_regex("r/[a-z0-9]+@[a-z]+\\.[a-z]{2,}/i");
-    if result.is_none() {
-        return Err("assertion failed".into());
-    }
-    let (pattern, flags) = result.ok_or("expected Some")?;
-    if !(pattern.contains("[a-z0-9]")) {
-        return Err("assertion failed".into());
-    }
-    if flags != "i" {
-        return Err(format!("expected {:?} but got {:?}", "i", flags).into());
-    }
-    Ok(())
-}
-
-// =============================================================================
-// Keyword Regression Tests
-// =============================================================================
-// These tests ensure keywords match the documentation specification.
-// See docs/user/formalang.md for the canonical keyword list.
 
 #[test]
 fn test_mod_keyword_not_module() -> Result<(), Box<dyn std::error::Error>> {

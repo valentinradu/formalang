@@ -124,8 +124,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Literal::String(_) => SemType::Primitive(PrimitiveType::String),
                 Literal::Number(n) => SemType::Primitive(n.primitive_type()),
                 Literal::Boolean(_) => SemType::Primitive(PrimitiveType::Boolean),
-                Literal::Regex { .. } => SemType::Primitive(PrimitiveType::Regex),
-                Literal::Path(_) => SemType::Primitive(PrimitiveType::Path),
                 Literal::Nil => SemType::Nil,
             },
             Expr::Array { elements, .. } => elements.first().map_or_else(

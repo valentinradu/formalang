@@ -1,6 +1,6 @@
 mod token;
 
-pub use token::{parse_regex, Token};
+pub use token::Token;
 
 use crate::error::CompilerError;
 use crate::location::Span;

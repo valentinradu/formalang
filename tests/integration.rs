@@ -225,9 +225,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
         struct AllTypes {
             s: String,
             n: I32,
-            b: Boolean,
-            p: Path,
-            r: Regex
+            b: Boolean
         }
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
@@ -434,21 +432,15 @@ fn test_nil_literal() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `Path` and `Regex` are gone, so their literal forms no longer
+/// parse. A file path is a String; a pattern belongs to the host.
 #[test]
-fn test_path_literal() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        let file = /home/user/file.txt
-    ";
-    compile(source).map_err(|e| fmt_errs(&e))?;
-    Ok(())
-}
-
-#[test]
-fn test_regex_literal() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        let pattern = r/[a-z]+/i
-    ";
-    compile(source).map_err(|e| fmt_errs(&e))?;
+fn test_path_and_regex_literals_are_gone() -> Result<(), Box<dyn std::error::Error>> {
+    for source in ["let file = /home/user/file.txt", "let pattern = r/[a-z]+/i"] {
+        if compile(source).is_ok() {
+            return Err(format!("{source:?} should no longer parse").into());
+        }
+    }
     Ok(())
 }
 

@@ -571,9 +571,7 @@ fn test_all_primitive_types() -> Result<(), Box<dyn std::error::Error>> {
         struct AllPrimitives {
             text: String,
             number: I32,
-            flag: Boolean,
-            file: Path,
-            pattern: Regex
+            flag: Boolean
         }
     ";
     compile(source).map_err(|e| format!("All primitive types: {e:?}"))?;

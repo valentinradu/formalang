@@ -9,8 +9,6 @@ fn primitive_display_matches_canonical_name() {
         (SemType::Primitive(PrimitiveType::F32), "F32"),
         (SemType::Primitive(PrimitiveType::F64), "F64"),
         (SemType::Primitive(PrimitiveType::Boolean), "Boolean"),
-        (SemType::Primitive(PrimitiveType::Path), "Path"),
-        (SemType::Primitive(PrimitiveType::Regex), "Regex"),
         (SemType::Primitive(PrimitiveType::Never), "Never"),
     ] {
         assert_eq!(sem.display(), expected);

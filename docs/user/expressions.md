@@ -41,17 +41,9 @@ let empty: [String] = []
 // Dictionary literals
 let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
 let emptyDict: [String: Boolean] = [:]
-
-// Path literals
-let logo = /assets/logo.svg
-
-// Regex literals
-let pattern = r/[a-z]+/i
 ```
 
 **Escape sequences** (strings): `\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`
-
-**Regex flags**: `g`, `i`, `m`, `s`, `u`, `v`, `y`
 
 ## Field Access
 

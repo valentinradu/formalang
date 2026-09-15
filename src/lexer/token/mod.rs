@@ -1,6 +1,5 @@
 mod callbacks;
 
-pub use callbacks::parse_regex;
 use callbacks::{
     parse_doc_comment, parse_inner_doc_comment, parse_multiline_string, parse_number, parse_string,
     skip_block_comment,
@@ -156,19 +155,6 @@ pub enum Token {
         |lex| parse_number(lex.slice())
     )]
     Number(crate::ast::NumberLiteral),
-
-    #[regex(r"r/([^/\\]|\\.)+/[gimsuvy]*", |lex| lex.slice().to_string())]
-    Regex(String), // Full regex string, parse later
-
-    // Path literals start with `/` and must be followed by a non-digit,
-    // non-operator character. This disambiguates them from integer
-    // division (`10/2` tokenises as Number, Slash, Number, not as
-    // Number followed by Path("2")).
-    #[regex(
-        r"/[a-zA-Z._~][^/\s\\,(){}\[\]]*(/([^/\s\\,(){}\[\]]|\\.)+)*",
-        |lex| lex.slice()[1..].to_string()
-    )]
-    Path(String),
 
     // Identifier: starts with letter/underscore, contains alphanumerics/underscores
     // BUT: standalone underscore "_" is excluded (handled by Underscore token)
@@ -333,8 +319,6 @@ impl Token {
             Self::RBracket => "]",
             Self::String(_)
             | Self::Number(_)
-            | Self::Regex(_)
-            | Self::Path(_)
             | Self::Ident(_)
             | Self::DocComment(_)
             | Self::InnerDocComment(_) => "<complex token>",
@@ -351,8 +335,6 @@ impl std::fmt::Display for Token {
             // For literal tokens, show descriptive names
             Self::String(_) => write!(f, "string"),
             Self::Number(_) => write!(f, "number"),
-            Self::Regex(_) => write!(f, "regex"),
-            Self::Path(_) => write!(f, "path"),
             Self::Ident(_) => write!(f, "identifier"),
             Self::DocComment(_) => write!(f, "doc comment"),
             Self::InnerDocComment(_) => write!(f, "inner doc comment"),

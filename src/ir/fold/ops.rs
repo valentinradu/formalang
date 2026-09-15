@@ -130,11 +130,7 @@ fn fold_float_pair(
 fn build_numeric_result(value: Literal, ty: &ResolvedType) -> IrExpr {
     let result_ty = match &value {
         Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
-        Literal::String(_)
-        | Literal::Number(_)
-        | Literal::Regex { .. }
-        | Literal::Path(_)
-        | Literal::Nil => ty.clone(),
+        Literal::String(_) | Literal::Number(_) | Literal::Nil => ty.clone(),
     };
     IrExpr::Literal {
         value,
@@ -214,6 +210,6 @@ pub(super) fn fold_unary_op(
                 None
             }
         }
-        Literal::String(_) | Literal::Regex { .. } | Literal::Path(_) | Literal::Nil => None,
+        Literal::String(_) | Literal::Nil => None,
     }
 }

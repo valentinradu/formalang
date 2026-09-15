@@ -774,30 +774,18 @@ fn test_multiline_with_newlines() -> Result<(), Box<dyn std::error::Error>> {
 // Regex Token Tests
 // =============================================================================
 
+/// `r/.../` and `/path/to/file` are no longer literals. Neither type
+/// had a single method — the prelude declared none — so nothing could
+/// ever act on one. `r/hello/i` now lexes as ordinary tokens, and a
+/// leading `/` is only division.
 #[test]
-fn test_regex_literal() -> Result<(), Box<dyn std::error::Error>> {
-    // Regex syntax is r/pattern/flags
-    let source = "r/hello.*/i";
-    let tokens = Lexer::tokenize_all(source);
-    let has_regex = tokens.iter().any(|(t, _)| matches!(t, Token::Regex(_)));
-    if !has_regex {
-        return Err("Should tokenize regex literal".into());
-    }
-    Ok(())
-}
-
-// =============================================================================
-// Path Token Tests
-// =============================================================================
-
-#[test]
-fn test_path_literal() -> Result<(), Box<dyn std::error::Error>> {
-    // Path syntax is /path/to/file (starts with /, no quotes)
-    let source = "/path/to/file";
-    let tokens = Lexer::tokenize_all(source);
-    let has_path = tokens.iter().any(|(t, _)| matches!(t, Token::Path(_)));
-    if !has_path {
-        return Err("Should tokenize path literal".into());
+fn test_regex_and_path_literals_are_gone() -> Result<(), Box<dyn std::error::Error>> {
+    for source in ["r/hello.*/i", "/path/to/file"] {
+        let tokens = Lexer::tokenize_all(source);
+        let names: Vec<String> = tokens.iter().map(|(t, _)| format!("{t}")).collect();
+        if names.iter().any(|n| n == "regex" || n == "path") {
+            return Err(format!("{source:?} still lexes a literal: {names:?}").into());
+        }
     }
     Ok(())
 }

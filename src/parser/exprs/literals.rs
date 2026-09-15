@@ -19,14 +19,6 @@ where
     let literal_value = choice((
         select! { Token::String(s) => Literal::String(s) },
         select! { Token::Number(n) => Literal::Number(n) },
-        select! { Token::Regex(s) => {
-            if let Some((pattern, flags)) = crate::lexer::parse_regex(&s) {
-                Literal::Regex { pattern, flags }
-            } else {
-                Literal::Regex { pattern: String::new(), flags: String::new() }
-            }
-        }},
-        select! { Token::Path(p) => Literal::Path(p) },
         just(Token::True).to(Literal::Boolean(true)),
         just(Token::False).to(Literal::Boolean(false)),
         just(Token::Nil).to(Literal::Nil),

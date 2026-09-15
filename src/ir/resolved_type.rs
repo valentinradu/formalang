@@ -127,8 +127,6 @@ impl ResolvedType {
                 PrimitiveType::F32 => "F32".to_string(),
                 PrimitiveType::F64 => "F64".to_string(),
                 PrimitiveType::Boolean => "Boolean".to_string(),
-                PrimitiveType::Path => "Path".to_string(),
-                PrimitiveType::Regex => "Regex".to_string(),
                 PrimitiveType::Never => "Never".to_string(),
             },
             Self::Struct(id) => module

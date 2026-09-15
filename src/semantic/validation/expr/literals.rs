@@ -83,8 +83,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | PrimitiveType::F64
             | PrimitiveType::String
             | PrimitiveType::Boolean
-            | PrimitiveType::Path
-            | PrimitiveType::Regex
             | PrimitiveType::Never => true,
         };
         if !in_range {

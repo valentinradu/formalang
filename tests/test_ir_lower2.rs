@@ -588,7 +588,7 @@ fn test_lower_let_with_string_type_annotation() -> Result<(), Box<dyn std::error
         let name: String = "hello"
         let count: I32 = 42
         let flag: Boolean = true
-        let p: Path = /home/user/file
+        let ratio: F64 = 1.5
     "#;
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     if module.lets.len() != 4 {

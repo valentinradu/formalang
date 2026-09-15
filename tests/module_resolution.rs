@@ -990,12 +990,13 @@ impl Modal {
 }
 
 #[test]
-fn test_path_literal_parsing() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_string_default_parsing() -> Result<(), Box<dyn std::error::Error>> {
+    // A file path is a String now; `Path` and its literal are gone.
+    let source = r#"
 struct Test {
-  p: Path = /icons/lightning.svg
+  p: String = "/icons/lightning.svg"
 }
-";
+"#;
     analyze_with_mock(source, MockModuleResolver::new()).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

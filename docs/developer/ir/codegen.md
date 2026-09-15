@@ -32,8 +32,6 @@ impl<'a> TypeScriptGenerator<'a> {
                 PrimitiveType::I32 | PrimitiveType::I64 |
                 PrimitiveType::F32 | PrimitiveType::F64 => "number".to_string(),
                 PrimitiveType::Boolean => "boolean".to_string(),
-                PrimitiveType::Path => "string".to_string(),
-                PrimitiveType::Regex => "RegExp".to_string(),
                 PrimitiveType::Never => "never".to_string(),
             },
             ResolvedType::Struct(id) => {

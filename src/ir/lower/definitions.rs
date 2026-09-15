@@ -27,8 +27,6 @@ fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
         "F32" => Some(PrimitiveType::F32),
         "F64" => Some(PrimitiveType::F64),
         "Boolean" => Some(PrimitiveType::Boolean),
-        "Path" => Some(PrimitiveType::Path),
-        "Regex" => Some(PrimitiveType::Regex),
         "Never" => Some(PrimitiveType::Never),
         _ => None,
     }

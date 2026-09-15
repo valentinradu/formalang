@@ -213,29 +213,28 @@ fn test_multiline_string() -> Result<(), Box<dyn std::error::Error>> {
 // =============================================================================
 
 #[test]
-fn test_regex_with_flags() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        let pattern = r/hello.*/gi
-    ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+fn test_regex_literal_is_gone() -> Result<(), Box<dyn std::error::Error>> {
+    // `Regex` had no methods at all, so nothing could ever run one.
+    // The literal is gone; a pattern belongs to the host, reached
+    // through an `extern fn`.
+    for source in ["let pattern = r/hello.*/gi", "let pattern = r/[a-z]+/"] {
+        if compile(source).is_ok() {
+            return Err(format!("{source:?} should no longer parse").into());
+        }
+    }
     Ok(())
 }
 
 #[test]
-fn test_regex_no_flags() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        let pattern = r/[a-z]+/
-    ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    Ok(())
-}
-
-#[test]
-fn test_path_literal_usage() -> Result<(), Box<dyn std::error::Error>> {
+fn test_path_literal_is_gone() -> Result<(), Box<dyn std::error::Error>> {
+    // `/usr/local/bin` used to lex as a Path literal. It no longer
+    // does, so this is a parse error rather than a binding.
     let source = r"
         let p = /usr/local/bin
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    if compile(source).is_ok() {
+        return Err("the path literal form should no longer parse".into());
+    }
     Ok(())
 }
 

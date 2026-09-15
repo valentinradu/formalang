@@ -265,8 +265,6 @@ pub(super) fn type_suffix(ty: &ResolvedType, out: &mut String) {
             PrimitiveType::F32 => "F32",
             PrimitiveType::F64 => "F64",
             PrimitiveType::Boolean => "Boolean",
-            PrimitiveType::Path => "Path",
-            PrimitiveType::Regex => "Regex",
             PrimitiveType::Never => "Never",
         }),
         ResolvedType::Struct(id) => {

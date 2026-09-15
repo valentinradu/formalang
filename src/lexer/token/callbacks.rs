@@ -206,14 +206,3 @@ fn process_escapes(s: &str) -> (String, Vec<String>) {
 
     (result, bad_escapes)
 }
-
-/// Parse a regex token slice into pattern and flags.
-#[must_use]
-pub fn parse_regex(s: &str) -> Option<(String, String)> {
-    let content = s.strip_prefix("r/")?;
-    let last_slash = content.rfind('/')?;
-    let (pattern, rest) = content.split_at(last_slash);
-    let flags = rest.strip_prefix('/').unwrap_or_default();
-
-    Some((pattern.to_string(), flags.to_string()))
-}

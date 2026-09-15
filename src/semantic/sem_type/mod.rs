@@ -315,8 +315,6 @@ const fn primitive_name(p: PrimitiveType) -> &'static str {
         PrimitiveType::F32 => "F32",
         PrimitiveType::F64 => "F64",
         PrimitiveType::Boolean => "Boolean",
-        PrimitiveType::Path => "Path",
-        PrimitiveType::Regex => "Regex",
         PrimitiveType::Never => "Never",
     }
 }
@@ -329,8 +327,6 @@ pub(super) fn primitive_from_name(name: &str) -> Option<PrimitiveType> {
         "F32" => Some(PrimitiveType::F32),
         "F64" => Some(PrimitiveType::F64),
         "Boolean" => Some(PrimitiveType::Boolean),
-        "Path" => Some(PrimitiveType::Path),
-        "Regex" => Some(PrimitiveType::Regex),
         "Never" => Some(PrimitiveType::Never),
         _ => None,
     }

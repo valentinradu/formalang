@@ -319,8 +319,6 @@ fn resolved_type_display_name_primitive_variants() -> Result<(), Box<dyn std::er
         (PrimitiveType::F32, "F32"),
         (PrimitiveType::F64, "F64"),
         (PrimitiveType::Boolean, "Boolean"),
-        (PrimitiveType::Path, "Path"),
-        (PrimitiveType::Regex, "Regex"),
         (PrimitiveType::Never, "Never"),
     ];
     for (prim, expected) in cases {

@@ -7,9 +7,7 @@ pub struct Primitives {
   text: String,           // Text data
   count: I32,             // 32-bit signed integer
   amount: F64,            // 64-bit IEEE 754 float
-  active: Boolean,        // true or false
-  logo: Path,             // File/resource paths
-  pattern: Regex          // Regular expressions
+  active: Boolean         // true or false
 }
 ```
 
@@ -108,23 +106,20 @@ Key-value mappings using bracket syntax with colon:
 pub struct AppConfig {
   settings: [String: I32],         // String keys to I32 values
   scores: [I32: String],           // I32 keys to String values
-  cache: [String: User],           // String keys to custom types
-  assets: [Path: String]           // Path keys to String values
+  cache: [String: User]            // String keys to custom types
 }
 
 // Dictionary literals (string keys must be quoted)
 pub let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
 pub let scores: [I32: String] = [100: "perfect", 95: "excellent"]
-pub let assets: [Path: String] = [/logo.svg: "icon", /bg.png: "background"]
 pub let empty: [String: Boolean] = [:]
 ```
 
 **Rules**:
 
-- Keys can be any compiler-supported type (String, I32, Path, enum, etc.)
+- Keys can be `String`, `I32`, `I64`, `Boolean`, a struct, or an enum
 - String keys must be quoted in literals: `["key": value]`
 - Numeric keys are unquoted: `[42: value]`
-- Path keys use path literal syntax: `[/path: value]`
 - Empty dict: `[:]`
 - No destructuring support for dictionaries
 

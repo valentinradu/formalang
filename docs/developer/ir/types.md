@@ -7,7 +7,7 @@ string names, resolved types use IDs that directly reference definitions.
 
 ```rust
 pub enum ResolvedType {
-    /// Primitive type (String, I32, I64, F32, F64, Boolean, Path, Regex, Never)
+    /// Primitive type (String, I32, I64, F32, F64, Boolean, Never)
     Primitive(PrimitiveType),
 
     /// Reference to a struct definition
@@ -100,8 +100,6 @@ pub enum GenericBase {
 | `I32` / `I64` | `Primitive(PrimitiveType::I32)` / `Primitive(PrimitiveType::I64)` |
 | `F32` / `F64` | `Primitive(PrimitiveType::F32)` / `Primitive(PrimitiveType::F64)` |
 | `Boolean` | `Primitive(PrimitiveType::Boolean)` |
-| `Path` | `Primitive(PrimitiveType::Path)` |
-| `Regex` | `Primitive(PrimitiveType::Regex)` |
 | `Never` | `Primitive(PrimitiveType::Never)` |
 | `User` (local struct) | `Struct(StructId(n))` |
 | `Named` (local trait) | `Trait(TraitId(n))` |

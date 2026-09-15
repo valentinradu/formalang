@@ -4,9 +4,9 @@
 
 #![allow(clippy::expect_used)]
 
-use formalang::ast::{BinaryOperator, PrimitiveType};
+use formalang::ast::BinaryOperator;
 use formalang::compile_to_ir;
-use formalang::ir::{IrExpr, ResolvedType};
+use formalang::ir::IrExpr;
 
 // =============================================================================
 // Lower: let binding array destructuring with rest pattern
@@ -436,19 +436,22 @@ fn test_lower_module_with_function() -> Result<(), Box<dyn std::error::Error>> {
 // Lower: string_to_resolved_type for Regex and Path
 // =============================================================================
 
+/// `Path` and `Regex` were primitives with literal syntax and no
+/// methods at all — the prelude declared none, so nothing could act on
+/// a value of either type. They are gone. `Path` is now an ordinary
+/// identifier, so it reads as an undefined type.
 #[test]
-fn test_lower_path_type_in_let() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
-        let p: Path = /home/user/file
-    ";
-    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
-    let binding = module
-        .lets
-        .iter()
-        .find(|l| l.name == "p")
-        .ok_or("'p' binding not found")?;
-    if !matches!(binding.ty, ResolvedType::Primitive(PrimitiveType::Path)) {
-        return Err(format!("Expected Path type, got {:?}", binding.ty).into());
+fn test_path_type_is_gone() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"
+        let p: Path = "/home/user/file"
+    "#;
+    let errors = compile_to_ir(source)
+        .err()
+        .ok_or("Path is no longer a type")?;
+    if !errors.iter().any(
+        |e| matches!(e, formalang::CompilerError::UndefinedType { name, .. } if name == "Path"),
+    ) {
+        return Err(format!("expected UndefinedType for Path, got {errors:?}").into());
     }
     Ok(())
 }

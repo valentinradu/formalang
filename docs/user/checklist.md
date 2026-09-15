@@ -10,7 +10,7 @@
 
 **Type System**:
 
-- Primitive types (`String`, `I32`, `I64`, `F32`, `F64`, `Boolean`, `Path`, `Regex`, `Never`)
+- Primitive types (`String`, `I32`, `I64`, `F32`, `F64`, `Boolean`, `Never`)
 - Array types (`[Type]`)
 - Dictionary types (`[KeyType: ValueType]`)
 - Optional types (`Type?`)

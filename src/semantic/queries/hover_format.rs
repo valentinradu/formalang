@@ -133,8 +133,6 @@ fn format_type_brief(ty: &crate::ast::Type) -> String {
             PrimitiveType::F32 => "F32".to_string(),
             PrimitiveType::F64 => "F64".to_string(),
             PrimitiveType::Boolean => "Boolean".to_string(),
-            PrimitiveType::Path => "Path".to_string(),
-            PrimitiveType::Regex => "Regex".to_string(),
             PrimitiveType::Never => "Never".to_string(),
         },
         Type::Ident(ident) => ident.name.clone(),
