@@ -235,17 +235,29 @@ pub trait NamedShape: Named + Shape {
     label: String
 }
 
-// A trait can also stand in as a value type. The IR lowers method
-// calls on a trait-typed binding through the trait's vtable, so two
-// branches that produce different concrete types implementing the
-// same trait unify cleanly.
+// A trait is a constraint, never the type of a value: there is no
+// dynamic dispatch. Take it as a generic bound for one concrete type.
+fn area_of<T: Shape>(shape: T) -> I32 {
+    shape.area()
+}
+
+// For a value whose type is chosen at run time, declare an enum with
+// one variant per type and match on it.
+pub enum AnyShape {
+    square(value: Square),
+    rectangle(value: Rectangle)
+}
+
 fn area(kind: I32, side: I32, w: I32, h: I32) -> I32 {
-    let s: Shape = if kind == 0 {
-        Square(name: "sq", color: "black", side: side)
+    let s: AnyShape = if kind == 0 {
+        .square(value: Square(name: "sq", color: "black", side: side))
     } else {
-        Rectangle(name: "rect", color: "white", width: w, height: h)
+        .rectangle(value: Rectangle(name: "rect", color: "white", width: w, height: h))
     }
-    s.area()
+    match s {
+        .square(value): value.area(),
+        .rectangle(value): value.area()
+    }
 }
 ```
 

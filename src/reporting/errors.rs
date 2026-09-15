@@ -55,9 +55,10 @@ pub(super) fn trait_used_as_value_type<'a>(
             trait_name.fg(Color::Red)
         )))
         .with_help(format!(
-            "FormaLang has no dynamic dispatch. Take the trait as a generic bound \
-             instead: `<T: {trait_name}>` and pass values of any concrete type that \
-             implements `{trait_name}`."
+            "FormaLang has no dynamic dispatch. For one concrete type, take the \
+             trait as a generic bound: `<T: {trait_name}>`. For a value that may \
+             hold any of several types, declare an enum with one variant per type \
+             and `match` on it."
         ))
 }
 

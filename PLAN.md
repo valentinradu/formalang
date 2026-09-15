@@ -337,8 +337,21 @@ fn area_of(shape: Shape) -> I32 {
 ```
 
 Traits stay as constraints, so `src/semantic/trait_check/` stays.
-`DispatchKind::Virtual` leaves the IR. It appears in 11 files, mostly as
-one match arm each.
+
+**`DispatchKind::Virtual` stays too.** An earlier draft of this plan
+said it leaves the IR; that was wrong. The variant serves two purposes,
+and only one of them is being cut:
+
+| Receiver | Purpose | Cut? |
+| --- | --- | --- |
+| `ResolvedType::TypeParam` | a generic bound, `<T: Shape>`, before monomorphisation | **no** |
+| `ResolvedType::Trait` | a trait-typed value | yes |
+
+`MonomorphisePass` already rewrites every `TypeParam` site to `Static`
+once the receiver is concrete, and `leftover.rs` reports any that
+survive. So `Virtual` disappears after monomorphisation, which is what
+a backend cares about, but the variant has to remain for the generic
+path.
 
 A trait-typed return already fails today with `[E110]`, so that part is
 a repair, not a removal.

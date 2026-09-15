@@ -13,8 +13,11 @@ impl IrLowerer<'_> {
     ///   at the impl block that provides the method body. When the call site
     ///   is inside the impl that is still being lowered, the `ImplId` refers
     ///   to the slot that impl will occupy in `module.impls` once finalized.
-    /// * Type-parameter receivers (`T: Trait`) and trait-object receivers
-    ///   resolve to `Virtual` dispatch through the relevant trait.
+    /// * Type-parameter receivers (`T: Trait`) resolve to `Virtual`
+    ///   dispatch through the constraint's trait. `MonomorphisePass`
+    ///   rewrites each one to `Static` once `T` is concrete. There is
+    ///   no trait-object receiver: a trait cannot be the type of a
+    ///   value, so semantic analysis rejects one before lowering.
     /// * Other receiver shapes (primitives, arrays, tuples, etc.) are a
     ///   compiler bug at this layer — semantic analysis should have rejected
     ///   them. We record an `InternalError` and return a sentinel
@@ -95,18 +98,6 @@ impl IrLowerer<'_> {
                     method_name: method_name.to_string(),
                 };
             }
-        }
-
-        if let ResolvedType::Trait(trait_id) = receiver_ty {
-            // Trait-typed receiver: emit virtual dispatch through the
-            // trait's vtable. Semantic accepts trait values at let /
-            // param / return positions; the backend resolves the
-            // call_indirect via the per-trait vtable for the concrete
-            // type stored in the binding.
-            return DispatchKind::Virtual {
-                trait_id: *trait_id,
-                method_name: method_name.to_string(),
-            };
         }
 
         self.errors.push(CompilerError::InternalError {
@@ -208,15 +199,49 @@ impl IrLowerer<'_> {
         for frame in self.generic_scopes.iter().rev() {
             if let Some(param) = frame.iter().find(|p| p.name == param_name) {
                 for constraint in &param.constraints {
-                    let idx = constraint.trait_id.0 as usize;
-                    if let Some(trait_def) = self.module.traits.get(idx) {
-                        if trait_def.fields.iter().any(|f| f.name == field_name) {
-                            return Some(constraint.trait_id);
-                        }
+                    if let Some(found) = self.trait_declaring(constraint.trait_id, &|t| {
+                        t.fields.iter().any(|f| f.name == field_name)
+                    }) {
+                        return Some(found);
                     }
                 }
                 return None;
             }
+        }
+        None
+    }
+
+    /// Search `start` and everything it composes for the first trait
+    /// that satisfies `declares`.
+    ///
+    /// A composed trait (`trait Both: A + B`) declares nothing of its
+    /// own, so a bound written `<T: Both>` has to reach into `A` and
+    /// `B` to find a method or a field. Without this walk, composing
+    /// traits and then using the composition as a bound resolves
+    /// nothing.
+    ///
+    /// The composition graph is acyclic — `src/semantic/circular.rs`
+    /// rejects a cycle — but guard the visit set anyway, so a malformed
+    /// hand-built module cannot spin here.
+    fn trait_declaring(
+        &self,
+        start: TraitId,
+        declares: &dyn Fn(&crate::ir::IrTrait) -> bool,
+    ) -> Option<TraitId> {
+        let mut queue = vec![start];
+        let mut visited: Vec<TraitId> = Vec::new();
+        while let Some(id) = queue.pop() {
+            if visited.contains(&id) {
+                continue;
+            }
+            visited.push(id);
+            let Some(trait_def) = self.module.traits.get(id.0 as usize) else {
+                continue;
+            };
+            if declares(trait_def) {
+                return Some(id);
+            }
+            queue.extend(trait_def.composed_traits.iter().copied());
         }
         None
     }
@@ -228,12 +253,13 @@ impl IrLowerer<'_> {
     ) -> Option<TraitId> {
         for frame in self.generic_scopes.iter().rev() {
             if let Some(param) = frame.iter().find(|p| p.name == param_name) {
-                for constraint in &param.constraints {
-                    let idx = constraint.trait_id.0 as usize;
-                    if let Some(trait_def) = self.module.traits.get(idx) {
-                        if trait_def.methods.iter().any(|m| m.name == method_name) {
-                            return Some(constraint.trait_id);
-                        }
+                let constraints: Vec<TraitId> =
+                    param.constraints.iter().map(|c| c.trait_id).collect();
+                for trait_id in constraints {
+                    if let Some(found) = self.trait_declaring(trait_id, &|t| {
+                        t.methods.iter().any(|m| m.name == method_name)
+                    }) {
+                        return Some(found);
                     }
                 }
                 // Param is in scope but none of its constraints declare the

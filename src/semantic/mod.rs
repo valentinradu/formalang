@@ -260,8 +260,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if self.errors.is_empty() {
             Ok(())
         } else {
-            Err(self.errors.clone())
+            Err(Self::deduplicated(&self.errors))
         }
+    }
+
+    /// Drop repeated errors, keeping the first of each.
+    ///
+    /// Several passes validate the same type: a function parameter is
+    /// checked once by the signature walk and again by the body walk,
+    /// for instance. Reporting one mistake twice helps nobody, and the
+    /// duplicates are identical down to the span, so equality is a
+    /// sound test. Order is preserved, because errors read best in
+    /// source order.
+    fn deduplicated(errors: &[CompilerError]) -> Vec<CompilerError> {
+        let mut seen: Vec<&CompilerError> = Vec::new();
+        errors
+            .iter()
+            .filter(|e| {
+                let is_new = !seen.contains(e);
+                if is_new {
+                    seen.push(e);
+                }
+                is_new
+            })
+            .cloned()
+            .collect()
     }
 
     /// Drive all six semantic passes in order. Shared by [`Self::analyze`]

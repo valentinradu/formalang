@@ -1,10 +1,10 @@
-// 18 — Trait composition + multi-trait constraints + virtual dispatch
-// across the composed surface.
-// Targets: trait declared as a sum of two parents (`pub trait Both:
-// A + B`), multi-trait constraint on a generic parameter (`<T: A +
-// B>`), virtual dispatch on the composed trait reaching into
-// inherited methods, and the static-bound generic version of the
-// same call.
+// 18 — Trait composition and multi-trait constraints.
+// Targets: a trait declared as a sum of two parents (`pub trait Both:
+// A + B`), a multi-trait constraint on a generic parameter (`<T: A +
+// B>`), and a composed trait used as a single bound — which has to
+// reach through the composition to find the parents' methods.
+//
+// A trait is a constraint, never the type of a value.
 
 pub trait Named {
     name: String
@@ -46,7 +46,10 @@ impl Renderable for Banner {
 
 impl NamedRenderable for Banner {}
 
-pub fn render_dynamic(item: NamedRenderable) -> String {
+// A composed trait works as a bound like any other. It cannot be the
+// type of a value: that needs a vtable, and FormaLang dispatches
+// statically. One bound, one concrete type per call.
+pub fn render_composed<T: NamedRenderable>(item: T) -> String {
     item.render()
 }
 
@@ -56,7 +59,7 @@ pub fn render_bounded<T: Named + Renderable>(item: T) -> String {
 
 pub fn render_widget() -> String {
     let w = Widget(name: "btn", body: "click me")
-    render_dynamic(item: w)
+    render_composed<Widget>(item: w)
 }
 
 pub fn render_banner() -> String {

@@ -64,9 +64,13 @@ pub enum DispatchKind {
         /// The impl block that provides the method body.
         impl_id: ImplId,
     },
-    /// Trait method call through a generic type parameter or trait object.
-    /// The backend must resolve the concrete method at runtime (monomorphised
-    /// or through a vtable, depending on the target).
+    /// Trait method call through a generic type parameter (`T: Trait`).
+    ///
+    /// There is no trait-object form: a trait cannot be the type of a
+    /// value, so semantic analysis rejects one before lowering.
+    /// `MonomorphisePass` rewrites every `Virtual` site to `Static`
+    /// once the receiver type is concrete, and reports any that
+    /// survive. A backend therefore never needs a vtable.
     Virtual {
         /// The trait declaring the method.
         trait_id: TraitId,

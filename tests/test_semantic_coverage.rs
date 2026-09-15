@@ -159,14 +159,24 @@ fn test_tuple_with_invalid_type() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_trait_as_value_type_rejected() -> Result<(), Box<dyn std::error::Error>> {
-    // Traits at value positions are now allowed; the IR lowers them through
-    // virtual dispatch via the trait's vtable. The old `TraitUsedAsValueType`
-    // rejection has been removed for plain `Trait` references in field types.
+    // A trait cannot be the type of a value. Such a value needs a
+    // vtable and an indirect call at every site, which a machine-code
+    // backend would have to invent per trait. Traits stay compile-time
+    // constraints: `<T: Shape>` for one concrete type, an enum for a
+    // value that may hold any of several.
     let source = r"
         trait Shape { area: I32 }
         struct Container { shape: Shape }
     ";
-    compile(source).map_err(|e| format!("trait at value position should now compile: {e:?}"))?;
+    let errors = compile(source)
+        .err()
+        .ok_or("trait at a value position must be rejected")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TraitUsedAsValueType { trait_name, .. } if trait_name == "Shape"))
+    {
+        return Err(format!("expected TraitUsedAsValueType, got {errors:?}").into());
+    }
     Ok(())
 }
 

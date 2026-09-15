@@ -114,12 +114,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // current file's struct/impl definitions for a matching type parameter.
         if let Some(constraints) = self.get_type_parameter_constraints(lookup) {
             for trait_name in constraints {
-                if let Some(info) = self.symbols.get_trait(&trait_name) {
-                    for sig in &info.methods {
-                        if sig.name.name == method_name {
-                            return true;
-                        }
-                    }
+                if self.trait_chain_has_method(&trait_name, method_name, &mut HashSet::new()) {
+                    return true;
                 }
             }
         }

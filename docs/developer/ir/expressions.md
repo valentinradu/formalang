@@ -56,9 +56,11 @@ pub enum DispatchKind {
     Static {
         impl_id: ImplId,
     },
-    /// Trait method call through a generic type parameter or trait object.
-    /// Monomorphisation devirtualises these on concrete receivers; surviving
-    /// `Virtual` calls require a vtable in the target.
+    /// Trait method call through a generic type parameter. There is no
+    /// trait object: a trait cannot be the type of a value, so semantic
+    /// analysis rejects one before lowering. `MonomorphisePass`
+    /// rewrites every one of these to `Static` once the receiver is
+    /// concrete, and reports any that survive.
     Virtual {
         trait_id: TraitId,
         method_name: String,

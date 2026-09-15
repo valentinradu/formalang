@@ -281,6 +281,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     ty,
                     ..
                 } => {
+                    // A block-level `let` annotation went unvalidated,
+                    // so an undefined or mis-kinded type inside a
+                    // function body reached IR lowering and surfaced as
+                    // an internal error. Validate it the way the
+                    // module-level path does.
+                    if let Some(type_ann) = ty {
+                        self.validate_type(type_ann);
+                    }
                     self.validate_expr(value, file);
                     let value_sem = ty
                         .as_ref()

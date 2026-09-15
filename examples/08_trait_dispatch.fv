@@ -1,7 +1,12 @@
-// 08 — Traits and virtual dispatch.
+// 08 — Traits as constraints, enums for mixed collections.
 // Targets: trait declaration with field + method requirements, multiple
-// impls, conformance via `impl Trait for Struct`, virtual dispatch through
-// a trait-typed binding (per-trait vtable, call_indirect at the backend).
+// impls, conformance via `impl Trait for Struct`, a generic bound that
+// accepts any conforming type, and the enum pattern for a value whose
+// concrete type is decided at run time.
+//
+// A trait cannot be the type of a value. Every such value would need a
+// vtable and an indirect call at each site. The two forms below cover
+// the same ground with static dispatch throughout.
 
 pub trait Shape {
     name: String
@@ -37,20 +42,36 @@ pub fn square_area(side: I32) -> I32 {
     s.area()
 }
 
-// Virtual dispatch through a trait-typed local.
+// Form 1 — a generic bound. The caller picks one concrete type, and
+// monomorphisation turns the call into a direct one.
+pub fn area_of<T: Shape>(shape: T) -> I32 {
+    shape.area()
+}
+
+// Form 2 — an enum, for a value whose type is chosen at run time.
+// One variant per conforming type, and `match` selects the branch.
+pub enum AnyShape {
+    square(value: Square),
+    rectangle(value: Rectangle)
+}
+
 pub fn shape_area(kind: I32, a: I32, b: I32) -> I32 {
-    let s: Shape = if kind == 0 {
-        Square(name: "sq", side: a)
+    let s: AnyShape = if kind == 0 {
+        .square(value: Square(name: "sq", side: a))
     } else {
-        Rectangle(name: "rect", width: a, height: b)
+        .rectangle(value: Rectangle(name: "rect", width: a, height: b))
     }
-    s.area()
+    match s {
+        .square(value): value.area(),
+        .rectangle(value): value.area()
+    }
 }
 
 pub fn run_checks() {
     assert(condition: square_area(side: 5) == 25)
-    // Square branch via virtual dispatch.
+    // Generic bound, one concrete type per call.
+    assert(condition: area_of(shape: Square(name: "sq", side: 3)) == 9)
+    // Enum, branch chosen at run time.
     assert(condition: shape_area(kind: 0, a: 6, b: 0) == 36)
-    // Rectangle branch via virtual dispatch.
     assert(condition: shape_area(kind: 1, a: 4, b: 5) == 20)
 }

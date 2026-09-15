@@ -15,12 +15,21 @@ impl IrLowerer<'_> {
         then_branch: &Expr,
         else_branch: Option<&Expr>,
     ) -> IrExpr {
-        let then_ir = self.lower_expr(then_branch);
+        // Both branches sit in tail position, so both inherit the
+        // type the context expects. Take it once and re-apply it per
+        // branch: `lower_with_expected_value` consumes the slot, so
+        // the else branch would otherwise get nothing and an inferred
+        // `.variant` there would fail to resolve.
+        let expected = self.expected_value_type.take();
+        let then_ir = self.lower_with_expected_value(then_branch, expected.as_ref());
         let ty = then_ir.ty().clone();
+        let condition_ir = self.lower_expr(condition);
+        let else_ir =
+            else_branch.map(|e| Box::new(self.lower_with_expected_value(e, expected.as_ref())));
         IrExpr::If {
-            condition: Box::new(self.lower_expr(condition)),
+            condition: Box::new(condition_ir),
             then_branch: Box::new(then_ir),
-            else_branch: else_branch.map(|e| Box::new(self.lower_expr(e))),
+            else_branch: else_ir,
             ty,
             span: self.current_ir_span(),
         }
@@ -70,6 +79,8 @@ impl IrLowerer<'_> {
         scrutinee: &Expr,
         arms: &[crate::ast::MatchArm],
     ) -> IrExpr {
+        // Every arm body is a tail position; see `lower_if_expr`.
+        let expected = self.expected_value_type.take();
         let scrutinee_ir = self.lower_expr(scrutinee);
         let arms_ir: Vec<IrMatchArm> = arms
             .iter()
@@ -83,7 +94,7 @@ impl IrLowerer<'_> {
                     frame.insert(name.clone(), (ParamConvention::Let, ty.clone()));
                 }
                 self.local_binding_scopes.push(frame);
-                let body = self.lower_expr(&arm.body);
+                let body = self.lower_with_expected_value(&arm.body, expected.as_ref());
                 self.local_binding_scopes.pop();
                 IrMatchArm {
                     variant: match &arm.pattern {
@@ -190,6 +201,10 @@ impl IrLowerer<'_> {
         // subsequent statements and `result`, then popped so siblings
         // don't see it. Required for accurate receiver types in dispatch
         // rewriting.
+        // The result is the block's tail position, so it inherits the
+        // expected type. Take it before the statements lower, since any
+        // one of them could consume the slot first.
+        let expected = self.expected_value_type.take();
         self.local_binding_scopes.push(HashMap::new());
         let mut ir_statements: Vec<IrBlockStatement> = Vec::new();
         for stmt in statements {
@@ -215,7 +230,7 @@ impl IrLowerer<'_> {
                 ir_statements.push(s);
             }
         }
-        let ir_result = self.lower_expr(result);
+        let ir_result = self.lower_with_expected_value(result, expected.as_ref());
         self.local_binding_scopes.pop();
         let ty = ir_result.ty().clone();
         if ir_statements.is_empty() {
@@ -240,18 +255,11 @@ impl IrLowerer<'_> {
                 ..
             } => {
                 let ir_ty = ty.as_ref().map(|t| self.lower_type(t));
-                // Thread the let's declared closure type into the value
-                // lowering so an arrow-form literal (`n -> n * scale`)
-                // can pick up its parameter types from the annotation
-                // when the literal itself omits them.
-                let saved_closure = self.expected_closure_type.take();
-                if let Some(t) = &ir_ty {
-                    if matches!(t, ResolvedType::Closure { .. }) {
-                        self.expected_closure_type = Some(t.clone());
-                    }
-                }
-                let ir_value = self.lower_expr(value);
-                self.expected_closure_type = saved_closure;
+                // The annotation is the expected type for the value, so
+                // a closure literal picks up its parameter types and an
+                // inferred `.variant` finds its enum. Mirrors the
+                // module-level path in `lower_simple_let`.
+                let ir_value = self.lower_with_expected_value(value, ir_ty.as_ref());
                 match pattern {
                     BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
                         binding_id: crate::ir::BindingId(0),

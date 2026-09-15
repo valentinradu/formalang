@@ -54,11 +54,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         } else if self.symbols.is_trait(&ident.name) {
-            // Trait used as a value type (`let s: Shape = ...`). The IR
-            // lowers this through virtual dispatch via the trait's
-            // vtable, so it's allowed at value positions; the previous
-            // blanket rejection blocked source-level use of dispatch the
-            // backend already supports.
+            // A trait cannot be the type of a value (`let s: Shape`,
+            // `[Shape]`, a trait-typed field or parameter). Every one
+            // of those needs a vtable, and a machine-code backend has
+            // to invent one per trait plus an indirect call at every
+            // site. Traits stay compile-time constraints: `<T: Shape>`
+            // for one concrete type, an enum for a mixed collection.
+            //
+            // `validate_type` is reached only from value positions —
+            // field, parameter, return, let annotation, type argument
+            // — so a generic constraint never lands here.
+            self.errors.push(CompilerError::TraitUsedAsValueType {
+                trait_name: ident.name.clone(),
+                span: ident.span,
+            });
         } else if self.symbols.is_type(&ident.name) || self.is_type_parameter(&ident.name) {
             // Valid struct/enum type or generic type parameter — OK.
         } else if ident.name.len() == 1 && ident.name.chars().next().is_some_and(char::is_uppercase)
