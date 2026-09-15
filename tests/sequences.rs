@@ -15,6 +15,7 @@
     reason = "tests assert compilation succeeds; expect() is the desired panic-on-failure shape"
 )]
 
+use formalang::error::CompilerError;
 use formalang::ir::{walk_expr_children, walk_module, IrExpr, IrModule, IrVisitor, ResolvedType};
 use formalang::{compile_to_ir, Pipeline};
 
@@ -209,5 +210,201 @@ fn a_nested_loop_variable_shadows_correctly() {
         "pub fn f(rows: [[I32]]) -> [[I32]] {
   for row in rows { for cell in row { cell + 1 }.collect() }.collect()
 }",
+    );
+}
+
+// ---------------------------------------------------------------------
+// Linearity: exactly one thing consumes a sequence
+// ---------------------------------------------------------------------
+
+fn errors_of(source: &str) -> Vec<CompilerError> {
+    compile_to_ir(source).expect_err("source must be rejected")
+}
+
+fn has_not_consumed(errors: &[CompilerError]) -> bool {
+    errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::SeqNotConsumed { .. }))
+}
+
+/// The case that made linearity necessary. Lazy plus dropped means the
+/// log never runs, and before this the author got silence.
+#[test]
+fn a_dropped_effectful_loop_is_rejected() {
+    let errors = errors_of(
+        "extern fn log(message: String)
+pub fn f(xs: [I32]) -> I32 {
+  for x in xs { log(message: \"x\") }
+  0
+}",
+    );
+    assert!(
+        has_not_consumed(&errors),
+        "expected SeqNotConsumed, got {errors:?}"
+    );
+}
+
+/// A pure dropped loop computes nothing either. One rule covers both,
+/// which is why no effect analysis is needed.
+#[test]
+fn a_dropped_pure_loop_is_rejected() {
+    let errors = errors_of(
+        "pub fn f(xs: [I32]) -> I32 {
+  for x in xs { x * 2 }
+  0
+}",
+    );
+    assert!(
+        has_not_consumed(&errors),
+        "expected SeqNotConsumed, got {errors:?}"
+    );
+}
+
+#[test]
+fn a_bound_but_unread_sequence_is_rejected() {
+    let errors = errors_of(
+        "pub fn f(xs: [I32]) -> I32 {
+  let s = for x in xs { x }
+  0
+}",
+    );
+    assert!(
+        has_not_consumed(&errors),
+        "expected SeqNotConsumed, got {errors:?}"
+    );
+}
+
+/// A sequence runs once and keeps nothing, so a second read cannot
+/// mean what the author wants.
+#[test]
+fn reading_a_sequence_twice_is_rejected() {
+    let errors = errors_of(
+        "pub fn f(xs: [I32]) -> I32 {
+  let s = for x in xs { x }
+  let a: I32 = s.count()
+  let b: I32 = s.count()
+  a + b
+}",
+    );
+    assert!(
+        errors.iter().any(|e| matches!(
+            e,
+            CompilerError::SeqUsedTwice { name, .. } if name == "s"
+        )),
+        "expected SeqUsedTwice for s, got {errors:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// ... and what stays legal
+// ---------------------------------------------------------------------
+
+#[test]
+fn run_satisfies_an_effectful_loop() {
+    compile_and_lower(
+        "extern fn log(message: String)
+pub fn f(xs: [I32]) -> I32 {
+  for x in xs { log(message: \"x\") }.run()
+  0
+}",
+    );
+}
+
+#[test]
+fn a_bound_sequence_read_once_is_fine() {
+    compile_and_lower(
+        "pub fn f(xs: [I32]) -> I32 {
+  let s = for x in xs { x }
+  s.count()
+}",
+    );
+}
+
+/// Two separate loops are two separate sequences. Only reading the
+/// same one twice is an error.
+#[test]
+fn two_loops_over_the_same_array_are_fine() {
+    compile_and_lower(
+        "pub fn f(xs: [I32]) -> I32 {
+  let a: I32 = for x in xs { x }.count()
+  let b: I32 = for x in xs { x }.count()
+  a + b
+}",
+    );
+}
+
+// ---------------------------------------------------------------------
+// Placement: where a sequence may appear
+// ---------------------------------------------------------------------
+
+fn has_invalid_position(errors: &[CompilerError]) -> bool {
+    errors
+        .iter()
+        .any(|e| matches!(e, CompilerError::SeqInvalidPosition { .. }))
+}
+
+fn assert_position_rejected(source: &str) {
+    let errors = errors_of(source);
+    assert!(
+        has_invalid_position(&errors),
+        "expected SeqInvalidPosition, got {errors:?}"
+    );
+}
+
+#[test]
+fn a_sequence_cannot_be_a_struct_field() {
+    assert_position_rejected("pub struct Holder { s: Seq<I32> }");
+}
+
+#[test]
+fn a_sequence_cannot_be_an_enum_payload() {
+    assert_position_rejected("pub enum Node { wrap(s: Seq<I32>) }");
+}
+
+#[test]
+fn a_sequence_cannot_be_a_function_return_type() {
+    assert_position_rejected("pub fn f(xs: [I32]) -> Seq<I32> { for x in xs { x } }");
+}
+
+#[test]
+fn a_sequence_cannot_be_a_module_level_let() {
+    assert_position_rejected("pub let g: Seq<I32> = for x in [1, 2] { x }");
+}
+
+/// A sequence parameter must be consumed by the callee, and `sink` is
+/// how the language says exactly that.
+#[test]
+fn a_sequence_parameter_must_be_sink() {
+    assert_position_rejected("fn f(s: Seq<I32>) -> I32 { s.count() }");
+}
+
+/// Nesting one inside a container is the same mistake: the container
+/// would have to store something that cannot be stored.
+#[test]
+fn a_sequence_cannot_hide_inside_a_container() {
+    assert_position_rejected("pub struct Holder { rows: [Seq<I32>] }");
+    assert_position_rejected("pub struct Holder { row: Seq<I32>? }");
+}
+
+#[test]
+fn a_sink_sequence_parameter_is_allowed() {
+    compile_and_lower(
+        "fn total(sink s: Seq<I32>) -> I32 { s.count() }
+pub fn f(xs: [I32]) -> I32 {
+  let s = for x in xs { x }
+  total(s: s)
+}",
+    );
+}
+
+/// An `extern fn` returning a sequence is the host cursor: the host
+/// produces the elements and the generated code pulls them. That is
+/// the one return position a sequence may hold.
+#[test]
+fn an_extern_fn_may_return_a_sequence() {
+    compile_and_lower(
+        "pub struct Row { v: I32 }
+extern fn rows() -> Seq<Row>
+pub fn f() -> I32 { for r in rows() { r.v }.count() }",
     );
 }

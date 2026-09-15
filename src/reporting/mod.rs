@@ -263,6 +263,13 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::FloatDictionaryKey { key_type, .. } => {
             errors_advanced::float_dictionary_key(filename, span, key_type)
         }
+        CompilerError::SeqNotConsumed { .. } => errors_advanced::seq_not_consumed(filename, span),
+        CompilerError::SeqUsedTwice { name, .. } => {
+            errors_advanced::seq_used_twice(filename, span, name)
+        }
+        CompilerError::SeqInvalidPosition { position, .. } => {
+            errors_advanced::seq_invalid_position(filename, span, position)
+        }
         CompilerError::ExpressionDepthExceeded { .. } => {
             errors_advanced::expression_depth_exceeded(filename, span)
         }

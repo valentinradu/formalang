@@ -323,6 +323,18 @@ pub enum CompilerError {
     #[error("'{key_type}' cannot be a dictionary key")]
     FloatDictionaryKey { key_type: String, span: Span },
 
+    /// A sequence that nothing consumes. It never runs.
+    #[error("This sequence is never consumed")]
+    SeqNotConsumed { span: Span },
+
+    /// A sequence read after something already consumed it.
+    #[error("Sequence '{name}' was already consumed")]
+    SeqUsedTwice { name: String, span: Span },
+
+    /// A sequence type somewhere it cannot be stored or returned.
+    #[error("A sequence cannot be {position}")]
+    SeqInvalidPosition { position: String, span: Span },
+
     // Function validation errors
     #[error("Function '{function}' has return type {expected} but body has type {actual}")]
     FunctionReturnTypeMismatch {
@@ -442,6 +454,9 @@ impl CompilerError {
             | Self::NoMatchingOverload { span, .. }
             | Self::CannotInferEnumType { span, .. }
             | Self::FloatDictionaryKey { span, .. }
+            | Self::SeqNotConsumed { span }
+            | Self::SeqUsedTwice { span, .. }
+            | Self::SeqInvalidPosition { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }
             | Self::UseAfterSink { span, .. }

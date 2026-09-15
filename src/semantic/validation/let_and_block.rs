@@ -11,6 +11,11 @@ use crate::error::CompilerError;
 use std::collections::{HashMap, HashSet};
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// True for `Seq<T>`, the type a `for` expression produces.
+    pub(in crate::semantic) fn is_sequence(ty: &SemType) -> bool {
+        matches!(ty, SemType::Generic { base, .. } if base == "Seq")
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "validates several let-binding rules in sequence; splitting them obscures the shared `declared`/`inferred` derivation"

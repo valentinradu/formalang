@@ -33,6 +33,8 @@ mod let_and_block;
 mod method_call;
 mod public_closure_field;
 mod qualified_types;
+mod sequence_linear;
+mod sequence_placement;
 mod structs;
 
 use super::module_resolver::ModuleResolver;
@@ -44,6 +46,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate operators and control flow without evaluation
     pub(in crate::semantic) fn validate_expressions(&mut self, file: &File) {
         self.validate_public_closure_fields(file);
+        self.validate_sequence_placement(file);
+        self.validate_sequence_linearity(file);
         for statement in &file.statements {
             match statement {
                 Statement::Let(let_binding) => self.validate_let_statement(let_binding, file),

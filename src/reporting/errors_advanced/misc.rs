@@ -116,3 +116,46 @@ pub(in crate::reporting) fn float_dictionary_key<'a>(
              Use 'String', 'I32', 'I64', 'Boolean', a struct, or an enum",
         )
 }
+
+pub(in crate::reporting) fn seq_not_consumed(filename: &str, span: Span) -> ReportBuilder<'_> {
+    report(filename, span, "E135")
+        .with_message("This sequence is never consumed")
+        .with_label(label(filename, span).with_message("this loop never runs"))
+        .with_help(
+            "a sequence does nothing until something consumes it; add \
+             '.collect()' for an array, '.fold(...)' or '.count()' for a \
+             single value, or '.run()' to execute it for effects",
+        )
+}
+
+pub(in crate::reporting) fn seq_used_twice<'a>(
+    filename: &'a str,
+    span: Span,
+    name: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E136")
+        .with_message(format!("Sequence '{name}' was already consumed"))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' was consumed earlier and holds nothing now",
+            name.fg(Color::Red)
+        )))
+        .with_help(
+            "a sequence runs once and keeps no elements. To read the same \
+             values twice, '.collect()' into an array first and iterate that",
+        )
+}
+
+pub(in crate::reporting) fn seq_invalid_position<'a>(
+    filename: &'a str,
+    span: Span,
+    position: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E137")
+        .with_message(format!("A sequence cannot be {position}"))
+        .with_label(label(filename, span).with_message(format!("{} here", "Seq".fg(Color::Red))))
+        .with_help(
+            "a sequence holds no elements and runs once, so there is nothing \
+             to store or hand back. Consume it where it is made: '.collect()' \
+             for an array, '.fold(...)' or '.count()' for a single value",
+        )
+}
