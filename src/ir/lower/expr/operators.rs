@@ -406,6 +406,13 @@ impl IrLowerer<'_> {
         let Some(target) = target else {
             return Vec::new();
         };
+        // A method on a generic type declares its parameters against
+        // the type's parameters. Bind those to the receiver's actual
+        // arguments, so `Seq<I32>::filter` reports `(I32) -> Boolean`
+        // rather than `(T) -> Boolean`. Without this an un-annotated
+        // closure argument has nothing concrete to take its parameter
+        // types from, and `T` survives into monomorphisation.
+        let subs = self.receiver_type_substitution(receiver_ty, target);
         for impl_block in &self.module.impls {
             if impl_block.target != target {
                 continue;
@@ -415,10 +422,46 @@ impl IrLowerer<'_> {
                     .params
                     .iter()
                     .filter(|p| p.name != "self")
-                    .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
+                    .filter_map(|p| {
+                        p.ty.as_ref().map(|t| {
+                            let mut ty = t.clone();
+                            crate::ir::monomorphise::specialise::substitute_type(&mut ty, &subs);
+                            (p.name.clone(), ty)
+                        })
+                    })
                     .collect();
             }
         }
         Vec::new()
+    }
+
+    /// Map the target definition's generic parameter names to the
+    /// receiver's concrete type arguments.
+    ///
+    /// Empty when the receiver carries no arguments, in which case
+    /// substitution is a no-op and the declared types pass through.
+    fn receiver_type_substitution(
+        &self,
+        receiver_ty: &ResolvedType,
+        target: crate::ir::ImplTarget,
+    ) -> std::collections::HashMap<String, ResolvedType> {
+        let ResolvedType::Generic { args, .. } = receiver_ty else {
+            return std::collections::HashMap::new();
+        };
+        let params = match target {
+            crate::ir::ImplTarget::Struct(id) => {
+                self.module.get_struct(id).map(|s| s.generic_params.clone())
+            }
+            crate::ir::ImplTarget::Enum(id) => {
+                self.module.get_enum(id).map(|e| e.generic_params.clone())
+            }
+            crate::ir::ImplTarget::Primitive(_) => None,
+        };
+        params
+            .unwrap_or_default()
+            .iter()
+            .zip(args.iter())
+            .map(|(p, a)| (p.name.clone(), a.clone()))
+            .collect()
     }
 }

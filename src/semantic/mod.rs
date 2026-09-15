@@ -104,8 +104,13 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     generic_scopes: Vec<GenericScope>,
     /// Current struct name when inside an impl block (for field type resolution)
     current_impl_struct: Option<String>,
-    /// Stack of loop variable scopes (for tracking for loop bindings)
-    loop_var_scopes: Vec<HashSet<String>>,
+    /// Stack of loop-variable scopes, one frame per enclosing `for`.
+    ///
+    /// Each frame maps the loop variable to the element type of the
+    /// collection being iterated, so the body can infer it. Tracking
+    /// only the name left every loop body typed `Unknown`, which made
+    /// a `for` unusable wherever a type was declared.
+    loop_var_scopes: Vec<HashMap<String, SemType>>,
     /// Stack of closure parameter scopes (for tracking closure/event mapping params)
     closure_param_scopes: Vec<HashSet<String>>,
     /// Local let bindings in current expression context: (type, mutable).

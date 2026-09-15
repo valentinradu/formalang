@@ -145,7 +145,7 @@ fn test_nested_for_expression() -> Result<(), Box<dyn std::error::Error>> {
         struct Matrix {
             data: [[String]] = for item in ["a", "b", "c"] {
                 [item]
-            }
+            }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Nested for expression: {e:?}"))?;
@@ -168,7 +168,7 @@ fn test_let_with_if() -> Result<(), Box<dyn std::error::Error>> {
 fn test_let_with_for() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Iterator {
-            items: [String] = (let result = for x in ["a", "b"] { x }
+            items: [String] = (let result = for x in ["a", "b"] { x }.collect()
             in result)
         }
     "#;

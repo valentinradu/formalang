@@ -10,7 +10,7 @@ expression: "(make_curried_body, outer_lifted_body)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    3,
+                    4,
                 ),
             ),
             type_args: [],
@@ -54,7 +54,7 @@ expression: "(make_curried_body, outer_lifted_body)"
             ],
             ty: Struct(
                 StructId(
-                    3,
+                    4,
                 ),
             ),
             span: IrSpan {
@@ -123,7 +123,7 @@ expression: "(make_curried_body, outer_lifted_body)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    4,
+                    5,
                 ),
             ),
             type_args: [],
@@ -181,7 +181,7 @@ expression: "(make_curried_body, outer_lifted_body)"
                             ),
                             ty: Struct(
                                 StructId(
-                                    3,
+                                    4,
                                 ),
                             ),
                             span: IrSpan {
@@ -231,7 +231,7 @@ expression: "(make_curried_body, outer_lifted_body)"
             ],
             ty: Struct(
                 StructId(
-                    4,
+                    5,
                 ),
             ),
             span: IrSpan {

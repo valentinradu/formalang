@@ -314,7 +314,7 @@ fn test_nested_for_with_let() -> Result<(), Box<dyn std::error::Error>> {
             items: [String] = for item in ["a", "b", "c"] {
                 let prefix = "item: "
                 item
-            }
+            }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1063,7 +1063,7 @@ fn test_module_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
         let data: [String] = ["a", "b"]
         mod lists {
             pub struct Items {
-                output: [String] = for item in data { item }
+                output: [String] = for item in data { item }.collect()
             }
         }
     "#;
@@ -1269,7 +1269,7 @@ fn test_for_loop_variable_in_scope() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let items: [String] = ["a", "b"]
         struct List {
-            output: [String] = for item in items { item }
+            output: [String] = for item in items { item }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1284,8 +1284,8 @@ fn test_nested_for_loops_separate_vars() -> Result<(), Box<dyn std::error::Error
             output: [[String]] = for row in rows {
                 for col in rows {
                     row
-                }
-            }
+                }.collect()
+            }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("{e:?}"))?;

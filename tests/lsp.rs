@@ -1530,7 +1530,7 @@ fn test_find_node_in_impl_with_struct_instantiation() -> Result<(), Box<dyn std:
 #[test]
 fn test_find_node_in_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        struct List { items: [String] = for x in ["a", "b"] { x } }
+        struct List { items: [String] = for x in ["a", "b"] { x }.collect() }
     "#;
     let result = compile_with_analyzer(source);
     let (file, _) = result.map_err(|e| format!("{e:?}"))?;

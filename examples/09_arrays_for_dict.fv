@@ -1,35 +1,35 @@
-// 09 — Arrays, ranges, for-loops, dictionaries.
-// Targets: array literals + indexed iteration via for-in, range-driven
-// for-loops, dictionary literal + access. Indexing (`xs[i]` and
-// `d[k]`) returns an optional `T?`, so this example uses iteration to
-// aggregate without forcing each access through a manual unwrap.
+// 09 — Arrays, ranges, sequences, dictionaries.
+// Targets: array literals, `for` over an array and over a range,
+// the sequence combinators, and dictionary literal + access.
+// Indexing (`xs[i]` and `d[k]`) returns an optional `T?`, so this
+// example aggregates by iteration rather than by manual unwrapping.
+//
+// A `for` yields a lazy sequence, not an array. Nothing runs until a
+// terminal combinator consumes it: `.fold(...)` or `.count()` for one
+// value, `.collect()` for an array, `.run()` for effects alone.
 
 pub fn sum_array() -> I32 {
     let xs: [I32] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    let mut total: I32 = 0
-    for x in xs {
-        total = total + x
-    }
-    total
+    for x in xs { x }.fold(initial: 0, f: (a, b) -> a + b)
 }
 
 pub fn sum_range(n: I32) -> I32 {
-    let mut total: I32 = 0
-    for i in 0..n {
-        total = total + i
-    }
-    total
+    for i in 0..n { i }.fold(initial: 0, f: (a, b) -> a + b)
 }
 
+// Nested: the inner sequence is created and consumed within one step
+// of the outer one. Neither builds an array.
 pub fn nested_for_sum() -> I32 {
     let m: [[I32]] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-    let mut total: I32 = 0
     for row in m {
-        for cell in row {
-            total = total + cell
-        }
-    }
-    total
+        for cell in row { cell }.fold(initial: 0, f: (a, b) -> a + b)
+    }.fold(initial: 0, f: (a, b) -> a + b)
+}
+
+// A pipeline that ends in an array says so, and `collect` is the one
+// call in it that allocates.
+pub fn doubled_evens(xs: [I32]) -> [I32] {
+    for x in xs { x * 2 }.filter(f: (v) -> v > 4).collect()
 }
 
 pub fn dict_lookup() -> I32? {

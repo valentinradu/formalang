@@ -176,7 +176,7 @@ fn test_if_expression_with_literal() -> Result<(), Box<dyn std::error::Error>> {
 fn test_for_expression_with_literal() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct List {
-            items: [String] = for item in ["a", "b"] { item }
+            items: [String] = for item in ["a", "b"] { item }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -580,7 +580,7 @@ fn test_closure_multi_param() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_expression_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct Mapper {
-            data: [String] = for item in ["a", "b"] { item }
+            data: [String] = for item in ["a", "b"] { item }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

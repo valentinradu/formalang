@@ -198,7 +198,7 @@ let is_valid: Boolean = clamped >= 0 && clamped <= 10
 
 let status_text: String = if sample.is_done() { "done" } else { "pending" }
 
-let upper_tags: [String] = for tag in sample.tags { tag }
+let upper_tags: [String] = for tag in sample.tags { tag }.collect()
 
 let priority_name: String = match sample.priority {
     .low: "low",

@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 102
 expression: file
 ---
 File {
@@ -686,16 +687,1647 @@ File {
                 StructDef {
                     visibility: Public,
                     name: Ident {
-                        name: "Dictionary",
+                        name: "Seq",
                         span: Span {
                             start: Location {
-                                offset: 1566,
-                                line: 43,
+                                offset: 2055,
+                                line: 52,
                                 column: 12,
                             },
                             end: Location {
-                                offset: 1576,
-                                line: 43,
+                                offset: 2058,
+                                line: 52,
+                                column: 15,
+                            },
+                        },
+                    },
+                    generics: [
+                        GenericParam {
+                            name: Ident {
+                                name: "T",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2059,
+                                        line: 52,
+                                        column: 16,
+                                    },
+                                    end: Location {
+                                        offset: 2060,
+                                        line: 52,
+                                        column: 17,
+                                    },
+                                },
+                            },
+                            constraints: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 2059,
+                                    line: 52,
+                                    column: 16,
+                                },
+                                end: Location {
+                                    offset: 2060,
+                                    line: 52,
+                                    column: 17,
+                                },
+                            },
+                        },
+                    ],
+                    fields: [],
+                    doc: None,
+                    span: Span {
+                        start: Location {
+                            offset: 2044,
+                            line: 52,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 2064,
+                            line: 52,
+                            column: 21,
+                        },
+                    },
+                },
+            ),
+        ),
+        Definition(
+            Impl(
+                ImplDef {
+                    trait_name: None,
+                    trait_args: [],
+                    name: Ident {
+                        name: "Seq",
+                        span: Span {
+                            start: Location {
+                                offset: 2078,
+                                line: 54,
+                                column: 13,
+                            },
+                            end: Location {
+                                offset: 2081,
+                                line: 54,
+                                column: 16,
+                            },
+                        },
+                    },
+                    generics: [
+                        GenericParam {
+                            name: Ident {
+                                name: "T",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2082,
+                                        line: 54,
+                                        column: 17,
+                                    },
+                                    end: Location {
+                                        offset: 2083,
+                                        line: 54,
+                                        column: 18,
+                                    },
+                                },
+                            },
+                            constraints: [],
+                            span: Span {
+                                start: Location {
+                                    offset: 2082,
+                                    line: 54,
+                                    column: 17,
+                                },
+                                end: Location {
+                                    offset: 2083,
+                                    line: 54,
+                                    column: 18,
+                                },
+                            },
+                        },
+                    ],
+                    functions: [
+                        FnDef {
+                            name: Ident {
+                                name: "map",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2123,
+                                        line: 56,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2126,
+                                        line: 56,
+                                        column: 11,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2127,
+                                                line: 56,
+                                                column: 12,
+                                            },
+                                            end: Location {
+                                                offset: 2136,
+                                                line: 56,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2127,
+                                            line: 56,
+                                            column: 12,
+                                        },
+                                        end: Location {
+                                            offset: 2136,
+                                            line: 56,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "f",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2138,
+                                                line: 56,
+                                                column: 23,
+                                            },
+                                            end: Location {
+                                                offset: 2139,
+                                                line: 56,
+                                                column: 24,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Closure {
+                                            params: [
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2142,
+                                                                    line: 56,
+                                                                    column: 27,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2143,
+                                                                    line: 56,
+                                                                    column: 28,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                            ret: Ident(
+                                                Ident {
+                                                    name: "T",
+                                                    span: Span {
+                                                        start: Location {
+                                                            offset: 2148,
+                                                            line: 56,
+                                                            column: 33,
+                                                        },
+                                                        end: Location {
+                                                            offset: 2149,
+                                                            line: 56,
+                                                            column: 34,
+                                                        },
+                                                    },
+                                                },
+                                            ),
+                                        },
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2138,
+                                            line: 56,
+                                            column: 23,
+                                        },
+                                        end: Location {
+                                            offset: 2149,
+                                            line: 56,
+                                            column: 34,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Generic {
+                                    name: Ident {
+                                        name: "Seq",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2154,
+                                                line: 56,
+                                                column: 39,
+                                            },
+                                            end: Location {
+                                                offset: 2160,
+                                                line: 56,
+                                                column: 45,
+                                            },
+                                        },
+                                    },
+                                    args: [
+                                        Ident(
+                                            Ident {
+                                                name: "T",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 2158,
+                                                        line: 56,
+                                                        column: 43,
+                                                    },
+                                                    end: Location {
+                                                        offset: 2159,
+                                                        line: 56,
+                                                        column: 44,
+                                                    },
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2154,
+                                            line: 56,
+                                            column: 39,
+                                        },
+                                        end: Location {
+                                            offset: 2160,
+                                            line: 56,
+                                            column: 45,
+                                        },
+                                    },
+                                },
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2120,
+                                    line: 56,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2160,
+                                    line: 56,
+                                    column: 45,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "filter",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2168,
+                                        line: 57,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2174,
+                                        line: 57,
+                                        column: 14,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2175,
+                                                line: 57,
+                                                column: 15,
+                                            },
+                                            end: Location {
+                                                offset: 2184,
+                                                line: 57,
+                                                column: 24,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2175,
+                                            line: 57,
+                                            column: 15,
+                                        },
+                                        end: Location {
+                                            offset: 2184,
+                                            line: 57,
+                                            column: 24,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "f",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2186,
+                                                line: 57,
+                                                column: 26,
+                                            },
+                                            end: Location {
+                                                offset: 2187,
+                                                line: 57,
+                                                column: 27,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Closure {
+                                            params: [
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2190,
+                                                                    line: 57,
+                                                                    column: 30,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2191,
+                                                                    line: 57,
+                                                                    column: 31,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                            ret: Primitive(
+                                                Boolean,
+                                            ),
+                                        },
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2186,
+                                            line: 57,
+                                            column: 26,
+                                        },
+                                        end: Location {
+                                            offset: 2203,
+                                            line: 57,
+                                            column: 43,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Generic {
+                                    name: Ident {
+                                        name: "Seq",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2208,
+                                                line: 57,
+                                                column: 48,
+                                            },
+                                            end: Location {
+                                                offset: 2214,
+                                                line: 57,
+                                                column: 54,
+                                            },
+                                        },
+                                    },
+                                    args: [
+                                        Ident(
+                                            Ident {
+                                                name: "T",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 2212,
+                                                        line: 57,
+                                                        column: 52,
+                                                    },
+                                                    end: Location {
+                                                        offset: 2213,
+                                                        line: 57,
+                                                        column: 53,
+                                                    },
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2208,
+                                            line: 57,
+                                            column: 48,
+                                        },
+                                        end: Location {
+                                            offset: 2214,
+                                            line: 57,
+                                            column: 54,
+                                        },
+                                    },
+                                },
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2165,
+                                    line: 57,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2214,
+                                    line: 57,
+                                    column: 54,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "take",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2222,
+                                        line: 58,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2226,
+                                        line: 58,
+                                        column: 12,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2227,
+                                                line: 58,
+                                                column: 13,
+                                            },
+                                            end: Location {
+                                                offset: 2236,
+                                                line: 58,
+                                                column: 22,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2227,
+                                            line: 58,
+                                            column: 13,
+                                        },
+                                        end: Location {
+                                            offset: 2236,
+                                            line: 58,
+                                            column: 22,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "count",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2238,
+                                                line: 58,
+                                                column: 24,
+                                            },
+                                            end: Location {
+                                                offset: 2243,
+                                                line: 58,
+                                                column: 29,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            I32,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2238,
+                                            line: 58,
+                                            column: 24,
+                                        },
+                                        end: Location {
+                                            offset: 2248,
+                                            line: 58,
+                                            column: 34,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Generic {
+                                    name: Ident {
+                                        name: "Seq",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2253,
+                                                line: 58,
+                                                column: 39,
+                                            },
+                                            end: Location {
+                                                offset: 2259,
+                                                line: 58,
+                                                column: 45,
+                                            },
+                                        },
+                                    },
+                                    args: [
+                                        Ident(
+                                            Ident {
+                                                name: "T",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 2257,
+                                                        line: 58,
+                                                        column: 43,
+                                                    },
+                                                    end: Location {
+                                                        offset: 2258,
+                                                        line: 58,
+                                                        column: 44,
+                                                    },
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2253,
+                                            line: 58,
+                                            column: 39,
+                                        },
+                                        end: Location {
+                                            offset: 2259,
+                                            line: 58,
+                                            column: 45,
+                                        },
+                                    },
+                                },
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2219,
+                                    line: 58,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2259,
+                                    line: 58,
+                                    column: 45,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "skip",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2267,
+                                        line: 59,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2271,
+                                        line: 59,
+                                        column: 12,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2272,
+                                                line: 59,
+                                                column: 13,
+                                            },
+                                            end: Location {
+                                                offset: 2281,
+                                                line: 59,
+                                                column: 22,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2272,
+                                            line: 59,
+                                            column: 13,
+                                        },
+                                        end: Location {
+                                            offset: 2281,
+                                            line: 59,
+                                            column: 22,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "count",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2283,
+                                                line: 59,
+                                                column: 24,
+                                            },
+                                            end: Location {
+                                                offset: 2288,
+                                                line: 59,
+                                                column: 29,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Primitive(
+                                            I32,
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2283,
+                                            line: 59,
+                                            column: 24,
+                                        },
+                                        end: Location {
+                                            offset: 2293,
+                                            line: 59,
+                                            column: 34,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Generic {
+                                    name: Ident {
+                                        name: "Seq",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2298,
+                                                line: 59,
+                                                column: 39,
+                                            },
+                                            end: Location {
+                                                offset: 2304,
+                                                line: 59,
+                                                column: 45,
+                                            },
+                                        },
+                                    },
+                                    args: [
+                                        Ident(
+                                            Ident {
+                                                name: "T",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 2302,
+                                                        line: 59,
+                                                        column: 43,
+                                                    },
+                                                    end: Location {
+                                                        offset: 2303,
+                                                        line: 59,
+                                                        column: 44,
+                                                    },
+                                                },
+                                            },
+                                        ),
+                                    ],
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2298,
+                                            line: 59,
+                                            column: 39,
+                                        },
+                                        end: Location {
+                                            offset: 2304,
+                                            line: 59,
+                                            column: 45,
+                                        },
+                                    },
+                                },
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2264,
+                                    line: 59,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2304,
+                                    line: 59,
+                                    column: 45,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "collect",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2381,
+                                        line: 62,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2388,
+                                        line: 62,
+                                        column: 15,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2389,
+                                                line: 62,
+                                                column: 16,
+                                            },
+                                            end: Location {
+                                                offset: 2398,
+                                                line: 62,
+                                                column: 25,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2389,
+                                            line: 62,
+                                            column: 16,
+                                        },
+                                        end: Location {
+                                            offset: 2398,
+                                            line: 62,
+                                            column: 25,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Array(
+                                    Ident(
+                                        Ident {
+                                            name: "T",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 2404,
+                                                    line: 62,
+                                                    column: 31,
+                                                },
+                                                end: Location {
+                                                    offset: 2405,
+                                                    line: 62,
+                                                    column: 32,
+                                                },
+                                            },
+                                        },
+                                    ),
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2378,
+                                    line: 62,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2406,
+                                    line: 62,
+                                    column: 33,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "count",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2414,
+                                        line: 63,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2419,
+                                        line: 63,
+                                        column: 13,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2420,
+                                                line: 63,
+                                                column: 14,
+                                            },
+                                            end: Location {
+                                                offset: 2429,
+                                                line: 63,
+                                                column: 23,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2420,
+                                            line: 63,
+                                            column: 14,
+                                        },
+                                        end: Location {
+                                            offset: 2429,
+                                            line: 63,
+                                            column: 23,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    I32,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2411,
+                                    line: 63,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2437,
+                                    line: 63,
+                                    column: 31,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "fold",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2623,
+                                        line: 67,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2627,
+                                        line: 67,
+                                        column: 12,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2628,
+                                                line: 67,
+                                                column: 13,
+                                            },
+                                            end: Location {
+                                                offset: 2637,
+                                                line: 67,
+                                                column: 22,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2628,
+                                            line: 67,
+                                            column: 13,
+                                        },
+                                        end: Location {
+                                            offset: 2637,
+                                            line: 67,
+                                            column: 22,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "initial",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2639,
+                                                line: 67,
+                                                column: 24,
+                                            },
+                                            end: Location {
+                                                offset: 2646,
+                                                line: 67,
+                                                column: 31,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Ident(
+                                            Ident {
+                                                name: "T",
+                                                span: Span {
+                                                    start: Location {
+                                                        offset: 2648,
+                                                        line: 67,
+                                                        column: 33,
+                                                    },
+                                                    end: Location {
+                                                        offset: 2649,
+                                                        line: 67,
+                                                        column: 34,
+                                                    },
+                                                },
+                                            },
+                                        ),
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2639,
+                                            line: 67,
+                                            column: 24,
+                                        },
+                                        end: Location {
+                                            offset: 2649,
+                                            line: 67,
+                                            column: 34,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "f",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2651,
+                                                line: 67,
+                                                column: 36,
+                                            },
+                                            end: Location {
+                                                offset: 2652,
+                                                line: 67,
+                                                column: 37,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Closure {
+                                            params: [
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2655,
+                                                                    line: 67,
+                                                                    column: 40,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2656,
+                                                                    line: 67,
+                                                                    column: 41,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2658,
+                                                                    line: 67,
+                                                                    column: 43,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2659,
+                                                                    line: 67,
+                                                                    column: 44,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                            ret: Ident(
+                                                Ident {
+                                                    name: "T",
+                                                    span: Span {
+                                                        start: Location {
+                                                            offset: 2664,
+                                                            line: 67,
+                                                            column: 49,
+                                                        },
+                                                        end: Location {
+                                                            offset: 2665,
+                                                            line: 67,
+                                                            column: 50,
+                                                        },
+                                                    },
+                                                },
+                                            ),
+                                        },
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2651,
+                                            line: 67,
+                                            column: 36,
+                                        },
+                                        end: Location {
+                                            offset: 2665,
+                                            line: 67,
+                                            column: 50,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Ident(
+                                    Ident {
+                                        name: "T",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2670,
+                                                line: 67,
+                                                column: 55,
+                                            },
+                                            end: Location {
+                                                offset: 2671,
+                                                line: 67,
+                                                column: 56,
+                                            },
+                                        },
+                                    },
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2620,
+                                    line: 67,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2671,
+                                    line: 67,
+                                    column: 56,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "first",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2679,
+                                        line: 68,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2684,
+                                        line: 68,
+                                        column: 13,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2685,
+                                                line: 68,
+                                                column: 14,
+                                            },
+                                            end: Location {
+                                                offset: 2694,
+                                                line: 68,
+                                                column: 23,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2685,
+                                            line: 68,
+                                            column: 14,
+                                        },
+                                        end: Location {
+                                            offset: 2694,
+                                            line: 68,
+                                            column: 23,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Optional(
+                                    Ident(
+                                        Ident {
+                                            name: "T",
+                                            span: Span {
+                                                start: Location {
+                                                    offset: 2699,
+                                                    line: 68,
+                                                    column: 28,
+                                                },
+                                                end: Location {
+                                                    offset: 2700,
+                                                    line: 68,
+                                                    column: 29,
+                                                },
+                                            },
+                                        },
+                                    ),
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2676,
+                                    line: 68,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2701,
+                                    line: 68,
+                                    column: 30,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "any",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2709,
+                                        line: 69,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2712,
+                                        line: 69,
+                                        column: 11,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2713,
+                                                line: 69,
+                                                column: 12,
+                                            },
+                                            end: Location {
+                                                offset: 2722,
+                                                line: 69,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2713,
+                                            line: 69,
+                                            column: 12,
+                                        },
+                                        end: Location {
+                                            offset: 2722,
+                                            line: 69,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "f",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2724,
+                                                line: 69,
+                                                column: 23,
+                                            },
+                                            end: Location {
+                                                offset: 2725,
+                                                line: 69,
+                                                column: 24,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Closure {
+                                            params: [
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2728,
+                                                                    line: 69,
+                                                                    column: 27,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2729,
+                                                                    line: 69,
+                                                                    column: 28,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                            ret: Primitive(
+                                                Boolean,
+                                            ),
+                                        },
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2724,
+                                            line: 69,
+                                            column: 23,
+                                        },
+                                        end: Location {
+                                            offset: 2741,
+                                            line: 69,
+                                            column: 40,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    Boolean,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2706,
+                                    line: 69,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2753,
+                                    line: 69,
+                                    column: 52,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "all",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2761,
+                                        line: 70,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2764,
+                                        line: 70,
+                                        column: 11,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2765,
+                                                line: 70,
+                                                column: 12,
+                                            },
+                                            end: Location {
+                                                offset: 2774,
+                                                line: 70,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2765,
+                                            line: 70,
+                                            column: 12,
+                                        },
+                                        end: Location {
+                                            offset: 2774,
+                                            line: 70,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                                FnParam {
+                                    convention: Let,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "f",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2776,
+                                                line: 70,
+                                                column: 23,
+                                            },
+                                            end: Location {
+                                                offset: 2777,
+                                                line: 70,
+                                                column: 24,
+                                            },
+                                        },
+                                    },
+                                    ty: Some(
+                                        Closure {
+                                            params: [
+                                                (
+                                                    Let,
+                                                    Ident(
+                                                        Ident {
+                                                            name: "T",
+                                                            span: Span {
+                                                                start: Location {
+                                                                    offset: 2780,
+                                                                    line: 70,
+                                                                    column: 27,
+                                                                },
+                                                                end: Location {
+                                                                    offset: 2781,
+                                                                    line: 70,
+                                                                    column: 28,
+                                                                },
+                                                            },
+                                                        },
+                                                    ),
+                                                ),
+                                            ],
+                                            ret: Primitive(
+                                                Boolean,
+                                            ),
+                                        },
+                                    ),
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2776,
+                                            line: 70,
+                                            column: 23,
+                                        },
+                                        end: Location {
+                                            offset: 2793,
+                                            line: 70,
+                                            column: 40,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: Some(
+                                Primitive(
+                                    Boolean,
+                                ),
+                            ),
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2758,
+                                    line: 70,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2805,
+                                    line: 70,
+                                    column: 52,
+                                },
+                            },
+                        },
+                        FnDef {
+                            name: Ident {
+                                name: "run",
+                                span: Span {
+                                    start: Location {
+                                        offset: 2813,
+                                        line: 71,
+                                        column: 8,
+                                    },
+                                    end: Location {
+                                        offset: 2816,
+                                        line: 71,
+                                        column: 11,
+                                    },
+                                },
+                            },
+                            params: [
+                                FnParam {
+                                    convention: Sink,
+                                    external_label: None,
+                                    name: Ident {
+                                        name: "self",
+                                        span: Span {
+                                            start: Location {
+                                                offset: 2817,
+                                                line: 71,
+                                                column: 12,
+                                            },
+                                            end: Location {
+                                                offset: 2826,
+                                                line: 71,
+                                                column: 21,
+                                            },
+                                        },
+                                    },
+                                    ty: None,
+                                    default: None,
+                                    span: Span {
+                                        start: Location {
+                                            offset: 2817,
+                                            line: 71,
+                                            column: 12,
+                                        },
+                                        end: Location {
+                                            offset: 2826,
+                                            line: 71,
+                                            column: 21,
+                                        },
+                                    },
+                                },
+                            ],
+                            return_type: None,
+                            body: None,
+                            attributes: [],
+                            doc: None,
+                            span: Span {
+                                start: Location {
+                                    offset: 2810,
+                                    line: 71,
+                                    column: 5,
+                                },
+                                end: Location {
+                                    offset: 2827,
+                                    line: 71,
+                                    column: 22,
+                                },
+                            },
+                        },
+                    ],
+                    is_extern: true,
+                    doc: None,
+                    span: Span {
+                        start: Location {
+                            offset: 2066,
+                            line: 54,
+                            column: 1,
+                        },
+                        end: Location {
+                            offset: 2829,
+                            line: 72,
+                            column: 2,
+                        },
+                    },
+                },
+            ),
+        ),
+        Definition(
+            Struct(
+                StructDef {
+                    visibility: Public,
+                    name: Ident {
+                        name: "Dictionary",
+                        span: Span {
+                            start: Location {
+                                offset: 2971,
+                                line: 76,
+                                column: 12,
+                            },
+                            end: Location {
+                                offset: 2981,
+                                line: 76,
                                 column: 22,
                             },
                         },
@@ -706,13 +2338,13 @@ File {
                                 name: "K",
                                 span: Span {
                                     start: Location {
-                                        offset: 1577,
-                                        line: 43,
+                                        offset: 2982,
+                                        line: 76,
                                         column: 23,
                                     },
                                     end: Location {
-                                        offset: 1578,
-                                        line: 43,
+                                        offset: 2983,
+                                        line: 76,
                                         column: 24,
                                     },
                                 },
@@ -720,13 +2352,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1577,
-                                    line: 43,
+                                    offset: 2982,
+                                    line: 76,
                                     column: 23,
                                 },
                                 end: Location {
-                                    offset: 1578,
-                                    line: 43,
+                                    offset: 2983,
+                                    line: 76,
                                     column: 24,
                                 },
                             },
@@ -736,13 +2368,13 @@ File {
                                 name: "V",
                                 span: Span {
                                     start: Location {
-                                        offset: 1580,
-                                        line: 43,
+                                        offset: 2985,
+                                        line: 76,
                                         column: 26,
                                     },
                                     end: Location {
-                                        offset: 1581,
-                                        line: 43,
+                                        offset: 2986,
+                                        line: 76,
                                         column: 27,
                                     },
                                 },
@@ -750,13 +2382,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1580,
-                                    line: 43,
+                                    offset: 2985,
+                                    line: 76,
                                     column: 26,
                                 },
                                 end: Location {
-                                    offset: 1581,
-                                    line: 43,
+                                    offset: 2986,
+                                    line: 76,
                                     column: 27,
                                 },
                             },
@@ -766,13 +2398,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 1555,
-                            line: 43,
+                            offset: 2960,
+                            line: 76,
                             column: 1,
                         },
                         end: Location {
-                            offset: 1585,
-                            line: 43,
+                            offset: 2990,
+                            line: 76,
                             column: 31,
                         },
                     },
@@ -788,13 +2420,13 @@ File {
                         name: "Dictionary",
                         span: Span {
                             start: Location {
-                                offset: 1599,
-                                line: 45,
+                                offset: 3004,
+                                line: 78,
                                 column: 13,
                             },
                             end: Location {
-                                offset: 1609,
-                                line: 45,
+                                offset: 3014,
+                                line: 78,
                                 column: 23,
                             },
                         },
@@ -805,13 +2437,13 @@ File {
                                 name: "K",
                                 span: Span {
                                     start: Location {
-                                        offset: 1610,
-                                        line: 45,
+                                        offset: 3015,
+                                        line: 78,
                                         column: 24,
                                     },
                                     end: Location {
-                                        offset: 1611,
-                                        line: 45,
+                                        offset: 3016,
+                                        line: 78,
                                         column: 25,
                                     },
                                 },
@@ -819,13 +2451,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1610,
-                                    line: 45,
+                                    offset: 3015,
+                                    line: 78,
                                     column: 24,
                                 },
                                 end: Location {
-                                    offset: 1611,
-                                    line: 45,
+                                    offset: 3016,
+                                    line: 78,
                                     column: 25,
                                 },
                             },
@@ -835,13 +2467,13 @@ File {
                                 name: "V",
                                 span: Span {
                                     start: Location {
-                                        offset: 1613,
-                                        line: 45,
+                                        offset: 3018,
+                                        line: 78,
                                         column: 27,
                                     },
                                     end: Location {
-                                        offset: 1614,
-                                        line: 45,
+                                        offset: 3019,
+                                        line: 78,
                                         column: 28,
                                     },
                                 },
@@ -849,13 +2481,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1613,
-                                    line: 45,
+                                    offset: 3018,
+                                    line: 78,
                                     column: 27,
                                 },
                                 end: Location {
-                                    offset: 1614,
-                                    line: 45,
+                                    offset: 3019,
+                                    line: 78,
                                     column: 28,
                                 },
                             },
@@ -867,13 +2499,13 @@ File {
                                 name: "len",
                                 span: Span {
                                     start: Location {
-                                        offset: 1625,
-                                        line: 46,
+                                        offset: 3030,
+                                        line: 79,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1628,
-                                        line: 46,
+                                        offset: 3033,
+                                        line: 79,
                                         column: 11,
                                     },
                                 },
@@ -886,13 +2518,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1629,
-                                                line: 46,
+                                                offset: 3034,
+                                                line: 79,
                                                 column: 12,
                                             },
                                             end: Location {
-                                                offset: 1633,
-                                                line: 46,
+                                                offset: 3038,
+                                                line: 79,
                                                 column: 16,
                                             },
                                         },
@@ -901,13 +2533,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1629,
-                                            line: 46,
+                                            offset: 3034,
+                                            line: 79,
                                             column: 12,
                                         },
                                         end: Location {
-                                            offset: 1633,
-                                            line: 46,
+                                            offset: 3038,
+                                            line: 79,
                                             column: 16,
                                         },
                                     },
@@ -923,13 +2555,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1622,
-                                    line: 46,
+                                    offset: 3027,
+                                    line: 79,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1641,
-                                    line: 46,
+                                    offset: 3046,
+                                    line: 79,
                                     column: 24,
                                 },
                             },
@@ -939,13 +2571,13 @@ File {
                                 name: "is_empty",
                                 span: Span {
                                     start: Location {
-                                        offset: 1649,
-                                        line: 47,
+                                        offset: 3054,
+                                        line: 80,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1657,
-                                        line: 47,
+                                        offset: 3062,
+                                        line: 80,
                                         column: 16,
                                     },
                                 },
@@ -958,13 +2590,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1658,
-                                                line: 47,
+                                                offset: 3063,
+                                                line: 80,
                                                 column: 17,
                                             },
                                             end: Location {
-                                                offset: 1662,
-                                                line: 47,
+                                                offset: 3067,
+                                                line: 80,
                                                 column: 21,
                                             },
                                         },
@@ -973,13 +2605,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1658,
-                                            line: 47,
+                                            offset: 3063,
+                                            line: 80,
                                             column: 17,
                                         },
                                         end: Location {
-                                            offset: 1662,
-                                            line: 47,
+                                            offset: 3067,
+                                            line: 80,
                                             column: 21,
                                         },
                                     },
@@ -995,13 +2627,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1646,
-                                    line: 47,
+                                    offset: 3051,
+                                    line: 80,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1674,
-                                    line: 47,
+                                    offset: 3079,
+                                    line: 80,
                                     column: 33,
                                 },
                             },
@@ -1011,13 +2643,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 1587,
-                            line: 45,
+                            offset: 2992,
+                            line: 78,
                             column: 1,
                         },
                         end: Location {
-                            offset: 1676,
-                            line: 48,
+                            offset: 3081,
+                            line: 81,
                             column: 2,
                         },
                     },
@@ -1032,13 +2664,13 @@ File {
                         name: "Range",
                         span: Span {
                             start: Location {
-                                offset: 1806,
-                                line: 52,
+                                offset: 3211,
+                                line: 85,
                                 column: 12,
                             },
                             end: Location {
-                                offset: 1811,
-                                line: 52,
+                                offset: 3216,
+                                line: 85,
                                 column: 17,
                             },
                         },
@@ -1049,13 +2681,13 @@ File {
                                 name: "T",
                                 span: Span {
                                     start: Location {
-                                        offset: 1812,
-                                        line: 52,
+                                        offset: 3217,
+                                        line: 85,
                                         column: 18,
                                     },
                                     end: Location {
-                                        offset: 1813,
-                                        line: 52,
+                                        offset: 3218,
+                                        line: 85,
                                         column: 19,
                                     },
                                 },
@@ -1063,13 +2695,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1812,
-                                    line: 52,
+                                    offset: 3217,
+                                    line: 85,
                                     column: 18,
                                 },
                                 end: Location {
-                                    offset: 1813,
-                                    line: 52,
+                                    offset: 3218,
+                                    line: 85,
                                     column: 19,
                                 },
                             },
@@ -1079,13 +2711,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 1795,
-                            line: 52,
+                            offset: 3200,
+                            line: 85,
                             column: 1,
                         },
                         end: Location {
-                            offset: 1817,
-                            line: 52,
+                            offset: 3222,
+                            line: 85,
                             column: 23,
                         },
                     },
@@ -1101,13 +2733,13 @@ File {
                         name: "Range",
                         span: Span {
                             start: Location {
-                                offset: 1831,
-                                line: 54,
+                                offset: 3236,
+                                line: 87,
                                 column: 13,
                             },
                             end: Location {
-                                offset: 1836,
-                                line: 54,
+                                offset: 3241,
+                                line: 87,
                                 column: 18,
                             },
                         },
@@ -1118,13 +2750,13 @@ File {
                                 name: "T",
                                 span: Span {
                                     start: Location {
-                                        offset: 1837,
-                                        line: 54,
+                                        offset: 3242,
+                                        line: 87,
                                         column: 19,
                                     },
                                     end: Location {
-                                        offset: 1838,
-                                        line: 54,
+                                        offset: 3243,
+                                        line: 87,
                                         column: 20,
                                     },
                                 },
@@ -1132,13 +2764,13 @@ File {
                             constraints: [],
                             span: Span {
                                 start: Location {
-                                    offset: 1837,
-                                    line: 54,
+                                    offset: 3242,
+                                    line: 87,
                                     column: 19,
                                 },
                                 end: Location {
-                                    offset: 1838,
-                                    line: 54,
+                                    offset: 3243,
+                                    line: 87,
                                     column: 20,
                                 },
                             },
@@ -1150,13 +2782,13 @@ File {
                                 name: "len",
                                 span: Span {
                                     start: Location {
-                                        offset: 1849,
-                                        line: 55,
+                                        offset: 3254,
+                                        line: 88,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1852,
-                                        line: 55,
+                                        offset: 3257,
+                                        line: 88,
                                         column: 11,
                                     },
                                 },
@@ -1169,13 +2801,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1853,
-                                                line: 55,
+                                                offset: 3258,
+                                                line: 88,
                                                 column: 12,
                                             },
                                             end: Location {
-                                                offset: 1857,
-                                                line: 55,
+                                                offset: 3262,
+                                                line: 88,
                                                 column: 16,
                                             },
                                         },
@@ -1184,13 +2816,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1853,
-                                            line: 55,
+                                            offset: 3258,
+                                            line: 88,
                                             column: 12,
                                         },
                                         end: Location {
-                                            offset: 1857,
-                                            line: 55,
+                                            offset: 3262,
+                                            line: 88,
                                             column: 16,
                                         },
                                     },
@@ -1206,13 +2838,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1846,
-                                    line: 55,
+                                    offset: 3251,
+                                    line: 88,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1865,
-                                    line: 55,
+                                    offset: 3270,
+                                    line: 88,
                                     column: 24,
                                 },
                             },
@@ -1222,13 +2854,13 @@ File {
                                 name: "is_empty",
                                 span: Span {
                                     start: Location {
-                                        offset: 1873,
-                                        line: 56,
+                                        offset: 3278,
+                                        line: 89,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1881,
-                                        line: 56,
+                                        offset: 3286,
+                                        line: 89,
                                         column: 16,
                                     },
                                 },
@@ -1241,13 +2873,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1882,
-                                                line: 56,
+                                                offset: 3287,
+                                                line: 89,
                                                 column: 17,
                                             },
                                             end: Location {
-                                                offset: 1886,
-                                                line: 56,
+                                                offset: 3291,
+                                                line: 89,
                                                 column: 21,
                                             },
                                         },
@@ -1256,13 +2888,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1882,
-                                            line: 56,
+                                            offset: 3287,
+                                            line: 89,
                                             column: 17,
                                         },
                                         end: Location {
-                                            offset: 1886,
-                                            line: 56,
+                                            offset: 3291,
+                                            line: 89,
                                             column: 21,
                                         },
                                     },
@@ -1278,13 +2910,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1870,
-                                    line: 56,
+                                    offset: 3275,
+                                    line: 89,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1898,
-                                    line: 56,
+                                    offset: 3303,
+                                    line: 89,
                                     column: 33,
                                 },
                             },
@@ -1294,13 +2926,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 1819,
-                            line: 54,
+                            offset: 3224,
+                            line: 87,
                             column: 1,
                         },
                         end: Location {
-                            offset: 1900,
-                            line: 57,
+                            offset: 3305,
+                            line: 90,
                             column: 2,
                         },
                     },
@@ -1316,13 +2948,13 @@ File {
                         name: "String",
                         span: Span {
                             start: Location {
-                                offset: 1914,
-                                line: 59,
+                                offset: 3319,
+                                line: 92,
                                 column: 13,
                             },
                             end: Location {
-                                offset: 1920,
-                                line: 59,
+                                offset: 3325,
+                                line: 92,
                                 column: 19,
                             },
                         },
@@ -1334,13 +2966,13 @@ File {
                                 name: "len",
                                 span: Span {
                                     start: Location {
-                                        offset: 1930,
-                                        line: 60,
+                                        offset: 3335,
+                                        line: 93,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1933,
-                                        line: 60,
+                                        offset: 3338,
+                                        line: 93,
                                         column: 11,
                                     },
                                 },
@@ -1353,13 +2985,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1934,
-                                                line: 60,
+                                                offset: 3339,
+                                                line: 93,
                                                 column: 12,
                                             },
                                             end: Location {
-                                                offset: 1938,
-                                                line: 60,
+                                                offset: 3343,
+                                                line: 93,
                                                 column: 16,
                                             },
                                         },
@@ -1368,13 +3000,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1934,
-                                            line: 60,
+                                            offset: 3339,
+                                            line: 93,
                                             column: 12,
                                         },
                                         end: Location {
-                                            offset: 1938,
-                                            line: 60,
+                                            offset: 3343,
+                                            line: 93,
                                             column: 16,
                                         },
                                     },
@@ -1390,13 +3022,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1927,
-                                    line: 60,
+                                    offset: 3332,
+                                    line: 93,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1946,
-                                    line: 60,
+                                    offset: 3351,
+                                    line: 93,
                                     column: 24,
                                 },
                             },
@@ -1406,13 +3038,13 @@ File {
                                 name: "is_empty",
                                 span: Span {
                                     start: Location {
-                                        offset: 1954,
-                                        line: 61,
+                                        offset: 3359,
+                                        line: 94,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1962,
-                                        line: 61,
+                                        offset: 3367,
+                                        line: 94,
                                         column: 16,
                                     },
                                 },
@@ -1425,13 +3057,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1963,
-                                                line: 61,
+                                                offset: 3368,
+                                                line: 94,
                                                 column: 17,
                                             },
                                             end: Location {
-                                                offset: 1967,
-                                                line: 61,
+                                                offset: 3372,
+                                                line: 94,
                                                 column: 21,
                                             },
                                         },
@@ -1440,13 +3072,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1963,
-                                            line: 61,
+                                            offset: 3368,
+                                            line: 94,
                                             column: 17,
                                         },
                                         end: Location {
-                                            offset: 1967,
-                                            line: 61,
+                                            offset: 3372,
+                                            line: 94,
                                             column: 21,
                                         },
                                     },
@@ -1462,13 +3094,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1951,
-                                    line: 61,
+                                    offset: 3356,
+                                    line: 94,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 1979,
-                                    line: 61,
+                                    offset: 3384,
+                                    line: 94,
                                     column: 33,
                                 },
                             },
@@ -1478,13 +3110,13 @@ File {
                                 name: "slice",
                                 span: Span {
                                     start: Location {
-                                        offset: 1987,
-                                        line: 62,
+                                        offset: 3392,
+                                        line: 95,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 1992,
-                                        line: 62,
+                                        offset: 3397,
+                                        line: 95,
                                         column: 13,
                                     },
                                 },
@@ -1497,13 +3129,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 1993,
-                                                line: 62,
+                                                offset: 3398,
+                                                line: 95,
                                                 column: 14,
                                             },
                                             end: Location {
-                                                offset: 1997,
-                                                line: 62,
+                                                offset: 3402,
+                                                line: 95,
                                                 column: 18,
                                             },
                                         },
@@ -1512,13 +3144,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1993,
-                                            line: 62,
+                                            offset: 3398,
+                                            line: 95,
                                             column: 14,
                                         },
                                         end: Location {
-                                            offset: 1997,
-                                            line: 62,
+                                            offset: 3402,
+                                            line: 95,
                                             column: 18,
                                         },
                                     },
@@ -1530,13 +3162,13 @@ File {
                                         name: "start",
                                         span: Span {
                                             start: Location {
-                                                offset: 1999,
-                                                line: 62,
+                                                offset: 3404,
+                                                line: 95,
                                                 column: 20,
                                             },
                                             end: Location {
-                                                offset: 2004,
-                                                line: 62,
+                                                offset: 3409,
+                                                line: 95,
                                                 column: 25,
                                             },
                                         },
@@ -1549,13 +3181,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 1999,
-                                            line: 62,
+                                            offset: 3404,
+                                            line: 95,
                                             column: 20,
                                         },
                                         end: Location {
-                                            offset: 2009,
-                                            line: 62,
+                                            offset: 3414,
+                                            line: 95,
                                             column: 30,
                                         },
                                     },
@@ -1567,13 +3199,13 @@ File {
                                         name: "end",
                                         span: Span {
                                             start: Location {
-                                                offset: 2011,
-                                                line: 62,
+                                                offset: 3416,
+                                                line: 95,
                                                 column: 32,
                                             },
                                             end: Location {
-                                                offset: 2014,
-                                                line: 62,
+                                                offset: 3419,
+                                                line: 95,
                                                 column: 35,
                                             },
                                         },
@@ -1586,13 +3218,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2011,
-                                            line: 62,
+                                            offset: 3416,
+                                            line: 95,
                                             column: 32,
                                         },
                                         end: Location {
-                                            offset: 2019,
-                                            line: 62,
+                                            offset: 3424,
+                                            line: 95,
                                             column: 40,
                                         },
                                     },
@@ -1608,13 +3240,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 1984,
-                                    line: 62,
+                                    offset: 3389,
+                                    line: 95,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 2030,
-                                    line: 62,
+                                    offset: 3435,
+                                    line: 95,
                                     column: 51,
                                 },
                             },
@@ -1624,13 +3256,13 @@ File {
                                 name: "starts_with",
                                 span: Span {
                                     start: Location {
-                                        offset: 2038,
-                                        line: 63,
+                                        offset: 3443,
+                                        line: 96,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 2049,
-                                        line: 63,
+                                        offset: 3454,
+                                        line: 96,
                                         column: 19,
                                     },
                                 },
@@ -1643,13 +3275,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 2050,
-                                                line: 63,
+                                                offset: 3455,
+                                                line: 96,
                                                 column: 20,
                                             },
                                             end: Location {
-                                                offset: 2054,
-                                                line: 63,
+                                                offset: 3459,
+                                                line: 96,
                                                 column: 24,
                                             },
                                         },
@@ -1658,13 +3290,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2050,
-                                            line: 63,
+                                            offset: 3455,
+                                            line: 96,
                                             column: 20,
                                         },
                                         end: Location {
-                                            offset: 2054,
-                                            line: 63,
+                                            offset: 3459,
+                                            line: 96,
                                             column: 24,
                                         },
                                     },
@@ -1676,13 +3308,13 @@ File {
                                         name: "prefix",
                                         span: Span {
                                             start: Location {
-                                                offset: 2056,
-                                                line: 63,
+                                                offset: 3461,
+                                                line: 96,
                                                 column: 26,
                                             },
                                             end: Location {
-                                                offset: 2062,
-                                                line: 63,
+                                                offset: 3467,
+                                                line: 96,
                                                 column: 32,
                                             },
                                         },
@@ -1695,13 +3327,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2056,
-                                            line: 63,
+                                            offset: 3461,
+                                            line: 96,
                                             column: 26,
                                         },
                                         end: Location {
-                                            offset: 2070,
-                                            line: 63,
+                                            offset: 3475,
+                                            line: 96,
                                             column: 40,
                                         },
                                     },
@@ -1717,13 +3349,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 2035,
-                                    line: 63,
+                                    offset: 3440,
+                                    line: 96,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 2082,
-                                    line: 63,
+                                    offset: 3487,
+                                    line: 96,
                                     column: 52,
                                 },
                             },
@@ -1733,13 +3365,13 @@ File {
                                 name: "contains",
                                 span: Span {
                                     start: Location {
-                                        offset: 2090,
-                                        line: 64,
+                                        offset: 3495,
+                                        line: 97,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 2098,
-                                        line: 64,
+                                        offset: 3503,
+                                        line: 97,
                                         column: 16,
                                     },
                                 },
@@ -1752,13 +3384,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 2099,
-                                                line: 64,
+                                                offset: 3504,
+                                                line: 97,
                                                 column: 17,
                                             },
                                             end: Location {
-                                                offset: 2103,
-                                                line: 64,
+                                                offset: 3508,
+                                                line: 97,
                                                 column: 21,
                                             },
                                         },
@@ -1767,13 +3399,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2099,
-                                            line: 64,
+                                            offset: 3504,
+                                            line: 97,
                                             column: 17,
                                         },
                                         end: Location {
-                                            offset: 2103,
-                                            line: 64,
+                                            offset: 3508,
+                                            line: 97,
                                             column: 21,
                                         },
                                     },
@@ -1785,13 +3417,13 @@ File {
                                         name: "needle",
                                         span: Span {
                                             start: Location {
-                                                offset: 2105,
-                                                line: 64,
+                                                offset: 3510,
+                                                line: 97,
                                                 column: 23,
                                             },
                                             end: Location {
-                                                offset: 2111,
-                                                line: 64,
+                                                offset: 3516,
+                                                line: 97,
                                                 column: 29,
                                             },
                                         },
@@ -1804,13 +3436,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2105,
-                                            line: 64,
+                                            offset: 3510,
+                                            line: 97,
                                             column: 23,
                                         },
                                         end: Location {
-                                            offset: 2119,
-                                            line: 64,
+                                            offset: 3524,
+                                            line: 97,
                                             column: 37,
                                         },
                                     },
@@ -1826,13 +3458,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 2087,
-                                    line: 64,
+                                    offset: 3492,
+                                    line: 97,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 2131,
-                                    line: 64,
+                                    offset: 3536,
+                                    line: 97,
                                     column: 49,
                                 },
                             },
@@ -1842,13 +3474,13 @@ File {
                                 name: "byte_at",
                                 span: Span {
                                     start: Location {
-                                        offset: 2139,
-                                        line: 65,
+                                        offset: 3544,
+                                        line: 98,
                                         column: 8,
                                     },
                                     end: Location {
-                                        offset: 2146,
-                                        line: 65,
+                                        offset: 3551,
+                                        line: 98,
                                         column: 15,
                                     },
                                 },
@@ -1861,13 +3493,13 @@ File {
                                         name: "self",
                                         span: Span {
                                             start: Location {
-                                                offset: 2147,
-                                                line: 65,
+                                                offset: 3552,
+                                                line: 98,
                                                 column: 16,
                                             },
                                             end: Location {
-                                                offset: 2151,
-                                                line: 65,
+                                                offset: 3556,
+                                                line: 98,
                                                 column: 20,
                                             },
                                         },
@@ -1876,13 +3508,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2147,
-                                            line: 65,
+                                            offset: 3552,
+                                            line: 98,
                                             column: 16,
                                         },
                                         end: Location {
-                                            offset: 2151,
-                                            line: 65,
+                                            offset: 3556,
+                                            line: 98,
                                             column: 20,
                                         },
                                     },
@@ -1894,13 +3526,13 @@ File {
                                         name: "i",
                                         span: Span {
                                             start: Location {
-                                                offset: 2153,
-                                                line: 65,
+                                                offset: 3558,
+                                                line: 98,
                                                 column: 22,
                                             },
                                             end: Location {
-                                                offset: 2154,
-                                                line: 65,
+                                                offset: 3559,
+                                                line: 98,
                                                 column: 23,
                                             },
                                         },
@@ -1913,13 +3545,13 @@ File {
                                     default: None,
                                     span: Span {
                                         start: Location {
-                                            offset: 2153,
-                                            line: 65,
+                                            offset: 3558,
+                                            line: 98,
                                             column: 22,
                                         },
                                         end: Location {
-                                            offset: 2159,
-                                            line: 65,
+                                            offset: 3564,
+                                            line: 98,
                                             column: 28,
                                         },
                                     },
@@ -1935,13 +3567,13 @@ File {
                             doc: None,
                             span: Span {
                                 start: Location {
-                                    offset: 2136,
-                                    line: 65,
+                                    offset: 3541,
+                                    line: 98,
                                     column: 5,
                                 },
                                 end: Location {
-                                    offset: 2167,
-                                    line: 65,
+                                    offset: 3572,
+                                    line: 98,
                                     column: 36,
                                 },
                             },
@@ -1951,13 +3583,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 1902,
-                            line: 59,
+                            offset: 3307,
+                            line: 92,
                             column: 1,
                         },
                         end: Location {
-                            offset: 2169,
-                            line: 66,
+                            offset: 3574,
+                            line: 99,
                             column: 2,
                         },
                     },
@@ -1972,13 +3604,13 @@ File {
                         name: "assert",
                         span: Span {
                             start: Location {
-                                offset: 2392,
-                                line: 71,
+                                offset: 3797,
+                                line: 104,
                                 column: 15,
                             },
                             end: Location {
-                                offset: 2398,
-                                line: 71,
+                                offset: 3803,
+                                line: 104,
                                 column: 21,
                             },
                         },
@@ -1992,13 +3624,13 @@ File {
                                 name: "condition",
                                 span: Span {
                                     start: Location {
-                                        offset: 2399,
-                                        line: 71,
+                                        offset: 3804,
+                                        line: 104,
                                         column: 22,
                                     },
                                     end: Location {
-                                        offset: 2408,
-                                        line: 71,
+                                        offset: 3813,
+                                        line: 104,
                                         column: 31,
                                     },
                                 },
@@ -2011,13 +3643,13 @@ File {
                             default: None,
                             span: Span {
                                 start: Location {
-                                    offset: 2399,
-                                    line: 71,
+                                    offset: 3804,
+                                    line: 104,
                                     column: 22,
                                 },
                                 end: Location {
-                                    offset: 2417,
-                                    line: 71,
+                                    offset: 3822,
+                                    line: 104,
                                     column: 40,
                                 },
                             },
@@ -2032,13 +3664,13 @@ File {
                     doc: None,
                     span: Span {
                         start: Location {
-                            offset: 2378,
-                            line: 71,
+                            offset: 3783,
+                            line: 104,
                             column: 1,
                         },
                         end: Location {
-                            offset: 2418,
-                            line: 71,
+                            offset: 3823,
+                            line: 104,
                             column: 41,
                         },
                     },

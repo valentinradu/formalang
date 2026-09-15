@@ -1,11 +1,42 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 294
 expression: debug_with_sorted_string_maps(&module)
 ---
 IrModule {
     structs: [
         IrStruct {
             name: "Array",
+            visibility: Public,
+            traits: [],
+            fields: [],
+            generic_params: [
+                IrGenericParam {
+                    name: "T",
+                    constraints: [],
+                },
+            ],
+            doc: None,
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
+        },
+        IrStruct {
+            name: "Seq",
             visibility: Public,
             traits: [],
             fields: [],
@@ -612,6 +643,1076 @@ IrModule {
             is_extern: true,
             generic_params: [
                 IrGenericParam {
+                    name: "T",
+                    constraints: [],
+                },
+            ],
+            functions: [
+                IrFunction {
+                    name: "map",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "f",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: TypeParam(
+                                        "T",
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    1,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "filter",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "f",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: Primitive(
+                                        Boolean,
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    1,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "take",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "count",
+                            external_label: None,
+                            ty: Some(
+                                Primitive(
+                                    I32,
+                                ),
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    1,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "skip",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "count",
+                            external_label: None,
+                            ty: Some(
+                                Primitive(
+                                    I32,
+                                ),
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    1,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "collect",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    0,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "count",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            I32,
+                        ),
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "fold",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "initial",
+                            external_label: None,
+                            ty: Some(
+                                TypeParam(
+                                    "T",
+                                ),
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "f",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: TypeParam(
+                                        "T",
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        TypeParam(
+                            "T",
+                        ),
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "first",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Enum(
+                                EnumId(
+                                    0,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "T",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "any",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "f",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: Primitive(
+                                        Boolean,
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Boolean,
+                        ),
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "all",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "f",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: Primitive(
+                                        Boolean,
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Primitive(
+                            Boolean,
+                        ),
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
+                    name: "run",
+                    visibility: Private,
+                    generic_params: [],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: None,
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+            ],
+            span: IrSpan {
+                span: Span {
+                    start: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                    end: Location {
+                        offset: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                },
+                file: FileId(
+                    0,
+                ),
+            },
+        },
+        IrImpl {
+            target: Struct(
+                StructId(
+                    2,
+                ),
+            ),
+            trait_ref: None,
+            is_extern: true,
+            generic_params: [
+                IrGenericParam {
                     name: "K",
                     constraints: [],
                 },
@@ -767,7 +1868,7 @@ IrModule {
         IrImpl {
             target: Struct(
                 StructId(
-                    2,
+                    3,
                 ),
             ),
             trait_ref: None,
@@ -1479,7 +2580,7 @@ IrModule {
         IrImpl {
             target: Struct(
                 StructId(
-                    3,
+                    4,
                 ),
             ),
             trait_ref: None,
@@ -1715,13 +2816,16 @@ IrModule {
             0,
         ),
     "Dictionary": StructId(
-            1,
+            2,
         ),
     "Point": StructId(
-            3,
+            4,
         ),
     "Range": StructId(
-            2,
+            3,
+        ),
+    "Seq": StructId(
+            1,
         ),
 },
     trait_names: {},

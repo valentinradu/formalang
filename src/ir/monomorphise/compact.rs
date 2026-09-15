@@ -9,15 +9,19 @@ use crate::location::Span;
 use super::expr_walk::iter_expr_children_mut;
 use super::walkers::walk_module_types_mut;
 
-/// True for the prelude-shipped generic carriers (`Array`, `Dictionary`,
-/// `Range`). They have non-empty `generic_params` like every other
-/// generic, but `mod.rs` keeps them in `module.structs` after compaction
-/// because `Generic { base, args }` is their canonical post-pass shape.
-/// The remap must keep their slots in lockstep with that retain — naively
-/// dropping them would let surviving structs renumber onto prelude
-/// positions.
-fn is_prelude_struct_name(name: &str) -> bool {
-    matches!(name, "Array" | "Dictionary" | "Range")
+/// True for the prelude-shipped generic carriers (`Array`, `Seq`,
+/// `Dictionary`, `Range`). They have non-empty `generic_params` like
+/// every other generic, but `mod.rs` keeps them in `module.structs`
+/// after compaction because `Generic { base, args }` is their canonical
+/// post-pass shape. The remap must keep their slots in lockstep with
+/// that retain — naively dropping them would let surviving structs
+/// renumber onto prelude positions.
+///
+/// Every list of these names in the pass must agree. Adding a carrier
+/// to `src/prelude.fv` and missing one of them renumbers ids out from
+/// under the module tree.
+pub(super) fn is_prelude_struct_name(name: &str) -> bool {
+    matches!(name, "Array" | "Seq" | "Dictionary" | "Range")
 }
 
 fn is_prelude_enum_name(name: &str) -> bool {

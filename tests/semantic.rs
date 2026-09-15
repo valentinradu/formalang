@@ -304,7 +304,7 @@ fn test_for_array_literal() -> Result<(), Box<dyn std::error::Error>> {
             name: String
         }
         struct List {
-            items: [Item] = for name in ["a", "b"] { Item(name: name) }
+            items: [Item] = for name in ["a", "b"] { Item(name: name) }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -321,7 +321,7 @@ fn test_for_with_let() -> Result<(), Box<dyn std::error::Error>> {
             items: [Item] = for x in ["a", "b"] {
                 let y = "item"
                 Item(text: y)
-            }
+            }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
@@ -476,7 +476,7 @@ fn test_complex_form() -> Result<(), Box<dyn std::error::Error>> {
 
         struct Form {
             title: String,
-            fields: [TextField] = for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }
+            fields: [TextField] = for i in [1, 2, 3] { TextField(value: "", placeholder: "Enter text") }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

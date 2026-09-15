@@ -348,7 +348,7 @@ fn test_if_condition_number() -> Result<(), Box<dyn std::error::Error>> {
 fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         struct A {
-            x: String = for x in "not an array" { x }
+            x: String = for x in "not an array" { x }.collect()
         }
     "#;
     let errors = compile(source).err().ok_or("expected error")?;
@@ -365,7 +365,7 @@ fn test_for_not_array() -> Result<(), Box<dyn std::error::Error>> {
 fn test_for_on_number() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct A {
-            x: I32 = for x in 42 { x }
+            x: I32 = for x in 42 { x }.collect()
         }
     ";
     let errors = compile(source).err().ok_or("expected error")?;
@@ -544,7 +544,7 @@ fn test_impl_complex_expression() -> Result<(), Box<dyn std::error::Error>> {
             x: I32 = if true {
                 for i in [1, 2, 3] {
                     i
-                }
+                }.count()
             } else {
                 0
             }

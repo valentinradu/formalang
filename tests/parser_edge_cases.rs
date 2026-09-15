@@ -207,7 +207,7 @@ fn test_for_with_if() -> Result<(), Box<dyn std::error::Error>> {
         struct A {
             x: [String] = for item in ["a", "b", "c"] {
                 if true { item } else { "default" }
-            }
+            }.collect()
         }
     "#;
     compile(source).map_err(|e| format!("For with if: {e:?}"))?;

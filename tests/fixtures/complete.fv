@@ -195,7 +195,7 @@ let status_text: String = if sample.is_done() { "done" } else { "pending" }
 // For loop — iterates array, produces array
 // =============================================================================
 
-let upper_tags: [String] = for tag in sample.tags { tag }
+let upper_tags: [String] = for tag in sample.tags { tag }.collect()
 
 // =============================================================================
 // Match expression on let binding

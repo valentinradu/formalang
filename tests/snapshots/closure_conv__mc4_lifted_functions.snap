@@ -17,7 +17,7 @@ expression: lifted
                 ty: Some(
                     Struct(
                         StructId(
-                            3,
+                            4,
                         ),
                     ),
                 ),
@@ -147,7 +147,7 @@ expression: lifted
                 ty: Some(
                     Struct(
                         StructId(
-                            4,
+                            5,
                         ),
                     ),
                 ),
@@ -253,7 +253,7 @@ expression: lifted
                         ),
                         ty: Struct(
                             StructId(
-                                4,
+                                5,
                             ),
                         ),
                         span: IrSpan {

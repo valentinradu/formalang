@@ -540,7 +540,7 @@ fn test_for_expression() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         struct List {
-            items: [Item] = for item in ["a", "b", "c"] { Item(value: item) }
+            items: [Item] = for item in ["a", "b", "c"] { Item(value: item) }.collect()
         }
     "#;
     compile(source).map_err(|e| fmt_errs(&e))?;

@@ -948,7 +948,7 @@ fn test_is_expr_mutable_for_expression() -> Result<(), Box<dyn std::error::Error
     // it lowers cleanly into a struct field of type [I32].
     let source = r"
         struct Config { items: [I32] = [1, 2, 3] }
-        let c: Config = Config(items: for x in [1, 2, 3] { x })
+        let c: Config = Config(items: for x in [1, 2, 3] { x }.collect())
     ";
     compile(source).map_err(|e| format!("for expr in struct field: {e:?}"))?;
     Ok(())

@@ -484,7 +484,7 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
     // `if true { 1 + 2 } else { 0 }` must collapse to a literal `3`.
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let doubled: [I32] = for x in items { if true { 1 + 2 } else { 0 } }
+        let doubled: [I32] = for x in items { if true { 1 + 2 } else { 0 } }.collect()
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
@@ -493,8 +493,13 @@ fn test_fold_collapses_constant_if_inside_for_body() -> Result<(), Box<dyn std::
         .iter()
         .find(|l| l.name == "doubled")
         .ok_or("doubled not found")?;
-    let IrExpr::For { body, .. } = &binding.value else {
-        return Err(format!("expected For expression, got {:?}", binding.value).into());
+    // A loop yields a lazy sequence, so the binding's value is
+    // `collect()` over the loop rather than the loop itself.
+    let IrExpr::MethodCall { receiver, .. } = &binding.value else {
+        return Err(format!("expected MethodCall, got {:?}", binding.value).into());
+    };
+    let IrExpr::For { body, .. } = receiver.as_ref() else {
+        return Err(format!("expected For expression, got {receiver:?}").into());
     };
     let IrExpr::Literal {
         value: formalang::ast::Literal::Number(n),
@@ -864,7 +869,7 @@ fn test_fold_range_not_folded() -> Result<(), Box<dyn std::error::Error>> {
     // Range is used in for loops
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let x: [I32] = for n in items { n }
+        let x: [I32] = for n in items { n }.collect()
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);

@@ -240,7 +240,7 @@ fn test_field_access_expression() -> Result<(), Box<dyn std::error::Error>> {
 fn test_closure_with_annotated_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let doubled: [I32] = for x in items { x }
+        let doubled: [I32] = for x in items { x }.collect()
     ";
     compile(source).map_err(|e| format!("Closure with annotated params: {e:?}"))?;
     Ok(())
@@ -1110,7 +1110,7 @@ fn test_method_call_sqrt_on_number() -> Result<(), Box<dyn std::error::Error>> {
 fn test_for_loop_with_closure_in_body() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let result: [[I32]] = for x in items { [x, x] }
+        let result: [[I32]] = for x in items { [x, x] }.collect()
     ";
     compile(source).map_err(|e| format!("For loop with closure in body: {e:?}"))?;
     Ok(())

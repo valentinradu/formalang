@@ -54,19 +54,11 @@ pub fn not_op(b: Boolean) -> Boolean {
 }
 
 pub fn float_range_sum() -> F64 {
-    let mut total: F64 = 0.0
-    for x in 0.0..3.0 {
-        total = total + x
-    }
-    total
+    for x in 0.0..3.0 { x }.fold(initial: 0.0, f: (a, b) -> a + b)
 }
 
 pub fn i64_range_sum() -> I64 {
-    let mut total: I64 = 0I64
-    for x in 0I64..5I64 {
-        total = total + x
-    }
-    total
+    for x in 0I64..5I64 { x }.fold(initial: 0I64, f: (a, b) -> a + b)
 }
 
 pub fn run_checks() {

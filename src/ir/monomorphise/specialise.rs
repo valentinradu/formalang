@@ -339,7 +339,11 @@ fn write_usize(out: &mut String, prefix: &str, n: usize) -> core::fmt::Result {
 
 // Phase 1c: substitution helpers
 
-pub(super) fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) {
+/// Replace each `TypeParam` named in `subs` with its concrete type,
+/// recursively. Used by monomorphisation to specialise a definition,
+/// and by lowering to read a generic method's signature at a concrete
+/// receiver.
+pub(in crate::ir) fn substitute_type(ty: &mut ResolvedType, subs: &HashMap<String, ResolvedType>) {
     match ty {
         ResolvedType::TypeParam(name) => {
             if let Some(concrete) = subs.get(name) {

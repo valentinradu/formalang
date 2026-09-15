@@ -71,7 +71,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let collection_sem = self.infer_type_sem(collection, file);
 
         let is_iterable = matches!(collection_sem, SemType::Array(_) | SemType::Unknown)
-            || matches!(&collection_sem, SemType::Generic { base, .. } if base == "Range");
+            || matches!(&collection_sem, SemType::Generic { base, .. } if base == "Range" || base == "Seq");
 
         if !is_iterable {
             self.errors.push(CompilerError::ForLoopNotArray {

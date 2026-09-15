@@ -2099,11 +2099,11 @@ fn test_lower_if_without_else() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [I32] = for x in [1, 2, 3] { x } }
+        struct S { items: [I32] = for x in [1, 2, 3] { x }.collect() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
-    let expr = module
+    let default = module
         .user_structs()
         .next()
         .ok_or("index out of bounds")?
@@ -2113,6 +2113,12 @@ fn test_lower_for_expression() -> Result<(), Box<dyn std::error::Error>> {
         .default
         .as_ref()
         .ok_or("expected Some")?;
+    // A loop yields a lazy sequence, so the field's default is
+    // `collect()` over the loop rather than the loop itself.
+    let formalang::ir::IrExpr::MethodCall { receiver, .. } = default else {
+        return Err(format!("expected MethodCall, got {default:?}").into());
+    };
+    let expr = receiver.as_ref();
     if let formalang::ir::IrExpr::For { var, .. } = expr {
         if var != "x" {
             return Err(format!(
@@ -2595,7 +2601,7 @@ fn test_visitor_walks_if_children() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_visitor_walks_for_children() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct S { items: [I32] = for x in [1, 2] { x } }
+        struct S { items: [I32] = for x in [1, 2] { x }.collect() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 

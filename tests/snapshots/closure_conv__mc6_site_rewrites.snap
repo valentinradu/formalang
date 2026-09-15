@@ -10,7 +10,7 @@ expression: "(make_adder_body, format_tag_value)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    4,
+                    5,
                 ),
             ),
             type_args: [],
@@ -54,7 +54,7 @@ expression: "(make_adder_body, format_tag_value)"
             ],
             ty: Struct(
                 StructId(
-                    4,
+                    5,
                 ),
             ),
             span: IrSpan {
@@ -113,14 +113,14 @@ expression: "(make_adder_body, format_tag_value)"
         env_struct: StructInst {
             struct_id: Some(
                 StructId(
-                    3,
+                    4,
                 ),
             ),
             type_args: [],
             fields: [],
             ty: Struct(
                 StructId(
-                    3,
+                    4,
                 ),
             ),
             span: IrSpan {

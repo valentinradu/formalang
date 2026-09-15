@@ -38,6 +38,39 @@ extern impl Array<T> {
     fn is_empty(self) -> Boolean
 }
 
+// Seq<T> — a lazy, linear sequence. `for x in xs { ... }` produces
+// one; it is not a collection and holds no elements. Nothing runs
+// until a terminal combinator consumes it, and it may be consumed
+// exactly once, so a pipeline collapses into a single loop with no
+// intermediate array.
+//
+// The methods below are NOT host-provided, despite the `extern impl`
+// shape. Every one takes a closure, and a closure has no
+// representation a host can call. A backend must lower them itself,
+// as loop structure; ask `IrModule::prelude_seq_id` to recognise
+// them. Binding any of these to a host symbol is a bug.
+pub struct Seq<T> {}
+
+extern impl Seq<T> {
+    // Adapters: Seq -> Seq.
+    fn map(sink self, f: (T) -> T) -> Seq<T>
+    fn filter(sink self, f: (T) -> Boolean) -> Seq<T>
+    fn take(sink self, count: I32) -> Seq<T>
+    fn skip(sink self, count: I32) -> Seq<T>
+
+    // Terminals: each consumes the sequence and ends the pipeline.
+    fn collect(sink self) -> [T]
+    fn count(sink self) -> I32
+    // The accumulator shares the element type. A fold to a different
+    // type needs a second type parameter on the method, and
+    // method-level generics do not exist yet.
+    fn fold(sink self, initial: T, f: (T, T) -> T) -> T
+    fn first(sink self) -> T?
+    fn any(sink self, f: (T) -> Boolean) -> Boolean
+    fn all(sink self, f: (T) -> Boolean) -> Boolean
+    fn run(sink self)
+}
+
 // Dictionary<K, V> — opaque key-value map. The `["k": v]` literal
 // and the `[K: V]` type sugar both desugar to this struct.
 pub struct Dictionary<K, V> {}

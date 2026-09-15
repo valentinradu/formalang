@@ -68,7 +68,7 @@ impl IrLowerer<'_> {
             collection: Box::new(collection_ir),
             body: Box::new(body_ir.clone()),
             ty: self
-                .array_of(body_ir.ty().clone())
+                .seq_of(body_ir.ty().clone())
                 .unwrap_or(ResolvedType::Error),
             span: self.current_ir_span(),
         }

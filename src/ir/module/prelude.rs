@@ -12,6 +12,30 @@ impl IrModule {
         self.struct_id("Array")
     }
 
+    /// Prelude-defined `Seq<T>` struct id.
+    ///
+    /// A backend uses this to recognise the sequence combinators. They
+    /// wear the `extern impl` shape but are **not** host-provided:
+    /// every one takes a closure, and a closure has no representation
+    /// a host can call. Lower them as loop structure; binding one to a
+    /// host symbol is a bug.
+    #[must_use]
+    pub fn prelude_seq_id(&self) -> Option<StructId> {
+        self.struct_id("Seq")
+    }
+
+    /// True iff `impl_id` names the prelude's `extern impl Seq<T>`
+    /// block, whose methods the backend must lower rather than bind.
+    #[must_use]
+    pub fn is_seq_intrinsic_impl(&self, impl_id: crate::ir::ImplId) -> bool {
+        let Some(seq) = self.prelude_seq_id() else {
+            return false;
+        };
+        self.impls
+            .get(impl_id.0 as usize)
+            .is_some_and(|i| i.struct_id() == Some(seq))
+    }
+
     /// Prelude-defined `Dictionary<K, V>` struct id.
     #[must_use]
     pub fn prelude_dictionary_id(&self) -> Option<StructId> {
@@ -31,10 +55,11 @@ impl IrModule {
     }
 
     /// True iff `id` points at a prelude-defined built-in struct
-    /// (`Array`, `Dictionary`, `Range`).
+    /// (`Array`, `Seq`, `Dictionary`, `Range`).
     #[must_use]
     pub fn is_prelude_struct(&self, id: StructId) -> bool {
         Some(id) == self.prelude_array_id()
+            || Some(id) == self.prelude_seq_id()
             || Some(id) == self.prelude_dictionary_id()
             || Some(id) == self.prelude_range_id()
     }
@@ -46,20 +71,17 @@ impl IrModule {
     }
 
     /// Iterate over user-defined structs only, skipping the prelude
-    /// built-ins (`Array`, `Dictionary`, `Range`). Use this when a test
-    /// wants the user-authored structs without indexing past the
+    /// built-ins (`Array`, `Seq`, `Dictionary`, `Range`). Use this when
+    /// a test wants the user-authored structs without indexing past the
     /// prelude's leading slots.
     pub fn user_structs(&self) -> impl Iterator<Item = &IrStruct> {
-        let array = self.prelude_array_id();
-        let dict = self.prelude_dictionary_id();
-        let range = self.prelude_range_id();
         self.structs.iter().enumerate().filter_map(move |(i, s)| {
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "struct count fits in u32 by construction (add_struct guards the cast)"
             )]
             let id = StructId(i as u32);
-            if Some(id) == array || Some(id) == dict || Some(id) == range {
+            if self.is_prelude_struct(id) {
                 None
             } else {
                 Some(s)
@@ -83,6 +105,22 @@ impl IrModule {
                 Some(e)
             }
         })
+    }
+
+    /// If `ty` is `Seq<T>` (the prelude-defined struct), return `T`.
+    #[must_use]
+    pub fn seq_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType> {
+        let seq = self.prelude_seq_id()?;
+        if let ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args,
+        } = ty
+        {
+            if *id == seq && args.len() == 1 {
+                return args.first();
+            }
+        }
+        None
     }
 
     /// If `ty` is `Array<T>` (the prelude-defined struct), return `T`.

@@ -257,7 +257,7 @@ fn test_dce_expr_tuple_with_dead_code() -> Result<(), Box<dyn std::error::Error>
 fn test_dce_expr_for_loop() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let doubled: [I32] = for x in items { if true { x } else { 0 } }
+        let doubled: [I32] = for x in items { if true { x } else { 0 } }.collect()
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);
@@ -985,7 +985,7 @@ fn test_visitor_walk_if_expr() -> Result<(), Box<dyn std::error::Error>> {
 fn test_visitor_walk_for_expr() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let doubled: [I32] = for x in items { x }
+        let doubled: [I32] = for x in items { x }.collect()
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut visitor = ExprCollector::new();

@@ -43,7 +43,7 @@ impl LeftoverScanner {
         }
 
         let is_prelude_builtin =
-            |name: &str| matches!(name, "Array" | "Dictionary" | "Range" | "Optional");
+            |name: &str| super::compact::is_prelude_struct_name(name) || name == "Optional";
         let mut check = |ty: &ResolvedType| {
             if let Some(sample) = first_leftover(ty, module) {
                 self.note(sample);

@@ -17,7 +17,7 @@ use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
 use crate::ast::{Expr, File};
 use crate::error::CompilerError;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate a single expression (recursively)
@@ -111,8 +111,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(collection, file);
-                let mut scope = HashSet::new();
-                scope.insert(var.name.clone());
+                // Bind the loop variable to the collection's element
+                // type, so the body infers against a real type instead
+                // of `Unknown`.
+                let element = self.infer_type_sem(collection, file).iteration_element();
+                let mut scope = HashMap::new();
+                scope.insert(var.name.clone(), element);
                 self.loop_var_scopes.push(scope);
                 self.validate_expr(body, file);
                 self.loop_var_scopes.pop();

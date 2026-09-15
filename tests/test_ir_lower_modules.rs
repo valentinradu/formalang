@@ -2133,7 +2133,7 @@ fn dce_via_pipeline_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>>
 
     // Use a struct default with for loop to exercise For branch in DCE
     let source = r"
-        struct A { items: [I32] = for x in [1, 2, 3] { x } }
+        struct A { items: [I32] = for x in [1, 2, 3] { x }.collect() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, false);
@@ -2539,7 +2539,7 @@ fn fold_constants_for_loop_in_impl() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use struct field default to exercise For fold path without the return-type complexity
     let source = r"
-        struct A { items: [I32] = for x in [1, 2] { x } }
+        struct A { items: [I32] = for x in [1, 2] { x }.collect() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let folded = fold_constants(&module);

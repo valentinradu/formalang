@@ -271,7 +271,7 @@ fn test_impl_with_for() -> Result<(), Box<dyn std::error::Error>> {
             id: I32
         }
         struct Collection {
-            items: [Item] = for i in [1, 2, 3] { Item(id: i) }
+            items: [Item] = for i in [1, 2, 3] { Item(id: i) }.collect()
         }
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;

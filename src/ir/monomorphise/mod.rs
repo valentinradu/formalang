@@ -56,7 +56,7 @@ mod external;
 mod functions;
 mod leftover;
 mod rewrite;
-mod specialise;
+pub(in crate::ir) mod specialise;
 pub(super) mod walkers;
 
 use collect::collect_all_instantiations;
@@ -391,7 +391,7 @@ impl IrPass for MonomorphisePass {
         // is their canonical post-pass shape — so they have to survive
         // for dispatch and lookup to keep working.
         let is_prelude_builtin =
-            |name: &str| matches!(name, "Array" | "Dictionary" | "Range" | "Optional");
+            |name: &str| compact::is_prelude_struct_name(name) || name == "Optional";
         module
             .structs
             .retain(|s| s.generic_params.is_empty() || is_prelude_builtin(&s.name));

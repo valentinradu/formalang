@@ -60,6 +60,43 @@ impl SemType {
         Self::Array(Box::new(inner))
     }
 
+    /// The type each step of `for x in self` binds: an array's
+    /// element, a range's bound, or a sequence's element.
+    ///
+    /// `Unknown` for anything else. A non-iterable collection is
+    /// reported by `validate_for_loop`, so this stays quiet rather
+    /// than raising a second diagnostic.
+    pub(super) fn iteration_element(&self) -> Self {
+        match self {
+            Self::Array(inner) => (**inner).clone(),
+            Self::Generic { base, args } if base == "Range" || base == "Seq" => {
+                args.first().cloned().unwrap_or(Self::Unknown)
+            }
+            Self::Primitive(_)
+            | Self::Named(_)
+            | Self::Optional(_)
+            | Self::Tuple(_)
+            | Self::Generic { .. }
+            | Self::Dictionary { .. }
+            | Self::Closure { .. }
+            | Self::Unknown
+            | Self::InferredEnum
+            | Self::Nil => Self::Unknown,
+        }
+    }
+
+    /// Construct a sequence shape from an element type.
+    ///
+    /// A sequence has no sugar syntax — it is always written
+    /// `Seq<T>` — so it takes the same `Generic` shape an annotation
+    /// produces. A dedicated variant would not compare equal to one.
+    pub(super) fn seq_of(inner: Self) -> Self {
+        Self::Generic {
+            base: "Seq".to_string(),
+            args: vec![inner],
+        }
+    }
+
     /// Construct an optional shape from a base type. Idempotent on
     /// already-optional types: `optional_of(T?) == T?`.
     pub(super) fn optional_of(inner: Self) -> Self {

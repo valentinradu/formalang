@@ -477,7 +477,7 @@ fn test_binary_op_comparison_with_strings() -> Result<(), Box<dyn std::error::Er
 fn test_for_loop_over_number_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         let count: I32 = 10
-        let result: [I32] = for x in count { x }
+        let result: [I32] = for x in count { x }.collect()
     ";
     let result = compile(source);
     if result.is_ok() {
@@ -490,7 +490,7 @@ fn test_for_loop_over_number_invalid() -> Result<(), Box<dyn std::error::Error>>
 fn test_for_loop_over_string_invalid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
         let s: String = "hello"
-        let result: [String] = for c in s { c }
+        let result: [String] = for c in s { c }.collect()
     "#;
     let result = compile(source);
     if result.is_ok() {
@@ -722,7 +722,7 @@ fn test_closure_expr_in_let_binding() -> Result<(), Box<dyn std::error::Error>> 
     // Closure expression used in a let binding
     let source = r"
         let items: [I32] = [1, 2, 3, 4, 5]
-        let doubled: [I32] = for x in items { x }
+        let doubled: [I32] = for x in items { x }.collect()
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -1791,7 +1791,7 @@ fn test_string_multiplication_invalid() -> Result<(), Box<dyn std::error::Error>
 fn test_range_in_for_loop() -> Result<(), Box<dyn std::error::Error>> {
     // Range expressions are valid iterables in for loops
     let source = r"
-        let sum: [I32] = for i in 0..10 { i }
+        let sum: [I32] = for i in 0..10 { i }.collect()
     ";
     compile(source).map_err(|e| format!("Range for loop should compile: {e:?}"))?;
     Ok(())

@@ -68,7 +68,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return;
             }
             for scope in &self.loop_var_scopes {
-                if scope.contains(name) {
+                if scope.contains_key(name) {
                     return;
                 }
             }

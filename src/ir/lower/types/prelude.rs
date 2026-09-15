@@ -21,6 +21,20 @@ impl IrLowerer<'_> {
         })
     }
 
+    /// Construct `Seq<inner>` against the prelude-defined struct.
+    pub(in crate::ir::lower) fn seq_of(&self, inner: ResolvedType) -> Option<ResolvedType> {
+        let id = self.module.prelude_seq_id()?;
+        Some(ResolvedType::Generic {
+            base: crate::ir::GenericBase::Struct(id),
+            args: vec![inner],
+        })
+    }
+
+    /// If `ty` is `Seq<T>`, return `T`.
+    pub(in crate::ir::lower) fn seq_element_ty(&self, ty: &ResolvedType) -> Option<ResolvedType> {
+        self.module.seq_element_ty(ty).cloned()
+    }
+
     /// Construct `Dictionary<key, value>` against the prelude-defined struct.
     pub(in crate::ir::lower) fn dictionary_of(
         &self,
@@ -102,7 +116,10 @@ impl IrLowerer<'_> {
         &self,
         ty: &ResolvedType,
     ) -> Option<ResolvedType> {
+        // A `for` iterates an array, a range, or another sequence, so
+        // pipelines chain: `for y in (for x in xs { x * 2 }) { ... }`.
         self.array_element_ty(ty)
             .or_else(|| self.range_element_ty(ty))
+            .or_else(|| self.seq_element_ty(ty))
     }
 }

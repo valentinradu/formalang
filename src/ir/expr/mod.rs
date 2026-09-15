@@ -23,7 +23,7 @@ use super::{
 /// For example:
 /// - `Literal { value: Literal::Number(n), ty }` → `ty` is `ResolvedType::Primitive(n.primitive_type())` (the suffix's primitive when present, or `I32` / `F64` defaulted from the source kind)
 /// - `BinaryOp { op: Eq, .. }` → `ty` is `ResolvedType::Primitive(Boolean)`
-/// - `For { .. }` → `ty` is `ResolvedType::Array(body_type)`
+/// - `For { .. }` → `ty` is `Seq(body_type)`
 #[expect(
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
@@ -253,7 +253,12 @@ pub enum IrExpr {
         collection: Box<Self>,
         /// Loop body
         body: Box<Self>,
-        /// Resolved type: `Array(body_type)`
+        /// Resolved type: `Seq(body_type)`.
+        ///
+        /// A loop is lazy: it yields a sequence, not a collection, and
+        /// nothing runs until a terminal combinator consumes it. Write
+        /// `.collect()` for an array, `.fold(...)` or `.count()` for a
+        /// single value, `.run()` to execute it for effects alone.
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
         #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]

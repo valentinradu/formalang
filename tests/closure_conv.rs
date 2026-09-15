@@ -27,7 +27,10 @@ const TWO_CLOSURES_SOURCE: &str = r"
 #[test]
 fn mc3_synthesizes_capture_env_structs() {
     let module = compile_to_ir(TWO_CLOSURES_SOURCE).expect("should compile to IR");
-    let original_struct_count = module.user_structs().count();
+    // Count over `structs`, the same collection the skip below
+    // walks. `user_structs()` hides the prelude types, so mixing the
+    // two silently included a prelude struct in "new".
+    let original_struct_count = module.structs.len();
 
     let converted = ClosureConversionPass::new()
         .run(module)
@@ -592,7 +595,10 @@ fn mc9_env_field_convention_preserves_sink_and_mut() {
         let bump: () -> I32 = () -> counter
     ";
     let module = compile_to_ir(source).expect("should compile to IR");
-    let original_struct_count = module.user_structs().count();
+    // Count over `structs`, the same collection the skip below
+    // walks. `user_structs()` hides the prelude types, so mixing the
+    // two silently included a prelude struct in "new".
+    let original_struct_count = module.structs.len();
 
     let converted = ClosureConversionPass::new()
         .run(module)

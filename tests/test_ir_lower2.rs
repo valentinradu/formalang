@@ -750,7 +750,7 @@ fn test_lower_for_loop_from_dict() -> Result<(), Box<dyn std::error::Error>> {
     // For loop over a variable reference
     let source = r"
         let items: [I32] = [1, 2, 3]
-        let mapped: [I32] = for x in items { 0 }
+        let mapped: [I32] = for x in items { 0 }.collect()
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let binding = module
@@ -758,8 +758,12 @@ fn test_lower_for_loop_from_dict() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .find(|l| l.name == "mapped")
         .ok_or("mapped")?;
-    let IrExpr::For { var, .. } = &binding.value else {
-        return Err(format!("Expected For, got {:?}", binding.value).into());
+    // A loop yields a lazy sequence; `collect()` wraps it.
+    let IrExpr::MethodCall { receiver, .. } = &binding.value else {
+        return Err(format!("Expected MethodCall, got {:?}", binding.value).into());
+    };
+    let IrExpr::For { var, .. } = receiver.as_ref() else {
+        return Err(format!("Expected For, got {receiver:?}").into());
     };
     if var != "x" {
         return Err(format!("expected var 'x', got '{var}'").into());

@@ -31,8 +31,8 @@
 //! Function-shape
 //! - Non-extern function with `body: None`.
 //!
-//! The prelude-shipped built-ins (`Optional`, `Array`, `Dictionary`,
-//! `Range`) are intentionally generic templates; their bodies are
+//! The prelude-shipped built-ins (`Optional`, `Array`, `Seq`,
+//! `Dictionary`, `Range`) are intentionally generic templates; their bodies are
 //! skipped when scanning for `TypeParam` survivors and for in-bounds
 //! checks on their own ids.
 
@@ -51,10 +51,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The prelude's generic carriers. Their declarations are templates
+/// that monomorphisation deliberately retains, so a `TypeParam` in one
+/// of their signatures is correct rather than a leftover.
 const fn is_prelude_builtin_name(name: &str) -> bool {
     matches!(
         name.as_bytes(),
-        b"Array" | b"Dictionary" | b"Range" | b"Optional"
+        b"Array" | b"Seq" | b"Dictionary" | b"Range" | b"Optional"
     )
 }
 
