@@ -35,8 +35,8 @@ pub(in crate::reporting) use generics::{
     missing_generic_arguments, out_of_scope_type_parameter,
 };
 pub(in crate::reporting) use misc::{
-    closure_capture_escapes_local_binding, expression_depth_exceeded, internal_error,
-    public_closure_field, too_many_definitions, visibility_violation,
+    closure_capture_escapes_local_binding, expression_depth_exceeded, float_dictionary_key,
+    internal_error, public_closure_field, too_many_definitions, visibility_violation,
 };
 pub(in crate::reporting) use mutability::{mutability_mismatch, use_after_sink};
 pub(in crate::reporting) use optional::{

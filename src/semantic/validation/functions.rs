@@ -32,7 +32,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Register function parameters as local bindings
         for param in &func.params {
             if let Some(ty) = &param.ty {
-                self.validate_type(ty);
+                self.validate_type(ty, param.span);
             }
             let param_sem = param.ty.as_ref().map_or_else(
                 || {
@@ -125,7 +125,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Register function parameters as local bindings
         for param in &func.params {
             if let Some(ty) = &param.ty {
-                self.validate_type(ty);
+                self.validate_type(ty, param.span);
             }
             let param_sem = param.ty.as_ref().map_or(
                 crate::semantic::sem_type::SemType::Unknown,
@@ -152,7 +152,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Validate return type if declared
         if let Some(return_type) = &func.return_type {
-            self.validate_type(return_type);
+            self.validate_type(return_type, func.span);
         }
 
         // Validate the function body if present

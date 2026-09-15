@@ -25,7 +25,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // `let x: SomeTrait = ...` as TraitUsedAsValueType (and
             // any other invalid type in the annotation) before the
             // value/declared compatibility check would mask it.
-            self.validate_type(type_ann);
+            self.validate_type(type_ann, let_binding.span);
         }
         self.validate_expr(&let_binding.value, file);
         // Reject nil-into-nonopt and any other mismatch between the
@@ -176,7 +176,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         };
         if let Some(type_ann) = ty {
-            self.validate_type(type_ann);
+            self.validate_type(type_ann, *span);
         }
         self.validate_expr(value, file);
         // nil literals must not be assigned to non-optional types
@@ -287,7 +287,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // an internal error. Validate it the way the
                     // module-level path does.
                     if let Some(type_ann) = ty {
-                        self.validate_type(type_ann);
+                        self.validate_type(type_ann, value.span());
                     }
                     self.validate_expr(value, file);
                     let value_sem = ty

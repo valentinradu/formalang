@@ -103,7 +103,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.current_fn_param_conventions.clear();
         for param in &func_def.params {
             if let Some(ty) = &param.ty {
-                self.validate_type(ty);
+                self.validate_type(ty, param.span);
             }
             let param_sem = param.ty.as_ref().map_or(
                 crate::semantic::sem_type::SemType::Unknown,

@@ -11,29 +11,63 @@ use crate::location::Span;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate a type reference (recursive over compound shapes).
-    pub(in crate::semantic) fn validate_type(&mut self, ty: &Type) {
+    /// `span` locates the declaration this type belongs to. A `Type`
+    /// carries no span of its own except on `Ident` and `Generic`, so
+    /// the caller supplies one for the shapes that lack it.
+    pub(in crate::semantic) fn validate_type(&mut self, ty: &Type, span: Span) {
         match ty {
             Type::Primitive(_) => {}
             Type::Ident(ident) => self.validate_ident_type(ident),
-            Type::Array(element_ty) => self.validate_type(element_ty),
-            Type::Optional(inner_ty) => self.validate_type(inner_ty),
+            Type::Array(element_ty) => self.validate_type(element_ty, span),
+            Type::Optional(inner_ty) => self.validate_type(inner_ty, span),
             Type::Tuple(fields) => {
                 for field in fields {
-                    self.validate_type(&field.ty);
+                    self.validate_type(&field.ty, field.span);
                 }
             }
-            Type::Generic { name, args, span } => self.validate_generic_type(name, args, *span),
+            Type::Generic {
+                name,
+                args,
+                span: generic_span,
+            } => self.validate_generic_type(name, args, *generic_span),
             Type::Dictionary { key, value } => {
-                self.validate_type(key);
-                self.validate_type(value);
+                self.validate_dictionary_key(key, span);
+                self.validate_type(key, span);
+                self.validate_type(value, span);
             }
             Type::Closure { params, ret } => {
                 for (_, param) in params {
-                    self.validate_type(param);
+                    self.validate_type(param, span);
                 }
-                self.validate_type(ret);
+                self.validate_type(ret, span);
             }
         }
+    }
+
+    /// Reject `F32` and `F64` in a dictionary key position.
+    ///
+    /// A float compares badly: `NaN != NaN`, so a key can never be
+    /// found again, and `0.0 == -0.0`, so two distinct-looking keys
+    /// collide. Rust refuses the same thing, because `f64` is not
+    /// `Eq`. Every other key type has a total equality the backend can
+    /// hash.
+    fn validate_dictionary_key(&mut self, key: &Type, span: Span) {
+        let key_type = match key {
+            Type::Primitive(crate::ast::PrimitiveType::F32) => "F32",
+            Type::Primitive(crate::ast::PrimitiveType::F64) => "F64",
+            Type::Primitive(_)
+            | Type::Ident(_)
+            | Type::Generic { .. }
+            | Type::Array(_)
+            | Type::Optional(_)
+            | Type::Tuple(_)
+            | Type::Dictionary { .. }
+            | Type::Closure { .. } => return,
+        };
+        self.errors.push(CompilerError::FloatDictionaryKey {
+            key_type: key_type.to_string(),
+            span,
+        });
     }
 
     /// Validate a simple identifier type (handles module paths and plain names).
@@ -142,7 +176,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Recurse into each argument; `validate_type` re-enters this for any
         // nested `Type::Generic` so inner constraints are checked too.
         for arg in args {
-            self.validate_type(arg);
+            self.validate_type(arg, span);
         }
     }
 

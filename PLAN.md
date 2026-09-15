@@ -55,7 +55,7 @@ These are settled. The reasoning is in the sections that follow.
 | Recursion | Keep. The backend bounds the depth with a counter. |
 | Closure representation | Defunctionalise. No indirect calls in the output. |
 | Loops | `for` produces a lazy `Seq<T>`, consumed exactly once. See Sequences. |
-| A dropped loop | Always an error, `E134`. Dropping a `Seq` means nothing ran. |
+| A dropped loop | Always an error, `E135`. Dropping a `Seq` means nothing ran. |
 | `mut` | Mutable Value Semantics. By pointer; the caller sees the change. See R2. |
 | `sink` | No effect on code generation under an arena. See R3. |
 | Repository split | `formalang` keeps the frontend. `formajit` is a **new repository**, like `formawasm`. |
@@ -177,12 +177,13 @@ There is no third option: `src/reporting/` builds only
 
 ### The diagnostic
 
-Next free code is `E134`; the project is at `E133`. Put the renderer
+Next free code is `E135`; `E134` went to the float dictionary key in
+1.4. Put the renderer
 next to `public_closure_field` in
 `src/reporting/errors_advanced/misc.rs`:
 
 ```text
-[E134] Error: This sequence is never consumed
+[E135] Error: This sequence is never consumed
     ╭─[app.fv:7:3]
     │
   7 │   for x in xs { log(message: "x") }
@@ -200,7 +201,7 @@ pub(in crate::reporting) fn seq_not_consumed(
     filename: &str,
     span: Span,
 ) -> ReportBuilder<'_> {
-    report(filename, span, "E134")
+    report(filename, span, "E135")
         .with_message("This sequence is never consumed")
         .with_label(label(filename, span).with_message("this loop never runs"))
         .with_help(
@@ -400,13 +401,13 @@ Two new errors:
 
 | Error | Raised when | Code |
 | --- | --- | --- |
-| `SeqUsedTwice` | a `Seq` binding is read after it was consumed | `E135` |
-| `SeqNotConsumed` | a `Seq` value reaches the end of its scope unread | `E134` |
+| `SeqUsedTwice` | a `Seq` binding is read after it was consumed | `E136` |
+| `SeqNotConsumed` | a `Seq` value reaches the end of its scope unread | `E135` |
 
 Extend the existing `UseAfterSink` analysis for both. Neither needs an
 effect analysis; see [Dropping a sequence is an
 error](#dropping-a-sequence-is-an-error). The full diagnostic for
-`E134` is in [The diagnostic](#the-diagnostic).
+`E135` is in [The diagnostic](#the-diagnostic).
 
 **Placement rules.** Reject a `Seq` in a struct field, an enum payload,
 a `pub fn` return type, and a `fn` return type. Accept it in a local

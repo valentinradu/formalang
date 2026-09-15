@@ -303,11 +303,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         for param in params {
             if let Some(ty) = &param.ty {
-                self.validate_type(ty);
+                self.validate_type(ty, param.span);
             }
         }
         if let Some(ty) = return_type {
-            self.validate_type(ty);
+            self.validate_type(ty, body.span());
         }
         let mut param_scope = HashSet::new();
         for param in params {

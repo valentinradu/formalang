@@ -104,7 +104,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_expr(arg_expr, file);
         }
         for type_arg in type_args {
-            self.validate_type(type_arg);
+            self.validate_type(type_arg, span);
         }
 
         // Check module visibility for qualified paths (mod::item)

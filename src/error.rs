@@ -319,6 +319,10 @@ pub enum CompilerError {
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
     CannotInferEnumType { variant: String, span: Span },
 
+    /// A dictionary key typed `F32` or `F64`.
+    #[error("'{key_type}' cannot be a dictionary key")]
+    FloatDictionaryKey { key_type: String, span: Span },
+
     // Function validation errors
     #[error("Function '{function}' has return type {expected} but body has type {actual}")]
     FunctionReturnTypeMismatch {
@@ -437,6 +441,7 @@ impl CompilerError {
             | Self::AmbiguousCall { span, .. }
             | Self::NoMatchingOverload { span, .. }
             | Self::CannotInferEnumType { span, .. }
+            | Self::FloatDictionaryKey { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }
             | Self::UseAfterSink { span, .. }

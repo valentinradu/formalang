@@ -118,6 +118,9 @@ pub let empty: [String: Boolean] = [:]
 **Rules**:
 
 - Keys can be `String`, `I32`, `I64`, `Boolean`, a struct, or an enum
+- `F32` and `F64` cannot be keys (E134). A float has no usable
+  equality: `NaN` is not equal to itself, so a key can never be found
+  again, and `0.0` equals `-0.0`, so two distinct-looking keys collide
 - String keys must be quoted in literals: `["key": value]`
 - Numeric keys are unquoted: `[42: value]`
 - Empty dict: `[:]`

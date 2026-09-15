@@ -98,3 +98,21 @@ pub(in crate::reporting) fn internal_error<'a>(
             label(filename, span).with_message("compiler invariant violated; please file a bug"),
         )
 }
+
+pub(in crate::reporting) fn float_dictionary_key<'a>(
+    filename: &'a str,
+    span: Span,
+    key_type: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E134")
+        .with_message(format!("'{key_type}' cannot be a dictionary key"))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' has no usable equality",
+            key_type.fg(Color::Red)
+        )))
+        .with_help(
+            "a float compares badly: NaN is not equal to itself, and 0.0 equals -0.0, \
+             so two keys can look different and collide, or look the same and miss. \
+             Use 'String', 'I32', 'I64', 'Boolean', a struct, or an enum",
+        )
+}

@@ -260,6 +260,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::CannotInferEnumType { variant, .. } => {
             errors_advanced::cannot_infer_enum_type(filename, span, variant)
         }
+        CompilerError::FloatDictionaryKey { key_type, .. } => {
+            errors_advanced::float_dictionary_key(filename, span, key_type)
+        }
         CompilerError::ExpressionDepthExceeded { .. } => {
             errors_advanced::expression_depth_exceeded(filename, span)
         }

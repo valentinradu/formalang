@@ -42,7 +42,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.push_generic_scope(&enum_def.generics);
                         for variant in &enum_def.variants {
                             for field in &variant.fields {
-                                self.validate_type(&field.ty);
+                                self.validate_type(&field.ty, field.span);
                             }
                         }
                         self.pop_generic_scope();
@@ -89,7 +89,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                     self.push_generic_scope(&enum_def.generics);
                                     for variant in &enum_def.variants {
                                         for field in &variant.fields {
-                                            self.validate_type(&field.ty);
+                                            self.validate_type(&field.ty, field.span);
                                         }
                                     }
                                     self.pop_generic_scope();
@@ -250,7 +250,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     self.push_generic_scope(&enum_def.generics);
                     for variant in &enum_def.variants {
                         for field in &variant.fields {
-                            self.validate_type(&field.ty);
+                            self.validate_type(&field.ty, field.span);
                         }
                     }
                     self.pop_generic_scope();
@@ -302,7 +302,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         for field in &trait_def.fields {
-            self.validate_type(&field.ty);
+            self.validate_type(&field.ty, field.span);
         }
 
         self.pop_generic_scope();
@@ -311,7 +311,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn resolve_struct_types(&mut self, struct_def: &StructDef) {
         self.push_generic_scope(&struct_def.generics);
         for field in &struct_def.fields {
-            self.validate_type(&field.ty);
+            self.validate_type(&field.ty, field.span);
         }
         self.pop_generic_scope();
     }
