@@ -1,6 +1,6 @@
 //! Function definition + parameter shapes.
 
-use crate::ast::{ExternAbi, FunctionAttribute, ParamConvention};
+use crate::ast::{ExternAbi, FunctionAttribute, ParamConvention, Visibility};
 use crate::ir::{BindingId, IrExpr, IrSpan, ResolvedType};
 
 use super::IrGenericParam;
@@ -27,6 +27,15 @@ use super::IrGenericParam;
 pub struct IrFunction {
     /// Function name
     pub name: String,
+
+    /// Visibility (public or private).
+    ///
+    /// A backend keys its export list on this: a `pub fn` becomes a
+    /// symbol the host can call by name, a private `fn` stays internal.
+    /// Defaults to private, so a hand-built `IrFunction` and older
+    /// serialised IR both stay internal rather than leaking.
+    #[serde(default)]
+    pub visibility: Visibility,
 
     /// Generic type parameters declared on the function itself
     /// (e.g. `fn identity<T>(value: T) -> T`).

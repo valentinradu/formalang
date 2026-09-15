@@ -289,6 +289,7 @@ impl<'a> FnResolver<'a> {
 
 fn placeholder_function() -> IrFunction {
     IrFunction {
+        visibility: crate::ast::Visibility::Private,
         name: String::new(),
         generic_params: Vec::new(),
         params: Vec::new(),

@@ -142,6 +142,8 @@ fn build_lifted_function(
     }
 
     IrFunction {
+        // A lifted closure is an internal call target, never an export.
+        visibility: crate::ast::Visibility::Private,
         name,
         generic_params: Vec::new(),
         params,

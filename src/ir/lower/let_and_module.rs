@@ -233,6 +233,7 @@ impl IrLowerer<'_> {
             registered_name.clone(),
             IrFunction {
                 name: registered_name.clone(),
+                visibility: f.visibility,
                 generic_params,
                 params,
                 return_type,
@@ -341,6 +342,10 @@ impl IrLowerer<'_> {
 
         IrFunction {
             name: f.name.name.clone(),
+            // A method's reach is its impl's, and an impl follows the
+            // type it is written for, so a method carries no `pub` of
+            // its own. Only a top-level `fn` can be an export.
+            visibility: crate::ast::Visibility::Private,
             // Method-level generics aren't yet supported; enclosing type
             // generics live on the containing IrImpl.
             generic_params: Vec::new(),

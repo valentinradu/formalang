@@ -378,6 +378,7 @@ fn unresolved_path_with_concrete_type_emits_undefined_reference() -> TestResult 
 
     let mut module = IrModule::default();
     module.functions.push(IrFunction {
+        visibility: formalang::ast::Visibility::Private,
         name: "f".to_string(),
         generic_params: vec![],
         params: vec![],
@@ -416,6 +417,7 @@ fn unresolved_path_with_error_type_does_not_double_emit() -> TestResult {
 
     let mut module = IrModule::default();
     module.functions.push(IrFunction {
+        visibility: formalang::ast::Visibility::Private,
         name: "f".to_string(),
         generic_params: vec![],
         params: vec![],

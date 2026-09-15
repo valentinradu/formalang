@@ -5,6 +5,7 @@ expression: lifted
 [
     IrFunction {
         name: "__closure0",
+        visibility: Private,
         generic_params: [],
         params: [
             IrFunctionParam {
@@ -134,6 +135,7 @@ expression: lifted
     },
     IrFunction {
         name: "__closure1",
+        visibility: Private,
         generic_params: [],
         params: [
             IrFunctionParam {

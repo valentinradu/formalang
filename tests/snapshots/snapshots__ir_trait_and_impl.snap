@@ -365,6 +365,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "is_some",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -426,6 +427,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "is_none",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -521,6 +523,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "len",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -582,6 +585,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "is_empty",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -681,6 +685,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "len",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -742,6 +747,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "is_empty",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -837,6 +843,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "len",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -898,6 +905,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "is_empty",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -986,6 +994,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "len",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1047,6 +1056,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "is_empty",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1108,6 +1118,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "slice",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1231,6 +1242,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "starts_with",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1323,6 +1335,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "contains",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1415,6 +1428,7 @@ IrModule {
                 },
                 IrFunction {
                     name: "byte_at",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1543,6 +1557,7 @@ IrModule {
             functions: [
                 IrFunction {
                     name: "area",
+                    visibility: Private,
                     generic_params: [],
                     params: [
                         IrFunctionParam {
@@ -1700,6 +1715,7 @@ IrModule {
     functions: [
         IrFunction {
             name: "assert",
+            visibility: Public,
             generic_params: [],
             params: [
                 IrFunctionParam {

@@ -79,6 +79,7 @@ fn find_residual_closures_locates_let_value() {
 fn find_residual_closures_locates_function_body() {
     let mut module = IrModule::new();
     module.functions.push(IrFunction {
+        visibility: crate::ast::Visibility::Private,
         name: "f".to_string(),
         generic_params: Vec::new(),
         params: Vec::new(),

@@ -54,9 +54,13 @@ pub use types::{
 
 /// Visibility modifier
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Visibility {
     Public,
+    /// The default. An item is internal unless it says `pub`, and a
+    /// hand-built or older-serialised definition stays internal rather
+    /// than leaking.
+    #[default]
     Private,
 }
 
