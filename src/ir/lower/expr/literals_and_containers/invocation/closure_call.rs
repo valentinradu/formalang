@@ -38,11 +38,8 @@ impl IrLowerer<'_> {
             .iter()
             .enumerate()
             .map(|(i, (arg_name, expr))| {
-                let saved_closure = self.expected_closure_type.take();
-                self.expected_closure_type =
-                    Self::expected_arg_closure_ty(&expected_param_tys, i, arg_name.as_ref());
-                let lowered = self.lower_expr(expr);
-                self.expected_closure_type = saved_closure;
+                let expected = Self::expected_arg_ty(&expected_param_tys, i, arg_name.as_ref());
+                let lowered = self.lower_with_expected_value(expr, expected.as_ref());
                 (arg_name.as_ref().map(|n| n.name.clone()), lowered)
             })
             .collect();

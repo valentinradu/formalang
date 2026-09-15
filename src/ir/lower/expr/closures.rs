@@ -70,13 +70,21 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(closure_frame);
 
-        // set `current_function_return_type` from the
-        // closure's declared return type so an inferred-enum
-        // `.variant` inside the body resolves against the closure's
-        // own return type, not the surrounding context (which after B18
-        // can be the *outer* type, e.g. the field's `Closure` type).
+        // Set `current_function_return_type` from the closure's own
+        // declared return type, so an inferred-enum `.variant` in the
+        // body resolves against that rather than the surrounding
+        // context (which can be the *outer* type, e.g. the field's
+        // whole `Closure` type).
+        //
+        // When the literal carries no annotation, the expected closure
+        // type from the context still knows the return type — a
+        // closure-typed field or parameter declares it. Fall back to
+        // that, so `on_click: () -> Event = () -> .clicked` finds
+        // `Event`.
         let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = return_type.map(IrLowerer::type_name);
+        self.current_function_return_type = return_type
+            .map(|t| self.lower_type(t))
+            .or_else(|| expected_return_ty.clone());
 
         let body_ir = self.lower_expr(body);
 

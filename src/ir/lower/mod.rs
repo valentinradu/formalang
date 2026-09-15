@@ -98,8 +98,11 @@ struct IrLowerer<'a> {
     pub(super) current_impl_struct: Option<String>,
     /// Current module prefix for nested definitions (e.g., "`outer::inner`")
     pub(super) current_module_prefix: String,
-    /// Current function's return type for inferring enum types
-    pub(super) current_function_return_type: Option<String>,
+    /// Return type of the function, method, or closure whose body is
+    /// being lowered. Seeds [`Self::expected_value_type`] for the body
+    /// expression, so a tail-position `.variant` literal resolves
+    /// against the declared return type.
+    pub(super) current_function_return_type: Option<ResolvedType>,
     /// Stack of local bindings in scope during lowering: each entry is a
     /// frame pushed when entering a function/closure/block body, mapping the
     /// binding name to its declared parameter convention and resolved type.
@@ -134,13 +137,18 @@ struct IrLowerer<'a> {
     /// the AST didn't annotate, so `array.map(x -> x + 1)` lowers with
     /// `x: I32` instead of `x: ResolvedType::Error`.
     pub(super) expected_closure_type: Option<ResolvedType>,
-    /// When the surrounding context (e.g. a destructuring let with a
-    /// type annotation) supplies the *aggregate* type that the next
-    /// expression should produce, this carries it. Array- and
-    /// tuple-literal lowering propagate it down to per-element
-    /// closure-literal lowerings so
-    /// `let [f]: [I32 -> I32] = [|x| x]` produces `x: I32` instead of
-    /// `x: Error`. Consumed once.
+    /// The type the next expression is expected to produce, when the
+    /// surrounding context knows it: a `let` annotation, an array
+    /// element slot, a struct or enum field, or a call argument.
+    ///
+    /// Two lowerings read it. Container literals peel one layer and
+    /// pass the inner type down, so `let [f]: [I32 -> I32] = [|x| x]`
+    /// produces `x: I32` instead of `x: Error`. Inferred-enum literals
+    /// resolve `.variant` against it, so `let s: Status = .pending`
+    /// and `f(kind: .pending)` both find `Status`.
+    ///
+    /// Consumed once: a lowering that reads it takes it, and the site
+    /// that set it restores the previous value afterwards.
     pub(super) expected_value_type: Option<ResolvedType>,
     /// Stack of currently-open module nodes during lowering. The
     /// outermost source module is at index 0; the deepest in-progress

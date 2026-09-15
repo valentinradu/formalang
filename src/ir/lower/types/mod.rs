@@ -9,29 +9,6 @@ use crate::error::CompilerError;
 use crate::ir::{simple_type_name, IrField, IrGenericParam, ResolvedType};
 
 impl IrLowerer<'_> {
-    /// Extract the type name from an AST type (for return type context)
-    pub(in crate::ir::lower) fn type_name(ty: &ast::Type) -> String {
-        match ty {
-            ast::Type::Primitive(prim) => match prim {
-                ast::PrimitiveType::String => "String".to_string(),
-                ast::PrimitiveType::I32 => "I32".to_string(),
-                ast::PrimitiveType::I64 => "I64".to_string(),
-                ast::PrimitiveType::F32 => "F32".to_string(),
-                ast::PrimitiveType::F64 => "F64".to_string(),
-                ast::PrimitiveType::Boolean => "Boolean".to_string(),
-                ast::PrimitiveType::Path => "Path".to_string(),
-                ast::PrimitiveType::Regex => "Regex".to_string(),
-                ast::PrimitiveType::Never => "Never".to_string(),
-            },
-            ast::Type::Optional(inner) => Self::type_name(inner),
-            ast::Type::Array(_) => "Array".to_string(),
-            ast::Type::Tuple(_) => "Tuple".to_string(),
-            ast::Type::Dictionary { .. } => "Dictionary".to_string(),
-            ast::Type::Closure { .. } => "Closure".to_string(),
-            ast::Type::Ident(name) | ast::Type::Generic { name, .. } => name.name.clone(),
-        }
-    }
-
     pub(in crate::ir::lower) fn lower_generic_params(
         &mut self,
         params: &[ast::GenericParam],
@@ -82,16 +59,17 @@ impl IrLowerer<'_> {
     }
 
     pub(in crate::ir::lower) fn lower_struct_field(&mut self, f: &StructField) -> IrField {
-        // thread the field's declared type as the
-        // inferred-enum target so `.variant` literals inside the
-        // default expression resolve to the field's enum type.
-        let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = Some(Self::type_name(&f.ty));
-        let default = f.default.as_ref().map(|e| self.lower_expr(e));
-        self.current_function_return_type = saved_return_type;
+        // The field's declared type is the expected type for its
+        // default, so a `.variant` literal inside resolves against the
+        // field's enum.
+        let field_ty = self.lower_type(&f.ty);
+        let default = f
+            .default
+            .as_ref()
+            .map(|e| self.lower_with_expected_value(e, Some(&field_ty)));
         IrField {
             name: f.name.name.clone(),
-            ty: self.lower_type(&f.ty),
+            ty: field_ty,
             mutable: f.mutable,
             optional: f.optional,
             default,

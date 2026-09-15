@@ -95,7 +95,12 @@ impl SemType {
     /// in its structure. Validation paths use this to skip when
     /// inference hasn't settled yet ("cannot validate this type yet,
     /// more inference needed").
-    pub(super) fn is_indeterminate(&self) -> bool {
+    ///
+    /// IR lowering reads it too, before stringifying a type through
+    /// [`Self::display`]: the marker words `Unknown` and
+    /// `InferredEnum` are not type names, so a round trip through the
+    /// string form would report them as undefined types.
+    pub(crate) fn is_indeterminate(&self) -> bool {
         match self {
             Self::Unknown | Self::InferredEnum => true,
             Self::Array(inner) | Self::Optional(inner) => inner.is_indeterminate(),

@@ -8,12 +8,20 @@ use crate::ir::lower::IrLowerer;
 use crate::ir::{IrExpr, ResolvedType};
 
 impl IrLowerer<'_> {
-    /// Lower `expr` with the appropriate expected-type slot set so a
-    /// closure literal nested inside `expected` picks up its param types
-    /// from the annotation. A direct closure forwards via
-    /// `expected_closure_type`; a container forwards via
-    /// `expected_value_type` so the next layer can peel and recurse.
-    fn lower_with_expected(&mut self, expr: &Expr, expected: Option<&ResolvedType>) -> IrExpr {
+    /// Lower `expr` with the appropriate expected-type slot set, so
+    /// whatever sits inside `expected` picks up the type the context
+    /// declares.
+    ///
+    /// A closure type goes to `expected_closure_type`, which the
+    /// closure lowerer reads for un-annotated params. Every other type
+    /// goes to `expected_value_type`: a container peels one layer and
+    /// recurses, and an inferred-enum literal resolves `.variant`
+    /// against it.
+    pub(in crate::ir::lower) fn lower_with_expected_value(
+        &mut self,
+        expr: &Expr,
+        expected: Option<&ResolvedType>,
+    ) -> IrExpr {
         match expected {
             Some(t @ ResolvedType::Closure { .. }) => {
                 let saved = self.expected_closure_type.take();
@@ -22,18 +30,14 @@ impl IrLowerer<'_> {
                 self.expected_closure_type = saved;
                 lowered
             }
-            Some(t)
-                if matches!(t, ResolvedType::Tuple(_))
-                    || self.array_element_ty(t).is_some()
-                    || self.dictionary_kv_ty(t).is_some() =>
-            {
+            Some(t) => {
                 let saved = self.expected_value_type.take();
                 self.expected_value_type = Some(t.clone());
                 let lowered = self.lower_expr(expr);
                 self.expected_value_type = saved;
                 lowered
             }
-            _ => self.lower_expr(expr),
+            None => self.lower_expr(expr),
         }
     }
 
@@ -53,7 +57,7 @@ impl IrLowerer<'_> {
             .and_then(|t| self.array_element_ty(t));
         let lowered: Vec<IrExpr> = elements
             .iter()
-            .map(|e| self.lower_with_expected(e, elem_expected.as_ref()))
+            .map(|e| self.lower_with_expected_value(e, elem_expected.as_ref()))
             .collect();
         // Empty array literal: type element as `Never` ("no values yet").
         // Matches `nil`'s representation as `Optional(Never)` and lets
@@ -91,7 +95,7 @@ impl IrLowerer<'_> {
                     .as_ref()
                     .and_then(|ts| ts.iter().find(|(name, _)| *name == n.name))
                     .map(|(_, t)| t.clone());
-                let lowered_e = self.lower_with_expected(e, expected_field_ty.as_ref());
+                let lowered_e = self.lower_with_expected_value(e, expected_field_ty.as_ref());
                 (n.name.clone(), lowered_e)
             })
             .collect();
@@ -126,7 +130,7 @@ impl IrLowerer<'_> {
         let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
             .iter()
             .map(|(k, v)| {
-                let lowered_v = self.lower_with_expected(v, value_expected.as_ref());
+                let lowered_v = self.lower_with_expected_value(v, value_expected.as_ref());
                 (self.lower_expr(k), lowered_v)
             })
             .collect();

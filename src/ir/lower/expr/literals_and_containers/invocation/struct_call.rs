@@ -46,42 +46,6 @@ impl IrLowerer<'_> {
         resolved
     }
 
-    /// Resolve a `ResolvedType` to its enum type-name (used as the
-    /// inferred-enum target for a struct-arg expression). Returns the
-    /// empty string for non-enum, non-optional-of-enum types, which
-    /// the caller filters out.
-    pub(super) fn enum_name_of(module: &crate::ir::IrModule, ty: &ResolvedType) -> String {
-        match ty {
-            ResolvedType::Enum(eid) => module
-                .get_enum(*eid)
-                .map_or_else(String::new, |e| e.name.clone()),
-            ResolvedType::Generic {
-                base: crate::ir::GenericBase::Enum(eid),
-                args,
-            } => {
-                // Optional<T>: peel to its T so an inferred-enum target on
-                // a `String?` field reaches the inner enum's variants.
-                if Some(*eid) == module.prelude_optional_id() {
-                    if let [t] = args.as_slice() {
-                        return Self::enum_name_of(module, t);
-                    }
-                }
-                module
-                    .get_enum(*eid)
-                    .map_or_else(String::new, |e| e.name.clone())
-            }
-            ResolvedType::Primitive(_)
-            | ResolvedType::Struct(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::Generic { .. }
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Closure { .. }
-            | ResolvedType::Error => String::new(),
-        }
-    }
-
     pub(super) fn lower_struct_invocation(
         &mut self,
         struct_id: crate::ir::StructId,
@@ -108,23 +72,8 @@ impl IrLowerer<'_> {
             .iter()
             .filter_map(|(name_opt, expr)| {
                 name_opt.as_ref().map(|n| {
-                    let saved = self.current_function_return_type.take();
-                    let saved_closure = self.expected_closure_type.take();
-                    self.current_function_return_type = field_target
-                        .get(&n.name)
-                        .map(|t| Self::enum_name_of(&self.module, t))
-                        .filter(|s| !s.is_empty());
-                    // thread closure-typed field annotations
-                    // into the closure-literal lowering so untyped params
-                    // pick up the field's expected param types.
-                    if let Some(t) = field_target.get(&n.name) {
-                        if matches!(t, ResolvedType::Closure { .. }) {
-                            self.expected_closure_type = Some(t.clone());
-                        }
-                    }
-                    let lowered = self.lower_expr(expr);
-                    self.expected_closure_type = saved_closure;
-                    self.current_function_return_type = saved;
+                    let expected = field_target.get(&n.name).cloned();
+                    let lowered = self.lower_with_expected_value(expr, expected.as_ref());
                     (n.name.clone(), crate::ir::FieldIdx(0), lowered)
                 })
             })

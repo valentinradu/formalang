@@ -107,6 +107,7 @@ impl IrLowerer<'_> {
             if let Some(let_type) = self
                 .symbols
                 .get_let_type(name)
+                .filter(|t| !t.is_indeterminate())
                 .map(crate::semantic::sem_type::SemType::display)
             {
                 // prefer the simple-name resolution; fall
@@ -236,10 +237,8 @@ impl IrLowerer<'_> {
                     .iter()
                     .enumerate()
                     .map(|(i, (label, expr))| {
-                        let saved_closure = self.expected_closure_type.take();
-                        self.expected_closure_type = param_tys.get(i).map(|(_, t)| t.clone());
-                        let lowered = self.lower_expr(expr);
-                        self.expected_closure_type = saved_closure;
+                        let expected = param_tys.get(i).map(|(_, t)| t.clone());
+                        let lowered = self.lower_with_expected_value(expr, expected.as_ref());
                         (label.as_ref().map(|l| l.name.clone()), lowered)
                     })
                     .collect();
@@ -265,11 +264,8 @@ impl IrLowerer<'_> {
             .iter()
             .enumerate()
             .map(|(i, (label, expr))| {
-                let saved_closure = self.expected_closure_type.take();
-                self.expected_closure_type =
-                    Self::expected_arg_closure_ty(&expected_param_tys, i, label.as_ref());
-                let lowered = self.lower_expr(expr);
-                self.expected_closure_type = saved_closure;
+                let expected = Self::expected_arg_ty(&expected_param_tys, i, label.as_ref());
+                let lowered = self.lower_with_expected_value(expr, expected.as_ref());
                 (label.as_ref().map(|l| l.name.clone()), lowered)
             })
             .collect();
@@ -359,12 +355,12 @@ impl IrLowerer<'_> {
     /// index. Returns `Some(ty)` only when the matched parameter is a
     /// `Closure { .. }` — non-closure expected types don't influence
     /// closure-literal lowering.
-    pub(super) fn expected_arg_closure_ty(
+    pub(super) fn expected_arg_ty(
         expected: &[(String, ResolvedType)],
         i: usize,
         name: Option<&crate::ast::Ident>,
     ) -> Option<ResolvedType> {
-        let candidate = name.map_or_else(
+        name.map_or_else(
             || expected.get(i).map(|(_, t)| t.clone()),
             |n| {
                 expected
@@ -372,8 +368,7 @@ impl IrLowerer<'_> {
                     .find(|(pname, _)| pname == &n.name)
                     .map(|(_, t)| t.clone())
             },
-        );
-        candidate.filter(|t| matches!(t, ResolvedType::Closure { .. }))
+        )
     }
 
     /// locate the impl method matching

@@ -31,50 +31,30 @@ impl IrLowerer<'_> {
 
     /// Lower a simple `let name = value` binding.
     fn lower_simple_let(&mut self, let_binding: &LetBinding, ident_name: &str) {
-        // thread the let's annotation as the inferred-enum
-        // target so `.variant` literals in the value resolve to the
-        // declared enum (e.g. `let s: Status = .pending`) instead of
-        // lowering to `TypeParam("InferredEnum")`.
-        let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type =
-            let_binding.type_annotation.as_ref().map(Self::type_name);
-        // when the let's type annotation is a
-        // closure type, thread it through `expected_closure_type` so
-        // closure-literal values with un-annotated params (e.g.
-        // `let f: I32 -> I32 = mut n -> n`) pick up the param types
-        // from the annotation instead of falling back to
-        // `ResolvedType::Error`. Mirrors the existing handling in
-        // struct-field arg lowering and function-call arg lowering.
-        let saved_closure = self.expected_closure_type.take();
-        self.expected_closure_type = let_binding
-            .type_annotation
-            .as_ref()
-            .map(|t| self.lower_type(t))
-            .filter(|t| matches!(t, ResolvedType::Closure { .. }));
-        // Aggregate annotations (Array / Tuple / Dictionary) flow
-        // down via `expected_value_type` so the array / tuple / dict
-        // literal lowerings can propagate the inner type to closure-
-        // literal entry values. Same mechanism as the destructuring
-        // let path; see `lower_array_destructuring_let`.
-        let saved_expected = self.expected_value_type.take();
+        // The annotation is the expected type for the value, and
+        // `lower_with_expected_value` routes it to the right slot: a
+        // closure annotation supplies un-annotated closure params
+        // (`let f: (I32) -> I32 = (n) -> n`), a container annotation
+        // gets peeled one layer per level, and an enum annotation
+        // resolves an inferred `.variant` (`let s: Status = .pending`).
         let lowered_annotation = let_binding
             .type_annotation
             .as_ref()
             .map(|t| self.lower_type(t));
-        self.expected_value_type = lowered_annotation.filter(|t| {
-            matches!(t, ResolvedType::Tuple(_))
-                || self.array_element_ty(t).is_some()
-                || self.dictionary_kv_ty(t).is_some()
-        });
-        let mut value = self.lower_expr(&let_binding.value);
-        self.expected_value_type = saved_expected;
-        self.expected_closure_type = saved_closure;
-        self.current_function_return_type = saved_return_type;
+        let mut value =
+            self.lower_with_expected_value(&let_binding.value, lowered_annotation.as_ref());
         let ty = if let Some(type_ann) = &let_binding.type_annotation {
             self.lower_type(type_ann)
         } else {
+            // Skip an indeterminate inference result (`Unknown`,
+            // `InferredEnum`). Its `display()` is a marker word, not a
+            // type name, and round-tripping it through
+            // `string_to_resolved_type` would report it as an undefined
+            // type. The value's own lowered type is the better answer,
+            // and the real diagnostic is raised where the gap is.
             self.symbols
                 .get_let_type(ident_name)
+                .filter(|t| !t.is_indeterminate())
                 .map(crate::semantic::sem_type::SemType::display)
                 .and_then(|s| self.string_to_resolved_type(&s))
                 .unwrap_or_else(|| value.ty().clone())
@@ -221,7 +201,7 @@ impl IrLowerer<'_> {
 
         // Set return type context for inferred enum resolution
         let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
+        self.current_function_return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
 
         // Push a local scope so References inside the body resolve against
         // the parameters' declared types and so closure captures see the
@@ -317,7 +297,7 @@ impl IrLowerer<'_> {
 
         // Set return type context for inferred enum resolution
         let saved_return_type = self.current_function_return_type.take();
-        self.current_function_return_type = f.return_type.as_ref().map(Self::type_name);
+        self.current_function_return_type = f.return_type.as_ref().map(|t| self.lower_type(t));
 
         // Push a local scope so the body's References to parameters resolve
         // to the declared param types rather than TypeParam(name) placeholders,
