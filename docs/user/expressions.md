@@ -182,10 +182,9 @@ operands are evaluated before the range itself.
 // A simple range
 let digits = 0..10
 
-// Iterating over a range in a for-expression
-for i in 0..n {
-    process(i)
-}
+// Iterating over a range. A `for` yields a lazy sequence, so a
+// terminal combinator ends the pipeline.
+let count: I32 = for i in 0..n { i }.count()
 
 // Range with arithmetic on the bounds
 let window = start..(start + length)

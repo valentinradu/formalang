@@ -327,10 +327,16 @@ if let nickname = user.nickname {
     greet(name: user.name)
 }
 
-// for: iterates arrays, returns array of results
-for item in items {
-    process(item: item)
-}
+// for: yields a lazy sequence. Nothing runs until a terminal
+// combinator consumes it, so a pipeline is one pass with no
+// intermediate array.
+let total: I32 = for item in items { item.score }
+    .filter(f: (s) -> s > 0)
+    .fold(initial: 0, f: (a, b) -> a + b)
+
+// `.collect()` for an array, `.run()` for effects alone. A sequence is
+// consumed exactly once: dropping one, or reading it twice, is an error.
+let scores: [I32] = for item in items { item.score }.collect()
 
 // match: exhaustive, on enums (and on Optional, treated as .some / .none)
 match message {

@@ -149,7 +149,9 @@
     "affine",
     "witness",
     "Defunctionalisation",
-    "defunctionalised"
+    "defunctionalised",
+    "terminal",
+    "terminals"
   ],
   "ignorePaths": [
     "node_modules",

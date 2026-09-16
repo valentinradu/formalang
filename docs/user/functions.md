@@ -84,8 +84,14 @@ controls how the callee may use the value:
 | Convention | Syntax            | Meaning                                          |
 | ---------- | ----------------- | ------------------------------------------------ |
 | (default)  | `x: T`            | Immutable. Callee reads only.                    |
-| `mut`      | `mut x: T`        | Exclusive mutable. Callee may mutate `x`.        |
+| `mut`      | `mut x: T`        | Exclusive mutable. **The caller sees the change.** |
 | `sink`     | `sink x: T`       | Ownership transfer. Caller gives up the value.   |
+
+`mut` is not a private copy. The callee gets exclusive access to the
+caller's value, and every change it makes is visible to the caller
+when the call returns — which is why the argument must be a `let mut`
+binding. Exclusivity is guaranteed by the compiler, so no two live
+references to the same value ever exist.
 
 ```formalang
 // Default: immutable parameter

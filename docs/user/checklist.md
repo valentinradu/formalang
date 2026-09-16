@@ -11,6 +11,7 @@
 **Type System**:
 
 - Primitive types (`String`, `I32`, `I64`, `F32`, `F64`, `Boolean`, `Never`)
+- `for` yields a lazy `Seq<T>`, consumed exactly once by a terminal combinator
 - Array types (`[Type]`)
 - Dictionary types (`[KeyType: ValueType]`)
 - Optional types (`Type?`)

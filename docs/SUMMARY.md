@@ -13,6 +13,7 @@
 - [Closures](user/closures.md)
 - [Expressions](user/expressions.md)
 - [Control Flow & Pattern Matching](user/control-flow.md)
+- [Large Data](user/large-data.md)
 - [Generics](user/generics.md)
 - [Module System](user/modules.md)
 - [Extern Declarations](user/extern.md)
