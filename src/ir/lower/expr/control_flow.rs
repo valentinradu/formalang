@@ -21,9 +21,15 @@ impl IrLowerer<'_> {
         // the else branch would otherwise get nothing and an inferred
         // `.variant` there would fail to resolve.
         let expected = self.expected_value_type.take();
+        // A closure-typed context arrives in the other slot, and the
+        // first branch consumes that one too. Keep a copy for the
+        // second, so `let f: () -> E = if c { () -> .a } else { () -> .b }`
+        // types both closures.
+        let expected_closure = self.expected_closure_type.clone();
         let then_ir = self.lower_with_expected_value(then_branch, expected.as_ref());
         let ty = then_ir.ty().clone();
         let condition_ir = self.lower_expr(condition);
+        self.expected_closure_type = expected_closure;
         let else_ir =
             else_branch.map(|e| Box::new(self.lower_with_expected_value(e, expected.as_ref())));
         IrExpr::If {
@@ -81,6 +87,7 @@ impl IrLowerer<'_> {
     ) -> IrExpr {
         // Every arm body is a tail position; see `lower_if_expr`.
         let expected = self.expected_value_type.take();
+        let expected_closure = self.expected_closure_type.take();
         let scrutinee_ir = self.lower_expr(scrutinee);
         let arms_ir: Vec<IrMatchArm> = arms
             .iter()
@@ -94,6 +101,7 @@ impl IrLowerer<'_> {
                     frame.insert(name.clone(), (ParamConvention::Let, ty.clone()));
                 }
                 self.local_binding_scopes.push(frame);
+                self.expected_closure_type.clone_from(&expected_closure);
                 let body = self.lower_with_expected_value(&arm.body, expected.as_ref());
                 self.local_binding_scopes.pop();
                 IrMatchArm {

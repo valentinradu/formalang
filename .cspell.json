@@ -147,7 +147,9 @@
     "linearity",
     "affinity",
     "affine",
-    "witness"
+    "witness",
+    "Defunctionalisation",
+    "defunctionalised"
   ],
   "ignorePaths": [
     "node_modules",
