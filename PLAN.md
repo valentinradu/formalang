@@ -1,6 +1,6 @@
 # Plan — Language Changes for a Native Backend
 
-**Status**: Agreed and fully specified. No open questions. Not started.
+**Status**: Phase 1 complete. See [What landed](#what-landed).
 **Date**: 2026-09-15
 
 This is **phase 1** of a two-phase plan. Phase 2 builds the backend
@@ -9,6 +9,40 @@ one for the Cranelift lowering, the memory model and the host ABI.
 
 Phase 1 changes the language. Nothing here depends on the backend
 existing, and every change stands on its own.
+
+## What landed
+
+Every step is done and committed. The table records where each one
+diverged from the specification below, so a reader of both knows which
+to trust.
+
+| Step | Commit | Diverged? |
+| --- | --- | --- |
+| 1.1 fix E934 | `80d3d98` | grew: raises `CannotInferEnumType` for the no-context case |
+| 1.2 cut trait values | `871fc3c` | `DispatchKind::Virtual` **stays**; see 1.2 |
+| 1.3 cut `Regex` / `Path` | `7ee0679` | no |
+| 1.4 cut float dictionary keys | `aa9553f` | took `E134`, so the sequence errors moved to `E135` / `E136` |
+| 1.5 visibility on `IrFunction` | `bd69db4` | no |
+| 1.6 `Seq<T>` | `8782dcb`, `1cf2bf4` | combinators are `extern impl` plus `prelude_seq_id`, not new syntax; `fold` folds to the element type |
+| 1.7 `DefunctionalisePass` | `87f45e7` | no |
+| 1.8 documentation | `b7c9a66` | no |
+
+Five defects surfaced that this plan did not predict, each fixed in
+the step that exposed it:
+
+- A block-level `let` never validated its type annotation at all, so a
+  bad type inside a function body reached IR lowering as an internal
+  error.
+- A composed trait (`trait Both: A + B`) resolved nothing as a bound.
+  Only the trait-value form used to reach the parents, so cutting that
+  form without this would have made composition useless.
+- Semantic errors were reported twice on several paths.
+- `if` and `match` branches did not inherit the expected type: the
+  first branch consumed the slot and the second got nothing. Fixed for
+  both the value slot and the closure slot.
+- A loop variable was never given a type, so every loop body inferred
+  as `Unknown`. Any loop in a declared position was already unusable
+  before the sequence work began.
 
 ## Ground rules
 
