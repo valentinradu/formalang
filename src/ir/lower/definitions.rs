@@ -80,10 +80,7 @@ impl IrLowerer<'_> {
             let parts: Vec<&str> = self.current_module_prefix.split("::").collect();
             let mut current = self.symbols;
             for part in &parts {
-                match current.modules.get(*part) {
-                    Some(info) => current = &info.symbols,
-                    None => return None,
-                }
+                current = &current.modules.get(*part)?.symbols;
             }
             if let Some(struct_info) = current.structs.get(struct_name) {
                 if let Some(field) = struct_info.fields.iter().find(|f| f.name == field_name) {

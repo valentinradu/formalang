@@ -3070,7 +3070,7 @@ struct Main {
             if module_path != &vec!["utils".to_string()] {
                 return Err(format!(
                     "expected {:?} but got {:?}",
-                    &vec!["utils".to_string()],
+                    vec!["utils".to_string()],
                     module_path
                 )
                 .into());
@@ -3176,7 +3176,7 @@ struct Item {
             if module_path != &vec!["types".to_string()] {
                 return Err(format!(
                     "expected {:?} but got {:?}",
-                    &vec!["types".to_string()],
+                    vec!["types".to_string()],
                     module_path
                 )
                 .into());
@@ -3244,7 +3244,7 @@ struct Wrapper {
             if module_path != &vec!["containers".to_string()] {
                 return Err(format!(
                     "expected {:?} but got {:?}",
-                    &vec!["containers".to_string()],
+                    vec!["containers".to_string()],
                     module_path
                 )
                 .into());
@@ -3862,7 +3862,7 @@ struct Container { h: Helper = Helper(name: "test") }
         match ty {
             ResolvedType::Struct(id) => {
                 if struct_id != &Some(*id) {
-                    return Err(format!("expected {:?} but got {:?}", &Some(*id), struct_id).into());
+                    return Err(format!("expected {:?} but got {:?}", Some(*id), struct_id).into());
                 }
             }
             other @ (ResolvedType::Primitive(_)
@@ -3929,7 +3929,7 @@ struct Item { status: Status = Status.active }
         match ty {
             ResolvedType::Enum(id) => {
                 if enum_id != &Some(*id) {
-                    return Err(format!("expected {:?} but got {:?}", &Some(*id), enum_id).into());
+                    return Err(format!("expected {:?} but got {:?}", Some(*id), enum_id).into());
                 }
             }
             other @ (ResolvedType::Primitive(_)
