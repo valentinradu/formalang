@@ -173,6 +173,7 @@ impl IrLowerer<'_> {
         &mut self,
         receiver_ty: &ResolvedType,
         method_name: &str,
+        call_args: &[(Option<String>, IrExpr)],
     ) -> ResolvedType {
         // If we are mid-lowering an impl block, its method set is recorded
         // in `current_impl_method_returns`. Forward references like
@@ -189,8 +190,8 @@ impl IrLowerer<'_> {
         if let ResolvedType::Struct(struct_id) = receiver_ty {
             for impl_block in &self.module.impls {
                 if impl_block.struct_id() == Some(*struct_id) {
-                    for func in &impl_block.functions {
-                        if func.name == method_name {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                        {
                             return func
                                 .return_type
                                 .clone()
@@ -243,8 +244,8 @@ impl IrLowerer<'_> {
                 if !matches_target {
                     continue;
                 }
-                for func in &impl_block.functions {
-                    if func.name == method_name {
+                if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                    {
                         let mut ret = func
                             .return_type
                             .clone()
@@ -265,8 +266,8 @@ impl IrLowerer<'_> {
         if let ResolvedType::Primitive(prim) = receiver_ty {
             for impl_block in &self.module.impls {
                 if matches!(impl_block.target, crate::ir::ImplTarget::Primitive(p) if p == *prim) {
-                    for func in &impl_block.functions {
-                        if func.name == method_name {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                        {
                             return func
                                 .return_type
                                 .clone()
@@ -283,8 +284,8 @@ impl IrLowerer<'_> {
         if let ResolvedType::Enum(enum_id) = receiver_ty {
             for impl_block in &self.module.impls {
                 if impl_block.enum_id() == Some(*enum_id) {
-                    for func in &impl_block.functions {
-                        if func.name == method_name {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                        {
                             return func
                                 .return_type
                                 .clone()

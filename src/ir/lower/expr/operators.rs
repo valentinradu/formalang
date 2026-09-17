@@ -269,12 +269,20 @@ impl IrLowerer<'_> {
                 (label.as_ref().map(|l| l.name.clone()), lowered)
             })
             .collect();
-        let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name);
+        let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name, &lowered_args);
         let dispatch = self.resolve_dispatch_kind(receiver_ir.ty(), method_name);
+        // Lowering knows which method the call means, so it says so
+        // here rather than leaving a zero for `ResolveReferencesPass`
+        // to correct. A module read before that pass runs — the
+        // reference interpreter does, and so does every caller of
+        // `compile_to_ir` — would otherwise see every call pointing at
+        // the first method of its name, which is only right when the
+        // name is not overloaded.
+        let method_idx = self.method_index(&dispatch, method_name, &lowered_args);
         IrExpr::MethodCall {
             receiver: Box::new(receiver_ir),
             method: method_name.to_string(),
-            method_idx: crate::ir::MethodIdx(0),
+            method_idx,
             args: lowered_args,
             dispatch,
             ty,

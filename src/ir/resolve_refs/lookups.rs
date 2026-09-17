@@ -6,13 +6,23 @@
 //! the pass declines to resolve (typically because an upstream stage
 //! left a sentinel that the pass intentionally leaves alone).
 
+use crate::ir::IrExpr;
 use crate::ir::{DispatchKind, IrModule, ResolvedType};
 
 pub(super) fn lookup_method_idx(
     dispatch: &DispatchKind,
     method: &str,
+    args: &[(Option<String>, IrExpr)],
     module: &IrModule,
 ) -> Option<u32> {
+    // A type may declare several methods of one name, the way a module
+    // may declare several functions of one name. Taking the first of
+    // the right name made every call to the second unreachable — it
+    // compiled, and answered from the first. The call's labels and
+    // count say which is meant, the same way they do for a free
+    // function.
+    let labels: Vec<Option<String>> = args.iter().map(|(label, _)| label.clone()).collect();
+
     #[expect(
         clippy::cast_possible_truncation,
         reason = "method count is bounded upstream"
@@ -20,16 +30,24 @@ pub(super) fn lookup_method_idx(
     match dispatch {
         DispatchKind::Static { impl_id } => {
             let imp = module.impls.get(impl_id.0 as usize)?;
-            imp.functions
+            let named = imp
+                .functions
                 .iter()
-                .position(|f| f.name == method)
+                .enumerate()
+                .filter(|(_, f)| f.name == method);
+            crate::ir::overload::choose(named, |f| f.params.as_slice(), &labels, args.len())
+                .or_else(|| imp.functions.iter().position(|f| f.name == method))
                 .map(|i| i as u32)
         }
         DispatchKind::Virtual { trait_id, .. } => {
             let t = module.get_trait(*trait_id)?;
-            t.methods
+            let named = t
+                .methods
                 .iter()
-                .position(|m| m.name == method)
+                .enumerate()
+                .filter(|(_, m)| m.name == method);
+            crate::ir::overload::choose(named, |m| m.params.as_slice(), &labels, args.len())
+                .or_else(|| t.methods.iter().position(|m| m.name == method))
                 .map(|i| i as u32)
         }
     }

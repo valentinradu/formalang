@@ -36,6 +36,7 @@ mod imports;
 mod lower;
 mod module;
 mod monomorphise;
+pub(crate) mod overload;
 mod resolve_refs;
 mod resolved_type;
 mod span;

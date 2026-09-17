@@ -50,7 +50,8 @@ use std::rc::Rc;
 
 use formalang::ast::{BinaryOperator, Literal, NumberValue, UnaryOperator};
 use formalang::ir::{
-    GenericBase, ImplTarget, IrBlockStatement, IrExpr, IrFunction, IrModule, ResolvedType,
+    GenericBase, ImplTarget, IrBlockStatement, IrExpr, IrFunction, IrModule, MethodIdx,
+    ResolvedType,
 };
 
 // ---------------------------------------------------------------------------
@@ -663,6 +664,7 @@ impl<'m> Interpreter<'m> {
             IrExpr::MethodCall {
                 receiver,
                 method,
+                method_idx,
                 args,
                 ..
             } => {
@@ -671,7 +673,7 @@ impl<'m> Interpreter<'m> {
                 for (label, e) in args {
                     values.push((label.clone().unwrap_or_default(), self.eval(e)?));
                 }
-                self.call_method(recv, method, values)
+                self.call_method(recv, method, *method_idx, values)
             }
 
             IrExpr::DictAccess { dict, key, .. } => {
@@ -900,6 +902,7 @@ impl<'m> Interpreter<'m> {
         &mut self,
         receiver: Value,
         method: &str,
+        method_idx: MethodIdx,
         args: Vec<(String, Value)>,
     ) -> Result<Value, Fault> {
         // A closure held in a struct field is called through the
@@ -922,9 +925,19 @@ impl<'m> Interpreter<'m> {
             if self.impl_target_name(imp.target) != type_name {
                 return None;
             }
+            // `method_idx` is the position of the method inside this
+            // impl block, and it is what says which of several methods
+            // of one name the call meant. Searching by name instead
+            // always found the first, so an overloaded method answered
+            // from the wrong body.
+            //
             // A bodyless method is an `extern impl` declaration; it
             // still resolves, and the host stands in for the body.
-            imp.functions.iter().find(|f| f.name == method).cloned()
+            imp.functions
+                .get(method_idx.0 as usize)
+                .filter(|f| f.name == method)
+                .or_else(|| imp.functions.iter().find(|f| f.name == method))
+                .cloned()
         });
 
         let Some(f) = found else {

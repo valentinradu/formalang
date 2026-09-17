@@ -155,3 +155,25 @@ fn process(String) -> String { "string" }
 - Overloads are distinguished by their named-argument label sets
 - Calling with an ambiguous or unknown label set is a compile error
 - An unresolvable call site produces `AmbiguousCall` or `NoMatchingOverload`
+
+### Methods
+
+A method overloads the same way a free function does, and the same
+rules pick the one a call means:
+
+```formalang
+pub struct Formatter {
+  tag: I32
+}
+
+impl Formatter {
+  fn format(self, text: String) -> String { text }
+  fn format(self, value: I32, prefix: String) -> String { prefix }
+}
+
+let a: String = Formatter(tag: 1).format(text: "x")
+let b: String = Formatter(tag: 1).format(value: 2, prefix: "p")
+```
+
+The receiver is not counted when the labels are matched: a call
+supplies it separately.

@@ -56,18 +56,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | crate::semantic::sem_type::SemType::InferredEnum
             | crate::semantic::sem_type::SemType::Nil => receiver_sem.display(),
         };
-        // One method per name. A type that declares two is reported
-        // where they are declared, and this call is then checked
-        // against neither: the names are ambiguous, so any argument
-        // complaint here would be about a signature the caller may not
-        // have meant.
+        // A method overloads by the shape of the call. Check the call
+        // against the overload it fits; only when none fits is
+        // anything wrong, and then the first is what the message
+        // names.
         let overloads = Self::find_method_overloads(&receiver_type, &method.name, file);
-        let single = if overloads.len() == 1 {
-            overloads.first().copied()
-        } else {
-            None
-        };
-        if let Some((fn_def, impl_generics)) = single {
+        let chosen = overloads
+            .iter()
+            .find(|(fn_def, _)| Self::method_arity_mismatch(&fn_def.params, args).is_none())
+            .or_else(|| overloads.first());
+        if let Some((fn_def, impl_generics)) = chosen {
             let params = fn_def.params.clone();
             let generics = impl_generics.to_vec();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);

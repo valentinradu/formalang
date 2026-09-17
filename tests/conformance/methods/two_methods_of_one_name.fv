@@ -1,13 +1,14 @@
-// expect: reject DuplicateDefinition
-// A type may not declare two methods of one name. The IR names a
-// method call by its name and hardcodes its index, so it cannot tell
-// two apart: before this rule the second method was accepted at the
-// declaration and then silently never called, whatever the call site
-// asked for.
+// expect: run
+// A method overloads by the shape of the call, the way a free
+// function does. `IrExpr::MethodCall` carries a `method_idx` — the
+// position of the method inside its impl block — and that is what
+// says which of two same-named methods the call means. The name
+// beside it is for diagnostics.
 //
-// A free function does overload by argument count, because a call to
-// one carries a resolved `function_id`. See
-// `passes/overloads_survive_the_pipeline.fv`.
+// This did not work for a long time, and the failure was quiet: the
+// index was left at zero until `ResolveReferencesPass` ran, and that
+// pass chose by name, so every call reached the first method. A test
+// asserted the declaration compiled and never called either one.
 
 pub struct P {
     x: I32
@@ -16,4 +17,13 @@ pub struct P {
 impl P {
     fn add(self, n: I32) -> I32 { self.x + n }
     fn add(self, n: I32, m: I32) -> I32 { self.x + n + m }
+    fn label(self, text: String) -> String { text }
+    fn label(self, value: I32, prefix: String) -> String { prefix }
+}
+
+pub fn run_checks() {
+    assert(condition: P(x: 1).add(n: 1) == 2)
+    assert(condition: P(x: 1).add(n: 1, m: 1) == 3)
+    assert(condition: P(x: 1).label(text: "a") == "a")
+    assert(condition: P(x: 1).label(value: 1, prefix: "p") == "p")
 }

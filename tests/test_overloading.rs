@@ -87,33 +87,31 @@ let b = stringify(true)
 
 #[test]
 fn test_overload_in_impl_block() -> Result<(), Box<dyn std::error::Error>> {
-    // A method does not overload. `IrExpr::MethodCall` names the
-    // method by its name and hardcodes `method_idx` to zero, so the
-    // IR cannot tell two of one name apart and a backend resolving by
-    // name finds whichever comes first.
-    //
-    // This test used to assert that the declaration compiles, and it
-    // did — it just never called either method. Calling them showed
-    // the second was unreachable: `P(x: 1).add(n: 1, m: 1)` answered
-    // 2, from the one-parameter method, rather than 3.
-    //
-    // So the declaration is rejected, and a free function keeps its
-    // overloading, because a call to one carries a resolved
-    // `function_id` that says which it means.
+    // A method overloads by the shape of the call, and the call
+    // reaches the body it names. This test used to assert only that
+    // the declaration compiles — which it did, while every call went
+    // to the first method — so it now calls both and checks the
+    // answers.
     let source = r#"
-struct Formatter {}
+pub struct Formatter {
+    tag: I32
+}
+
 impl Formatter {
     fn format(self, text: String) -> String {
         text
     }
-    fn format(self, value: I32) -> String {
-        "number"
+    fn format(self, value: I32, prefix: String) -> String {
+        prefix
     }
 }
+
+pub fn run_checks() {
+    assert(condition: Formatter(tag: 1).format(text: "a") == "a")
+    assert(condition: Formatter(tag: 1).format(value: 2, prefix: "p") == "p")
+}
 "#;
-    if compile(source).is_ok() {
-        return Err("two methods of one name should be reported".into());
-    }
+    compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

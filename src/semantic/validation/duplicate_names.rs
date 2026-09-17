@@ -39,21 +39,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Enum(e) => self.check_enum_fields_are_unique(e),
             Definition::Function(f) => self.check_params_are_unique(&f.name, &f.params),
             Definition::Impl(impl_def) => {
-                // Two methods of one name cannot both be reached. The
-                // IR names a method call by its name and hardcodes its
-                // index, so it cannot tell them apart: the second was
-                // accepted at the declaration and then silently never
-                // called, whatever the call site asked for. Free
-                // functions do overload, because a call to one carries
-                // a resolved `function_id`.
-                let mut seen = HashSet::new();
+                // A method overloads by the shape of the call, the way
+                // a free function does, so two of one name is not a
+                // duplicate. Two with the same shape would be, but
+                // deciding that belongs with overload-ambiguity
+                // reporting rather than here.
                 for func in &impl_def.functions {
-                    if !seen.insert(func.name.name.as_str()) {
-                        self.errors.push(CompilerError::DuplicateDefinition {
-                            name: format!("method '{}' of {}", func.name.name, impl_def.name.name),
-                            span: func.span,
-                        });
-                    }
                     self.check_params_are_unique(&func.name, &func.params);
                 }
             }

@@ -70,7 +70,7 @@ pub(super) fn resolve_expr(expr: &mut IrExpr, r: &mut FnResolver<'_>) {
             args,
             ..
         } => {
-            if let Some(idx) = lookup_method_idx(dispatch, method, r.module) {
+            if let Some(idx) = lookup_method_idx(dispatch, method, args, r.module) {
                 *method_idx = MethodIdx(idx);
             }
             resolve_expr(receiver, r);

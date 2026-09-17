@@ -24,6 +24,7 @@ mod destructure;
 mod dispatch;
 mod helpers;
 mod literals_and_containers;
+mod method_choice;
 mod operators;
 mod type_params;
 
