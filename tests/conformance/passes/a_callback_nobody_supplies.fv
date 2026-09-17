@@ -1,0 +1,16 @@
+// expect: run
+// `apply` declares a closure parameter and nothing in this module
+// gives it one. Defunctionalisation collected its shapes only from
+// closure *values*, so this call site had no enum to dispatch
+// through, and the pass failed its own post-condition with
+// "indirect call remains".
+
+fn apply(f: (I32) -> I32, x: I32) -> I32 {
+    f(x)
+}
+
+pub fn run_checks() {
+    let make = () -> 7
+    let got: I32 = make()
+    assert(condition: got == 7)
+}

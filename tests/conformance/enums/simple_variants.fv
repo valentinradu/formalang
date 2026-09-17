@@ -1,0 +1,20 @@
+// expect: run
+pub enum Status {
+    idle,
+    busy,
+    done
+}
+
+pub fn rank(s: Status) -> I32 {
+    match s {
+        .idle: 0,
+        .busy: 1,
+        .done: 2
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: rank(s: Status.idle) == 0)
+    assert(condition: rank(s: Status.busy) == 1)
+    assert(condition: rank(s: Status.done) == 2)
+}

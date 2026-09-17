@@ -11,6 +11,7 @@ use crate::ir::{ImplTarget, IrModule};
 use super::super::walkers::{walk_expr_types_mut, walk_function_types_mut};
 use super::externalise::externalise_imported_refs;
 use super::naming::qualified_name;
+use super::specialise::specialise_external;
 
 /// Phase 1d: inline every imported pub `let` into the current module
 /// under a qualified name. The clone has its `ty` and the `value`
@@ -28,7 +29,7 @@ pub(in crate::ir::monomorphise) fn inline_imported_lets(
     module: &mut IrModule,
     imported_modules: &HashMap<Vec<String>, IrModule>,
 ) {
-    for (module_path, imported) in imported_modules {
+    for (module_path, imported) in super::sorted_imports(imported_modules) {
         for let_binding in &imported.lets {
             if !let_binding.visibility.is_public() {
                 continue;
@@ -77,8 +78,9 @@ pub(in crate::ir::monomorphise) fn inline_imported_impls(
     module: &mut IrModule,
     imported_modules: &HashMap<Vec<String>, IrModule>,
     impl_remap: &mut HashMap<(Vec<String>, u32), u32>,
-) {
-    for (module_path, imported) in imported_modules {
+) -> Result<(), Vec<CompilerError>> {
+    let mut errors: Vec<CompilerError> = Vec::new();
+    for (module_path, imported) in super::sorted_imports(imported_modules) {
         for (imported_idx, impl_block) in imported.impls.iter().enumerate() {
             // Translate the impl's target id to the local clone's id.
             let new_target = match impl_block.target {
@@ -86,8 +88,19 @@ pub(in crate::ir::monomorphise) fn inline_imported_impls(
                     let Some(s) = imported.structs.get(imported_id.0 as usize) else {
                         continue;
                     };
+                    // Phase 1a's clone carries the qualified name. A
+                    // type the entry module mentions by name is
+                    // registered at lowering time under its bare name
+                    // instead, so look for both — otherwise the impl
+                    // is skipped and the type arrives with none of its
+                    // methods. Two definitions of one name is already
+                    // a semantic error, so the bare name is
+                    // unambiguous here.
                     let qualified = qualified_name(module_path, &s.name);
-                    let Some(local_id) = module.struct_id(&qualified) else {
+                    let Some(local_id) = module
+                        .struct_id(&qualified)
+                        .or_else(|| module.struct_id(&s.name))
+                    else {
                         continue;
                     };
                     ImplTarget::Struct(local_id)
@@ -97,7 +110,10 @@ pub(in crate::ir::monomorphise) fn inline_imported_impls(
                         continue;
                     };
                     let qualified = qualified_name(module_path, &e.name);
-                    let Some(local_id) = module.enum_id(&qualified) else {
+                    let Some(local_id) = module
+                        .enum_id(&qualified)
+                        .or_else(|| module.enum_id(&e.name))
+                    else {
                         continue;
                     };
                     ImplTarget::Enum(local_id)
@@ -108,15 +124,42 @@ pub(in crate::ir::monomorphise) fn inline_imported_impls(
             let mut clone = impl_block.clone();
             clone.target = new_target;
 
-            // Translate trait_ref.trait_id by qualified-name lookup if
-            // the trait was cloned. If not, the trait_ref still points
-            // at the imported id-space — leave the original id and let
-            // a leftover-scanner catch it later if it matters.
+            // Translate trait_ref.trait_id into this module's id-space.
+            //
+            // The trait is usually not here yet: nothing in the entry
+            // module names it as a type, so Phase 1a never collected
+            // it. Leaving the imported id in place left the impl
+            // pointing at whichever trait sits at that index locally —
+            // or at nothing at all — and the conformance the impl
+            // records was lost, so a generic bound on that trait could
+            // no longer be satisfied by the imported struct.
+            //
+            // Clone the trait across instead, the same way a field's
+            // type is cloned.
             if let Some(tref) = &mut clone.trait_ref {
-                if let Some(t) = imported.traits.get(tref.trait_id.0 as usize) {
-                    let qualified = qualified_name(module_path, &t.name);
+                let source_name = imported
+                    .traits
+                    .get(tref.trait_id.0 as usize)
+                    .map(|t| t.name.clone());
+                if let Some(source_name) = source_name {
+                    let qualified = qualified_name(module_path, &source_name);
                     if let Some(local_id) = module.trait_id(&qualified) {
                         tref.trait_id = local_id;
+                    } else {
+                        let args = tref.args.clone();
+                        match specialise_external(
+                            module,
+                            imported,
+                            module_path,
+                            &source_name,
+                            &args,
+                        ) {
+                            Ok((crate::ir::ResolvedType::Trait(local_id), _)) => {
+                                tref.trait_id = local_id;
+                            }
+                            Ok(_) => {}
+                            Err(e) => errors.push(e),
+                        }
                     }
                 }
             }
@@ -144,6 +187,11 @@ pub(in crate::ir::monomorphise) fn inline_imported_impls(
             );
         }
     }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 /// Phase 1b: inline every imported function into the current module under
@@ -169,7 +217,7 @@ pub(in crate::ir::monomorphise) fn inline_imported_functions(
 ) -> Result<(), Vec<CompilerError>> {
     let mut errors = Vec::new();
 
-    for (module_path, imported) in imported_modules {
+    for (module_path, imported) in super::sorted_imports(imported_modules) {
         for func in &imported.functions {
             let qualified = qualified_name(module_path, &func.name);
 

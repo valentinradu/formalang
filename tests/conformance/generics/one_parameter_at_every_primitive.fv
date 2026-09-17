@@ -1,0 +1,15 @@
+// expect: run
+// The same generic at each primitive instantiation, which is what
+// monomorphisation has to keep apart.
+
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    assert(condition: Box(value: 1).value == 1)
+    assert(condition: Box(value: 1I64).value == 1I64)
+    assert(condition: Box(value: 1.5).value == 1.5)
+    assert(condition: Box(value: true).value)
+    assert(condition: Box(value: "s").value == "s")
+}

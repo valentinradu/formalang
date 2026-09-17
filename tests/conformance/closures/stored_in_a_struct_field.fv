@@ -1,0 +1,9 @@
+// expect: run
+struct Form {
+    onPress: () -> I32
+}
+
+pub fn run_checks() {
+    let f = Form(onPress: () -> 42)
+    assert(condition: f.onPress() == 42)
+}

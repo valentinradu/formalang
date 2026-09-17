@@ -1,0 +1,11 @@
+// expect: run
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    let b = Box<[I32]>(value: [1, 2, 3])
+    assert(condition: b.value.len() == 3)
+    let d = Box<[String: I32]>(value: ["k": 1])
+    assert(condition: d.value.len() == 1)
+}

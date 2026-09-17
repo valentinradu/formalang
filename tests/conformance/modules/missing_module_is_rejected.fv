@@ -1,0 +1,2 @@
+// expect: reject ModuleNotFound
+use no_such_module::Thing

@@ -1,0 +1,12 @@
+// expect: run
+pub fn run_checks() {
+    let sugar: [I32] = [10, 20]
+    let spelled: Array<I32> = [10, 20]
+    assert(condition: sugar == spelled)
+    assert(condition: spelled.len() == 2)
+    if let v = spelled[1] {
+        assert(condition: v == 20)
+    } else {
+        assert(condition: false)
+    }
+}

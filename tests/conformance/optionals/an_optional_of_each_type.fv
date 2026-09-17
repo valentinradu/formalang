@@ -1,0 +1,30 @@
+// expect: run
+// Swift tests Optional across every wrapped kind; so does this.
+
+pub struct P {
+    v: I32
+}
+
+pub enum E {
+    a
+}
+
+pub fn run_checks() {
+    let i: I32? = nil
+    let s: String? = nil
+    let b: Boolean? = nil
+    let f: F64? = nil
+    let arr: [I32]? = nil
+    let d: [String: I32]? = nil
+    let p: P? = nil
+    let e: E? = nil
+
+    assert(condition: i.is_none())
+    assert(condition: s.is_none())
+    assert(condition: b.is_none())
+    assert(condition: f.is_none())
+    assert(condition: arr.is_none())
+    assert(condition: d.is_none())
+    assert(condition: p.is_none())
+    assert(condition: e.is_none())
+}

@@ -1,0 +1,9 @@
+// expect: run
+pub fn f(n: I32) -> I32 {
+    let c = (n: I32) -> n * 2
+    c(5)
+}
+
+pub fn run_checks() {
+    assert(condition: f(n: 100) == 10)
+}

@@ -1,0 +1,13 @@
+// expect: reject TypeMismatch
+// A generic enum takes its type argument from the payload, so a
+// `let` annotation catches a payload of the wrong type.
+
+pub enum Maybe<T> {
+    some(v: T),
+    none
+}
+
+pub fn f() -> I32 {
+    let m: Maybe<I32> = Maybe.some(v: "text")
+    0
+}

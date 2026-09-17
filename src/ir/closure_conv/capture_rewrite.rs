@@ -82,6 +82,8 @@ impl CaptureCtx {
 /// captured value's resolved type. The `__env` reference itself is
 /// typed as the env struct so backends can resolve its layout.
 ///
+/// `span` is the span of the reference being replaced.
+///
 /// `env_ty` is `None` only at module level — and at module level
 /// nothing is "captured", so this helper is never reached with
 /// `env_ty == None` in practice. The fallback to
@@ -91,17 +93,22 @@ pub(super) fn env_field_access(
     field: String,
     ty: ResolvedType,
     env_ty: Option<&ResolvedType>,
+    span: crate::ir::IrSpan,
 ) -> IrExpr {
+    // `span` is the span of the reference this access replaces. The
+    // node is synthetic, but the source position is not: a debugger
+    // stepping over the captured value must land on the name the user
+    // wrote, not on nothing.
     IrExpr::FieldAccess {
         object: Box::new(IrExpr::Reference {
             path: vec![ENV_PARAM_NAME.to_string()],
             target: crate::ir::ReferenceTarget::Unresolved,
             ty: env_ty.cloned().unwrap_or(ResolvedType::Error),
-            span: crate::ir::IrSpan::default(),
+            span,
         }),
         field,
         field_idx: crate::ir::FieldIdx(0),
         ty,
-        span: crate::ir::IrSpan::default(),
+        span,
     }
 }

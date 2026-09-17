@@ -1,6 +1,12 @@
 use super::super::module_resolver::ModuleResolver;
 use super::super::SemanticAnalyzer;
 use crate::ast::Type;
+use crate::semantic::SemType;
+
+/// The inside of a `[...]` type, or `None` when the string is not one.
+fn bracketed(ty: &str) -> Option<&str> {
+    ty.strip_prefix('[')?.strip_suffix(']')
+}
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check if two type strings are compatible.
@@ -10,6 +16,148 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// "Unknown" pass any more. Inference now resolves match-arm
     /// pattern bindings and impl-static / enum-constructor calls, so
     /// `Unknown` in inference output is genuinely an error signal.
+    /// Whether a value of the inferred type satisfies a declaration of
+    /// type `declared`.
+    ///
+    /// This is the one rule the analyser applies wherever a value
+    /// meets a declared type — a `let` annotation, a call argument, a
+    /// function or closure return, an assignment, an array element, a
+    /// dictionary value. Those sites used to each decide for
+    /// themselves, and they disagreed: `let v: I32? = nil` was
+    /// accepted while `pub fn f() -> I32? { nil }` was not, and
+    /// assignment applied none of the optional rules at all.
+    ///
+    /// Four things count as satisfying a declaration:
+    ///
+    /// - an inferred type that is indeterminate, because reporting a
+    ///   mismatch there would be a guess;
+    /// - `nil`, against any optional declaration;
+    /// - `T` against `T?`, which is the implicit wrap;
+    /// - a generic base whose arguments inference did not carry — see
+    ///   [`Self::base_without_type_arguments`].
+    ///
+    /// Anything else falls through to
+    /// [`Self::type_strings_compatible`].
+    ///
+    /// The caller still chooses the diagnostic: a `nil` against a
+    /// non-optional reports
+    /// [`CompilerError::NilAssignedToNonOptional`](crate::CompilerError::NilAssignedToNonOptional),
+    /// not a bare type mismatch.
+    pub(in crate::semantic) fn value_satisfies_declared(
+        &self,
+        declared: &str,
+        inferred: &SemType,
+    ) -> bool {
+        if inferred.is_indeterminate() {
+            return true;
+        }
+
+        if matches!(inferred, SemType::Nil) {
+            return declared.ends_with('?');
+        }
+
+        let found = inferred.display();
+
+        if declared.ends_with('?') && declared.trim_end_matches('?') == found.as_str() {
+            return true;
+        }
+
+        if Self::generic_arguments_fit(declared, &found) {
+            return true;
+        }
+
+        if Self::base_without_type_arguments(declared, &found) {
+            return true;
+        }
+
+        // A literal holding nothing but `nil` — `[nil]`, `["k": nil]` —
+        // joins to an element type of `Nil`, which names no concrete
+        // type. It fits any container of an optional.
+        if Self::nil_container_fits(declared, &found) {
+            return true;
+        }
+
+        self.type_strings_compatible(declared, &found)
+    }
+
+    /// Whether `inferred` is a container whose element type is `Nil`
+    /// and `declared` is the same container over an optional.
+    ///
+    /// `[nil]` infers `[Nil]`; that satisfies `[I32?]` and `[String?]`
+    /// alike, because `nil` is a value of every optional type. The
+    /// same holds for a dictionary's values: `["k": nil]` infers
+    /// `[String: Nil]` and satisfies `[String: I32?]`.
+    fn nil_container_fits(declared: &str, inferred: &str) -> bool {
+        let Some(inferred_inner) = bracketed(inferred) else {
+            return false;
+        };
+        let Some(declared_inner) = bracketed(declared) else {
+            return false;
+        };
+
+        match (
+            inferred_inner.split_once(": "),
+            declared_inner.split_once(": "),
+        ) {
+            // Dictionaries: the key types must match and the declared
+            // value must be optional.
+            (Some((inferred_key, "Nil")), Some((declared_key, declared_value))) => {
+                inferred_key == declared_key && declared_value.ends_with('?')
+            }
+            // Arrays: neither side is a dictionary.
+            (None, None) => inferred_inner == "Nil" && declared_inner.ends_with('?'),
+            _ => false,
+        }
+    }
+
+    /// Whether `inferred` is `declared`'s generic base with its type
+    /// arguments missing.
+    ///
+    /// Inference does not always carry a generic's arguments: an enum
+    /// literal such as `Result.error(err: -1)` infers as `Result`, not
+    /// as `Result<I32, I32>`. Treating that as a mismatch would reject
+    /// correct programs, so the annotated-value and call-argument
+    /// checks accept it and leave the arguments to the IR
+    /// monomorphisation pass.
+    ///
+    /// This is deliberately one-directional and narrow. It accepts
+    /// `Result` against `Result<I32, I32>`; it does not accept
+    /// `Result<String, I32>` against `Result<I32, I32>`, nor a
+    /// different base.
+    /// Whether two instantiations of one generic differ only where a
+    /// value widens into an optional.
+    ///
+    /// `base_without_type_arguments` covers the case where inference
+    /// produced the bare name; this covers the case where it produced
+    /// an instantiation of its own. Inferring an enum's type arguments
+    /// from its payload made that the common case: `Maybe.some(v: 1)`
+    /// used to be the bare `Maybe`, which fitted anything, and is now
+    /// `Maybe<I32>`, which has to be related to `Maybe<I32?>` by the
+    /// same rule that relates `I32` to `I32?` anywhere else.
+    fn generic_arguments_fit(declared: &str, found: &str) -> bool {
+        let Some((declared_base, declared_args)) = split_instantiation(declared) else {
+            return false;
+        };
+        let Some((found_base, found_args)) = split_instantiation(found) else {
+            return false;
+        };
+        if declared_base != found_base || declared_args.len() != found_args.len() {
+            return false;
+        }
+        declared_args
+            .iter()
+            .zip(found_args.iter())
+            .all(|(want, got)| argument_fits(want, got))
+    }
+
+    pub(in crate::semantic) fn base_without_type_arguments(declared: &str, inferred: &str) -> bool {
+        let declared_base = declared.trim_end_matches('?');
+        let inferred_base = inferred.trim_end_matches('?');
+        declared_base
+            .split_once('<')
+            .is_some_and(|(base, _)| base == inferred_base)
+    }
+
     pub(in crate::semantic) fn type_strings_compatible(
         &self,
         expected: &str,
@@ -156,4 +304,44 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 /// `[[K: V]]` is recognised as an array and returns `[K: V]`.
 fn strip_array_shape(ty: &str) -> Option<&str> {
     crate::semantic::strip_array_type(ty)
+}
+
+/// Split `Base<A, B>` into its base and its arguments.
+///
+/// Splitting on the top-level commas only, so a nested instantiation
+/// stays in one piece.
+fn split_instantiation(ty: &str) -> Option<(&str, Vec<&str>)> {
+    let rest = ty.strip_suffix('>')?;
+    let (base, args) = rest.split_once('<')?;
+
+    let mut out = Vec::new();
+    let mut depth = 0_usize;
+    let mut start = 0_usize;
+    for (index, c) in args.char_indices() {
+        match c {
+            '<' | '[' | '(' => depth = depth.saturating_add(1),
+            '>' | ']' | ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(args.get(start..index)?.trim());
+                start = index.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+    out.push(args.get(start..)?.trim());
+    Some((base, out))
+}
+
+/// Whether one type argument fits where another is declared.
+///
+/// The same widening the language allows anywhere: a value fits an
+/// optional of its own type, and so does `nil`.
+fn argument_fits(want: &str, got: &str) -> bool {
+    if want == got {
+        return true;
+    }
+    let Some(inner) = want.strip_suffix('?') else {
+        return false;
+    };
+    inner == got || got == "Nil"
 }

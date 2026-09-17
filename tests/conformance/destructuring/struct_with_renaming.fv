@@ -1,0 +1,12 @@
+// expect: run
+pub struct User {
+    name: String,
+    score: I32
+}
+
+pub fn run_checks() {
+    let u = User(name: "bob", score: 100)
+    let {score as s, name as n} = u
+    assert(condition: s == 100)
+    assert(condition: n == "bob")
+}

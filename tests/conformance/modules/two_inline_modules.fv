@@ -1,0 +1,17 @@
+// expect: run
+pub mod a {
+    pub struct T {
+        v: I32
+    }
+}
+
+pub mod b {
+    pub struct T {
+        v: String
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: a::T(v: 1).v == 1)
+    assert(condition: b::T(v: "x").v == "x")
+}

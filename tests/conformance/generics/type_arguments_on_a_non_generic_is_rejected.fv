@@ -1,0 +1,9 @@
+// expect: reject GenericArityMismatch
+pub struct Plain {
+    value: I32
+}
+
+pub fn f() -> I32 {
+    let p = Plain<I32>(value: 1)
+    p.value
+}

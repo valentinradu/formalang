@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    let m: [[I32]] = [[1, 2], [3, 4, 5]]
+    assert(condition: m.len() == 2)
+    assert(condition: for row in m { row.len() }.fold(initial: 0, f: (a, b) -> a + b) == 5)
+}

@@ -1,0 +1,4 @@
+// expect: reject ForLoopNotArray
+pub fn f(n: I32) -> I32 {
+    for x in n { x }.count()
+}

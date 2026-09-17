@@ -1,0 +1,11 @@
+// expect: run
+// The correct calls are untouched.
+
+pub fn run_checks() {
+    assert(condition: for i in 0..4 { i }.map(f: (x) -> x * 2).count() == 4)
+    assert(condition: for i in 0..4 { i }.filter(f: (x) -> x > 1).count() == 2)
+    assert(condition: for i in 0..4 { i }.take(count: 2).count() == 2)
+    assert(condition: for i in 0..4 { i }.fold(initial: 0, f: (a, b) -> a + b) == 6)
+    assert(condition: "text".starts_with(prefix: "te"))
+    assert(condition: [1, 2, 3].len() == 3)
+}

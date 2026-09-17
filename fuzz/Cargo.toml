@@ -1,0 +1,68 @@
+[package]
+name = "formalang-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+
+[dependencies.formalang]
+path = ".."
+
+# `cargo fuzz` builds each target as a `#![no_main]` binary. The shared
+# program generator lives in a library target so every target can use it.
+[lib]
+name = "formalang_fuzz"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lex"
+path = "fuzz_targets/lex.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "compile"
+path = "fuzz_targets/compile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "program"
+path = "fuzz_targets/program.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ir_json"
+path = "fuzz_targets/ir_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "report"
+path = "fuzz_targets/report.rs"
+test = false
+doc = false
+bench = false
+
+# Own workspace root: the parent package pins strict lints that the
+# `#![no_main]` harness boilerplate cannot satisfy.
+[workspace]

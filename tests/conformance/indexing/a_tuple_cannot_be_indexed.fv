@@ -1,0 +1,8 @@
+// expect: reject NotIndexable
+// A tuple reads its fields by name, not by position.
+
+pub fn f() -> I32 {
+    let v = (a: 1, b: 2)
+    let w = v[0]
+    0
+}

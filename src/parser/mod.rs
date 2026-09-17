@@ -4,7 +4,9 @@
 // It uses recursive descent parsing with excellent error recovery.
 
 mod defs;
+mod diagnostics;
 mod exprs;
+mod newline;
 mod span;
 mod types;
 
@@ -19,7 +21,9 @@ use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
 
 use defs::{binding_pattern_parser, definition_parser};
+use diagnostics::format_parse_error;
 use exprs::expr_parser;
+use newline::newlines;
 use span::fill_file_spans;
 use types::type_parser;
 
@@ -98,62 +102,13 @@ fn parse_file_internal(
                 .collect::<Vec<_>>()
         })?;
 
-    // Post-process: Fill in line/column info for all spans if source is provided
+    // Post-process: Fill in line/column info for all spans if source is
+    // provided. One index for the whole walk — see `fill_file_spans`.
     if let Some(src) = source {
-        fill_file_spans(&mut file, src);
+        fill_file_spans(&mut file, &crate::location::LineIndex::new(src));
     }
 
     Ok(file)
-}
-
-/// Format a parse error with lowercase keywords and readable token names
-#[expect(
-    clippy::wildcard_enum_match_arm,
-    reason = "RichPattern is defined in the chumsky library and cannot be exhaustively enumerated"
-)]
-fn format_parse_error(error: &Rich<'_, Token>) -> String {
-    use chumsky::error::RichPattern;
-
-    let found = error
-        .found()
-        .map_or_else(|| "end of input".to_string(), |t| format!("{t}"));
-
-    let expected: Vec<String> = error
-        .expected()
-        .map(|exp| match exp {
-            RichPattern::Token(tok) => {
-                // tok is a Maybe<Token, &Token> which derefs to &Token
-                format!("{}", &**tok)
-            }
-            RichPattern::Label(label) => label.to_string(),
-            RichPattern::EndOfInput => "end of input".to_string(),
-            _ => "<unknown>".to_string(),
-        })
-        .collect();
-
-    let span = error.span();
-
-    if expected.is_empty() {
-        format!("found {} at {}..{}", found, span.start, span.end)
-    } else if expected.len() == 1 {
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "bounds checked above: expected.len() == 1"
-        )]
-        let first = &expected[0];
-        format!(
-            "found {} at {}..{}, expected {}",
-            found, span.start, span.end, first
-        )
-    } else {
-        format!(
-            "found {} at {}..{}, expected one of: {}",
-            found,
-            span.start,
-            span.end,
-            expected.join(", ")
-        )
-    }
 }
 
 /// Parse a complete file.
@@ -182,13 +137,24 @@ where
     ])
     .ignored();
 
-    statement_parser()
-        .recover_with(skip_then_retry_until(
-            any().ignored(),
-            statement_start.rewind().ignored().or(end()),
-        ))
-        .repeated()
-        .collect::<Vec<_>>()
+    // A statement may be followed by any number of blank lines, and a
+    // file may open with them. The lexer has already dropped every
+    // newline that continues a statement, so each one left here is a
+    // boundary.
+    let breaks = just(Token::Newline).repeated().ignored();
+
+    breaks
+        .clone()
+        .ignore_then(
+            statement_parser()
+                .then_ignore(breaks.clone())
+                .recover_with(skip_then_retry_until(
+                    any().ignored(),
+                    statement_start.rewind().ignored().or(end()),
+                ))
+                .repeated()
+                .collect::<Vec<_>>(),
+        )
         .map_with(|statements, e| File {
             format_version: crate::ast::FORMAT_VERSION,
             statements,
@@ -341,9 +307,10 @@ where
         just(Token::Star).to(UseItems::Glob),
         // Multiple items: { A, B, C }
         ident_parser()
-            .separated_by(just(Token::Comma))
+            .separated_by(just(Token::Comma).padded_by(newlines()))
             .at_least(1)
             .collect::<Vec<_>>()
+            .padded_by(newlines())
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
             .map(UseItems::Multiple),
         // Single item

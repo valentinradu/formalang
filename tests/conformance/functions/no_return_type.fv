@@ -1,0 +1,9 @@
+// expect: run
+fn side_effect(n: I32) {
+    assert(condition: n == n)
+}
+
+pub fn run_checks() {
+    side_effect(n: 1)
+    assert(condition: true)
+}

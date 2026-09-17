@@ -1,0 +1,9 @@
+// expect: run
+pub fn run_checks() {
+    let mut v: I32? = nil
+    assert(condition: v.is_none())
+    v = 1
+    assert(condition: v.is_some())
+    v = nil
+    assert(condition: v.is_none())
+}

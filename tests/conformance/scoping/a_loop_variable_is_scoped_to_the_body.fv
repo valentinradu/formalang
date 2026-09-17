@@ -1,0 +1,7 @@
+// expect: reject UndefinedReference
+// Rust: the loop binding does not escape.
+
+pub fn f(xs: [I32]) -> I32 {
+    for x in xs { x }.count()
+    x
+}

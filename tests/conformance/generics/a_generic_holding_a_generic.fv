@@ -1,0 +1,12 @@
+// expect: run
+// TypeScript's nested type-argument cases.
+
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    let inner = Box<I32>(value: 7)
+    let outer = Box<Box<I32>>(value: inner)
+    assert(condition: outer.value.value == 7)
+}

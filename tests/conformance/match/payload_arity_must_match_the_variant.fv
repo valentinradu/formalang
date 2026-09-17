@@ -1,0 +1,12 @@
+// expect: reject VariantArityMismatch
+// Rust rejects a pattern whose arity differs from the variant's.
+
+pub enum E {
+    pair(a: I32, b: I32)
+}
+
+pub fn f(e: E) -> I32 {
+    match e {
+        .pair(only): only
+    }
+}

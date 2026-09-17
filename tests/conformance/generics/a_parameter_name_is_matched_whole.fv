@@ -1,0 +1,11 @@
+// expect: reject TypeMismatch
+// `String` contains the letter `S`. Testing the rendered type for the
+// parameter as a substring skipped the check on `label` entirely.
+
+pub fn pick<S>(item: S, label: String) -> I32 {
+    0
+}
+
+pub fn f() -> I32 {
+    pick(item: 1, label: 99)
+}

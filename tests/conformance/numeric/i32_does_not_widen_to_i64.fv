@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// There is no implicit widening. An I32 does not become an I64.
+
+pub fn f() -> I64 {
+    let a: I32 = 1
+    let b: I64 = a
+    b
+}

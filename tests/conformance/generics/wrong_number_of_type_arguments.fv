@@ -1,0 +1,10 @@
+// expect: reject GenericArityMismatch
+pub struct Pair<A, B> {
+    first: A,
+    second: B
+}
+
+pub fn f() -> I32 {
+    let p: Pair<I32> = Pair(first: 1, second: 2)
+    p.first
+}

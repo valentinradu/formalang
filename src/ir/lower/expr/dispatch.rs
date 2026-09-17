@@ -100,12 +100,19 @@ impl IrLowerer<'_> {
             }
         }
 
-        self.errors.push(CompilerError::InternalError {
-            detail: format!(
-                "IR lowering: cannot resolve dispatch for method `{method_name}` on receiver {receiver_ty:?}"
-            ),
-            span: self.current_span,
-        });
+        // The receiver was already an error and a diagnostic for it has
+        // been recorded, so say nothing more: blaming the compiler on
+        // top of a mistake the user has already been told about helps
+        // nobody. The sentinel below is what an unresolved dispatch
+        // looks like either way.
+        if !matches!(receiver_ty, ResolvedType::Error) {
+            self.errors.push(CompilerError::InternalError {
+                detail: format!(
+                    "IR lowering: cannot resolve dispatch for method `{method_name}` on receiver {receiver_ty:?}"
+                ),
+                span: self.current_span,
+            });
+        }
         DispatchKind::Virtual {
             trait_id: TraitId(u32::MAX),
             method_name: method_name.to_string(),

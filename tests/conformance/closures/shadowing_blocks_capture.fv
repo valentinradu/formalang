@@ -1,0 +1,14 @@
+// expect: run
+// A binding inside the closure shadows the outer name, so the
+// outer one is not captured and not read.
+pub fn f(base: I32) -> I32 {
+    let c = (n: I32) -> {
+        let base = n * 2
+        base
+    }
+    c(5)
+}
+
+pub fn run_checks() {
+    assert(condition: f(base: 100) == 10)
+}

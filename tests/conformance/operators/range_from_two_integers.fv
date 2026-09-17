@@ -1,0 +1,7 @@
+// expect: run
+// Both integer widths build a range.
+
+pub fn run_checks() {
+    assert(condition: for i in 0..4 { i }.count() == 4)
+    assert(condition: for i in 0I64..4I64 { i }.count() == 4)
+}

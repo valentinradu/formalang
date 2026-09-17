@@ -6,6 +6,7 @@ use chumsky::prelude::*;
 use crate::ast::{EnumDef, EnumVariant};
 use crate::lexer::Token;
 
+use super::super::newlines;
 use super::super::{doc_comments_parser, ident_parser, span_from_simple, visibility_parser};
 use super::{field_def_parser, generic_params_parser};
 
@@ -36,10 +37,11 @@ where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     enum_variant_parser()
-        .separated_by(just(Token::Comma))
+        .separated_by(just(Token::Comma).padded_by(newlines()))
         .at_least(1)
         .allow_trailing()
         .collect()
+        .padded_by(newlines())
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
 }
 

@@ -1,0 +1,13 @@
+// expect: run
+// Branches are alternatives: only one runs, so a sequence read in
+// both is read once on any path.
+
+pub fn pick(c: Boolean, xs: [I32]) -> I32 {
+    let s = for x in xs { x }
+    if c { s.count() } else { s.collect().len() }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(c: true, xs: [1, 2]) == 2)
+    assert(condition: pick(c: false, xs: [1, 2]) == 2)
+}

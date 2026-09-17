@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    let inc = (n: I32) -> n + 1
+    assert(condition: inc(1) == 2)
+    assert(condition: inc(41) == 42)
+}

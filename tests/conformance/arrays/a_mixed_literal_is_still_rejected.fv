@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// Joining element types widens `nil` into an optional; it does not
+// make unrelated types compatible.
+
+pub fn f() -> [I32] {
+    [1, "two"]
+}

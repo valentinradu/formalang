@@ -31,14 +31,14 @@ Block {
                 span: IrSpan {
                     span: Span {
                         start: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 107,
+                            line: 4,
+                            column: 30,
                         },
                         end: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 110,
+                            line: 4,
+                            column: 33,
                         },
                     },
                     file: FileId(
@@ -81,14 +81,14 @@ Block {
             span: IrSpan {
                 span: Span {
                     start: Location {
-                        offset: 0,
-                        line: 1,
-                        column: 1,
+                        offset: 130,
+                        line: 5,
+                        column: 20,
                     },
                     end: Location {
-                        offset: 0,
-                        line: 1,
-                        column: 1,
+                        offset: 131,
+                        line: 5,
+                        column: 21,
                     },
                 },
                 file: FileId(
@@ -112,14 +112,14 @@ Block {
             span: IrSpan {
                 span: Span {
                     start: Location {
-                        offset: 0,
-                        line: 1,
-                        column: 1,
+                        offset: 134,
+                        line: 5,
+                        column: 24,
                     },
                     end: Location {
-                        offset: 0,
-                        line: 1,
-                        column: 1,
+                        offset: 135,
+                        line: 5,
+                        column: 25,
                     },
                 },
                 file: FileId(
@@ -133,14 +133,14 @@ Block {
         span: IrSpan {
             span: Span {
                 start: Location {
-                    offset: 0,
-                    line: 1,
-                    column: 1,
+                    offset: 130,
+                    line: 5,
+                    column: 20,
                 },
                 end: Location {
-                    offset: 0,
-                    line: 1,
-                    column: 1,
+                    offset: 135,
+                    line: 5,
+                    column: 25,
                 },
             },
             file: FileId(
@@ -154,14 +154,14 @@ Block {
     span: IrSpan {
         span: Span {
             start: Location {
-                offset: 0,
-                line: 1,
-                column: 1,
+                offset: 94,
+                line: 4,
+                column: 17,
             },
             end: Location {
-                offset: 0,
-                line: 1,
-                column: 1,
+                offset: 135,
+                line: 5,
+                column: 25,
             },
         },
         file: FileId(

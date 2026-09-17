@@ -3,7 +3,9 @@
 //! fallback for callable values.
 
 use super::super::super::module_resolver::ModuleResolver;
+use super::super::super::sem_type::SemType;
 use super::super::super::SemanticAnalyzer;
+use super::overloads::ParamView;
 use crate::ast::File;
 use crate::error::CompilerError;
 use crate::location::Span;
@@ -104,6 +106,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                     self.validate_closure_call_conventions(&conventions, args, span, file);
+                    self.validate_closure_call_shape(simple_name, args, span, file);
                 } else if !self.resolve_qualified_function(name) {
                     // a missing function is an undefined
                     // reference, not an undefined type — use the correct
@@ -116,10 +119,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             1 => {
-                // Single overload — check mut param mutability
+                // Single overload — check argument types and mut params.
                 if let Some(info) = overloads.first() {
                     let params = info.params.clone();
+                    let generics = info.generics.clone();
                     self.validate_mut_param_args(&params, args, span, file);
+                    let views: Vec<_> = params.iter().map(ParamView::of_param_info).collect();
+                    self.validate_arg_types(&views, &generics, args, file);
                 }
             }
             _ => {
@@ -176,10 +182,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                     }
                     1 => {
-                        // Resolved to a unique overload — check mut param mutability
+                        // Resolved to a unique overload — check argument
+                        // types and mut params.
                         if let Some(info) = most_specific.first() {
                             let params = info.params.clone();
+                            let generics = info.generics.clone();
                             self.validate_mut_param_args(&params, args, span, file);
+                            let views: Vec<_> =
+                                params.iter().map(ParamView::of_param_info).collect();
+                            self.validate_arg_types(&views, &generics, args, file);
                         }
                     }
                     _ => {
@@ -191,5 +202,77 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+    }
+
+    /// Check a call through a closure-typed binding against the shape
+    /// the closure declares: how many arguments it takes, and what
+    /// type each one has.
+    ///
+    /// Nothing did this before. A direct call to a named function goes
+    /// through overload resolution, which checks the arity, and then
+    /// through
+    /// [`super::overloads::SemanticAnalyzer::validate_arg_types`],
+    /// which checks the types. A call through a binding took neither
+    /// path: only the parameter conventions were checked. So
+    /// `f(1, 2)` against `f: (I32) -> I32` compiled, and the lowered
+    /// call carried a second argument into a closure with one
+    /// parameter.
+    fn validate_closure_call_shape(
+        &mut self,
+        name: &str,
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        span: Span,
+        file: &File,
+    ) {
+        let Some(SemType::Closure { params, .. }) = self.lookup_closure_type(name) else {
+            return;
+        };
+
+        if args.len() != params.len() {
+            self.errors.push(CompilerError::ArgumentCountMismatch {
+                callee: "This closure".to_string(),
+                expected: params.len(),
+                actual: args.len(),
+                span,
+            });
+            return;
+        }
+
+        for ((_, arg_expr), declared) in args.iter().zip(params.iter()) {
+            // A parameter the closure left untyped takes anything:
+            // `(x) -> x + 1` states no type, so there is nothing to
+            // check against.
+            if declared.is_indeterminate() {
+                continue;
+            }
+            let inferred = self.infer_type_sem(arg_expr, file);
+            if !self.value_satisfies_declared(&declared.display(), &inferred) {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: declared.display(),
+                    found: inferred.display(),
+                    span: arg_expr.span(),
+                });
+            }
+        }
+    }
+
+    /// Look up the type of a closure-typed binding by name.
+    ///
+    /// Mirrors the lookup in
+    /// [`crate::semantic::SemanticAnalyzer::infer_type_invocation`]:
+    /// the inference scope stack first, because an inner scope shadows
+    /// an outer one, then the function's own bindings, which hold both
+    /// its `let`s and its parameters.
+    fn lookup_closure_type(&self, name: &str) -> Option<SemType> {
+        let from_scope = {
+            let stack = self.inference_scope_stack.borrow();
+            stack
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(name).cloned())
+        };
+        from_scope
+            .or_else(|| self.local_let_bindings.get(name).map(|(ty, _)| ty.clone()))
+            .filter(|ty| matches!(ty, SemType::Closure { .. }))
     }
 }

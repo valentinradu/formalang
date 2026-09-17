@@ -99,25 +99,39 @@ pub fn get_line_at_position(source: &str, position: LspPosition) -> &str {
 
 /// Get the word at a given offset (useful for symbol resolution)
 /// Returns (word, `start_offset`, `end_offset`)
+///
+/// Returns `None` when `offset` is past the end of `source` or does
+/// not fall on a character boundary. An editor sends whatever offset
+/// its caret sits at, so both are ordinary inputs, not errors.
 #[must_use]
 pub fn get_word_at_offset(source: &str, offset: usize) -> Option<(String, usize, usize)> {
-    if offset > source.len() {
+    if offset > source.len() || !source.is_char_boundary(offset) {
         return None;
     }
 
     // Find word boundaries (alphanumeric and underscore)
     let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
 
-    let start = source[..offset]
-        .rfind(|c: char| !is_word_char(c))
-        .map_or(0, |i| i.saturating_add(1));
+    // The word starts just after the last non-word character before
+    // `offset`. Step past that character by its own length: adding one
+    // byte lands inside it when it is multi-byte, and slicing there
+    // panics. `get_word_at_offset("é x", 2)` used to do exactly that.
+    let start = source
+        .get(..offset)
+        .unwrap_or("")
+        .char_indices()
+        .rev()
+        .find(|(_, c)| !is_word_char(*c))
+        .map_or(0, |(index, c)| index.saturating_add(c.len_utf8()));
 
-    let end = source[offset..]
+    let end = source
+        .get(offset..)
+        .unwrap_or("")
         .find(|c: char| !is_word_char(c))
         .map_or(source.len(), |i| offset.saturating_add(i));
 
     if start < end {
-        let word = source[start..end].to_string();
+        let word = source.get(start..end)?.to_string();
         Some((word, start, end))
     } else {
         None

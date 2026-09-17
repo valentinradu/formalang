@@ -1,0 +1,15 @@
+// expect: run
+// Every combinator at its zero case.
+
+pub fn run_checks() {
+    let xs: [I32] = []
+    assert(condition: for x in xs { x }.count() == 0)
+    assert(condition: for x in xs { x }.collect().len() == 0)
+    assert(condition: for x in xs { x }.first().is_none())
+    assert(condition: for x in xs { x }.fold(initial: 7, f: (a, b) -> a + b) == 7)
+    assert(condition: for x in xs { x }.all(f: (v) -> false))
+    assert(condition: !for x in xs { x }.any(f: (v) -> true))
+    assert(condition: for x in xs { x }.take(count: 3).count() == 0)
+    assert(condition: for x in xs { x }.skip(count: 3).count() == 0)
+    assert(condition: for x in xs { x }.filter(f: (v) -> true).count() == 0)
+}

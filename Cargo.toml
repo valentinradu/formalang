@@ -67,6 +67,25 @@ rstest = "0.26"
 pretty_assertions = "1.4"
 tempfile = "3.23"
 insta = "1.47.2"
+# Property testing. Random program shapes that shrink to a minimal
+# counterexample; see `tests/proptest_*.rs`.
+proptest = "1.8"
+# Benchmarks. Chosen over criterion because CI runs on a small disk:
+# divan pulls three transitive crates and links one extra binary,
+# criterion pulls about forty.
+divan = "0.1.21"
+# Concurrency model checking for the `fvc watch` shutdown protocol.
+# Only compiled under `cfg(loom)`, so it stays out of a normal build.
+[target.'cfg(loom)'.dev-dependencies]
+loom = "0.7"
+
+[[bench]]
+name = "frontend"
+harness = false
+
+[[bench]]
+name = "scaling"
+harness = false
 
 # Trim debug symbols on `cargo test` builds. The default
 # `debug = "full"` produces huge .rlib files (~hundreds of MB across
@@ -82,6 +101,10 @@ debug = "line-tables-only"
 debug = "line-tables-only"
 
 [lints.rust]
+# `cfg(loom)` is set by hand (`RUSTFLAGS="--cfg loom"`), not by a
+# feature, because loom must replace `std::sync` for the whole
+# dependency graph. Declare it so the compiler does not warn.
+unexpected_cfgs               = { level = "warn", check-cfg = ['cfg(loom)'] }
 unreachable_pub               = "deny"
 unsafe_code                   = "forbid"
 unused_must_use               = "deny"

@@ -1,0 +1,4 @@
+// expect: reject DuplicateGenericParam
+pub struct A<T, T> {
+    value: T
+}

@@ -1,0 +1,19 @@
+// expect: run
+pub enum Result2<T, E> {
+    ok(value: T),
+    error(err: E)
+}
+
+pub fn unwrap_or(r: Result2<I32, I32>, fallback: I32) -> I32 {
+    match r {
+        .ok(v): v,
+        .error(e): fallback
+    }
+}
+
+pub fn run_checks() {
+    let good: Result2<I32, I32> = Result2.ok(value: 5)
+    let bad: Result2<I32, I32> = Result2.error(err: -1)
+    assert(condition: unwrap_or(r: good, fallback: 0) == 5)
+    assert(condition: unwrap_or(r: bad, fallback: 9) == 9)
+}

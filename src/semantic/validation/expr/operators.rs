@@ -38,7 +38,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 (is_numeric(&left_type) && left_type == right_type)
                     || (left_type == "String" && right_type == "String")
             }
-            // Arithmetic, comparison, and range operators: matched-numeric pair
+            // Arithmetic and comparison operators: matched-numeric pair
             BinaryOperator::Sub
             | BinaryOperator::Mul
             | BinaryOperator::Div
@@ -46,10 +46,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | BinaryOperator::Lt
             | BinaryOperator::Gt
             | BinaryOperator::Le
-            | BinaryOperator::Ge
-            | BinaryOperator::Range => is_numeric(&left_type) && left_type == right_type,
-            // Equality operators: same types
-            BinaryOperator::Eq | BinaryOperator::Ne => left_type == right_type,
+            | BinaryOperator::Ge => is_numeric(&left_type) && left_type == right_type,
+            // Range: a matched pair of integers. A range counts from
+            // the start to the end in steps of one, so a float bound
+            // has no meaning. Every consumer models a range as two
+            // integers, so accepting `1.5..3.5` here produced a
+            // program no backend can run.
+            BinaryOperator::Range => {
+                matches!(left_type.as_str(), "I32" | "I64") && left_type == right_type
+            }
+            // Equality operators: the same type, and a type that can
+            // be compared.
+            BinaryOperator::Eq | BinaryOperator::Ne => {
+                left_type == right_type && self.is_equatable(&left_sem)
+            }
             // Logical operators: Boolean + Boolean
             BinaryOperator::And | BinaryOperator::Or => {
                 left_type == "Boolean" && right_type == "Boolean"
@@ -63,6 +73,99 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 right_type,
                 span,
             });
+        }
+    }
+
+    /// Whether `==` and `!=` have an answer for this type.
+    ///
+    /// Equality is structural, so it reaches every field of a struct
+    /// and every element of a container. A closure has no structure to
+    /// compare, so a type that holds one anywhere is not equatable.
+    /// Unresolved types stay equatable: an unknown type is reported
+    /// elsewhere, and a second diagnostic for it only adds noise.
+    fn is_equatable(&self, ty: &SemType) -> bool {
+        let mut seen = Vec::new();
+        !self.holds_a_closure(ty, &mut seen)
+    }
+
+    /// The recursive half of [`Self::is_equatable`].
+    ///
+    /// `seen` holds the struct names already on the stack, so a struct
+    /// that contains itself through an optional or an array terminates
+    /// instead of recursing without end.
+    fn holds_a_closure(&self, ty: &SemType, seen: &mut Vec<String>) -> bool {
+        if ty.holds_a_closure() {
+            return true;
+        }
+
+        // `SemType::holds_a_closure` stops at a name because it has no
+        // symbol table. Look the name up and walk the fields.
+        let mut found = false;
+        Self::for_each_inner_type(ty, &mut |inner| {
+            if let SemType::Named(name) = inner {
+                if seen.iter().any(|s| s == name) {
+                    return;
+                }
+                let fields: Vec<SemType> = if let Some(info) = self.symbols.get_struct(name) {
+                    info.fields
+                        .iter()
+                        .map(|f| SemType::from_ast(&f.ty))
+                        .collect()
+                } else if let Some(info) = self.symbols.get_enum_qualified(name) {
+                    // An enum holds a closure when one of its
+                    // variants carries one in a payload field.
+                    info.variant_fields
+                        .values()
+                        .flatten()
+                        .map(|f| SemType::from_ast(&f.ty))
+                        .collect()
+                } else {
+                    return;
+                };
+                seen.push(name.clone());
+                for field in &fields {
+                    if self.holds_a_closure(field, seen) {
+                        found = true;
+                    }
+                }
+                seen.pop();
+            }
+        });
+        found
+    }
+
+    /// Call `visit` on this type and on every type nested inside it.
+    fn for_each_inner_type(ty: &SemType, visit: &mut impl FnMut(&SemType)) {
+        visit(ty);
+        match ty {
+            SemType::Array(inner) | SemType::Optional(inner) => {
+                Self::for_each_inner_type(inner, visit);
+            }
+            SemType::Dictionary { key, value } => {
+                Self::for_each_inner_type(key, visit);
+                Self::for_each_inner_type(value, visit);
+            }
+            SemType::Tuple(fields) => {
+                for (_, field) in fields {
+                    Self::for_each_inner_type(field, visit);
+                }
+            }
+            SemType::Generic { args, .. } => {
+                for arg in args {
+                    Self::for_each_inner_type(arg, visit);
+                }
+            }
+            SemType::Closure { params, return_ty } => {
+                for param in params {
+                    Self::for_each_inner_type(param, visit);
+                }
+                Self::for_each_inner_type(return_ty, visit);
+            }
+            SemType::Primitive(_)
+            | SemType::Named(_)
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => {}
         }
     }
 

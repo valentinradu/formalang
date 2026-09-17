@@ -3,7 +3,7 @@
 //! visibility check used at every qualified call/reference site.
 
 mod functions;
-mod overloads;
+pub(in crate::semantic) mod overloads;
 mod structs;
 
 use super::super::module_resolver::ModuleResolver;

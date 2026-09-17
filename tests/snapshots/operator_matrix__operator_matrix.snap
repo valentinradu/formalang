@@ -1,0 +1,273 @@
+---
+source: tests/operator_matrix.rs
+assertion_line: 273
+expression: out
+---
+Legend: . accepted   x rejected
+Rows are the left operand, columns the right.
+
+=== + ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== - ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== * ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== / ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== % ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== < ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== > ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== <= ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== >= ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== == ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           .           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           .           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           .           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           .           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           .           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           .           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           .           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           .           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           .           
+
+=== != ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           .           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           .           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           .           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           .           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           .           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           .           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           .           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           .           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           .           
+
+=== && ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== || ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           .           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+
+=== .. ===
+              I32           I64           F32           F64           Boolean       String        [I32]         [String]      [String:I32]  I32?          tuple         closure       Point         Colour        range         seq           
+I32           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I64           x           .           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F32           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+F64           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Boolean       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+String        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[I32]         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String]      x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+[String:I32]  x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+I32?          x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+tuple         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+closure       x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Point         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+Colour        x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+range         x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           
+seq           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x           x

@@ -1,0 +1,8 @@
+// expect: reject DuplicateDefinition
+pub struct A {
+    a: I32
+}
+
+pub struct A {
+    b: I32
+}

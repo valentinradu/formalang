@@ -1,0 +1,10 @@
+// expect: reject FunctionReturnTypeMismatch
+// An `if` with no `else` produces nothing when the condition is
+// false, so it cannot be the whole body of a function that promises
+// a value. `f(n: 0)` used to compile and answer nothing.
+
+pub fn f(n: I32) -> I32 {
+    if n > 0 {
+        1
+    }
+}

@@ -1,0 +1,13 @@
+// expect: reject UseAfterSink
+// Rust's use-after-move, in this language's spelling.
+
+fn consume(sink s: String) -> I32 {
+    s.len()
+}
+
+pub fn f() -> I32 {
+    let a: String = "x"
+    let first = consume(s: a)
+    let second = consume(s: a)
+    first + second
+}

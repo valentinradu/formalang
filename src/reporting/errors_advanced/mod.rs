@@ -26,9 +26,9 @@ pub(in crate::reporting) use fields::{
     positional_arg_in_struct, unknown_field,
 };
 pub(in crate::reporting) use functions::{
-    ambiguous_call, cannot_infer_enum_type, extern_fn_with_body, extern_impl_with_body,
-    function_return_type_mismatch, no_matching_overload, regular_fn_without_body,
-    required_param_after_default,
+    ambiguous_call, argument_count_mismatch, cannot_infer_enum_type, extern_fn_with_body,
+    extern_impl_with_body, function_return_type_mismatch, no_matching_overload,
+    regular_fn_without_body, required_param_after_default,
 };
 pub(in crate::reporting) use generics::{
     duplicate_generic_param, generic_arity_mismatch, generic_constraint_violation,
@@ -36,8 +36,9 @@ pub(in crate::reporting) use generics::{
 };
 pub(in crate::reporting) use misc::{
     closure_capture_escapes_local_binding, expression_depth_exceeded, float_dictionary_key,
-    internal_error, public_closure_field, seq_invalid_position, seq_not_consumed, seq_used_twice,
-    too_many_definitions, visibility_violation,
+    internal_error, not_indexable, private_type_in_public, public_closure_field,
+    seq_invalid_position, seq_not_consumed, seq_used_twice, too_many_definitions,
+    unreachable_match_arm, visibility_violation,
 };
 pub(in crate::reporting) use mutability::{mutability_mismatch, use_after_sink};
 pub(in crate::reporting) use optional::{

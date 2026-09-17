@@ -93,6 +93,11 @@ if isAdmin {
   showAdminPanel()
 }
 
+// So the type of an `if` with no `else` is optional. It fits an
+// optional binding and not a plain one:
+let a: I32? = if isAdmin { 1 }    // ok
+let b: I32  = if isAdmin { 1 }    // error: I32? does not fit I32
+
 // Chained conditions
 if x > 100 {
   showLarge()
@@ -155,3 +160,17 @@ match message {
 - Must be exhaustive (cover all variants)
 - Pattern uses `.variant` syntax (short form)
 - Associated data bound to identifiers using parameter names
+
+## An Arm Below `_` Never Runs
+
+A `_` arm takes every value the arms above it did not, so nothing
+below it can run:
+
+```formalang
+match e {
+  _: 0,
+  .a: 1           // error E140: this arm can never run
+}
+```
+
+Write the named arms first and `_` last.

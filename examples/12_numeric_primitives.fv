@@ -53,8 +53,10 @@ pub fn not_op(b: Boolean) -> Boolean {
     !b
 }
 
-pub fn float_range_sum() -> F64 {
-    for x in 0.0..3.0 { x }.fold(initial: 0.0, f: (a, b) -> a + b)
+pub fn float_sum() -> F64 {
+    // A range counts in steps of one, so its bounds are integers.
+    // To add floats, iterate an array of them.
+    for x in [0.0, 1.0, 2.0] { x }.fold(initial: 0.0, f: (a, b) -> a + b)
 }
 
 pub fn i64_range_sum() -> I64 {
@@ -65,6 +67,8 @@ pub fn run_checks() {
     assert(condition: add_i64(a: 2I64, b: 3I64) == 5I64)
     // 0+1+2+3+4 == 10
     assert(condition: i64_range_sum() == 10I64)
+    // 0.0+1.0+2.0 == 3.0
+    assert(condition: float_sum() == 3.0)
     // a=1 (a<b false because a==b? no a<b yields false here) — keep deterministic-known cases only.
     assert(condition: arithmetic(a: 6, b: 2) == 6 + 2 + (6 - 2) + (6 * 2) + (6 / 2) + 0)
     assert(condition: negate(x: 7) == -7)

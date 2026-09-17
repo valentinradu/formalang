@@ -1,0 +1,7 @@
+// expect: reject DuplicateDefinition
+// Two fields called `x` leave no answer to what `x` means.
+
+pub struct P {
+    x: I32,
+    x: I32
+}

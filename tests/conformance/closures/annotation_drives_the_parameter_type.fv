@@ -1,0 +1,11 @@
+// expect: run
+// The binding's declared closure type tells an unannotated
+// parameter what it is.
+pub fn f(scale: I32) -> I32 {
+    let g: (I32) -> I32 = (n) -> n * scale
+    g(7)
+}
+
+pub fn run_checks() {
+    assert(condition: f(scale: 3) == 21)
+}

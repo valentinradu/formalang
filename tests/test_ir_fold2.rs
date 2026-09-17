@@ -363,7 +363,7 @@ fn test_fold_boolean_not_false() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_fold_if_constant_false_no_else() -> Result<(), Box<dyn std::error::Error>> {
     // `if false { 5 }` -> condition is false, no else branch -> stays as If
-    let source = r"struct Config { val: I32 = if false { 5 } }";
+    let source = r"struct Config { val: I32? = if false { 5 } }";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let folded = fold_constants(&module);
     let expr = folded

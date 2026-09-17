@@ -1,0 +1,4 @@
+// expect: reject UndefinedType
+pub struct A {
+    a: NoSuchType
+}

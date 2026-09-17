@@ -1,0 +1,8 @@
+// expect: reject OptionalUsedAsNonOptional
+pub struct A {
+    a: I32
+}
+
+pub fn f(xs: [A]) -> I32 {
+    xs[0].a
+}

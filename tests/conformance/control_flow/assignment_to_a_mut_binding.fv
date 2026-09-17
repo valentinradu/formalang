@@ -1,0 +1,8 @@
+// expect: run
+pub fn run_checks() {
+    let mut n = 1
+    n = 2
+    assert(condition: n == 2)
+    n = n + 40
+    assert(condition: n == 42)
+}

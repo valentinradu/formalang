@@ -41,19 +41,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
             crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
             crate::semantic::sem_type::SemType::Dictionary { .. } => "Dictionary".to_string(),
+            // A generic receiver is named by its base. `display()`
+            // renders it with its arguments — `Seq<I32>`, `Box<I32>` —
+            // and the impl blocks are declared against the bare name,
+            // so matching on the rendered form found nothing and every
+            // check below was skipped. `s.collect(1, 2, 3)` and
+            // `b.get(99, 100)` both compiled.
+            crate::semantic::sem_type::SemType::Generic { base, .. } => base.clone(),
             crate::semantic::sem_type::SemType::Primitive(_)
             | crate::semantic::sem_type::SemType::Named(_)
             | crate::semantic::sem_type::SemType::Tuple(_)
-            | crate::semantic::sem_type::SemType::Generic { .. }
             | crate::semantic::sem_type::SemType::Closure { .. }
             | crate::semantic::sem_type::SemType::Unknown
             | crate::semantic::sem_type::SemType::InferredEnum
             | crate::semantic::sem_type::SemType::Nil => receiver_sem.display(),
         };
-        if let Some(fn_def) = Self::find_method_fn_def(&receiver_type, &method.name, file) {
+        // One method per name. A type that declares two is reported
+        // where they are declared, and this call is then checked
+        // against neither: the names are ambiguous, so any argument
+        // complaint here would be about a signature the caller may not
+        // have meant.
+        let overloads = Self::find_method_overloads(&receiver_type, &method.name, file);
+        let single = if overloads.len() == 1 {
+            overloads.first().copied()
+        } else {
+            None
+        };
+        if let Some((fn_def, impl_generics)) = single {
             let params = fn_def.params.clone();
+            let generics = impl_generics.to_vec();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
             self.validate_fn_param_conventions_args(&params, args, span, file);
+            // A method call checked its argument labels and conventions
+            // but never their types, so `h.takes(p: "text")` against
+            // `fn takes(self, p: I32)` compiled. Same rule as a free
+            // function call.
+            let views: Vec<_> = params
+                .iter()
+                .map(crate::semantic::validation::invocation::overloads::ParamView::of_fn_param)
+                .collect();
+            self.validate_arg_types(&views, &generics, args, file);
+            if let Some((expected, actual)) = Self::method_arity_mismatch(&params, args) {
+                self.errors.push(CompilerError::ArgumentCountMismatch {
+                    callee: format!("Method '{}'", method.name),
+                    expected,
+                    actual,
+                    span,
+                });
+            }
         } else if self.method_exists_on_type(&receiver_type, &method.name, file) {
             // Method exists in a trait/impl block; convention checks on
             // those signatures still happen via `find_method_fn_def`
@@ -72,26 +107,65 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Find the `FnDef` for `method_name` on the given type by scanning the file's impl blocks.
-    fn find_method_fn_def<'f>(
+    /// Whether a method call gives the wrong number of arguments.
+    ///
+    /// Returns `Some((expected, actual))` when it does. `expected` is
+    /// the number of parameters, less `self`; a parameter with a
+    /// default value may be left out, so a call between the required
+    /// count and the full count is correct.
+    ///
+    /// Nothing checked this before. A free function call gets its
+    /// arity from overload resolution, which rejects a call that fits
+    /// no overload. A method call had no equivalent, so
+    /// `P(x: 1).add()` against `fn add(self, n: I32)` compiled and
+    /// lowered to a call with no value for `n`.
+    fn method_arity_mismatch(
+        params: &[crate::ast::FnParam],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> Option<(usize, usize)> {
+        let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        let required = non_self.iter().filter(|p| p.default.is_none()).count();
+        let total = non_self.len();
+
+        if args.len() < required {
+            // Name the number the call has to reach. Reporting the full
+            // count instead named a number the call was never obliged
+            // to give, because the parameters past `required` all carry
+            // a default.
+            Some((required, args.len()))
+        } else if args.len() > total {
+            Some((total, args.len()))
+        } else {
+            None
+        }
+    }
+
+    /// Every method of that name on the type, in source order.
+    ///
+    /// A type may declare two methods of one name that differ in how
+    /// many arguments they take, the way a free function may. Taking
+    /// the first match and checking the call against it rejected a
+    /// call that meant the second.
+    fn find_method_overloads<'f>(
         type_name: &str,
         method_name: &str,
         file: &'f File,
-    ) -> Option<&'f crate::ast::FnDef> {
+    ) -> Vec<(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])> {
+        let mut out = Vec::new();
         for stmt in &file.statements {
             if let crate::ast::Statement::Definition(def) = stmt {
                 if let crate::ast::Definition::Impl(impl_def) = &**def {
                     if impl_def.name.name == type_name {
                         for func in &impl_def.functions {
                             if func.name.name == method_name {
-                                return Some(func);
+                                out.push((func, impl_def.generics.as_slice()));
                             }
                         }
                     }
                 }
             }
         }
-        None
+        out
     }
 
     /// Check `mut self` / `sink self` convention against the receiver expression.

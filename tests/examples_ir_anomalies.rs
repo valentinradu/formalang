@@ -51,6 +51,10 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "common/mod.rs"]
+mod common;
+use common::Checked;
+
 /// The prelude's generic carriers. Their declarations are templates
 /// that monomorphisation deliberately retains, so a `TypeParam` in one
 /// of their signatures is correct rather than a leftover.
@@ -591,6 +595,7 @@ fn discover_examples() -> Vec<PathBuf> {
 #[test]
 fn every_example_compiles_with_no_ir_anomalies() {
     let mut total_failures: Vec<String> = Vec::new();
+    let mut checked = Checked::new("examples scanned for IR anomalies", 20);
     for path in discover_examples() {
         let source = fs::read_to_string(&path).expect("example file readable");
         let module = match compile_to_ir(&source) {
@@ -619,6 +624,7 @@ fn every_example_compiles_with_no_ir_anomalies() {
         };
         let mut anomalies = Anomalies::new(&module);
         anomalies.visit_module(&module);
+        checked.hit();
         if !anomalies.findings.is_empty() {
             total_failures.push(format!(
                 "{}: {} anomalies\n  - {}",

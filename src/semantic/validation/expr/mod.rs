@@ -238,6 +238,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
                 self.validate_expr(key, file);
+                // Only three shapes take an index. Nothing checked
+                // this, so `true[0]` reached IR lowering, which
+                // reported an internal error and asked the user to
+                // file a bug for a mistake in their own program.
+                let receiver = self.infer_type_sem(dict, file);
+                if !receiver.is_indeterminate() && !Self::is_indexable(&receiver) {
+                    self.errors.push(CompilerError::NotIndexable {
+                        actual: receiver.display(),
+                        span: *span,
+                    });
+                }
                 // Validate key type against declared dict type.
                 // Structural unpacking — no string scanning needed.
                 if let SemType::Dictionary {
@@ -245,7 +256,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 } = self.infer_type_sem(dict, file)
                 {
                     let actual_key_sem = self.infer_type_sem(key, file);
-                    if !actual_key_sem.is_unknown() && actual_key_sem != *expected_key {
+                    // `value_satisfies_declared` waves through every
+                    // indeterminate type, which includes a `.variant`
+                    // whose enum comes from context. Comparing for
+                    // equality instead rejected `m[.pending]` against
+                    // `[Status: I32]`.
+                    if !self.value_satisfies_declared(&expected_key.display(), &actual_key_sem) {
                         self.errors.push(CompilerError::TypeMismatch {
                             expected: expected_key.display(),
                             found: actual_key_sem.display(),
@@ -274,17 +290,48 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 });
                             }
                         }
+                    } else if let SemType::Tuple(fields) = &obj_sem {
+                        // A tuple names its fields, so the same rule
+                        // applies. Nothing checked this before, and the
+                        // IR lowering pass reported the missing field
+                        // as an internal error, which told the user to
+                        // file a bug for a typo in their own program.
+                        if !fields.iter().any(|(name, _)| name == &field.name) {
+                            self.errors.push(CompilerError::UnknownField {
+                                field: field.name.clone(),
+                                type_name: obj_sem.display(),
+                                span: field.span,
+                            });
+                        }
+                    } else if !Self::holds_named_fields(&obj_sem) {
+                        // A number, a boolean, a closure: nothing on
+                        // the left has fields, so the access is wrong
+                        // however the field is spelled. Nothing
+                        // checked this, and the IR lowering pass
+                        // reported it as an internal error.
+                        self.errors.push(CompilerError::UnknownField {
+                            field: field.name.clone(),
+                            type_name: obj_sem.display(),
+                            span: field.span,
+                        });
                     } else {
                         // Field must exist on the struct
-                        let base_type = obj_sem.display();
-                        if let Some(struct_info) = self.symbols.get_struct(&base_type) {
-                            if !struct_info.fields.iter().any(|f| f.name == field.name) {
-                                self.errors.push(CompilerError::UnknownField {
-                                    field: field.name.clone(),
-                                    type_name: base_type,
-                                    span: field.span,
-                                });
-                            }
+                        let base_type = Self::field_owner_name(&obj_sem);
+                        let known = self
+                            .symbols
+                            .get_struct(&base_type)
+                            .map(|info| info.fields.iter().any(|f| f.name == field.name));
+                        // An enum value carries no fields of its own:
+                        // a payload is read by a `match` arm, which
+                        // binds it by name. So a field access on one
+                        // is wrong however it is spelled.
+                        let is_enum = self.symbols.get_enum_qualified(&base_type).is_some();
+                        if known == Some(false) || (known.is_none() && is_enum) {
+                            self.errors.push(CompilerError::UnknownField {
+                                field: field.name.clone(),
+                                type_name: base_type,
+                                span: field.span,
+                            });
                         }
                     }
                 }
@@ -345,5 +392,58 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::MethodCall { .. }
             | Expr::Block { .. } => None,
         }
+    }
+
+    /// Whether a value of this type takes an index.
+    ///
+    /// An array by position, a dictionary by key, and a string by byte
+    /// offset. Nothing else: the IR lowering pass reads exactly these
+    /// three shapes, and every other receiver reached it as an
+    /// internal error.
+    const fn is_indexable(ty: &SemType) -> bool {
+        matches!(
+            ty,
+            SemType::Array(_)
+                | SemType::Dictionary { .. }
+                | SemType::Primitive(crate::ast::PrimitiveType::String)
+        )
+    }
+
+    /// The name of the struct that declares this type's fields.
+    ///
+    /// The four built-in compound shapes are declared as generic
+    /// structs in the prelude, under names that their display form
+    /// does not spell: `[I32]` displays as `[I32]` but its fields live
+    /// on `Array`. See `src/prelude.fv`. The method-call validator
+    /// makes the same mapping.
+    pub(in crate::semantic) fn field_owner_name(ty: &SemType) -> String {
+        match ty {
+            SemType::Array(_) => "Array".to_string(),
+            SemType::Dictionary { .. } => "Dictionary".to_string(),
+            SemType::Optional(_) => "Optional".to_string(),
+            SemType::Generic { base, .. } => base.clone(),
+            SemType::Primitive(_)
+            | SemType::Named(_)
+            | SemType::Tuple(_)
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => ty.display(),
+        }
+    }
+
+    /// Whether a value of this type carries named fields at all.
+    ///
+    /// A struct and a tuple do. A number, a boolean, a closure, an
+    /// enum value and a range do not, so a field access on one is a
+    /// mistake however the field is spelled. A [`SemType::Named`] may
+    /// be a struct this file cannot see — an import, or a generic
+    /// parameter — so it stays out of this list and the field check
+    /// leaves it alone.
+    const fn holds_named_fields(ty: &SemType) -> bool {
+        !matches!(
+            ty,
+            SemType::Primitive(_) | SemType::Closure { .. } | SemType::Nil
+        )
     }
 }

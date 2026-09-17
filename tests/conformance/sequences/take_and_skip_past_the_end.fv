@@ -1,0 +1,12 @@
+// expect: run
+// Python's slice semantics: past the end clamps, never faults.
+
+pub fn run_checks() {
+    let xs: [I32] = [1, 2, 3]
+    assert(condition: for x in xs { x }.take(count: 0).count() == 0)
+    assert(condition: for x in xs { x }.take(count: 3).count() == 3)
+    assert(condition: for x in xs { x }.take(count: 99).count() == 3)
+    assert(condition: for x in xs { x }.skip(count: 0).count() == 3)
+    assert(condition: for x in xs { x }.skip(count: 3).count() == 0)
+    assert(condition: for x in xs { x }.skip(count: 99).count() == 0)
+}

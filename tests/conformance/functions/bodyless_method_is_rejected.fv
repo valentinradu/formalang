@@ -1,0 +1,8 @@
+// expect: reject RegularFnWithoutBody
+pub struct A {
+    a: I32
+}
+
+impl A {
+    fn m(self) -> I32
+}

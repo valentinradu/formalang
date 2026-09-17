@@ -1,6 +1,8 @@
 use super::expr_references_any_name;
 use crate::ast::Expr;
-use crate::ir::lower::expr::helpers::substitute_typeparam_in_resolved;
+use crate::ir::lower::expr::type_params::{
+    holds_a_type_param, substitute_typeparam_in_resolved, unify_typeparam_in_resolved,
+};
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrBlockStatement, IrExpr, IrFunctionParam, ResolvedType};
 use std::collections::{HashMap, HashSet};
@@ -26,12 +28,16 @@ impl IrLowerer<'_> {
         // for multi-segment. Cross-module / forward-reference
         // cases stay `None` and `ResolveReferencesPass` finishes
         // the job.
+        let arg_labels: Vec<Option<String>> = args
+            .iter()
+            .map(|(name_opt, _)| name_opt.as_ref().map(|n| n.name.clone()))
+            .collect();
         let function_id = if path_strs.len() == 1 {
-            self.find_function_in_scope(fn_name)
+            self.find_overload_in_scope(fn_name, &arg_labels, args.len())
         } else {
             self.module
                 .function_id(&path_strs.join("::"))
-                .or_else(|| self.find_function_in_scope(fn_name))
+                .or_else(|| self.find_overload_in_scope(fn_name, &arg_labels, args.len()))
         };
         // Derive expected param types from the resolved id
         // (covers cross-module qualified calls correctly), or
@@ -72,21 +78,30 @@ impl IrLowerer<'_> {
         // (a `let p = (); p.first` field access typed at lowering
         // time) carry `TypeParam(T)` until the leftover scanner
         // surfaces them.
-        if !type_args_resolved.is_empty() {
-            if let Some(func) = function_id
-                .and_then(|id| self.module.functions.get(id.0 as usize))
-                .filter(|f| !f.generic_params.is_empty())
-            {
-                if func.generic_params.len() == type_args_resolved.len() {
-                    let subs: HashMap<String, ResolvedType> = func
-                        .generic_params
-                        .iter()
-                        .zip(type_args_resolved.iter())
-                        .map(|(p, a)| (p.name.clone(), a.clone()))
-                        .collect();
-                    substitute_typeparam_in_resolved(&mut ty, &subs);
-                }
-            }
+        if let Some(func) = function_id
+            .and_then(|id| self.module.functions.get(id.0 as usize))
+            .filter(|f| !f.generic_params.is_empty())
+        {
+            let subs: HashMap<String, ResolvedType> = if type_args_resolved.is_empty() {
+                // No `<...>` at the call site, so the arguments pick
+                // the types. Match each parameter's declared type
+                // against what the argument lowered to. Without this
+                // the call keeps `TypeParam(T)`, the `let` that binds
+                // the result keeps it too, and the program fails with
+                // an internal error: a field access on `TypeParam(T)`
+                // at lowering time, or a leftover type parameter after
+                // monomorphisation.
+                infer_type_args_from_values(func, &lowered_args)
+            } else if func.generic_params.len() == type_args_resolved.len() {
+                func.generic_params
+                    .iter()
+                    .zip(type_args_resolved.iter())
+                    .map(|(p, a)| (p.name.clone(), a.clone()))
+                    .collect()
+            } else {
+                HashMap::new()
+            };
+            substitute_typeparam_in_resolved(&mut ty, &subs);
         }
 
         if substitution.needs_let_wrapper {
@@ -262,5 +277,41 @@ impl IrLowerer<'_> {
             ty,
             span: self.current_ir_span(),
         }
+    }
+}
+
+/// Build the type-parameter substitution for a call that wrote no
+/// `<...>`, by matching each parameter's declared type against the
+/// type its argument lowered to.
+///
+/// Returns an empty map unless every generic parameter reached a type
+/// that holds no parameter of its own. A partial map would substitute
+/// some slots and leave others, which reads as a stranger failure than
+/// leaving the call alone for `MonomorphisePass` to finish.
+fn infer_type_args_from_values(
+    func: &crate::ir::IrFunction,
+    lowered_args: &[(Option<String>, IrExpr)],
+) -> HashMap<String, ResolvedType> {
+    let mut subs: HashMap<String, ResolvedType> = HashMap::new();
+
+    for (index, param) in func.params.iter().enumerate() {
+        let Some(declared) = &param.ty else { continue };
+        // A labelled call matches by name, a positional one by place.
+        let arg = lowered_args
+            .iter()
+            .find_map(|(label, expr)| label.as_ref().filter(|l| **l == param.name).map(|_| expr))
+            .or_else(|| lowered_args.get(index).map(|(_, expr)| expr));
+        let Some(arg) = arg else { continue };
+        unify_typeparam_in_resolved(declared, arg.ty(), &mut subs);
+    }
+
+    let complete = func.generic_params.iter().all(|p| {
+        subs.get(&p.name)
+            .is_some_and(|found| !holds_a_type_param(found))
+    });
+    if complete {
+        subs
+    } else {
+        HashMap::new()
     }
 }

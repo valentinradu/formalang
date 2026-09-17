@@ -1,0 +1,4 @@
+// expect: reject FunctionReturnTypeMismatch
+pub fn f() -> I32 {
+    "text"
+}

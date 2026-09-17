@@ -95,6 +95,24 @@ This guidance takes precedence over anything else in this file that reads as
 - All public APIs need tests
 - ```rust``` examples in doc comments are exercised by `cargo test --doc`
 
+See [TESTING.md](TESTING.md) for the full taxonomy. Beyond the
+example-based suites there are five surfaces:
+
+| Surface | Command |
+| ------- | ------- |
+| Metamorphic, property and conformance tests | `cargo test` |
+| Open defects and unfinished features | `cargo test --no-fail-fast -- --ignored` |
+| Differential testing against an oracle | `PROPTEST_CASES=N cargo test --release --test differential` |
+| Benchmarks and scaling | `cargo bench` |
+| Fuzzing (needs nightly) | `scripts/fuzz.sh` |
+| Loom model check | `RUSTFLAGS="--cfg loom" cargo test --bin fvc loom_watch` |
+
+To add a language rule, add a file to `tests/conformance/` — one rule
+per file, with a `// expect:` header. No Rust required.
+
+An `#[ignore]` test fails today; its reason says why. Drop the
+attribute when the defect is fixed or the feature lands.
+
 ---
 
 ## FormaLang Compiler
@@ -181,7 +199,8 @@ for details.
 
 Before any PR:
 
-- All tests pass
+- `cargo test` passes (`#[ignore]` tests describe unfinished
+  features and are excluded by design)
 - `cargo fmt --check` passes
 - `cargo clippy` passes
 - `cargo audit` passes (install with `cargo install cargo-audit --locked`

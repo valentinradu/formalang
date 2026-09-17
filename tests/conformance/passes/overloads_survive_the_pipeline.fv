@@ -1,0 +1,19 @@
+// expect: run
+// Monomorphisation repairs a call's `function_id` when the path no
+// longer names what the id points at. Repairing every call instead
+// re-pointed both of these at whichever overload came last, which is
+// the defect `find_overload_in_scope` exists to prevent — reappearing
+// one pass later.
+
+fn format(a: I32) -> I32 {
+    a
+}
+
+fn format(a: I32, b: I32) -> I32 {
+    a + b
+}
+
+pub fn run_checks() {
+    assert(condition: format(a: 1) == 1)
+    assert(condition: format(a: 1, b: 2) == 3)
+}

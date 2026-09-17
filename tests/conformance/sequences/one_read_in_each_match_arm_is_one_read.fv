@@ -1,0 +1,18 @@
+// expect: run
+pub enum Mode {
+    fast,
+    slow
+}
+
+pub fn pick(m: Mode, xs: [I32]) -> I32 {
+    let s = for x in xs { x }
+    match m {
+        .fast: s.count(),
+        .slow: s.collect().len()
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(m: Mode.fast, xs: [1, 2, 3]) == 3)
+    assert(condition: pick(m: Mode.slow, xs: [1, 2, 3]) == 3)
+}

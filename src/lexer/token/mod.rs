@@ -35,8 +35,10 @@ pub struct LexerExtras {
 )]
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(extras = LexerExtras)]
-#[logos(skip r"[ \t\n\r]+")]
-// Skip whitespace
+#[logos(skip r"[ \t\r]+")]
+// Skip horizontal whitespace. A newline is *not* skipped: it can end a
+// statement, and `Lexer::tokenize_all_with_errors` decides which ones
+// do. See `Token::Newline`.
 // Skip plain line comments. Requires the third character to NOT be `/`
 // or `!` so `///` (item doc comment) and `//!` (module/parent doc
 // comment) reach their dedicated variants below. The `|//[/!]?$`
@@ -44,6 +46,22 @@ pub struct LexerExtras {
 // at end of input — those carry no content and are skipped.
 #[logos(skip r"//([^/!\n][^\n]*)?|//[/!][\n]")]
 pub enum Token {
+    /// A newline.
+    ///
+    /// `FormaLang` separates statements with newlines and has no
+    /// terminator, so a newline sometimes ends a statement and
+    /// sometimes continues one. The lexer emits every newline and
+    /// [`Lexer::tokenize_all_with_errors`](crate::lexer::Lexer::tokenize_all_with_errors)
+    /// drops the ones that continue, so the parser only ever sees a
+    /// newline that is a statement boundary.
+    ///
+    /// Before this existed the lexer discarded newlines outright, and
+    /// the expression parser ran straight through one: a line
+    /// beginning with `-` was read as a continuation of the line
+    /// above, so `a` followed by `-1` computed `a - 1`.
+    #[token("\n")]
+    Newline,
+
     /// Phantom variant: matches the opening `/*` of a (possibly nested)
     /// block comment. The `skip_block_comment` callback consumes the
     /// rest of the comment manually (tracking nest depth) and returns
@@ -262,6 +280,7 @@ impl Token {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
+            Self::Newline => "newline",
             Self::Trait => "trait",
             Self::Struct => "struct",
             Self::Impl => "impl",
@@ -332,6 +351,7 @@ impl Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Newline => write!(f, "end of line"),
             // For literal tokens, show descriptive names
             Self::String(_) => write!(f, "string"),
             Self::Number(_) => write!(f, "number"),

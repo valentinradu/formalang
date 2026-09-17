@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    let xs: [String] = ["a", "bb", "ccc"]
+    assert(condition: xs.len() == 3)
+    assert(condition: for s in xs { s.len() }.fold(initial: 0, f: (a, b) -> a + b) == 6)
+}

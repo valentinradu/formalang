@@ -1,0 +1,14 @@
+// expect: reject TypeMismatch
+pub struct Holder {
+    v: I32
+}
+
+impl Holder {
+    fn takes(self, n: I32) -> I32 {
+        n
+    }
+}
+
+pub fn f() -> I32 {
+    Holder(v: 1).takes(n: "text")
+}

@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// Nor does it narrow.
+
+pub fn f() -> I32 {
+    let a: I64 = 1I64
+    let b: I32 = a
+    b
+}

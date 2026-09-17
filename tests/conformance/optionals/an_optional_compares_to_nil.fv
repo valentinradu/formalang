@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    let a: I32? = nil
+    let b: I32? = 1
+    assert(condition: a.is_none())
+    assert(condition: b.is_some())
+}

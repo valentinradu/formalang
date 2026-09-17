@@ -1,0 +1,15 @@
+// expect: run
+// A parameter with a default value is not required.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, n: I32 = 5) -> I32 { self.x + n }
+}
+
+pub fn run_checks() {
+    assert(condition: P(x: 1).add() == 6)
+    assert(condition: P(x: 1).add(n: 2) == 3)
+}

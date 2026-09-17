@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 87
 expression: file
 ---
 File {

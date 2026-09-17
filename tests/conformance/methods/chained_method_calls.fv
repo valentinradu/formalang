@@ -1,0 +1,15 @@
+// expect: run
+// A method that returns the struct lets calls chain.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn twice(self) -> P { P(x: self.x * 2) }
+    fn get(self) -> I32 { self.x }
+}
+
+pub fn run_checks() {
+    assert(condition: P(x: 3).twice().twice().get() == 12)
+}

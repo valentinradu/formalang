@@ -19,6 +19,7 @@ use super::defs::binding_pattern_parser;
 use super::ident_no_self_parser;
 use super::ident_parser;
 use super::invocation_target_parser;
+use super::newlines;
 use super::span_from_simple;
 use super::types::type_parser;
 
@@ -177,50 +178,7 @@ where
             span: span_from_simple(e.span()),
         });
 
-        // Dictionary entry: key_expr: value_expr
-        let dict_entry = expr
-            .clone()
-            .then_ignore(just(Token::Colon))
-            .then(expr.clone())
-            .map(|(key, value)| (key, value));
-
-        // Dictionary literal: ["key": value, "key2": value2] or [:] for empty
-        let dict_literal = choice((
-            // Empty dictionary: [:]
-            just(Token::LBracket)
-                .ignore_then(just(Token::Colon))
-                .ignore_then(just(Token::RBracket))
-                .map_with(|_, e| Expr::DictLiteral {
-                    entries: vec![],
-                    span: span_from_simple(e.span()),
-                }),
-            // Non-empty dictionary: [key: value, key2: value2]
-            dict_entry
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .allow_trailing()
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                .map_with(|entries, e| Expr::DictLiteral {
-                    entries,
-                    span: span_from_simple(e.span()),
-                }),
-        ));
-
-        // Array literal: [expr, expr, ...] or [] for empty
-        let array_literal = expr
-            .clone()
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .collect()
-            .delimited_by(just(Token::LBracket), just(Token::RBracket))
-            .map_with(|elements, e| Expr::Array {
-                elements,
-                span: span_from_simple(e.span()),
-            });
-
-        // Array or dictionary: try dictionary first (more specific)
-        let array_or_dict = choice((dict_literal, array_literal));
+        let array_or_dict = literals::bracket_literal_parser(expr.clone());
 
         // Tuple literal: (name1: expr1, name2: expr2, ...)
         // Named tuple field: identifier : expression
@@ -301,19 +259,27 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        // Assignment: target = value
-        let block_assign_item = expr
+        // Assignment (`target = value`) or a bare expression.
+        //
+        // An assignment is an expression followed by `= value`, so the
+        // two share their whole prefix. Parsing them as two
+        // alternatives of a `choice` made the parser read the
+        // expression twice for every statement that is not an
+        // assignment — once for the assignment that then failed on the
+        // missing `=`, once for the expression — and that doubling
+        // compounds with each level of nesting, so the cost was
+        // 2^depth. Read the expression once and branch on what follows.
+        let block_assign_or_expr_item = expr
             .clone()
-            .then_ignore(just(Token::Equals))
-            .then(expr.clone())
-            .map_with(|(target, value), e| BlockStatement::Assign {
-                target,
-                value,
-                span: span_from_simple(e.span()),
+            .then(just(Token::Equals).ignore_then(expr.clone()).or_not())
+            .map_with(|(target, value), e| match value {
+                Some(value) => BlockStatement::Assign {
+                    target,
+                    value,
+                    span: span_from_simple(e.span()),
+                },
+                None => BlockStatement::Expr(target),
             });
-
-        // Expression item
-        let block_expr_item = expr.clone().map(BlockStatement::Expr);
 
         // recover_with(via_parser) so a malformed block item doesn't
         // abort parsing of later items. Mirrors `fn_body_parser` — the
@@ -337,12 +303,17 @@ where
                         span: span_from_simple(e.span()),
                     })
                 });
-        let block_item = choice((
-            block_let_item.clone(),
-            block_assign_item.clone(),
-            block_expr_item.clone(),
-        ))
-        .recover_with(via_parser(block_recovery));
+        // Statements inside a block are separated by newlines. The lexer
+        // keeps only the newlines that end a statement, so consuming
+        // them here is what stops one statement running into the next:
+        // `a` on one line and `-1` on the next used to parse as
+        // `a - 1`.
+        let block_breaks = just(Token::Newline).repeated().ignored();
+        let block_item = block_breaks
+            .clone()
+            .ignore_then(choice((block_let_item.clone(), block_assign_or_expr_item)))
+            .then_ignore(block_breaks.clone())
+            .recover_with(via_parser(block_recovery));
 
         // Block body parser: { items... } -> Expr (Block or single expr)
         // Uses shared block_statements_to_expr helper
@@ -351,6 +322,7 @@ where
             .clone()
             .repeated()
             .collect::<Vec<_>>()
+            .then_ignore(block_breaks)
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
             .map_with(|stmts, e| block_statements_to_expr(stmts, span_from_simple(e.span())));
 
@@ -435,10 +407,11 @@ where
             .ignore_then(expr.clone())
             .then(
                 match_arm_parser(expr.clone())
-                    .separated_by(just(Token::Comma))
+                    .separated_by(just(Token::Comma).padded_by(newlines()))
                     .at_least(1)
                     .allow_trailing()
                     .collect()
+                    .padded_by(newlines())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
             .map_with(|(scrutinee, arms), e| Expr::MatchExpr {

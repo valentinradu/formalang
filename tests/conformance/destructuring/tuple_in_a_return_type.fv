@@ -1,0 +1,11 @@
+// expect: run
+pub fn pair() -> (sum: I32, product: I32) {
+    (sum: 6 + 7, product: 6 * 7)
+}
+
+pub fn run_checks() {
+    let r = pair()
+    assert(condition: r.sum == 13)
+    assert(condition: r.product == 42)
+    assert(condition: r.sum + r.product == 55)
+}

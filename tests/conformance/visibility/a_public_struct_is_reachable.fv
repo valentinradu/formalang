@@ -1,0 +1,10 @@
+// expect: run
+pub mod inner {
+    pub struct P {
+        x: I32
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: inner::P(x: 4).x == 4)
+}

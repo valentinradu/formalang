@@ -1,0 +1,6 @@
+// expect: reject ArgumentCountMismatch
+// A closure takes the number of arguments its type declares.
+
+pub fn apply(f: (I32) -> I32) -> I32 {
+    f(1, 2)
+}

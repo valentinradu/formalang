@@ -1,0 +1,15 @@
+// expect: run
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn bump(mut self) -> I32 {
+        self.value + 1
+    }
+}
+
+pub fn run_checks() {
+    let mut c = Counter(value: 41)
+    assert(condition: c.bump() == 42)
+}

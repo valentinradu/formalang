@@ -1,0 +1,9 @@
+// expect: reject TypeMismatch
+// `map` declares `f: (T) -> T`. `T` is unknown here, but the shape
+// around it is not: the argument must be a closure.
+
+pub fn f() -> I32 {
+    let s = for i in 0..4 { i }
+    let v = s.map(f: 1)
+    0
+}

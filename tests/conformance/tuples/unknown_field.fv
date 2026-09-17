@@ -1,0 +1,5 @@
+// expect: reject UnknownField
+pub fn f() -> I32 {
+    let t = (a: 1, b: 2)
+    t.z
+}

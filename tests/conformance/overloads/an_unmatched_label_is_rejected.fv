@@ -1,0 +1,12 @@
+// expect: reject NoMatchingOverload
+fn f(a: I32) -> I32 {
+    1
+}
+
+fn f(b: I32) -> I32 {
+    2
+}
+
+pub fn g() -> I32 {
+    f(c: 1)
+}

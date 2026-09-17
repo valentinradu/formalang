@@ -1,0 +1,16 @@
+// expect: reject ArgumentCountMismatch
+// The same rule for a user-defined generic struct.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box<T> {
+    fn get(self) -> T { self.value }
+}
+
+pub fn f() -> I32 {
+    let b = Box(value: 1)
+    let v = b.get(99, 100)
+    0
+}

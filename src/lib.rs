@@ -116,10 +116,28 @@ where
     Ok((file, analyzer))
 }
 
+/// The parsed prelude, computed once per process.
+///
+/// [`PRELUDE_SOURCE`] is fixed text, so its AST is fixed too. Every
+/// entry point used to re-lex and re-parse it, and that dominated the
+/// cost of compiling a small program.
+static PRELUDE_AST: std::sync::OnceLock<Result<File, Vec<CompilerError>>> =
+    std::sync::OnceLock::new();
+
 /// Parse the compiler-shipped prelude (`src/prelude.fv`) into a `File`
 /// AST. The prelude is fixed source so its parse should always
 /// succeed; surface any unexpected failure as `CompilerError`.
+///
+/// The result is cached, so the parse runs once per process and every
+/// later call clones it. Cloning an AST costs far less than parsing
+/// one, and the caller needs its own copy: it appends the user's
+/// statements to the prelude's.
 fn parse_prelude_file() -> Result<File, Vec<CompilerError>> {
+    PRELUDE_AST.get_or_init(parse_prelude_file_uncached).clone()
+}
+
+/// Parse the prelude without consulting the cache.
+fn parse_prelude_file_uncached() -> Result<File, Vec<CompilerError>> {
     let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(PRELUDE_SOURCE);
     if !lex_errors.is_empty() {
         return Err(lex_errors);
@@ -246,9 +264,17 @@ pub fn compile_to_ir_with_path(
 /// Runs [`ir::MonomorphisePass`] after lowering with an `imports_map` built
 /// from the analyzer's per-import IR cache, so generic `External` references
 /// to imported types are specialised into local clones before the IR is
-/// returned. Non-generic `External` references stay opaque until the
-/// cross-module inline pass extends to them (see
-/// `plans/cross-module-codegen.md`).
+/// returned.
+///
+/// An imported definition is cloned into the returned module under a
+/// qualified name, and every reference to it is rewritten to the
+/// clone. That covers a struct constructed locally, an imported type
+/// named in a signature, an imported function whose return type is
+/// also imported, a generic import specialised at the instantiation
+/// the caller asks for, and an imported trait, which arrives with the
+/// impl that records the conformance so a generic bound on it can
+/// still be satisfied. `tests/cross_module.rs` holds the acceptance
+/// tests for each.
 ///
 /// Single-file consumers should prefer [`compile_to_ir`] — that path skips
 /// the pipeline since there are no imports to inline.

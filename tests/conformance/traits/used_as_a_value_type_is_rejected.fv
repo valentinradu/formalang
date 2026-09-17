@@ -1,0 +1,10 @@
+// expect: reject TraitUsedAsValueType
+// A trait is a constraint, never the type of a value: every such
+// value would need a vtable and an indirect call.
+pub trait Shape {
+    name: String
+}
+
+pub fn f(s: Shape) -> String {
+    s.name
+}

@@ -1,0 +1,12 @@
+// expect: reject UndefinedReference
+pub enum E {
+    one(v: I32),
+    two
+}
+
+pub fn f(e: E) -> I32 {
+    match e {
+        .one(v): v,
+        .two: v
+    }
+}

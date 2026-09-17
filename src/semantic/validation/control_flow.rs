@@ -89,6 +89,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let mut covered_variants = HashSet::new();
         let mut has_wildcard = false;
         for arm in arms {
+            // A `_` arm takes every value the arms above it did not,
+            // so nothing below it can run. Writing `_` first and a
+            // variant after it compiled, and the variant's body was
+            // silently dead: `match e { _: 0, .a: 1 }` answered 0 for
+            // every value, including `.a`.
+            if has_wildcard {
+                self.errors
+                    .push(CompilerError::UnreachableMatchArm { span: arm.span });
+                continue;
+            }
             match &arm.pattern {
                 crate::ast::Pattern::Variant { name, bindings } => {
                     // Check for duplicate arms
@@ -201,6 +211,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             field: provided_field.name.clone(),
                             type_name: format!("{}.{}", enum_name.name, variant_name.name),
                             span: provided_field.span,
+                        });
+                    }
+                }
+
+                // Check each payload value against the type its field
+                // declares. Only the field names were checked before, so
+                // `Wrap.one(inner: "text")` against `one(inner: I32)`
+                // compiled and the IR carried a string where the variant
+                // says an integer.
+                let declared_types: Vec<(String, Option<crate::ast::Type>)> = fields
+                    .iter()
+                    .map(|f| (f.name.name.clone(), Some(f.ty.clone())))
+                    .collect();
+                // A payload field declared as one of the enum's own
+                // generic parameters — `error(err: E)` on
+                // `Result<T, E>` — carries no concrete type here.
+                // Substitution happens in the IR monomorphisation pass.
+                let generic_names: Vec<String> = self
+                    .symbols
+                    .get_generics(&enum_name.name)
+                    .map(|gs| gs.iter().map(|g| g.name.name.clone()).collect())
+                    .unwrap_or_default();
+                for (provided_field, value) in data {
+                    let Some((_, Some(declared_ty))) = declared_types
+                        .iter()
+                        .find(|(name, _)| name == &provided_field.name)
+                    else {
+                        continue;
+                    };
+                    let declared = Self::type_to_string(declared_ty);
+                    if super::type_names::type_mentions_any(declared_ty, &generic_names) {
+                        continue;
+                    }
+                    let inferred_sem = self.infer_type_sem(value, file);
+                    if !self.value_satisfies_declared(&declared, &inferred_sem) {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: declared,
+                            found: inferred_sem.display(),
+                            span: value.span(),
                         });
                     }
                 }

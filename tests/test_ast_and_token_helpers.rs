@@ -1792,11 +1792,23 @@ fn test_error_duplicate_match_arm() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_inferred_enum_in_let() -> Result<(), Box<dyn std::error::Error>> {
-    // Using inferred enum syntax - parses but may need context
-    let source = r"
+    // `.variant` takes its enum from the surrounding context. A `let`
+    // with no annotation offers none, so there is nothing to resolve
+    // against and `CannotInferEnumType` says so — which is what its
+    // help text has always suggested: "Add a type annotation".
+    let no_context = r"
         let x = .someVariant
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    if compile(no_context).is_ok() {
+        return Err("a `.variant` with no context should be reported".into());
+    }
+
+    // With the annotation it resolves.
+    let with_context = r"
+        enum Direction { north, south }
+        let x: Direction = .north
+    ";
+    compile(with_context).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

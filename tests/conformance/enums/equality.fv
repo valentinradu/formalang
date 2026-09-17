@@ -1,0 +1,12 @@
+// expect: run
+pub enum E {
+    a,
+    b(v: I32)
+}
+
+pub fn run_checks() {
+    assert(condition: E.a == E.a)
+    assert(condition: E.a != E.b(v: 1))
+    assert(condition: E.b(v: 1) == E.b(v: 1))
+    assert(condition: E.b(v: 1) != E.b(v: 2))
+}

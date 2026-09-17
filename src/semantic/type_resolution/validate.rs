@@ -173,6 +173,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        // `Dictionary<K, V>` is the same type as `[K: V]`, so the key
+        // takes the same rule. Only the sugar reached
+        // `validate_dictionary_key`, so `[F64: I32]` was rejected and
+        // `Dictionary<F64, I32>` was not, and the float key reached the
+        // backend.
+        if name.name == "Dictionary" {
+            if let Some(key) = args.first() {
+                self.validate_dictionary_key(key, span);
+            }
+        }
+
         // Recurse into each argument; `validate_type` re-enters this for any
         // nested `Type::Generic` so inner constraints are checked too.
         for arg in args {

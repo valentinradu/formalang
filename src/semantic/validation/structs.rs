@@ -24,10 +24,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let field_names: Vec<String> =
                     def.fields.iter().map(|f| f.name.name.clone()).collect();
 
-                let field_types: Vec<(String, String)> = def
+                // The written type travels with the rendered one: the
+                // rendered form goes in the message, and the written
+                // form is what the generic-parameter test walks.
+                let field_types: Vec<(String, String, crate::ast::Type)> = def
                     .fields
                     .iter()
-                    .map(|f| (f.name.name.clone(), Self::type_to_string(&f.ty)))
+                    .map(|f| {
+                        (
+                            f.name.name.clone(),
+                            Self::type_to_string(&f.ty),
+                            f.ty.clone(),
+                        )
+                    })
                     .collect();
 
                 let required_fields: Vec<String> = def
@@ -59,14 +68,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
                 continue;
             }
-            let Some((_, declared)) = field_types.iter().find(|(n, _)| n == &arg_name.name) else {
+            let Some((_, declared, declared_ty)) =
+                field_types.iter().find(|(n, _, _)| n == &arg_name.name)
+            else {
                 continue;
             };
             // Skip the check if the declared type references a generic
             // parameter of the struct — generic substitution is handled by
             // the IR monomorphisation pass, not the string-level comparison
             // here.
-            if generic_params.iter().any(|g| declared.contains(g)) {
+            //
+            // The test is on whole names. Asking whether the rendered
+            // type *contains* the parameter made `String` mention a
+            // parameter called `S`, and the field went unchecked.
+            if super::type_names::type_mentions_any(declared_ty, &generic_params) {
                 continue;
             }
             let inferred_sem = self.infer_type_sem(arg_value, file);

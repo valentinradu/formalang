@@ -159,3 +159,46 @@ pub(in crate::reporting) fn seq_invalid_position<'a>(
              for an array, '.fold(...)' or '.count()' for a single value",
         )
 }
+
+pub(in crate::reporting) fn not_indexable<'a>(
+    filename: &'a str,
+    span: Span,
+    actual: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E139")
+        .with_message("This type cannot be indexed")
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' has no index operation",
+            actual.fg(Color::Red)
+        )))
+        .with_help("Only an array, a dictionary, and a string take an index")
+}
+
+pub(in crate::reporting) fn unreachable_match_arm(filename: &str, span: Span) -> ReportBuilder<'_> {
+    report(filename, span, "E140")
+        .with_message("This match arm can never run")
+        .with_label(
+            label(filename, span)
+                .with_message("a '_' arm above this one takes every remaining value"),
+        )
+        .with_help("Move this arm above the '_' arm, or remove it")
+}
+
+pub(in crate::reporting) fn private_type_in_public<'a>(
+    filename: &'a str,
+    span: Span,
+    type_name: &'a str,
+    position: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E141")
+        .with_message("A private type is named in a public signature")
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' is not public, but {} is",
+            type_name.fg(Color::Red),
+            position.fg(Color::Green)
+        )))
+        .with_help(
+            "another module can call this, but cannot name the type. \
+             Add 'pub' to the type, or drop 'pub' from what names it",
+        )
+}

@@ -1,0 +1,8 @@
+// expect: reject InvalidBinaryOp
+// `+` is not defined between a string and a boolean.
+
+pub fn f() -> String {
+    let a: String = "x"
+    let b: Boolean = true
+    a + b
+}

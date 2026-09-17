@@ -1,0 +1,9 @@
+// expect: reject ArgumentCountMismatch
+// A sequence is a generic type, and a method call on a generic
+// receiver skipped every check: `collect` takes nothing.
+
+pub fn f() -> I32 {
+    let s = for i in 0..4 { i }
+    let v = s.collect(1, 2, 3)
+    0
+}

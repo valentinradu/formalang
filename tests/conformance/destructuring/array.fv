@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    let xs: [I32] = [1, 2, 3]
+    assert(condition: xs.len() == 3)
+    assert(condition: xs[0].is_some())
+}

@@ -1,0 +1,4 @@
+// expect: reject RequiredParamAfterDefault
+pub fn f(a: I32 = 1, b: I32) -> I32 {
+    a + b
+}

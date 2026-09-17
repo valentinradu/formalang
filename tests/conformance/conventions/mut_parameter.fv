@@ -1,0 +1,9 @@
+// expect: run
+fn double_in_place(mut n: I32) -> I32 {
+    n + n
+}
+
+pub fn run_checks() {
+    let mut x: I32 = 21
+    assert(condition: double_in_place(n: x) == 42)
+}

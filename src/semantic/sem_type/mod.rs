@@ -107,6 +107,68 @@ impl SemType {
         }
     }
 
+    /// The type that covers both `self` and `other`.
+    ///
+    /// An array or dictionary literal takes its type from its
+    /// elements, and the elements need not all name the same one:
+    /// `[1, nil]` is an array of `I32?`, and neither element says so on
+    /// its own. Taking the first element's type instead — which is what
+    /// inference used to do — typed that literal `[I32]` and then
+    /// rejected it against a declared `[I32?]`.
+    ///
+    /// Four cases join; anything else is a genuine mismatch and comes
+    /// back [`Self::Unknown`], which leaves the element check in
+    /// `validation::expr::literals` to report it.
+    pub(super) fn join(self, other: Self) -> Self {
+        if self == other {
+            return self;
+        }
+
+        match (self, other) {
+            // Nothing is known about one side: take the other.
+            (Self::Unknown, known) | (known, Self::Unknown) => known,
+
+            // `nil` widens whatever it meets to an optional.
+            (Self::Nil, known) | (known, Self::Nil) => Self::optional_of(known),
+
+            // `T` and `T?` meet at `T?`.
+            (Self::Optional(inner), plain) | (plain, Self::Optional(inner)) if *inner == plain => {
+                Self::Optional(inner)
+            }
+
+            // Two arrays join element-wise, so `[[1], [nil]]` works the
+            // same way one level down.
+            (Self::Array(a), Self::Array(b)) => Self::array_of(a.join(*b)),
+
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Whether this type contains a closure, at the top level or
+    /// inside a container.
+    ///
+    /// Equality is structural in this language, but a closure has no
+    /// structure to compare: after closure conversion it is a code
+    /// pointer plus a captured environment. Two closures written the
+    /// same way are still two different values, so `==` on them has no
+    /// answer a backend can give. [`Self::Named`] is not resolved here
+    /// — the caller walks a struct's fields through the symbol table,
+    /// which this type does not have.
+    pub(super) fn holds_a_closure(&self) -> bool {
+        match self {
+            Self::Closure { .. } => true,
+            Self::Array(inner) | Self::Optional(inner) => inner.holds_a_closure(),
+            Self::Dictionary { key, value } => key.holds_a_closure() || value.holds_a_closure(),
+            Self::Tuple(fields) => fields.iter().any(|(_, ty)| ty.holds_a_closure()),
+            Self::Generic { args, .. } => args.iter().any(Self::holds_a_closure),
+            Self::Primitive(_)
+            | Self::Named(_)
+            | Self::Unknown
+            | Self::InferredEnum
+            | Self::Nil => false,
+        }
+    }
+
     /// Construct a closure shape from parameter and return types.
     pub(super) fn closure(params: Vec<Self>, return_ty: Self) -> Self {
         Self::Closure {
@@ -221,10 +283,27 @@ impl SemType {
                     .map(|f| (f.name.name.clone(), Self::from_ast(&f.ty)))
                     .collect(),
             ),
-            Type::Generic { name, args, .. } => Self::Generic {
-                base: name.name.clone(),
-                args: args.iter().map(Self::from_ast).collect(),
-            },
+            // The built-in carriers have two spellings each:
+            // `Dictionary<K, V>` and `[K: V]`, `Array<T>` and `[T]`,
+            // `Optional<T>` and `T?`. They name one type, so they
+            // become one `SemType` here. Keeping them apart made the
+            // two halves of the language disagree: `[F64: I32]` was
+            // rejected as a float key while `Dictionary<F64, I32>` was
+            // not, `d["k"]` on the generic spelling was "not
+            // indexable", and `let d: Dictionary<String, I32> = [:]`
+            // was a type mismatch against its own value.
+            Type::Generic { name, args, .. } => {
+                let lowered: Vec<Self> = args.iter().map(Self::from_ast).collect();
+                match (name.name.as_str(), lowered.as_slice()) {
+                    ("Array", [element]) => Self::array_of(element.clone()),
+                    ("Optional", [inner]) => Self::optional_of(inner.clone()),
+                    ("Dictionary", [key, value]) => Self::dictionary(key.clone(), value.clone()),
+                    _ => Self::Generic {
+                        base: name.name.clone(),
+                        args: lowered,
+                    },
+                }
+            }
             Type::Dictionary { key, value } => Self::Dictionary {
                 key: Box::new(Self::from_ast(key)),
                 value: Box::new(Self::from_ast(value)),

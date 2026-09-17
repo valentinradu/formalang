@@ -1,0 +1,15 @@
+// expect: reject ArgumentCountMismatch
+// `b` has a default, so only one argument is required. The message
+// used to name two, which the call was never obliged to reach.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, a: I32, b: I32 = 5) -> I32 { self.x + a + b }
+}
+
+pub fn f() -> I32 {
+    P(x: 1).add()
+}

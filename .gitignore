@@ -28,3 +28,11 @@ target
 /_site/
 /website/styles.css
 /website/docs
+
+# cargo-fuzz working directories. The curated seeds under
+# `fuzz/seeds/` are checked in; the live corpus, the crash artifacts
+# and the build output are not.
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/

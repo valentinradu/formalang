@@ -1,0 +1,20 @@
+// expect: run
+pub enum Shape {
+    point,
+    circle(radius: I32),
+    rect(w: I32, h: I32)
+}
+
+pub fn area(s: Shape) -> I32 {
+    match s {
+        .point: 0,
+        .circle(r): r * r * 3,
+        .rect(w, h): w * h
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: area(s: Shape.point) == 0)
+    assert(condition: area(s: Shape.circle(radius: 2)) == 12)
+    assert(condition: area(s: Shape.rect(w: 3, h: 4)) == 12)
+}

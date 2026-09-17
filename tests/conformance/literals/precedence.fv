@@ -1,0 +1,11 @@
+// expect: run
+// Multiplication binds tighter than addition; parentheses override.
+
+pub fn run_checks() {
+    assert(condition: 1 + 2 * 3 == 7)
+    assert(condition: (1 + 2) * 3 == 9)
+    assert(condition: 2 * 3 + 4 * 5 == 26)
+    assert(condition: 10 - 2 - 3 == 5)
+    assert(condition: 100 / 10 / 2 == 5)
+    assert(condition: 1 + 2 == 3 == true)
+}

@@ -1,0 +1,10 @@
+// expect: run
+fn consume(sink s: String) -> I32 {
+    s.len()
+}
+
+pub fn run_checks() {
+    let a: String = "alpha"
+    let b: String = "bravo-bravo"
+    assert(condition: consume(s: a) + consume(s: b) == 16)
+}

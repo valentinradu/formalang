@@ -13,11 +13,12 @@ pub(super) fn fold_binary_op(
     op: BinaryOperator,
     right: &Literal,
     ty: &ResolvedType,
+    span: crate::ir::IrSpan,
 ) -> Option<IrExpr> {
     match (left, right) {
-        (Literal::Number(l), Literal::Number(r)) => fold_numeric_pair(*l, op, *r, ty),
-        (Literal::Boolean(l), Literal::Boolean(r)) => fold_boolean_pair(*l, op, *r),
-        (Literal::String(l), Literal::String(r)) => fold_string_pair(l, op, r),
+        (Literal::Number(l), Literal::Number(r)) => fold_numeric_pair(*l, op, *r, ty, span),
+        (Literal::Boolean(l), Literal::Boolean(r)) => fold_boolean_pair(*l, op, *r, span),
+        (Literal::String(l), Literal::String(r)) => fold_string_pair(l, op, r, span),
         _ => None,
     }
 }
@@ -27,14 +28,15 @@ fn fold_numeric_pair(
     op: BinaryOperator,
     r: NumberLiteral,
     ty: &ResolvedType,
+    span: crate::ir::IrSpan,
 ) -> Option<IrExpr> {
     // Two-Integer pairs fold under exact i128 arithmetic so backends emitting
     // native integer instructions see literally what the source wrote. Any
     // operand carrying a Float payload falls back to f64 IEEE arithmetic.
     if let (NumberValue::Integer(li), NumberValue::Integer(ri)) = (l.value, r.value) {
-        return fold_integer_pair(l, li, op, ri, ty);
+        return fold_integer_pair(l, li, op, ri, ty, span);
     }
-    fold_float_pair(l, l.value.as_f64(), op, r.value.as_f64(), ty)
+    fold_float_pair(l, l.value.as_f64(), op, r.value.as_f64(), ty, span)
 }
 
 fn fold_integer_pair(
@@ -43,6 +45,7 @@ fn fold_integer_pair(
     op: BinaryOperator,
     ri: i128,
     ty: &ResolvedType,
+    span: crate::ir::IrSpan,
 ) -> Option<IrExpr> {
     // Suffix preservation: arithmetic results carry the left operand's
     // suffix. Mismatched-suffix mixing isn't yet type-checked by semantic.
@@ -73,7 +76,7 @@ fn fold_integer_pair(
         | BinaryOperator::Or
         | BinaryOperator::Range => None,
     };
-    result.map(|value| build_numeric_result(value, ty))
+    result.map(|value| build_numeric_result(value, ty, span))
 }
 
 fn fold_float_pair(
@@ -82,6 +85,7 @@ fn fold_float_pair(
     op: BinaryOperator,
     rv: f64,
     ty: &ResolvedType,
+    span: crate::ir::IrSpan,
 ) -> Option<IrExpr> {
     // Mixed Integer/Float (or two Floats) fall back to f64 IEEE 754 arithmetic.
     let combine = |v: f64| {
@@ -124,10 +128,10 @@ fn fold_float_pair(
         | BinaryOperator::Or
         | BinaryOperator::Range => None,
     };
-    result.map(|value| build_numeric_result(value, ty))
+    result.map(|value| build_numeric_result(value, ty, span))
 }
 
-fn build_numeric_result(value: Literal, ty: &ResolvedType) -> IrExpr {
+fn build_numeric_result(value: Literal, ty: &ResolvedType, span: crate::ir::IrSpan) -> IrExpr {
     let result_ty = match &value {
         Literal::Boolean(_) => ResolvedType::Primitive(PrimitiveType::Boolean),
         Literal::String(_) | Literal::Number(_) | Literal::Nil => ty.clone(),
@@ -135,11 +139,16 @@ fn build_numeric_result(value: Literal, ty: &ResolvedType) -> IrExpr {
     IrExpr::Literal {
         value,
         ty: result_ty,
-        span: crate::ir::IrSpan::default(),
+        span,
     }
 }
 
-fn fold_boolean_pair(l: bool, op: BinaryOperator, r: bool) -> Option<IrExpr> {
+fn fold_boolean_pair(
+    l: bool,
+    op: BinaryOperator,
+    r: bool,
+    span: crate::ir::IrSpan,
+) -> Option<IrExpr> {
     let result = match op {
         BinaryOperator::And => Some(Literal::Boolean(l && r)),
         BinaryOperator::Or => Some(Literal::Boolean(l || r)),
@@ -159,16 +168,21 @@ fn fold_boolean_pair(l: bool, op: BinaryOperator, r: bool) -> Option<IrExpr> {
     result.map(|value| IrExpr::Literal {
         value,
         ty: ResolvedType::Primitive(PrimitiveType::Boolean),
-        span: crate::ir::IrSpan::default(),
+        span,
     })
 }
 
-fn fold_string_pair(l: &str, op: BinaryOperator, r: &str) -> Option<IrExpr> {
+fn fold_string_pair(
+    l: &str,
+    op: BinaryOperator,
+    r: &str,
+    span: crate::ir::IrSpan,
+) -> Option<IrExpr> {
     if op == BinaryOperator::Add {
         Some(IrExpr::Literal {
             value: Literal::String(format!("{l}{r}")),
             ty: ResolvedType::Primitive(PrimitiveType::String),
-            span: crate::ir::IrSpan::default(),
+            span,
         })
     } else {
         None
@@ -179,6 +193,7 @@ pub(super) fn fold_unary_op(
     op: UnaryOperator,
     operand: &Literal,
     ty: &ResolvedType,
+    span: crate::ir::IrSpan,
 ) -> Option<IrExpr> {
     match operand {
         Literal::Number(n) => {
@@ -193,7 +208,7 @@ pub(super) fn fold_unary_op(
                 Some(IrExpr::Literal {
                     value: Literal::Number(NumberLiteral::from_lex(new_value, n.suffix, n.kind)),
                     ty: ty.clone(),
-                    span: crate::ir::IrSpan::default(),
+                    span,
                 })
             } else {
                 None
@@ -204,7 +219,7 @@ pub(super) fn fold_unary_op(
                 Some(IrExpr::Literal {
                     value: Literal::Boolean(!b),
                     ty: ResolvedType::Primitive(PrimitiveType::Boolean),
-                    span: crate::ir::IrSpan::default(),
+                    span,
                 })
             } else {
                 None

@@ -109,7 +109,7 @@ fn test_analyze_used_structs() -> Result<(), Box<dyn std::error::Error>> {
     // function parameter, or an expression). Here a standalone function
     // takes a `Used` parameter.
     let source = r"
-        struct Used { value: I32 = 1 }
+        pub struct Used { value: I32 = 1 }
         struct Unused { data: String }
         impl Used {}
         pub fn take(u: Used) -> I32 { u.value }
@@ -138,8 +138,8 @@ fn test_analyze_struct_referenced_in_field() -> Result<(), Box<dyn std::error::E
     // Outer is kept alive by a function parameter; Inner by being a field
     // type of Outer.
     let source = r"
-        struct Inner { value: I32 = 1 }
-        struct Outer { inner: Inner = Inner(value: 1) }
+        pub struct Inner { value: I32 = 1 }
+        pub struct Outer { inner: Inner = Inner(value: 1) }
         impl Outer {}
         pub fn show(o: Outer) -> I32 { o.inner.value }
     ";
@@ -225,9 +225,12 @@ mod removal_tests {
 
     #[test]
     fn test_removal_drops_unused_struct() {
+        // `Unused` is private: a `pub` definition is the module's
+        // contract with its callers and is never removed, whether or
+        // not anything inside the module names it.
         let source = r"
             pub struct Used { value: I32 }
-            pub struct Unused { data: String }
+            struct Unused { data: String }
             impl Used { fn get(self) -> I32 { self.value } }
             pub fn run(u: Used) -> I32 { u.get() }
         ";
@@ -266,9 +269,10 @@ mod removal_tests {
     #[test]
     fn test_removal_drops_impl_for_removed_enum() {
         // An impl block targeting a removed enum must be dropped.
+        // `Unused` is private; see `test_removal_drops_unused_struct`.
         let source = r"
             pub enum Used { a, b }
-            pub enum Unused { x, y }
+            enum Unused { x, y }
             impl Unused { fn describe(self) -> I32 { 0 } }
             pub fn run(u: Used) -> Used { u }
         ";

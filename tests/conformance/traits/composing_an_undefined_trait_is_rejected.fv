@@ -1,0 +1,2 @@
+// expect: reject UndefinedTrait
+pub trait Composed: NoSuchTrait {}

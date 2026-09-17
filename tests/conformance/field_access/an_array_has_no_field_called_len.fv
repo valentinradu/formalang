@@ -1,0 +1,7 @@
+// expect: reject UnknownField
+// `len` is a method, so it needs the call parentheses.
+
+pub fn f() -> I32 {
+    let v = [1, 2]
+    v.len
+}

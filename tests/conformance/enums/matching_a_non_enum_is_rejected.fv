@@ -1,0 +1,6 @@
+// expect: reject MatchNotEnum
+pub fn f(n: I32) -> I32 {
+    match n {
+        _: 0
+    }
+}

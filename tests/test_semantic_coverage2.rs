@@ -948,12 +948,26 @@ fn test_deep_trait_composition() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_if_without_else_branch() -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+    // An `if` with no `else` produces nothing when the condition is
+    // false, so its type is optional. `docs/user/control-flow.md` says
+    // so: "Without else (returns nil if false)".
+    let optional = r"
+        let flag: Boolean = true
+        let val: I32? = if flag { 42 }
+    ";
+    compile(optional).map_err(|e| format!("an optional binding should take it: {e:?}"))?;
+
+    // The same value does not fit a non-optional binding. This used to
+    // compile, which let a function declared to return `I32` end in an
+    // `if` with no `else` and answer nothing whenever the condition was
+    // false.
+    let plain = r"
         let flag: Boolean = true
         let val: I32 = if flag { 42 }
     ";
-    // if without else compiles successfully (missing else is not a type error)
-    compile(source).map_err(|e| format!("if without else should compile: {e:?}"))?;
+    if compile(plain).is_ok() {
+        return Err("an `if` with no `else` should not satisfy a non-optional type".into());
+    }
     Ok(())
 }
 

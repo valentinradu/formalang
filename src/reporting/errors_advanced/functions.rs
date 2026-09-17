@@ -124,3 +124,20 @@ pub(in crate::reporting) fn cannot_infer_enum_type<'a>(
         )))
         .with_help("Add a type annotation: let x: MyEnum = .variant")
 }
+
+pub(in crate::reporting) fn argument_count_mismatch<'a>(
+    filename: &'a str,
+    span: Span,
+    callee: &'a str,
+    expected: usize,
+    actual: usize,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E138")
+        .with_message(format!("Wrong number of arguments for {callee}"))
+        .with_label(label(filename, span).with_message(format!(
+            "takes {} argument(s), but the call gives {}",
+            expected.to_string().fg(Color::Green),
+            actual.to_string().fg(Color::Red)
+        )))
+        .with_help("Give one argument for each parameter that has no default value")
+}

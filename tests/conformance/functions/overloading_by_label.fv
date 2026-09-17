@@ -1,0 +1,16 @@
+// expect: run
+// Each call must reach the overload its labels select. This is
+// the shape that lowered to a single function id and made a
+// backend emit the wrong call.
+fn format(value: I32) -> I32 {
+    value
+}
+
+fn format(value: I32, precision: I32) -> I32 {
+    value * precision
+}
+
+pub fn run_checks() {
+    assert(condition: format(value: 7) == 7)
+    assert(condition: format(value: 7, precision: 3) == 21)
+}

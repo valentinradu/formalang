@@ -1,0 +1,8 @@
+// expect: reject UnknownField
+pub struct Point {
+    x: I32
+}
+
+pub fn f() -> I32 {
+    Point(x: 1).nope
+}

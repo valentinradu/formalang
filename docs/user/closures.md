@@ -68,6 +68,25 @@ impl Form {
   variant field, cannot have a closure type. Drop the `pub` (so the type
   stays inside its module), or replace the field with a non-closure type.
 
+## The Call Shape
+
+A call to a closure gives one argument for each parameter the closure
+type declares, and each argument must have the parameter's type:
+
+```formalang
+fn apply(f: (I32, I32) -> I32, a: I32, b: I32) -> I32 {
+  f(a, b)                 // ok
+}
+
+fn wrong(f: (I32) -> I32) -> I32 {
+  f(1, 2)                 // error E138: this closure takes 1 argument
+}
+
+fn also_wrong(f: (I32) -> I32) -> I32 {
+  f("text")               // error: TypeMismatch: expected I32
+}
+```
+
 ## Caller Constraints
 
 When a closure type carries `mut` or `sink`, every caller is checked

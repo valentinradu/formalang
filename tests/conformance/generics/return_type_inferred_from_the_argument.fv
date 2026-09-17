@@ -1,0 +1,20 @@
+// expect: run
+// A generic function whose return type is the type parameter. The
+// argument picks the type, so no `<...>` and no annotation is needed.
+
+pub struct Plain {
+    n: I32
+}
+
+pub fn identity<T>(item: T) -> T {
+    item
+}
+
+pub fn run_checks() {
+    let a = identity(item: 7)
+    assert(condition: a + 1 == 8)
+    let p = identity(item: Plain(n: 5))
+    assert(condition: p.n == 5)
+    let s = identity(item: "text")
+    assert(condition: s == "text")
+}

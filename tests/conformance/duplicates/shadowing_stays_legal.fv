@@ -1,0 +1,10 @@
+// expect: run
+// A later `let` of the same name introduces a second binding that
+// hides the first. That is shadowing, not a duplicate: the name has a
+// defined meaning at every point.
+
+pub fn run_checks() {
+    let a = 1
+    let a = 2
+    assert(condition: a == 2)
+}

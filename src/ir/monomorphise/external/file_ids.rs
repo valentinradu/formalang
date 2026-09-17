@@ -42,7 +42,7 @@ fn build_file_remap_table(
 ) -> HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>> {
     let mut remaps: HashMap<Vec<String>, HashMap<crate::ir::FileId, crate::ir::FileId>> =
         HashMap::with_capacity(imported_modules.len());
-    for (path, imported) in imported_modules {
+    for (path, imported) in super::sorted_imports(imported_modules) {
         let cap = imported.file_table.len().saturating_add(1);
         let mut per_module: HashMap<crate::ir::FileId, crate::ir::FileId> =
             HashMap::with_capacity(cap);

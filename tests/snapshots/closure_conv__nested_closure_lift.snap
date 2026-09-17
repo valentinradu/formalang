@@ -35,14 +35,14 @@ expression: "(make_curried_body, outer_lifted_body)"
                         span: IrSpan {
                             span: Span {
                                 start: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 81,
+                                    line: 3,
+                                    column: 13,
                                 },
                                 end: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 114,
+                                    line: 3,
+                                    column: 46,
                                 },
                             },
                             file: FileId(
@@ -148,14 +148,14 @@ expression: "(make_curried_body, outer_lifted_body)"
                         span: IrSpan {
                             span: Span {
                                 start: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 93,
+                                    line: 3,
+                                    column: 25,
                                 },
                                 end: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 114,
+                                    line: 3,
+                                    column: 46,
                                 },
                             },
                             file: FileId(
@@ -187,14 +187,14 @@ expression: "(make_curried_body, outer_lifted_body)"
                             span: IrSpan {
                                 span: Span {
                                     start: Location {
-                                        offset: 0,
-                                        line: 1,
-                                        column: 1,
+                                        offset: 93,
+                                        line: 3,
+                                        column: 25,
                                     },
                                     end: Location {
-                                        offset: 0,
-                                        line: 1,
-                                        column: 1,
+                                        offset: 114,
+                                        line: 3,
+                                        column: 46,
                                     },
                                 },
                                 file: FileId(
@@ -212,14 +212,14 @@ expression: "(make_curried_body, outer_lifted_body)"
                         span: IrSpan {
                             span: Span {
                                 start: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 93,
+                                    line: 3,
+                                    column: 25,
                                 },
                                 end: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 114,
+                                    line: 3,
+                                    column: 46,
                                 },
                             },
                             file: FileId(

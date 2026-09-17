@@ -1,0 +1,12 @@
+// expect: run
+// Integer arithmetic evaluates as written.
+
+pub fn run_checks() {
+    assert(condition: 1 + 2 == 3)
+    assert(condition: 7 - 9 == -2)
+    assert(condition: 6 * 7 == 42)
+    assert(condition: 7 / 2 == 3)
+    assert(condition: 7 % 3 == 1)
+    assert(condition: -7 / 2 == -3)
+    assert(condition: -7 % 3 == -1)
+}

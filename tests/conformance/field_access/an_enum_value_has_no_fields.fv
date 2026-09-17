@@ -1,0 +1,12 @@
+// expect: reject UnknownField
+// A payload is read by a `match` arm, which binds it by name.
+
+pub enum Colour {
+    red,
+    green
+}
+
+pub fn f() -> I32 {
+    let v = Colour.red
+    v.x
+}

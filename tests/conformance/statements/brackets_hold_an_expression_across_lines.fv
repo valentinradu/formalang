@@ -1,0 +1,26 @@
+// expect: run
+// Inside `(` or `[` there is no statement to end, so a newline there
+// always continues — however the expression is laid out.
+
+pub fn across_lines() -> I32 {
+    let total = (
+        1
+            + 2
+            + 3
+    )
+    total
+}
+
+pub fn array_across_lines() -> I32 {
+    let xs: [I32] = [
+        1,
+        2,
+        3
+    ]
+    xs.len()
+}
+
+pub fn run_checks() {
+    assert(condition: across_lines() == 6)
+    assert(condition: array_across_lines() == 3)
+}

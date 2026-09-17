@@ -1,0 +1,10 @@
+// expect: reject UndefinedReference
+// A method that no impl block declares.
+
+pub struct P {
+    x: I32
+}
+
+pub fn f() -> I32 {
+    P(x: 1).gone()
+}

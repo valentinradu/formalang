@@ -1,0 +1,14 @@
+// expect: run
+// `&&` and `||`, including their short-circuit shape.
+
+pub fn run_checks() {
+    assert(condition: true && true)
+    assert(condition: !(true && false))
+    assert(condition: !(false && true))
+    assert(condition: !(false && false))
+    assert(condition: true || false)
+    assert(condition: false || true)
+    assert(condition: !(false || false))
+    assert(condition: !false)
+    assert(condition: !!true)
+}

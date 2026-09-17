@@ -1,0 +1,8 @@
+// expect: reject PrivateTypeInPublic
+struct Hidden {
+    x: I32
+}
+
+pub fn f(h: Hidden) -> I32 {
+    h.x
+}

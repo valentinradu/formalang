@@ -20,39 +20,52 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let Some((first_k, first_v)) = iter.next() else {
             return; // empty dict: nothing to unify
         };
-        let first_key_sem = self.infer_type_sem(first_k, file);
-        let first_val_sem = self.infer_type_sem(first_v, file);
-        let key_indeterminate = first_key_sem.is_unknown();
-        let val_indeterminate = first_val_sem.is_unknown();
-        let first_key_ty = first_key_sem.display();
-        let first_val_ty = first_val_sem.display();
+        let mut joined_key = self.infer_type_sem(first_k, file);
+        let mut joined_val = self.infer_type_sem(first_v, file);
+        let key_indeterminate = joined_key.is_unknown();
+        let val_indeterminate = joined_val.is_unknown();
+
+        // Keys and values each fold with the join, the same way an
+        // array's elements do.
         for (k, v) in iter {
             if !key_indeterminate {
                 let kty_sem = self.infer_type_sem(k, file);
                 if !kty_sem.is_unknown() {
                     let kty = kty_sem.display();
-                    if !self.type_strings_compatible(&first_key_ty, &kty) {
+                    let next = joined_key.clone().join(kty_sem);
+                    if next.is_unknown() {
                         self.errors.push(CompilerError::TypeMismatch {
-                            expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                            expected: format!(
+                                "[{}: {}]",
+                                joined_key.display(),
+                                joined_val.display()
+                            ),
                             found: format!("key of type {kty}"),
                             span,
                         });
                         return;
                     }
+                    joined_key = next;
                 }
             }
             if !val_indeterminate {
                 let vty_sem = self.infer_type_sem(v, file);
                 if !vty_sem.is_unknown() {
                     let vty = vty_sem.display();
-                    if !self.type_strings_compatible(&first_val_ty, &vty) {
+                    let next = joined_val.clone().join(vty_sem);
+                    if next.is_unknown() {
                         self.errors.push(CompilerError::TypeMismatch {
-                            expected: format!("[{first_key_ty}: {first_val_ty}]"),
+                            expected: format!(
+                                "[{}: {}]",
+                                joined_key.display(),
+                                joined_val.display()
+                            ),
                             found: format!("value of type {vty}"),
                             span,
                         });
                         return;
                     }
+                    joined_val = next;
                 }
             }
         }
@@ -111,16 +124,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Can't trust the inference; skip rather than emit noise.
             return;
         }
-        let first_ty = first_sem.display();
+
+        // Fold the elements with the same join inference uses, so the
+        // two agree on what the literal's element type is. The first
+        // element is not privileged: `[1, nil]` and `[nil, 1]` are both
+        // arrays of `I32?`, and neither element names that type alone.
+        // The fold reaching `Unknown` is the mismatch.
+        let mut joined = first_sem;
         for elem in iter {
             let elem_sem = self.infer_type_sem(elem, file);
             if elem_sem.is_unknown() {
                 continue;
             }
             let elem_ty = elem_sem.display();
-            if !self.type_strings_compatible(&first_ty, &elem_ty) {
+            let next = joined.clone().join(elem_sem);
+            if next.is_unknown() {
                 self.errors.push(CompilerError::TypeMismatch {
-                    expected: format!("[{first_ty}]"),
+                    expected: format!("[{}]", joined.display()),
                     found: format!("element of type {elem_ty}"),
                     span,
                 });
@@ -128,6 +148,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // cascade into N copies of the same diagnostic.
                 break;
             }
+            joined = next;
         }
     }
 }

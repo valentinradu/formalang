@@ -1,0 +1,9 @@
+// expect: run
+fn scaled(value: I32, scale: I32 = 2) -> I32 {
+    value * scale
+}
+
+pub fn run_checks() {
+    assert(condition: scaled(value: 21) == 42)
+    assert(condition: scaled(value: 21, scale: 3) == 63)
+}

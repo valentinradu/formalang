@@ -1,0 +1,21 @@
+        // expect: run
+        pub enum E {
+            v0,
+            v1,
+            v2,
+            v3
+        }
+
+        pub fn pick(e: E) -> I32 {
+            match e {
+                .v0: 0,
+        .v1: 1,
+        .v2: 2,
+        .v3: 3
+            }
+        }
+
+        pub fn run_checks() {
+
+assert(condition: pick(e: E.v0) == 0)            assert(condition: pick(e: E.v1) == 1)            assert(condition: pick(e: E.v2) == 2)            assert(condition: pick(e: E.v3) == 3)
+        }

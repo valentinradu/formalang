@@ -34,6 +34,19 @@ Rewrites name-keyed references (`IrExpr::Reference.path`, `LetRef.name`,
 `VariantIdx`). Opt-in; **not** included in `Pipeline::default()`. Use it
 when the backend emits integer-indexed code (wasm, JVM, native).
 
+## `ClosureConversionPass`
+
+Lifts every closure body to a top-level function and collects the
+values it captures into a synthetic env struct, so a backend only ever
+sees named functions. `IrExpr::Closure` becomes
+`IrExpr::ClosureRef { funcref, env_struct }`. Included in
+`Pipeline::for_codegen`.
+
+The pass is idempotent and preserves source spans: a captured
+variable's synthesised `__env.x` access carries the span of the
+reference it replaces, so a debugger stepping over it lands on the
+name the user wrote.
+
 ## `DefunctionalisePass`
 
 Turns every closure value into an enum tag. Run it after

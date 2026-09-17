@@ -34,6 +34,25 @@ mod qualify;
 mod rewrite;
 mod specialise;
 
+use crate::ir::IrModule;
+
+/// The imported modules, ordered by module path.
+///
+/// Every phase above clones definitions into the entry module and
+/// hands out ids as it goes, so the order it visits the imports in
+/// decides the ids, the order of the per-type vectors, the
+/// `IrModuleNode` tree and the `file_table`. Iterating the `HashMap`
+/// directly made all of that depend on hash order, which is
+/// randomised per process: two builds of one program produced
+/// different IR.
+pub(super) fn sorted_imports(
+    imported_modules: &std::collections::HashMap<Vec<String>, IrModule>,
+) -> Vec<(&Vec<String>, &IrModule)> {
+    let mut entries: Vec<(&Vec<String>, &IrModule)> = imported_modules.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
+}
+
 pub(super) use file_ids::remap_imported_file_ids;
 pub(super) use id_remap::remap_imported_body_ids;
 pub(super) use inline::{inline_imported_functions, inline_imported_impls, inline_imported_lets};

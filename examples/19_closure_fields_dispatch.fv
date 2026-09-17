@@ -17,7 +17,11 @@ struct Form {
     onSubmit: () -> Event
 }
 
-pub fn build_form() -> Form {
+// `Form` holds closure fields, so it cannot be `pub`. A function
+// that returns it stays internal for the same reason: another module
+// could call it, but could not name the type of the result. The
+// public surface is the `dispatch_*` functions, which return `Event`.
+fn build_form() -> Form {
     Form(
         onPress:  () -> Event.pressed,
         onChange: (x) -> Event.typed(value: x),

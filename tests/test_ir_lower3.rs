@@ -722,10 +722,16 @@ fn test_lower_struct_field_numeric_default() -> Result<(), Box<dyn std::error::E
 fn test_dce_mark_used_generic_struct_field() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::{eliminate_dead_code, DeadCodeEliminator};
 
+    // `use_it` is the root: the pass seeds reachability from the
+    // functions, not from visibility, so `Config` needs a caller for
+    // it and `Box` to survive. Without one the pass removes `Config`
+    // and then, in its next round, `Box` — which is correct, and is
+    // what `test_dce_removes_an_unreferenced_chain` below covers.
     let source = r"
         struct Box<T> { value: T }
         struct Config { wrapped: Box<I32> = Box<I32>(value: 42) }
-        impl Config {}
+        fn takes(c: Config) -> I32 { 1 }
+        pub fn use_it() -> I32 { takes(c: Config()) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
@@ -739,6 +745,47 @@ fn test_dce_mark_used_generic_struct_field() -> Result<(), Box<dyn std::error::E
     let optimized = eliminate_dead_code(&module, true);
     if optimized.struct_id("Box").is_none() {
         return Err("eliminate_dead_code should preserve Box since Config references it".into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// DCE: removal cascades to what the removed definition kept alive
+// =============================================================================
+
+/// Removing a definition can make another unreachable, so the pass
+/// repeats until nothing more goes.
+///
+/// Here `Config` is the only reference to `Box`, and nothing
+/// references `Config`. One round removes `Config`; the next finds
+/// `Box` unreachable and removes it too. A single round left `Box`
+/// behind, and a second `run` then removed it, which made the pass
+/// non-idempotent.
+#[test]
+fn test_dce_removes_an_unreferenced_chain() -> Result<(), Box<dyn std::error::Error>> {
+    use formalang::ir::eliminate_dead_code;
+
+    let source = r"
+        struct Box<T> { value: T }
+        struct Config { wrapped: Box<I32> = Box<I32>(value: 42) }
+        impl Config {}
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
+    let optimized = eliminate_dead_code(&module, true);
+
+    if optimized.struct_id("Config").is_some() {
+        return Err("Config is unreferenced and should have been removed".into());
+    }
+    if optimized.struct_id("Box").is_some() {
+        return Err("Box was kept alive only by Config and should have gone too".into());
+    }
+
+    // And the result is a fixpoint: another round changes nothing.
+    let again = eliminate_dead_code(&optimized, true);
+    if serde_json::to_string(&again).unwrap_or_default()
+        != serde_json::to_string(&optimized).unwrap_or_default()
+    {
+        return Err("a second round removed more than the first".into());
     }
     Ok(())
 }
@@ -885,12 +932,13 @@ fn test_dce_mark_used_closure_field() -> Result<(), Box<dyn std::error::Error>> 
     use formalang::ir::DeadCodeEliminator;
 
     let source = r"
-        enum Action { submit }
+        pub enum Action { submit }
         struct Button {
             on_click: () -> Action = () -> Action.submit
         }
         impl Button {}
-        pub fn make_button() -> Button { Button() }
+        fn make_button() -> Button { Button() }
+        pub fn click() -> Action { make_button().on_click() }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);

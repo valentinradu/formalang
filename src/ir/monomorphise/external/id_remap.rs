@@ -40,7 +40,7 @@ pub(super) fn build_item_maps(
     impl_clone_remap: &HashMap<(Vec<String>, u32), u32>,
 ) -> HashMap<Vec<String>, ItemMaps> {
     let mut out: HashMap<Vec<String>, ItemMaps> = HashMap::new();
-    for (path, imported) in imported_modules {
+    for (path, imported) in super::sorted_imports(imported_modules) {
         let mut maps = ItemMaps::default();
         for (i, f) in imported.functions.iter().enumerate() {
             let qualified = qualified_name(path, &f.name);

@@ -1,0 +1,10 @@
+// expect: run
+// Indexing is total: it answers `T?`, so an index past the end is
+// `nil` rather than a fault.
+pub fn run_checks() {
+    let xs: [I32] = [10, 20, 30]
+    assert(condition: xs[0].is_some())
+    assert(condition: xs[2].is_some())
+    assert(condition: xs[3].is_none())
+    assert(condition: xs[99].is_none())
+}

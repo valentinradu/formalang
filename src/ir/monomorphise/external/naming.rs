@@ -43,7 +43,7 @@ pub(super) fn imported_path_of(
     }
     // Match the longest imported path that is a prefix of `name`.
     let mut best: Option<&Vec<String>> = None;
-    for path in imported_modules.keys() {
+    for (path, _) in super::sorted_imports(imported_modules) {
         let prefix = qualified_name(path, "");
         // qualified_name with empty `name` produces "p1::p2::". Items
         // cloned from this module are named "p1::p2::Foo".

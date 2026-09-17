@@ -34,7 +34,7 @@ pub(in crate::ir::monomorphise) fn merge_imported_module_trees(
     module: &mut IrModule,
     imported_modules: &HashMap<Vec<String>, IrModule>,
 ) {
-    for (path, imported) in imported_modules {
+    for (path, imported) in super::sorted_imports(imported_modules) {
         if path.is_empty() {
             continue;
         }

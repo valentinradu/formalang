@@ -1,0 +1,15 @@
+// expect: run
+pub struct Inner {
+    n: I32
+}
+
+pub struct Outer {
+    inner: Inner
+}
+
+pub fn run_checks() {
+    let o = Outer(inner: Inner(n: 3))
+    assert(condition: o.inner.n == 3)
+    let t = (a: 1, b: 2)
+    assert(condition: t.b == 2)
+}

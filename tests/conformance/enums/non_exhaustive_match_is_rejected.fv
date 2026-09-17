@@ -1,0 +1,11 @@
+// expect: reject NonExhaustiveMatch
+pub enum E {
+    a,
+    b
+}
+
+pub fn f(e: E) -> I32 {
+    match e {
+        .a: 1
+    }
+}

@@ -1,0 +1,6 @@
+// expect: reject FloatDictionaryKey
+// A float is not a usable key: equality on it is not an identity.
+pub fn f() -> I32 {
+    let d: [F64: I32] = [1.0: 1]
+    0
+}

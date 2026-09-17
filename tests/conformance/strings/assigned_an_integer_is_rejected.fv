@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// The rule the type matrix exists for.
+
+pub fn f() -> I32 {
+    let s: String = 1
+    0
+}

@@ -99,6 +99,18 @@ pub(in crate::ir::monomorphise) fn specialise_external_instantiations(
             continue;
         }
         let (ref module_path, ref name, ref args) = inst;
+        // An instantiation whose arguments still name a type parameter
+        // belongs to a generic body that nothing has instantiated yet:
+        // an imported `fn wrap<T>(v: T) -> Box<T>` mentions
+        // `Box<TypeParam(T)>` in its own signature. Specialising that
+        // would mint a struct named after the parameter — `Box__TP_T`,
+        // with a field still typed `TypeParam(T)` — which the leftover
+        // scanner then reports as an unresolved parameter. Leave it;
+        // a real call site produces the concrete instantiation, and
+        // generic-function compaction drops the template.
+        if args.iter().any(holds_a_type_param) {
+            continue;
+        }
         let Some(imported) = imported_modules.get(module_path) else {
             // No IR available for this module — leave the External
             // unspecialised (preserves the prior behaviour for callers
@@ -129,7 +141,7 @@ pub(in crate::ir::monomorphise) fn specialise_external_instantiations(
     clippy::result_large_err,
     reason = "CompilerError is large by design; errors are aggregated at the pass boundary"
 )]
-fn specialise_external(
+pub(super) fn specialise_external(
     module: &mut IrModule,
     imported: &IrModule,
     module_path: &[String],
@@ -177,6 +189,16 @@ fn specialise_external(
         for field in &spec.fields {
             collect_external_from_type(&field.ty, &mut discovered);
         }
+        // The clone arrived with the imported module's `TraitId`s in
+        // its conformance list. Those index the imported module, not
+        // this one, so left alone the clone claims conformance to
+        // whichever trait happens to sit at that index here — and the
+        // trait it really implements is never brought across at all,
+        // so a generic bound on it can no longer be satisfied.
+        //
+        // Pull each trait in the same way a field's type is pulled,
+        // and point the reference at the local clone.
+        spec.traits = translate_trait_refs(module, imported, &source.traits, module_path, &subs)?;
         let new_id = module.add_struct(mangled, spec)?;
         Ok((
             ResolvedType::Struct(new_id),
@@ -234,6 +256,50 @@ fn specialise_external(
             span: Span::default(),
         })
     }
+}
+
+/// Rewrite an imported struct's conformance list into this module's
+/// id-space, cloning each trait across on the way.
+///
+/// A trait reference is not a `ResolvedType`, so it cannot be
+/// externalised and left for the worklist; it holds a bare `TraitId`.
+/// Each one is therefore specialised on the spot. Re-entry for a trait
+/// that is already cloned is cheap: `specialise_external_trait` returns
+/// the existing id.
+#[expect(
+    clippy::result_large_err,
+    reason = "CompilerError is large by design; errors are aggregated at the pass boundary"
+)]
+fn translate_trait_refs(
+    module: &mut IrModule,
+    imported: &IrModule,
+    refs: &[crate::ir::IrTraitRef],
+    module_path: &[String],
+    subs: &HashMap<String, ResolvedType>,
+) -> Result<Vec<crate::ir::IrTraitRef>, CompilerError> {
+    let mut out = Vec::with_capacity(refs.len());
+    for trait_ref in refs {
+        let Some(source) = imported.get_trait(trait_ref.trait_id) else {
+            // The imported module does not have the trait its own
+            // struct names. Drop the reference rather than carry an id
+            // that means something else here.
+            continue;
+        };
+        let mut args = trait_ref.args.clone();
+        for arg in &mut args {
+            externalise_imported_refs(arg, imported, module_path);
+            substitute_type(arg, subs);
+        }
+        let name = source.name.clone();
+        let (ty, _) = specialise_external(module, imported, module_path, &name, &args)?;
+        if let ResolvedType::Trait(local_id) = ty {
+            out.push(crate::ir::IrTraitRef {
+                trait_id: local_id,
+                args,
+            });
+        }
+    }
+    Ok(out)
 }
 
 #[expect(
@@ -407,5 +473,26 @@ fn mangle_external_name(
         if n == u32::MAX {
             return candidate;
         }
+    }
+}
+
+/// Whether `ty` still names a type parameter anywhere inside it.
+fn holds_a_type_param(ty: &ResolvedType) -> bool {
+    match ty {
+        ResolvedType::TypeParam(_) => true,
+        ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| holds_a_type_param(t)),
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => param_tys.iter().any(|(_, t)| holds_a_type_param(t)) || holds_a_type_param(return_ty),
+        ResolvedType::Generic { args, .. }
+        | ResolvedType::External {
+            type_args: args, ..
+        } => args.iter().any(holds_a_type_param),
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => false,
     }
 }

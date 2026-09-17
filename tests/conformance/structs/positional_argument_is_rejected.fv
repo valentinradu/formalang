@@ -1,0 +1,8 @@
+// expect: reject PositionalArgInStruct
+pub struct Point {
+    x: I32
+}
+
+pub fn f() -> Point {
+    Point(1)
+}

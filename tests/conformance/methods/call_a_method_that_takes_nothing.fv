@@ -1,0 +1,14 @@
+// expect: reject ArgumentCountMismatch
+// A method with no parameters takes no arguments.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn get(self) -> I32 { self.x }
+}
+
+pub fn f() -> I32 {
+    P(x: 1).get(n: 1)
+}

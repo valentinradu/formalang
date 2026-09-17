@@ -1,0 +1,19 @@
+// expect: reject GenericConstraintViolation
+// A bound applies when inference picks the type, not only when the
+// call site writes it.
+
+pub trait Shape {
+    fn area(self) -> I32
+}
+
+pub struct Plain {
+    n: I32
+}
+
+pub fn total<T: Shape>(item: T) -> I32 {
+    item.area()
+}
+
+pub fn use_it() -> I32 {
+    total(item: Plain(n: 1))
+}

@@ -78,8 +78,9 @@ pub(super) fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
 /// The slice may end in one of `I32`, `I64`, `F32`, `F64`. Integer-syntax
 /// digits (`42`, `1_000_000`) parse via `i128::from_str` so the exact value
 /// round-trips into the IR; float-syntax digits (`3.14`, `1e5`) parse via
-/// `f64::from_str`. Returns `None` on parse failure (overflow / unparseable)
-/// so logos emits an error that the lexer converts into
+/// `f64::from_str`. Returns `None` on parse failure (unparseable, an
+/// integer too large for `i128`, or a float that overflows to an
+/// infinity) so logos emits an error that the lexer converts into
 /// [`crate::error::CompilerError::InvalidNumber`].
 pub(super) fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
     use crate::ast::{NumberLiteral, NumberSourceKind, NumberValue};
@@ -95,7 +96,23 @@ pub(super) fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
     let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
     let value = match kind {
         NumberSourceKind::Integer => NumberValue::Integer(cleaned.parse::<i128>().ok()?),
-        NumberSourceKind::Float => NumberValue::Float(cleaned.parse::<f64>().ok()?),
+        NumberSourceKind::Float => {
+            // `f64::from_str` reports overflow as an infinity rather
+            // than an error, so `1e400` would parse. Reject it here,
+            // the way the integer branch rejects a value too large for
+            // `i128`. An infinity has no JSON form either, so letting
+            // one through makes the serialised `IrModule` — the format
+            // external consumers read — impossible to decode.
+            //
+            // Underflow is different and stays accepted: `1e-400`
+            // becomes `0.0`, which is what IEEE 754 specifies and what
+            // every other language does.
+            let parsed = cleaned.parse::<f64>().ok()?;
+            if !parsed.is_finite() {
+                return None;
+            }
+            NumberValue::Float(parsed)
+        }
     };
     Some(NumberLiteral::from_lex(value, suffix, kind))
 }

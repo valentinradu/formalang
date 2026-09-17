@@ -119,11 +119,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Type::Generic { name, args, .. } => {
                 if args.is_empty() {
-                    name.name.clone()
-                } else {
-                    let arg_types: Vec<String> =
-                        args.iter().map(|arg| Self::type_to_string(arg)).collect();
-                    format!("{}<{}>", name.name, arg_types.join(", "))
+                    return name.name.clone();
+                }
+                let arg_types: Vec<String> =
+                    args.iter().map(|arg| Self::type_to_string(arg)).collect();
+                // The built-in carriers have two spellings each, and
+                // they name one type: `Dictionary<K, V>` is `[K: V]`,
+                // `Array<T>` is `[T]`, `Optional<T>` is `T?`. Render
+                // the sugar for both, so a comparison between the two
+                // spellings is a comparison between one type and
+                // itself. Rendering them apart made
+                // `let d: Dictionary<String, I32> = ["k": 1]` a type
+                // mismatch against its own value.
+                match (name.name.as_str(), arg_types.as_slice()) {
+                    ("Array", [element]) => format!("[{element}]"),
+                    ("Optional", [inner]) => format!("{inner}?"),
+                    ("Dictionary", [key, value]) => format!("[{key}: {value}]"),
+                    _ => format!("{}<{}>", name.name, arg_types.join(", ")),
                 }
             }
             Type::Dictionary { key, value } => {

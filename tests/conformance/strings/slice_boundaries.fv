@@ -1,0 +1,11 @@
+// expect: run
+// Every boundary a slice can hit.
+
+pub fn run_checks() {
+    let s: String = "abcdef"
+    assert(condition: s.slice(start: 0, end: 0) == "")
+    assert(condition: s.slice(start: 0, end: 1) == "a")
+    assert(condition: s.slice(start: 5, end: 6) == "f")
+    assert(condition: s.slice(start: 0, end: 6) == s)
+    assert(condition: s.slice(start: 3, end: 3) == "")
+}

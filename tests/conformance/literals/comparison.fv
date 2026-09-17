@@ -1,0 +1,17 @@
+// expect: run
+// Every comparison operator, both ways.
+
+pub fn run_checks() {
+    assert(condition: 1 < 2)
+    assert(condition: !(2 < 1))
+    assert(condition: 2 > 1)
+    assert(condition: !(1 > 2))
+    assert(condition: 1 <= 1)
+    assert(condition: 1 <= 2)
+    assert(condition: !(2 <= 1))
+    assert(condition: 2 >= 2)
+    assert(condition: 2 >= 1)
+    assert(condition: !(1 >= 2))
+    assert(condition: 1 == 1)
+    assert(condition: 1 != 2)
+}

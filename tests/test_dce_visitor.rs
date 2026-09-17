@@ -34,7 +34,8 @@ fn test_dce_analyze_struct_in_impl_function_body() -> Result<(), Box<dyn std::er
         impl Outer {
             fn make() -> Inner { Inner(value: 1) }
         }
-        pub fn entry(o: Outer) -> I32 { 0 }
+        fn takes(o: Outer) -> I32 { 0 }
+        pub fn entry() -> I32 { takes(o: Outer(items: [])) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut dce = DeadCodeEliminator::new(&module);
@@ -645,7 +646,8 @@ fn test_dce_eliminate_with_remove_unused_structs() -> Result<(), Box<dyn std::er
         struct Used { value: I32 = 1 }
         struct Unused { data: String }
         impl Used { fn get(self) -> I32 { self.value } }
-        pub fn entry(u: Used) -> I32 { u.get() }
+        fn takes(u: Used) -> I32 { u.get() }
+        pub fn entry() -> I32 { takes(u: Used(value: 1)) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, true);
@@ -671,7 +673,8 @@ fn test_dce_pass_via_pipeline() -> Result<(), Box<dyn std::error::Error>> {
     // pass (which now removes unused types) does not drop it.
     let source = r"
         struct Config { value: I32 = if true { 1 } else { 2 } }
-        pub fn use_config(c: Config) -> I32 { c.value }
+        fn takes(c: Config) -> I32 { c.value }
+        pub fn use_config() -> I32 { takes(c: Config(value: 1)) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let mut pass = DeadCodeEliminationPass::new();
@@ -1429,7 +1432,7 @@ fn test_dce_analyze_if_without_else() -> Result<(), Box<dyn std::error::Error>> 
     let source = r"
         struct Inner { x: I32 = 0 }
         struct Config {
-            val: I32 = if true { 1 }
+            val: I32? = if true { 1 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1446,7 +1449,7 @@ fn test_dce_analyze_if_without_else() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_dce_if_constant_true_no_else() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        struct Config { value: I32 = if true { 5 } }
+        struct Config { value: I32? = if true { 5 } }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
     let optimized = eliminate_dead_code(&module, false);

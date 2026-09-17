@@ -2218,7 +2218,8 @@ fn dce_analyzes_used_structs_via_impl_blocks() -> Result<(), Box<dyn std::error:
     let source = r"
         struct Config { value: I32 }
         impl Config {}
-        pub fn load(c: Config) -> I32 { c.value }
+        fn takes(c: Config) -> I32 { c.value }
+        pub fn load() -> I32 { takes(c: Config(value: 1)) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let mut elim = DeadCodeEliminator::new(&module);
@@ -3442,7 +3443,8 @@ fn dce_via_pipeline_method_call_with_struct_receiver() -> Result<(), Box<dyn std
         impl V2 {
             fn len(self) -> I32 { self.x + self.y }
         }
-        pub fn length(v: V2) -> I32 { v.len() }
+        fn takes(v: V2) -> I32 { v.len() }
+        pub fn length() -> I32 { takes(v: V2(x: 1, y: 2)) }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
     let result = eliminate_dead_code(&module, true);

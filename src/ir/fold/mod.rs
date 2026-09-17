@@ -62,37 +62,40 @@ impl ConstantFolder {
                 op,
                 right,
                 ty,
-                ..
-            } => self.fold_binary_op_expr(*left, op, *right, ty),
+                span,
+            } => self.fold_binary_op_expr(*left, op, *right, ty, span),
             IrExpr::UnaryOp {
-                op, operand, ty, ..
-            } => self.fold_unary_op_expr(op, *operand, ty),
+                op,
+                operand,
+                ty,
+                span,
+            } => self.fold_unary_op_expr(op, *operand, ty, span),
             IrExpr::If {
                 condition,
                 then_branch,
                 else_branch,
                 ty,
-                ..
-            } => self.fold_if_expr(*condition, *then_branch, else_branch, ty),
-            IrExpr::Array { elements, ty, .. } => IrExpr::Array {
+                span,
+            } => self.fold_if_expr(*condition, *then_branch, else_branch, ty, span),
+            IrExpr::Array { elements, ty, span } => IrExpr::Array {
                 elements: elements.into_iter().map(|e| self.fold_expr(e)).collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
-            IrExpr::Tuple { fields, ty, .. } => IrExpr::Tuple {
+            IrExpr::Tuple { fields, ty, span } => IrExpr::Tuple {
                 fields: fields
                     .into_iter()
                     .map(|(n, e)| (n, self.fold_expr(e)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::StructInst {
                 struct_id,
                 type_args,
                 fields,
                 ty,
-                ..
+                span,
             } => IrExpr::StructInst {
                 struct_id,
                 type_args,
@@ -101,14 +104,14 @@ impl ConstantFolder {
                     .map(|(n, idx, e)| (n, idx, self.fold_expr(e)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::FunctionCall {
                 path,
                 function_id,
                 args,
                 ty,
-                ..
+                span,
             } => IrExpr::FunctionCall {
                 path,
                 function_id,
@@ -117,10 +120,13 @@ impl ConstantFolder {
                     .map(|(name, expr)| (name, self.fold_expr(expr)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::CallClosure {
-                closure, args, ty, ..
+                closure,
+                args,
+                ty,
+                span,
             } => IrExpr::CallClosure {
                 closure: Box::new(self.fold_expr(*closure)),
                 args: args
@@ -128,7 +134,7 @@ impl ConstantFolder {
                     .map(|(name, expr)| (name, self.fold_expr(expr)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::MethodCall {
                 receiver,
@@ -137,7 +143,7 @@ impl ConstantFolder {
                 args,
                 dispatch,
                 ty,
-                ..
+                span,
             } => IrExpr::MethodCall {
                 receiver: Box::new(self.fold_expr(*receiver)),
                 method,
@@ -148,7 +154,7 @@ impl ConstantFolder {
                     .collect(),
                 dispatch,
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::Literal { .. }
             | IrExpr::Reference { .. }
@@ -159,13 +165,13 @@ impl ConstantFolder {
                 field,
                 field_idx,
                 ty,
-                ..
+                span,
             } => IrExpr::FieldAccess {
                 object: Box::new(self.fold_expr(*object)),
                 field,
                 field_idx,
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::For {
                 var,
@@ -174,7 +180,7 @@ impl ConstantFolder {
                 collection,
                 body,
                 ty,
-                ..
+                span,
             } => IrExpr::For {
                 var,
                 var_ty,
@@ -182,13 +188,13 @@ impl ConstantFolder {
                 collection: Box::new(self.fold_expr(*collection)),
                 body: Box::new(self.fold_expr(*body)),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::Match {
                 scrutinee,
                 arms,
                 ty,
-                ..
+                span,
             } => IrExpr::Match {
                 scrutinee: Box::new(self.fold_expr(*scrutinee)),
                 arms: arms
@@ -202,7 +208,7 @@ impl ConstantFolder {
                     })
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::EnumInst {
                 enum_id,
@@ -210,7 +216,7 @@ impl ConstantFolder {
                 variant_idx,
                 fields,
                 ty,
-                ..
+                span,
             } => IrExpr::EnumInst {
                 enum_id,
                 variant,
@@ -220,27 +226,32 @@ impl ConstantFolder {
                     .map(|(n, idx, e)| (n, idx, self.fold_expr(e)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
-            IrExpr::DictLiteral { entries, ty, .. } => IrExpr::DictLiteral {
+            IrExpr::DictLiteral { entries, ty, span } => IrExpr::DictLiteral {
                 entries: entries
                     .into_iter()
                     .map(|(k, v)| (self.fold_expr(k), self.fold_expr(v)))
                     .collect(),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
-            IrExpr::DictAccess { dict, key, ty, .. } => IrExpr::DictAccess {
+            IrExpr::DictAccess {
+                dict,
+                key,
+                ty,
+                span,
+            } => IrExpr::DictAccess {
                 dict: Box::new(self.fold_expr(*dict)),
                 key: Box::new(self.fold_expr(*key)),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::Block {
                 statements,
                 result,
                 ty,
-                ..
+                span,
             } => IrExpr::Block {
                 statements: statements
                     .into_iter()
@@ -248,31 +259,31 @@ impl ConstantFolder {
                     .collect(),
                 result: Box::new(self.fold_expr(*result)),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::Closure {
                 params,
                 captures,
                 body,
                 ty,
-                ..
+                span,
             } => IrExpr::Closure {
                 params,
                 captures,
                 body: Box::new(self.fold_expr(*body)),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
             IrExpr::ClosureRef {
                 funcref,
                 env_struct,
                 ty,
-                ..
+                span,
             } => IrExpr::ClosureRef {
                 funcref,
                 env_struct: Box::new(self.fold_expr(*env_struct)),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             },
         }
     }
@@ -284,6 +295,7 @@ impl ConstantFolder {
         op: BinaryOperator,
         right: IrExpr,
         ty: ResolvedType,
+        span: crate::ir::IrSpan,
     ) -> IrExpr {
         let left_folded = self.fold_expr(left);
         let right_folded = self.fold_expr(right);
@@ -296,7 +308,7 @@ impl ConstantFolder {
             },
         ) = (&left_folded, &right_folded)
         {
-            if let Some(result) = ops::fold_binary_op(left_val, op, right_val, &ty) {
+            if let Some(result) = ops::fold_binary_op(left_val, op, right_val, &ty, span) {
                 return result;
             }
         }
@@ -305,18 +317,24 @@ impl ConstantFolder {
             op,
             right: Box::new(right_folded),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         }
     }
 
     /// Fold a unary operation: recursively fold the operand, then try constant folding.
-    fn fold_unary_op_expr(&self, op: UnaryOperator, operand: IrExpr, ty: ResolvedType) -> IrExpr {
+    fn fold_unary_op_expr(
+        &self,
+        op: UnaryOperator,
+        operand: IrExpr,
+        ty: ResolvedType,
+        span: crate::ir::IrSpan,
+    ) -> IrExpr {
         let operand_folded = self.fold_expr(operand);
         if let IrExpr::Literal {
             value: operand_val, ..
         } = &operand_folded
         {
-            if let Some(result) = ops::fold_unary_op(op, operand_val, &ty) {
+            if let Some(result) = ops::fold_unary_op(op, operand_val, &ty, span) {
                 return result;
             }
         }
@@ -324,7 +342,7 @@ impl ConstantFolder {
             op,
             operand: Box::new(operand_folded),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         }
     }
 
@@ -335,6 +353,7 @@ impl ConstantFolder {
         then_branch: IrExpr,
         else_branch: Option<Box<IrExpr>>,
         ty: ResolvedType,
+        span: crate::ir::IrSpan,
     ) -> IrExpr {
         let cond_folded = self.fold_expr(condition);
         if let IrExpr::Literal {
@@ -353,7 +372,7 @@ impl ConstantFolder {
             then_branch: Box::new(self.fold_expr(then_branch)),
             else_branch: else_branch.map(|e| Box::new(self.fold_expr(*e))),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         }
     }
 }

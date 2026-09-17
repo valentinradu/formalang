@@ -1,0 +1,8 @@
+// expect: reject InvalidBinaryOp
+// A closure has no structure to compare.
+
+pub fn f() -> Boolean {
+    let a = (n: I32) -> n
+    let b = (n: I32) -> n
+    a == b
+}

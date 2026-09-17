@@ -1,0 +1,9 @@
+// expect: run
+pub fn evens(xs: [I32]) -> [I32] {
+    for x in xs { x }.filter(f: (v) -> v % 2 == 0).collect()
+}
+
+pub fn run_checks() {
+    let xs: [I32] = [1, 2, 3, 4, 5, 6]
+    assert(condition: evens(xs: xs).len() == 3)
+}

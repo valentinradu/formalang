@@ -1,0 +1,13 @@
+// expect: reject DuplicateMatchArm
+pub enum E {
+    a,
+    b
+}
+
+pub fn f(e: E) -> I32 {
+    match e {
+        .a: 1,
+        .a: 2,
+        .b: 3
+    }
+}

@@ -54,16 +54,23 @@ where
             span: span_from_simple(e.span()),
         });
 
-    let fn_assign = expr_parser()
-        .then_ignore(just(Token::Equals))
-        .then(expr_parser())
-        .map_with(|(target, value), e| BlockStatement::Assign {
-            target,
-            value,
-            span: span_from_simple(e.span()),
+    // Assignment (`target = value`) or a bare expression.
+    //
+    // One parser, not two: an assignment is an expression followed by
+    // `= value`, so parsing them as separate alternatives read the
+    // expression twice for every statement that is not an assignment.
+    // `block_item` in `src/parser/exprs/mod.rs` had the same shape and
+    // the same cost.
+    let fn_assign_or_expr = expr_parser()
+        .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
+        .map_with(|(target, value), e| match value {
+            Some(value) => BlockStatement::Assign {
+                target,
+                value,
+                span: span_from_simple(e.span()),
+            },
+            None => BlockStatement::Expr(target),
         });
-
-    let fn_expr = expr_parser().map(BlockStatement::Expr);
 
     // Wrap each item in `recover_with(via_parser(...))` so a malformed
     // item (broken expression) is recovered by skipping to the next
@@ -87,11 +94,20 @@ where
             span: span_from_simple(e.span()),
         })
     });
-    let fn_item = choice((fn_let, fn_assign, fn_expr)).recover_with(via_parser(recovery));
+    // Statements are separated by newlines. The lexer keeps only the
+    // newlines that end a statement, so consuming them here is what
+    // stops one statement running into the next.
+    let breaks = just(Token::Newline).repeated().ignored();
+    let fn_item = breaks
+        .clone()
+        .ignore_then(choice((fn_let, fn_assign_or_expr)))
+        .then_ignore(breaks.clone())
+        .recover_with(via_parser(recovery));
 
     fn_item
         .repeated()
         .collect::<Vec<_>>()
+        .then_ignore(breaks)
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
         .map_with(|statements, e| block_statements_to_expr(statements, span_from_simple(e.span())))
 }

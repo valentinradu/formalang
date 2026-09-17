@@ -1,0 +1,23 @@
+// expect: run
+// Rust's `_` arm.
+
+pub enum E {
+    a,
+    b,
+    c,
+    d,
+    e
+}
+
+pub fn pick(x: E) -> I32 {
+    match x {
+        .a: 1,
+        _: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(x: E.a) == 1)
+    assert(condition: pick(x: E.b) == 0)
+    assert(condition: pick(x: E.e) == 0)
+}

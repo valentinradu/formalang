@@ -790,7 +790,7 @@ fn test_fn_in_impl_multiple_functions() -> Result<(), Box<dyn std::error::Error>
 fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         fn compute(angle: I32) -> I32 { angle }
-        struct A { x: I32 = compute(angle: 1.0) }
+        struct A { x: I32 = compute(angle: 1) }
     ";
     compile(source).map_err(|e| format!("Function call single arg: {e:?}"))?;
     Ok(())
@@ -800,7 +800,7 @@ fn test_function_call_single_arg() -> Result<(), Box<dyn std::error::Error>> {
 fn test_function_call_multiple_args() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         fn clamp(val: I32, lo: I32) -> I32 { val }
-        struct A { x: I32 = clamp(val: 1.0, lo: 2.0) }
+        struct A { x: I32 = clamp(val: 1, lo: 2) }
     ";
     compile(source).map_err(|e| format!("Function call multiple args: {e:?}"))?;
     Ok(())
@@ -822,7 +822,7 @@ fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>>
 fn test_function_call_nested() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         fn double(x: I32) -> I32 { x }
-        struct A { x: I32 = double(x: double(x: 1.0)) }
+        struct A { x: I32 = double(x: double(x: 1)) }
     ";
     compile(source).map_err(|e| format!("Nested function calls: {e:?}"))?;
     Ok(())
@@ -937,7 +937,7 @@ fn test_fn_param_mixed_with_and_without_defaults() -> Result<(), Box<dyn std::er
             value: I32
         }
         impl Calculator {
-            fn compute(self, x: I32, scale: I32 = 1.0, offset: I32 = 0.0) -> I32 {
+            fn compute(self, x: I32, scale: I32 = 1, offset: I32 = 0) -> I32 {
                 self.value
             }
         }

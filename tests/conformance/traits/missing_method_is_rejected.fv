@@ -1,0 +1,10 @@
+// expect: reject MissingTraitMethod
+pub trait Shape {
+    fn area(self) -> I32
+}
+
+pub struct A {
+    side: I32
+}
+
+impl Shape for A {}

@@ -1,0 +1,11 @@
+// expect: run
+pub struct Pair<A, B> {
+    first: A,
+    second: B
+}
+
+pub fn run_checks() {
+    let p = Pair(first: 1, second: "text")
+    assert(condition: p.first == 1)
+    assert(condition: p.second == "text")
+}

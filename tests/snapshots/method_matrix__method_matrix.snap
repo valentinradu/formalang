@@ -1,0 +1,25 @@
+---
+source: tests/method_matrix.rs
+assertion_line: 334
+expression: out
+---
+Legend: . accepted   x rejected
+Rows are the receiver, columns the method.
+Each cell is a call with the right arguments for the method.
+
+              is_some       is_none       len           is_empty      map           filter        take          skip          collect       count         first         any           all           slice         starts_with   contains      byte_at       
+I32           x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+I64           x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+F64           x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+Boolean       x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+String        x             x             .             .             x             x             x             x             x             x             x             x             x             .             .             .             .             
+[I32]         x             x             .             .             x             x             x             x             x             x             x             x             x             x             x             x             x             
+[String]      x             x             .             .             x             x             x             x             x             x             x             x             x             x             x             x             x             
+[String:I32]  x             x             .             .             x             x             x             x             x             x             x             x             x             x             x             x             x             
+I32?          .             .             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+range         x             x             .             .             x             x             x             x             x             x             x             x             x             x             x             x             x             
+seq           x             x             x             x             .             .             .             .             .             .             .             .             .             x             x             x             x             
+tuple         x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+closure       x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+struct        x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             
+enum          x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x             x

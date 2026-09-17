@@ -1,0 +1,28 @@
+// expect: run
+// A `{` opens a body whose contents are statements, even when the
+// block sits inside a call argument. Counting only brackets dropped
+// those newlines, and `a` then `-1` silently became `a - 1`.
+
+pub fn apply(op: (I32) -> I32, x: I32) -> I32 {
+    op(x)
+}
+
+pub fn inside_a_call(x: I32) -> I32 {
+    apply(op: (n: I32) -> {
+        let a = n
+        a
+        -1
+    }, x: x)
+}
+
+pub fn plain(n: I32) -> I32 {
+    let a = n
+    a
+    -1
+}
+
+pub fn run_checks() {
+    // The two bodies are written identically, so they must agree.
+    assert(condition: inside_a_call(x: 10) == plain(n: 10))
+    assert(condition: inside_a_call(x: 10) == -1)
+}

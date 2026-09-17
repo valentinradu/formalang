@@ -1,0 +1,17 @@
+// expect: run
+// The key takes its expected type from the annotation, the same way
+// the value does. Without that the key lowered to a placeholder and
+// the compiler reported an internal error for a correct program.
+
+pub enum Status {
+    pending,
+    active
+}
+
+pub fn build() -> [Status: I32] {
+    [.pending: 1, .active: 2]
+}
+
+pub fn run_checks() {
+    assert(condition: build().len() == 2)
+}

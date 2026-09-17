@@ -1,0 +1,13 @@
+// expect: run
+// One definition, several monomorphs — Rust's core generics test.
+
+pub fn identity<T>(x: T) -> T {
+    x
+}
+
+pub fn run_checks() {
+    assert(condition: identity<I32>(x: 1) == 1)
+    assert(condition: identity<String>(x: "s") == "s")
+    assert(condition: identity<Boolean>(x: true))
+    assert(condition: identity<F64>(x: 1.5) == 1.5)
+}

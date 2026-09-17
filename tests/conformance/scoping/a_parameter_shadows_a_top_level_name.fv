@@ -1,0 +1,12 @@
+// expect: run
+pub fn value() -> I32 {
+    100
+}
+
+pub fn f(value: I32) -> I32 {
+    value
+}
+
+pub fn run_checks() {
+    assert(condition: f(value: 1) == 1)
+}

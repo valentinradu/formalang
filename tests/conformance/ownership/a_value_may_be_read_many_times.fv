@@ -1,0 +1,15 @@
+// expect: run
+// A `let` parameter does not consume, so the argument survives.
+
+fn look(n: I32) -> I32 {
+    n
+}
+
+pub fn f() -> I32 {
+    let x: I32 = 7
+    look(n: x) + look(n: x) + look(n: x)
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 21)
+}

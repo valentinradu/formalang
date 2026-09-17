@@ -303,3 +303,118 @@ fn parser_mislabeled_keyword_produces_labelled_error() -> Result<(), Box<dyn std
     }
     Ok(())
 }
+
+// =============================================================================
+// Byte-order mark
+// =============================================================================
+
+/// A leading UTF-8 byte-order mark is not part of the program.
+///
+/// Several editors write one, and the user cannot see it. Reporting it
+/// as an invalid character points them at a character that is not on
+/// their screen, so the lexer skips it.
+#[test]
+fn a_leading_byte_order_mark_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "\u{feff}pub struct A { a: I32 }";
+    formalang::compile_to_ir(source).map_err(|e| format!("a BOM broke the compile: {e:?}"))?;
+    Ok(())
+}
+
+/// Skipping the mark must not move any span: a diagnostic snippet has
+/// to line up with the original bytes.
+#[test]
+fn a_byte_order_mark_does_not_shift_spans() -> Result<(), Box<dyn std::error::Error>> {
+    let plain = "pub struct A { a: I32 }";
+    let marked = format!("\u{feff}{plain}");
+
+    let (plain_tokens, _) = Lexer::tokenize_all_with_errors(plain);
+    let (marked_tokens, _) = Lexer::tokenize_all_with_errors(&marked);
+
+    if plain_tokens.len() != marked_tokens.len() {
+        return Err("the mark changed the token count".into());
+    }
+    let bom_len = '\u{feff}'.len_utf8();
+    for (i, ((_, plain_span), (_, marked_span))) in
+        plain_tokens.iter().zip(marked_tokens.iter()).enumerate()
+    {
+        if marked_span.start.offset != plain_span.start.offset + bom_len {
+            return Err(format!(
+                "token {i}: expected the mark to shift the offset by {bom_len}, \
+                 got {} against {}",
+                marked_span.start.offset, plain_span.start.offset
+            )
+            .into());
+        }
+        if marked_span.start.line != plain_span.start.line {
+            return Err(format!("token {i}: the mark changed the line number").into());
+        }
+    }
+    Ok(())
+}
+
+/// A mark anywhere but the start stays an error: there it is a stray
+/// zero-width character, not an encoding marker.
+#[test]
+fn a_byte_order_mark_inside_the_source_is_an_error() {
+    let source = "pub struct A { a\u{feff}: I32 }";
+    let (_, errors) = Lexer::tokenize_all_with_errors(source);
+    assert!(
+        !errors.is_empty(),
+        "a stray zero-width character in the middle of a file must be reported"
+    );
+}
+
+// =============================================================================
+// Numeric literal range
+// =============================================================================
+
+/// A float literal that overflows `F64` must be rejected.
+///
+/// `f64::from_str` reports overflow as an infinity rather than an
+/// error, so `1e400` used to compile. An infinity has no JSON form,
+/// which made the serialised `IrModule` impossible to decode.
+#[test]
+fn a_float_literal_that_overflows_is_rejected() {
+    for source in [
+        "pub fn f() -> F64 { 1e400 }",
+        "pub fn f() -> F64 { -1e400 }",
+        "pub fn f() -> F64 { 1.7976931348623159e308 }",
+    ] {
+        assert!(
+            formalang::compile_to_ir(source).is_err(),
+            "the compiler accepted a float literal that does not fit in F64: {source}"
+        );
+    }
+}
+
+/// A float literal that underflows keeps IEEE 754 behaviour and
+/// becomes zero. Every other language does the same, so rejecting it
+/// would surprise.
+#[test]
+fn a_float_literal_that_underflows_becomes_zero() -> Result<(), Box<dyn std::error::Error>> {
+    formalang::compile_to_ir("pub fn f() -> F64 { 1e-400 }")
+        .map_err(|e| format!("an underflowing literal must still compile: {e:?}"))?;
+    Ok(())
+}
+
+/// Whatever the compiler accepts must survive the IR JSON round trip.
+/// That format is the contract with external consumers.
+#[test]
+fn every_accepted_float_literal_round_trips_through_json() -> Result<(), Box<dyn std::error::Error>>
+{
+    for source in [
+        "pub fn f() -> F64 { 1e-400 }",
+        "pub fn f() -> F64 { 0.1 }",
+        "pub fn f() -> F64 { 1.7976931348623157e308 }",
+        "pub fn f() -> F64 { -1.7976931348623157e308 }",
+    ] {
+        let Ok(module) = formalang::compile_to_ir(source) else {
+            continue;
+        };
+        let json = serde_json::to_string(&module)
+            .map_err(|e| format!("{source}: the IR must serialise: {e}"))?;
+        serde_json::from_str::<formalang::IrModule>(&json)
+            .map_err(|e| format!("{source}: the IR must decode again: {e}"))?;
+    }
+    Ok(())
+}

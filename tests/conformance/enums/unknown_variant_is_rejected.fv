@@ -1,0 +1,8 @@
+// expect: reject UnknownEnumVariant
+pub enum E {
+    a
+}
+
+pub fn f() -> E {
+    E.nope
+}

@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+pub fn f() -> I32 {
+    let a: F64 = 1.0
+    let b: I32 = a
+    b
+}

@@ -1,6 +1,5 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 294
 expression: debug_with_sorted_string_maps(&module)
 ---
 IrModule {

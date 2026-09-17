@@ -1,0 +1,9 @@
+// expect: run
+pub fn apply(f: (I32) -> I32, x: I32) -> I32 {
+    f(x)
+}
+
+pub fn run_checks() {
+    assert(condition: apply(f: (n: I32) -> n * 2, x: 21) == 42)
+    assert(condition: apply(f: (n: I32) -> n + 1, x: 41) == 42)
+}

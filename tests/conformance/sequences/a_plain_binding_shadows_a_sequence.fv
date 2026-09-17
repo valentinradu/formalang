@@ -1,0 +1,16 @@
+// expect: run
+// An inner binding of the same name holds an I32, so reading it twice
+// is ordinary. The outer sequence is untouched.
+
+pub fn f(xs: [I32]) -> I32 {
+    let s = for x in xs { x }
+    let n = {
+        let s = 1
+        s + s
+    }
+    s.count() + n
+}
+
+pub fn run_checks() {
+    assert(condition: f(xs: [1, 2]) == 4)
+}

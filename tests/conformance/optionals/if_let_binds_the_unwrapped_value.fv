@@ -1,0 +1,15 @@
+// expect: run
+// Swift's `if let`: the binding inside has the unwrapped type.
+
+pub fn twice(v: I32?) -> I32 {
+    if let n = v {
+        n * 2
+    } else {
+        0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: twice(v: 21) == 42)
+    assert(condition: twice(v: nil) == 0)
+}

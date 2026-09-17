@@ -1,0 +1,15 @@
+// expect: reject TypeMismatch
+// A `match` is an expression, so its arms must agree.
+
+pub enum E {
+    a,
+    b
+}
+
+pub fn f(e: E) -> I32 {
+    let v: I32 = match e {
+        .a: 1,
+        .b: "two"
+    }
+    v
+}

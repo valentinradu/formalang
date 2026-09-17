@@ -1,0 +1,25 @@
+// expect: run
+// Every position that offers a type resolves it.
+
+pub enum Colour {
+    red,
+    green
+}
+
+pub fn takes(c: Colour) -> I32 {
+    match c {
+        .red: 1,
+        .green: 2
+    }
+}
+
+pub fn returns() -> Colour {
+    .green
+}
+
+pub fn run_checks() {
+    let annotated: Colour = .red
+    assert(condition: takes(c: annotated) == 1)
+    assert(condition: takes(c: .green) == 2)
+    assert(condition: takes(c: returns()) == 2)
+}

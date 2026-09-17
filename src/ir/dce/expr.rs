@@ -19,7 +19,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             then_branch,
             else_branch,
             ty,
-            ..
+            span,
         } => {
             let cond = eliminate_dead_code_expr(*condition);
             if let IrExpr::Literal {
@@ -38,7 +38,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 then_branch: Box::new(eliminate_dead_code_expr(*then_branch)),
                 else_branch: else_branch.map(|e| Box::new(eliminate_dead_code_expr(*e))),
                 ty,
-                span: crate::ir::IrSpan::default(),
+                span,
             }
         }
         IrExpr::BinaryOp {
@@ -46,33 +46,33 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             op,
             right,
             ty,
-            ..
+            span,
         } => IrExpr::BinaryOp {
             left: Box::new(eliminate_dead_code_expr(*left)),
             op,
             right: Box::new(eliminate_dead_code_expr(*right)),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
-        IrExpr::Array { elements, ty, .. } => IrExpr::Array {
+        IrExpr::Array { elements, ty, span } => IrExpr::Array {
             elements: elements.into_iter().map(eliminate_dead_code_expr).collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
-        IrExpr::Tuple { fields, ty, .. } => IrExpr::Tuple {
+        IrExpr::Tuple { fields, ty, span } => IrExpr::Tuple {
             fields: fields
                 .into_iter()
                 .map(|(n, e)| (n, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::StructInst {
             struct_id,
             type_args,
             fields,
             ty,
-            ..
+            span,
         } => IrExpr::StructInst {
             struct_id,
             type_args,
@@ -81,7 +81,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .map(|(n, idx, e)| (n, idx, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::For {
             var,
@@ -90,7 +90,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             collection,
             body,
             ty,
-            ..
+            span,
         } => IrExpr::For {
             var,
             var_ty,
@@ -98,13 +98,13 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             collection: Box::new(eliminate_dead_code_expr(*collection)),
             body: Box::new(eliminate_dead_code_expr(*body)),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::Match {
             scrutinee,
             arms,
             ty,
-            ..
+            span,
         } => IrExpr::Match {
             scrutinee: Box::new(eliminate_dead_code_expr(*scrutinee)),
             arms: arms
@@ -118,14 +118,14 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 })
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::FunctionCall {
             path,
             function_id,
             args,
             ty,
-            ..
+            span,
         } => IrExpr::FunctionCall {
             path,
             function_id,
@@ -134,10 +134,13 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .map(|(name, e)| (name, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::CallClosure {
-            closure, args, ty, ..
+            closure,
+            args,
+            ty,
+            span,
         } => IrExpr::CallClosure {
             closure: Box::new(eliminate_dead_code_expr(*closure)),
             args: args
@@ -145,7 +148,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .map(|(name, e)| (name, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::MethodCall {
             receiver,
@@ -154,7 +157,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             args,
             dispatch,
             ty,
-            ..
+            span,
         } => IrExpr::MethodCall {
             receiver: Box::new(eliminate_dead_code_expr(*receiver)),
             method,
@@ -165,7 +168,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .collect(),
             dispatch,
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::EnumInst {
             enum_id,
@@ -173,7 +176,7 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
             variant_idx,
             fields,
             ty,
-            ..
+            span,
         } => IrExpr::EnumInst {
             enum_id,
             variant,
@@ -183,27 +186,32 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .map(|(n, idx, e)| (n, idx, eliminate_dead_code_expr(e)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
-        IrExpr::DictLiteral { entries, ty, .. } => IrExpr::DictLiteral {
+        IrExpr::DictLiteral { entries, ty, span } => IrExpr::DictLiteral {
             entries: entries
                 .into_iter()
                 .map(|(k, v)| (eliminate_dead_code_expr(k), eliminate_dead_code_expr(v)))
                 .collect(),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
-        IrExpr::DictAccess { dict, key, ty, .. } => IrExpr::DictAccess {
+        IrExpr::DictAccess {
+            dict,
+            key,
+            ty,
+            span,
+        } => IrExpr::DictAccess {
             dict: Box::new(eliminate_dead_code_expr(*dict)),
             key: Box::new(eliminate_dead_code_expr(*key)),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
         IrExpr::Block {
             statements,
             result,
             ty,
-            ..
+            span,
         } => IrExpr::Block {
             statements: statements
                 .into_iter()
@@ -211,8 +219,10 @@ pub fn eliminate_dead_code_expr(expr: IrExpr) -> IrExpr {
                 .collect(),
             result: Box::new(eliminate_dead_code_expr(*result)),
             ty,
-            span: crate::ir::IrSpan::default(),
+            span,
         },
+        // These are returned untouched, so they keep whatever span
+        // they arrived with.
         e @ (IrExpr::Literal { .. }
         | IrExpr::Reference { .. }
         | IrExpr::SelfFieldRef { .. }

@@ -1,0 +1,5 @@
+// expect: reject FloatDictionaryKey
+pub fn f() -> I32 {
+    let d: Dictionary<F64, I32> = [:]
+    0
+}

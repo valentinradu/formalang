@@ -1,0 +1,9 @@
+// expect: run
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    let b = Box(value: Box(value: 3))
+    assert(condition: b.value.value == 3)
+}

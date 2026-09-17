@@ -1,0 +1,14 @@
+// expect: run
+pub struct Config {
+    retries: I32 = 3,
+    name: String = "default"
+}
+
+pub fn run_checks() {
+    let c = Config()
+    assert(condition: c.retries == 3)
+    assert(condition: c.name == "default")
+    let d = Config(retries: 9)
+    assert(condition: d.retries == 9)
+    assert(condition: d.name == "default")
+}

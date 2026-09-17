@@ -1,0 +1,8 @@
+// expect: reject FloatDictionaryKey
+// `Dictionary<K, V>` is the same type as `[K: V]`, so the key rule is
+// the same. Only the sugar was checked before.
+
+pub fn f() -> I32 {
+    let d: Dictionary<F64, I32> = [:]
+    0
+}

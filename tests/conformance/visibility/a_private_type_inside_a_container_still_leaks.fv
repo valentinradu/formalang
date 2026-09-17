@@ -1,0 +1,10 @@
+// expect: reject PrivateTypeInPublic
+// `[Hidden]` names the same type a bare `Hidden` does.
+
+struct Hidden {
+    x: I32
+}
+
+pub fn f() -> [Hidden] {
+    []
+}

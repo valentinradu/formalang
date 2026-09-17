@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// Each argument must match the type the closure declares.
+
+pub fn apply(f: (I32) -> I32) -> I32 {
+    f("text")
+}

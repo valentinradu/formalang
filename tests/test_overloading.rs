@@ -87,6 +87,19 @@ let b = stringify(true)
 
 #[test]
 fn test_overload_in_impl_block() -> Result<(), Box<dyn std::error::Error>> {
+    // A method does not overload. `IrExpr::MethodCall` names the
+    // method by its name and hardcodes `method_idx` to zero, so the
+    // IR cannot tell two of one name apart and a backend resolving by
+    // name finds whichever comes first.
+    //
+    // This test used to assert that the declaration compiles, and it
+    // did — it just never called either method. Calling them showed
+    // the second was unreachable: `P(x: 1).add(n: 1, m: 1)` answered
+    // 2, from the one-parameter method, rather than 3.
+    //
+    // So the declaration is rejected, and a free function keeps its
+    // overloading, because a call to one carries a resolved
+    // `function_id` that says which it means.
     let source = r#"
 struct Formatter {}
 impl Formatter {
@@ -98,7 +111,9 @@ impl Formatter {
     }
 }
 "#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    if compile(source).is_ok() {
+        return Err("two methods of one name should be reported".into());
+    }
     Ok(())
 }
 
@@ -207,6 +222,83 @@ fn process(number: I32) -> I32 {
         return Err(format!(
             "expected 2 distinct 'process' functions in IR, got {}",
             process_fns.len()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Overload resolution reaches the IR
+// =============================================================================
+
+/// Each call to an overloaded name lowers to the overload it selects.
+///
+/// `IrModule.function_names` maps a name to a single id, so a later
+/// overload overwrote an earlier one and every call to an overloaded
+/// name carried whichever id was registered last. The analyser picked
+/// the right overload, so the program compiled — and a backend then
+/// emitted a call to the wrong function. It surfaced when the example
+/// programs were first executed: `run_overload_two(x: 7, p: 3)`
+/// returned 7 instead of 21.
+#[test]
+fn each_call_lowers_to_the_overload_it_selects() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+fn format(value: I32) -> I32 {
+    value
+}
+
+fn format(value: I32, precision: I32) -> I32 {
+    value * precision
+}
+
+pub fn one(x: I32) -> I32 {
+    format(value: x)
+}
+
+pub fn two(x: I32, p: I32) -> I32 {
+    format(value: x, precision: p)
+}
+";
+    let module = formalang::compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+
+    let called_id = |caller: &str| -> Option<u32> {
+        let f = module.functions.iter().find(|f| f.name == caller)?;
+        let json = serde_json::to_value(f.body.as_ref()?).ok()?;
+        json.get("FunctionCall")?
+            .get("function_id")?
+            .as_u64()
+            .and_then(|v| u32::try_from(v).ok())
+    };
+
+    let one = called_id("one").ok_or("`one` should call a resolved function")?;
+    let two = called_id("two").ok_or("`two` should call a resolved function")?;
+
+    if one == two {
+        return Err(format!(
+            "both calls lowered to function id {one}; the one-argument and \
+             two-argument overloads must resolve to different functions"
+        )
+        .into());
+    }
+
+    let arity_of = |id: u32| -> usize {
+        module
+            .functions
+            .get(id as usize)
+            .map_or(0, |f| f.params.len())
+    };
+    if arity_of(one) != 1 {
+        return Err(format!(
+            "`one` resolved to a {}-parameter overload, expected 1",
+            arity_of(one)
+        )
+        .into());
+    }
+    if arity_of(two) != 2 {
+        return Err(format!(
+            "`two` resolved to a {}-parameter overload, expected 2",
+            arity_of(two)
         )
         .into());
     }

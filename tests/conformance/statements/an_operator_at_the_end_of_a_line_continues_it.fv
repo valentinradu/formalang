@@ -1,0 +1,20 @@
+// expect: run
+// The other continuation style still works: a line that ends in an
+// operator is plainly unfinished, so the newline after it continues.
+
+pub fn continued_sum() -> I32 {
+    1 +
+    2 +
+    3
+}
+
+pub fn continued_comparison(n: I32) -> Boolean {
+    n >
+    0
+}
+
+pub fn run_checks() {
+    assert(condition: continued_sum() == 6)
+    assert(condition: continued_comparison(n: 1))
+    assert(condition: !continued_comparison(n: -1))
+}

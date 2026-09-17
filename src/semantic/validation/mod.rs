@@ -26,16 +26,20 @@
 
 mod closures;
 mod control_flow;
+mod duplicate_names;
 mod expr;
 mod functions;
 mod invocation;
 mod let_and_block;
+mod let_expr_and_block;
 mod method_call;
+mod private_in_public;
 mod public_closure_field;
 mod qualified_types;
 mod sequence_linear;
 mod sequence_placement;
 mod structs;
+mod type_names;
 
 use super::module_resolver::ModuleResolver;
 use super::SemanticAnalyzer;
@@ -46,6 +50,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate operators and control flow without evaluation
     pub(in crate::semantic) fn validate_expressions(&mut self, file: &File) {
         self.validate_public_closure_fields(file);
+        self.validate_duplicate_names(file);
+        self.validate_private_in_public(file);
         self.validate_sequence_placement(file);
         self.validate_sequence_linearity(file);
         for statement in &file.statements {

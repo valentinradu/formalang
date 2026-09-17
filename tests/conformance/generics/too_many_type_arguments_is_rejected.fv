@@ -1,0 +1,9 @@
+// expect: reject GenericArityMismatch
+pub struct Box<T> {
+    value: T
+}
+
+pub fn f() -> I32 {
+    let b: Box<I32, I32> = Box<I32>(value: 1)
+    b.value
+}

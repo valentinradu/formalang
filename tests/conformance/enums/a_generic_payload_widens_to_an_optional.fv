@@ -1,0 +1,24 @@
+// expect: run
+// Inferring an enum's type arguments from its payload made
+// `Maybe.some(v: 1)` a `Maybe<I32>` rather than the bare `Maybe`, so
+// it has to relate to `Maybe<I32?>` by the same widening that relates
+// `I32` to `I32?` anywhere else.
+
+pub enum Maybe<T> {
+    some(v: T),
+    none
+}
+
+pub fn unwrap(m: Maybe<I32?>) -> I32 {
+    match m {
+        .some(v): if let n = v { n } else { 0 },
+        .none: 0
+    }
+}
+
+pub fn run_checks() {
+    let held: Maybe<I32?> = Maybe.some(v: 1)
+    assert(condition: unwrap(m: held) == 1)
+    let empty: Maybe<I32?> = Maybe.some(v: nil)
+    assert(condition: unwrap(m: empty) == 0)
+}

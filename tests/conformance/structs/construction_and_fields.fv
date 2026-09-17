@@ -1,0 +1,11 @@
+// expect: run
+pub struct Point {
+    x: I32,
+    y: I32
+}
+
+pub fn run_checks() {
+    let p = Point(x: 3, y: 4)
+    assert(condition: p.x == 3)
+    assert(condition: p.y == 4)
+}

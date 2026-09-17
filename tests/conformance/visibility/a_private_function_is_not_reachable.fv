@@ -1,0 +1,10 @@
+// expect: reject VisibilityViolation
+// A function without `pub` stays inside its module.
+
+pub mod inner {
+    fn helper() -> I32 { 1 }
+}
+
+pub fn f() -> I32 {
+    inner::helper()
+}

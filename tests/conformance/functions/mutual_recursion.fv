@@ -1,0 +1,15 @@
+// expect: run
+pub fn is_even(n: I32) -> Boolean {
+    if n == 0 { true } else { is_odd(n: n - 1) }
+}
+
+pub fn is_odd(n: I32) -> Boolean {
+    if n == 0 { false } else { is_even(n: n - 1) }
+}
+
+pub fn run_checks() {
+    assert(condition: is_even(n: 0))
+    assert(condition: is_even(n: 4))
+    assert(condition: is_odd(n: 5))
+    assert(condition: !is_odd(n: 4))
+}

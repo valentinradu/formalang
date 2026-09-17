@@ -1,0 +1,10 @@
+// expect: reject VisibilityViolation
+pub mod a {
+    pub mod b {
+        fn deep() -> I32 { 7 }
+    }
+}
+
+pub fn f() -> I32 {
+    a::b::deep()
+}

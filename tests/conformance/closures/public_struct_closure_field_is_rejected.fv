@@ -1,0 +1,6 @@
+// expect: reject PublicClosureField
+// A public struct cannot expose a closure field: its layout would
+// depend on a code address the consumer cannot see.
+pub struct A {
+    callback: (I32) -> I32
+}

@@ -1,0 +1,15 @@
+// expect: run
+// `Dictionary<K, V>` and `[K: V]` name one type, so every rule that
+// reads one has to read the other.
+
+pub fn run_checks() {
+    let sugar: [String: I32] = ["k": 5]
+    let spelled: Dictionary<String, I32> = ["k": 5]
+    assert(condition: sugar == spelled)
+    assert(condition: spelled.len() == 1)
+    if let v = spelled["k"] {
+        assert(condition: v == 5)
+    } else {
+        assert(condition: false)
+    }
+}

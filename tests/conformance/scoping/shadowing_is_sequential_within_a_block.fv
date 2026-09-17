@@ -1,0 +1,14 @@
+// expect: run
+// Rust: each `let` shadows from its own line onward.
+
+pub fn f() -> I32 {
+    let x = 1
+    let y = x
+    let x = 10
+    let z = x
+    y * 100 + z
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 110)
+}

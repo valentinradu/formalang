@@ -1,0 +1,5 @@
+pub struct B<T> { value: T }
+pub fn f() -> I32 {
+    let v = B<B<B<B<I32>>>>(value: B<B<B<I32>>>(value: B<B<I32>>(value: B<I32>(value: 1))))
+    0
+}

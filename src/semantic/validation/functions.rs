@@ -70,6 +70,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // Check each default value against the type its parameter
+        // declares. Only the ordering rule was enforced before, so
+        // `fn takes(p: I32 = "text")` compiled and every call that let
+        // the default fire passed a string where the body reads an
+        // integer.
+        for param in &func.params {
+            let (Some(declared_ty), Some(default)) = (param.ty.as_ref(), param.default.as_ref())
+            else {
+                continue;
+            };
+            self.validate_expr(default, file);
+            let declared = Self::type_to_string(declared_ty);
+            let inferred_sem = self.infer_type_sem(default, file);
+            if !self.value_satisfies_declared(&declared, &inferred_sem) {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: declared,
+                    found: inferred_sem.display(),
+                    span: default.span(),
+                });
+            }
+        }
+
         // Validate the function body expression (only if body exists)
         if let Some(body) = &func.body {
             self.validate_expr(body, file);
@@ -77,11 +99,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
-                let body_type = self.infer_type_sem(body, file).display();
+                let body_sem = self.infer_type_sem(body, file);
+                let body_type = body_sem.display();
                 let expected_type = Self::type_to_string(declared_return_type);
 
-                // Check if types are compatible
-                if !self.type_strings_compatible(&expected_type, &body_type) {
+                // Check if types are compatible. Goes through the shared
+                // rule so a return position accepts what a `let`
+                // annotation does — `pub fn f() -> I32? { nil }` used to
+                // be rejected here while `let v: I32? = nil` was fine.
+                if !self.value_satisfies_declared(&expected_type, &body_sem) {
                     self.errors.push(CompilerError::FunctionReturnTypeMismatch {
                         function: func.name.name.clone(),
                         expected: expected_type,
@@ -150,6 +176,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // Check each default value against the type its parameter
+        // declares. Only the ordering rule was enforced before, so
+        // `fn takes(p: I32 = "text")` compiled and every call that let
+        // the default fire passed a string where the body reads an
+        // integer.
+        for param in &func.params {
+            let (Some(declared_ty), Some(default)) = (param.ty.as_ref(), param.default.as_ref())
+            else {
+                continue;
+            };
+            self.validate_expr(default, file);
+            let declared = Self::type_to_string(declared_ty);
+            let inferred_sem = self.infer_type_sem(default, file);
+            if !self.value_satisfies_declared(&declared, &inferred_sem) {
+                self.errors.push(CompilerError::TypeMismatch {
+                    expected: declared,
+                    found: inferred_sem.display(),
+                    span: default.span(),
+                });
+            }
+        }
+
         // Validate return type if declared
         if let Some(return_type) = &func.return_type {
             self.validate_type(return_type, func.span);
@@ -162,11 +210,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // If there's a declared return type, check it matches the body type
             if let Some(declared_return_type) = &func.return_type {
-                let body_type = self.infer_type_sem(body, file).display();
+                let body_sem = self.infer_type_sem(body, file);
+                let body_type = body_sem.display();
                 let expected_type = Self::type_to_string(declared_return_type);
 
-                // Check if types are compatible
-                if !self.type_strings_compatible(&expected_type, &body_type) {
+                // Check if types are compatible. Goes through the shared
+                // rule so a return position accepts what a `let`
+                // annotation does — `pub fn f() -> I32? { nil }` used to
+                // be rejected here while `let v: I32? = nil` was fine.
+                if !self.value_satisfies_declared(&expected_type, &body_sem) {
                     self.errors.push(CompilerError::FunctionReturnTypeMismatch {
                         function: func.name.name.clone(),
                         expected: expected_type,

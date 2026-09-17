@@ -1,0 +1,11 @@
+// expect: reject FunctionReturnTypeMismatch
+// And in return position.
+
+pub enum Maybe<T> {
+    some(v: T),
+    none
+}
+
+pub fn f() -> Maybe<I32> {
+    Maybe.some(v: "text")
+}

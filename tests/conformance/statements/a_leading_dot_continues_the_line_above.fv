@@ -1,0 +1,28 @@
+// expect: run
+// A line beginning with `.` continues the one above, so a method chain
+// and a match arm can each sit on its own line.
+
+pub fn chained(xs: [I32]) -> I32 {
+    for x in xs { x }
+        .filter(f: (v) -> v > 1)
+        .count()
+}
+
+pub enum E {
+    a,
+    b
+}
+
+pub fn arm_per_line(e: E) -> I32 {
+    match e {
+        .a: 1,
+        .b: 2
+    }
+}
+
+pub fn run_checks() {
+    let xs: [I32] = [1, 2, 3]
+    assert(condition: chained(xs: xs) == 2)
+    assert(condition: arm_per_line(e: E.a) == 1)
+    assert(condition: arm_per_line(e: E.b) == 2)
+}

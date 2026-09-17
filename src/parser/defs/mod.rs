@@ -20,6 +20,7 @@ use funcs::{fn_def_parser, fn_params_parser, fn_sig_parser, function_def_parser}
 
 use super::exprs::expr_parser;
 use super::ident_parser;
+use super::newlines;
 use super::span_from_simple;
 use super::types::type_parser;
 use super::visibility_parser;
@@ -66,9 +67,10 @@ where
             .map(|(name, alias)| StructPatternField { name, alias });
 
         let struct_pattern = struct_field
-            .separated_by(just(Token::Comma))
+            .separated_by(just(Token::Comma).padded_by(newlines()))
             .allow_trailing()
             .collect::<Vec<_>>()
+            .padded_by(newlines())
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
             .map_with(|fields, e| BindingPattern::Struct {
                 fields,
@@ -250,10 +252,11 @@ where
         .then(trait_composition_parser())
         .then(
             trait_item
-                .separated_by(just(Token::Comma).or_not().ignored())
+                .separated_by(just(Token::Comma).or_not().ignored().padded_by(newlines()))
                 .allow_leading()
                 .allow_trailing()
                 .collect::<Vec<_>>()
+                .padded_by(newlines())
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .or_not(),
         )
@@ -294,9 +297,10 @@ where
         .then(generic_params_parser())
         .then(
             struct_field_parser()
-                .separated_by(just(Token::Comma))
+                .separated_by(just(Token::Comma).padded_by(newlines()))
                 .allow_trailing()
                 .collect::<Vec<_>>()
+                .padded_by(newlines())
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .or_not(),
         )
@@ -418,8 +422,10 @@ where
         }),
     ));
     impl_item
+        .padded_by(newlines())
         .repeated()
         .collect::<Vec<_>>()
+        .padded_by(newlines())
         .delimited_by(just(Token::LBrace), just(Token::RBrace))
 }
 
@@ -437,8 +443,10 @@ where
         .then(ident_parser())
         .then(
             def_parser
+                .padded_by(newlines())
                 .repeated()
                 .collect()
+                .padded_by(newlines())
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
         .map_with(|((visibility, name), definitions), e| ModuleDef {

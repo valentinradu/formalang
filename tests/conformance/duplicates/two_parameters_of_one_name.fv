@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+pub fn g(a: I32, a: I32) -> I32 {
+    a
+}

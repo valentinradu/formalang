@@ -1,0 +1,6 @@
+// expect: reject AssignmentToImmutable
+pub fn f() -> I32 {
+    let n = 1
+    n = 2
+    n
+}

@@ -1,0 +1,3 @@
+pub fn f() -> String {
+    "no closing quote
+}

@@ -99,3 +99,29 @@ use types::User
 use components::{Button, Text}
 use utils::helpers::formatDate
 ```
+
+## A Public Signature Names Public Types
+
+A `pub` definition is what another module sees. Naming a private type
+in one hands the reader a value whose type they cannot write down: they
+can call the function, but they cannot declare a binding for the
+result, pass it on, or name it in their own signature.
+
+```formalang
+struct Hidden { x: I32 }
+
+pub fn f() -> Hidden { Hidden(x: 1) }   // error E141
+pub fn g(h: Hidden) -> I32 { h.x }      // error E141
+pub struct Shown { h: Hidden }          // error E141
+
+fn build() -> Hidden { Hidden(x: 1) }   // ok: not public
+```
+
+The rule reaches inside containers, because `[Hidden]` and `Hidden?`
+name the same type a bare `Hidden` does.
+
+This pairs with the closure rule: a struct that holds a closure field
+cannot be `pub`, so no public signature may name it either. Such a
+struct is built and read inside its own module, and the module exposes
+the results instead. See
+[Closures / Rules](closures.md).

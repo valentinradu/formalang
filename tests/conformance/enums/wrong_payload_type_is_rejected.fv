@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+pub enum E {
+    a(v: I32)
+}
+
+pub fn f() -> E {
+    E.a(v: "text")
+}

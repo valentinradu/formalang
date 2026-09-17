@@ -1,0 +1,10 @@
+// expect: run
+// Unary minus, and minus applied to an expression.
+
+pub fn run_checks() {
+    let a = -5
+    assert(condition: a == -5)
+    assert(condition: -a == 5)
+    assert(condition: -(2 + 3) == -5)
+    assert(condition: 0 - 5 == -5)
+}

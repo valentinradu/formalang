@@ -1,0 +1,4 @@
+// expect: reject OutOfScopeTypeParameter
+pub struct A {
+    value: T
+}

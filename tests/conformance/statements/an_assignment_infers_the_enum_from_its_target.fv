@@ -1,0 +1,18 @@
+// expect: run
+// The target's type is what the value must produce, so a `.variant`
+// on the right has an enum to resolve against.
+
+pub enum Status {
+    pending,
+    active
+}
+
+pub fn flip(s: Status) -> Status {
+    let mut out = s
+    out = .active
+    out
+}
+
+pub fn run_checks() {
+    assert(condition: flip(s: Status.pending) == Status.active)
+}

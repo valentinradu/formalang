@@ -1,0 +1,21 @@
+// expect: run
+// The matching payload still works, and a variant with no payload
+// takes its type from the annotation.
+
+pub enum Maybe<T> {
+    some(v: T),
+    none
+}
+
+pub fn unwrap(m: Maybe<I32>) -> I32 {
+    match m {
+        .some(v): v,
+        .none: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: unwrap(m: Maybe.some(v: 4)) == 4)
+    let empty: Maybe<I32> = Maybe.none
+    assert(condition: unwrap(m: empty) == 0)
+}

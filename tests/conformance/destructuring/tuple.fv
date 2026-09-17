@@ -1,0 +1,9 @@
+// expect: run
+pub fn run_checks() {
+    let p = (x: 3, y: 4)
+    let (a, b) = p
+    assert(condition: a == 3)
+    assert(condition: b == 4)
+    assert(condition: p.x == 3)
+    assert(condition: p.y == 4)
+}

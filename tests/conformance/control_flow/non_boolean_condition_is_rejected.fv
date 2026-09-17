@@ -1,0 +1,4 @@
+// expect: reject InvalidIfCondition
+pub fn f(n: I32) -> I32 {
+    if n { 1 } else { 0 }
+}

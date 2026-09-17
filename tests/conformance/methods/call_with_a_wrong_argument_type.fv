@@ -1,0 +1,14 @@
+// expect: reject TypeMismatch
+// Each argument must match the parameter's declared type.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, n: I32) -> I32 { self.x + n }
+}
+
+pub fn f() -> I32 {
+    P(x: 1).add(n: "text")
+}

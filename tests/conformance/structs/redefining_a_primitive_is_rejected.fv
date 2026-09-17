@@ -1,0 +1,4 @@
+// expect: reject PrimitiveRedefinition
+pub struct I32 {
+    a: I32
+}

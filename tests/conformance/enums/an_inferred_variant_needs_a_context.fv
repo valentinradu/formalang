@@ -1,0 +1,10 @@
+// expect: reject CannotInferEnumType
+// `.variant` takes its enum from the surrounding context. A `let`
+// with no annotation offers none. This used to be accepted, and the
+// pass that met the unresolved placeholder reported an internal error
+// instead — telling the user the compiler had broken.
+
+pub fn f() -> I32 {
+    let v = .red
+    0
+}

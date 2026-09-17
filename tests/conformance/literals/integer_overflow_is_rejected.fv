@@ -1,0 +1,6 @@
+// expect: reject NumericOverflow
+// A literal that does not fit its declared width is refused.
+
+pub fn f() -> I32 {
+    99999999999999
+}

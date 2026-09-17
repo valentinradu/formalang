@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    assert(condition: for i in 0..5 { i }.fold(initial: 0, f: (a, b) -> a + b) == 10)
+    assert(condition: for i in 0..5 { i }.count() == 5)
+    assert(condition: for i in 3..3 { i }.count() == 0)
+}

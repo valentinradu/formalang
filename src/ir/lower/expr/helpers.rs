@@ -1,58 +1,12 @@
 //! Type-substitution and field/method/function return-type lookups shared
 //! across the rest of the expression-lowering submodules.
 
+use super::type_params::substitute_typeparam_in_resolved;
 use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrExpr, ResolvedType};
 use std::collections::HashMap;
-
-/// Substitute `TypeParam(name)` references inside `ty` using `subs`.
-/// Used by `resolve_method_return_type` when the receiver is a
-/// `Generic { base, args }` so the impl method's return type
-/// (declared in terms of the struct's generic params) gets the
-/// concrete instantiation's type arguments.
-pub(in crate::ir::lower::expr) fn substitute_typeparam_in_resolved(
-    ty: &mut ResolvedType,
-    subs: &HashMap<String, ResolvedType>,
-) {
-    match ty {
-        ResolvedType::TypeParam(name) => {
-            if let Some(concrete) = subs.get(name) {
-                *ty = concrete.clone();
-            }
-        }
-        ResolvedType::Tuple(fields) => {
-            for (_, t) in fields {
-                substitute_typeparam_in_resolved(t, subs);
-            }
-        }
-        ResolvedType::Closure {
-            param_tys,
-            return_ty,
-        } => {
-            for (_, t) in param_tys {
-                substitute_typeparam_in_resolved(t, subs);
-            }
-            substitute_typeparam_in_resolved(return_ty, subs);
-        }
-        ResolvedType::Generic { args, .. } => {
-            for a in args {
-                substitute_typeparam_in_resolved(a, subs);
-            }
-        }
-        ResolvedType::External { type_args, .. } => {
-            for a in type_args {
-                substitute_typeparam_in_resolved(a, subs);
-            }
-        }
-        ResolvedType::Primitive(_)
-        | ResolvedType::Struct(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::Error => {}
-    }
-}
 
 impl IrLowerer<'_> {
     /// Resolve the type of a field access on an expression.
@@ -173,11 +127,23 @@ impl IrLowerer<'_> {
                 });
                 ResolvedType::Primitive(PrimitiveType::Never)
             }
+            // An imported struct. The type stays `External` until
+            // `MonomorphisePass` clones the definition into this
+            // module, but lowering needs the field's type now, to
+            // build the access node. The symbol table already carries
+            // the imported struct's fields — that is how the semantic
+            // pass type-checked this access — so read the field there
+            // and lower its declared type.
+            ResolvedType::External {
+                module_path,
+                name,
+                type_args,
+                ..
+            } => self.resolve_imported_field_type(module_path, name, type_args, field_name),
             ResolvedType::Primitive(_)
             | ResolvedType::Trait(_)
             | ResolvedType::Enum(_)
             | ResolvedType::Generic { .. }
-            | ResolvedType::External { .. }
             | ResolvedType::Closure { .. } => {
                 self.errors.push(CompilerError::InternalError {
                     detail: format!(
@@ -362,6 +328,14 @@ impl IrLowerer<'_> {
             }
         }
 
+        // The receiver was already an error, and a diagnostic for it has
+        // been recorded. Propagate rather than cascade: a second report
+        // here blames the compiler for a mistake the user has already
+        // been told about. `resolve_field_type` does the same.
+        if matches!(receiver_ty, ResolvedType::Error) {
+            return ResolvedType::Error;
+        }
+
         self.errors.push(CompilerError::InternalError {
             detail: format!(
                 "IR lowering: cannot resolve return type of `{method_name}` on receiver {receiver_ty:?}"
@@ -451,5 +425,62 @@ impl IrLowerer<'_> {
             span: self.current_span,
         });
         ResolvedType::Primitive(PrimitiveType::Never)
+    }
+
+    /// The type of `field_name` on an imported struct.
+    ///
+    /// `module_path` and `name` come from the `External` placeholder
+    /// that lowering carries for an imported type. The struct's fields
+    /// live in the symbol table, so the lookup reads them there and
+    /// lowers the declared type of the matching field.
+    ///
+    /// Two things make that lowering different from an ordinary one.
+    /// The field's type is written in the imported module's namespace,
+    /// so `imported_source_context` is set while it is lowered: a name
+    /// that resolves to nothing local then becomes another `External`
+    /// for the same module, which the monomorphise pass picks up on its
+    /// next pass. And a generic import (`Box<I32>`) carries its type
+    /// arguments on the placeholder, so they are substituted for the
+    /// struct's own parameters.
+    fn resolve_imported_field_type(
+        &mut self,
+        module_path: &[String],
+        name: &str,
+        type_args: &[ResolvedType],
+        field_name: &str,
+    ) -> ResolvedType {
+        let Some(info) = self.symbols.get_struct_qualified(name) else {
+            self.errors.push(CompilerError::InternalError {
+                detail: format!("IR lowering: imported struct `{name}` is not in the symbol table"),
+                span: self.current_span,
+            });
+            return ResolvedType::Primitive(PrimitiveType::Never);
+        };
+
+        let Some(field) = info.fields.iter().find(|f| f.name == field_name) else {
+            self.errors.push(CompilerError::UnknownField {
+                field: field_name.to_string(),
+                type_name: name.to_string(),
+                span: self.current_span,
+            });
+            return ResolvedType::Primitive(PrimitiveType::Never);
+        };
+
+        // Both are read while `info` is still borrowed from the symbol
+        // table; lowering the type below needs `&mut self`.
+        let declared = field.ty.clone();
+        let subs: HashMap<String, ResolvedType> = info
+            .generics
+            .iter()
+            .map(|g| g.name.name.clone())
+            .zip(type_args.iter().cloned())
+            .collect();
+
+        let saved = self.imported_source_context.replace(module_path.to_vec());
+        let mut resolved = self.lower_type(&declared);
+        self.imported_source_context = saved;
+
+        substitute_typeparam_in_resolved(&mut resolved, &subs);
+        resolved
     }
 }

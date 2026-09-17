@@ -1,0 +1,9 @@
+// expect: run
+pub fn identity<T>(x: T) -> T {
+    x
+}
+
+pub fn run_checks() {
+    assert(condition: identity<I32>(x: 42) == 42)
+    assert(condition: identity(x: 7) == 7)
+}

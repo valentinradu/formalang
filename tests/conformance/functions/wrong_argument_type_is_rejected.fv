@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+fn takes(n: I32) -> I32 {
+    n
+}
+
+pub fn f() -> I32 {
+    takes(n: "text")
+}

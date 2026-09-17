@@ -22,7 +22,7 @@ impl IrLowerer<'_> {
         // Collect the (name, source_module_path) pairs first so the
         // borrow on `self.symbols` doesn't overlap the mutable borrow
         // of `self.imported_source_context` below.
-        let imported_struct_pairs: Vec<(String, Vec<String>)> = self
+        let mut imported_struct_pairs: Vec<(String, Vec<String>)> = self
             .symbols
             .structs
             .keys()
@@ -32,6 +32,13 @@ impl IrLowerer<'_> {
                     .map(|path| (name.clone(), path.clone()))
             })
             .collect();
+        // `SymbolTable` stores its definitions in `HashMap`s, whose
+        // iteration order is randomised per process. The loop below
+        // hands out `StructId`s in that order, so without this sort
+        // two compiles of one source produce different ids and a
+        // different `IrModule.structs` order. Every such loop in this
+        // file sorts for the same reason.
+        imported_struct_pairs.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, source_path) in imported_struct_pairs {
             if let Some(struct_info) = self.symbols.structs.get(&name).cloned() {
                 self.imported_source_context = Some(source_path);
@@ -41,7 +48,7 @@ impl IrLowerer<'_> {
             }
         }
 
-        let imported_enum_pairs: Vec<(String, Vec<String>)> = self
+        let mut imported_enum_pairs: Vec<(String, Vec<String>)> = self
             .symbols
             .enums
             .keys()
@@ -51,6 +58,7 @@ impl IrLowerer<'_> {
                     .map(|path| (name.clone(), path.clone()))
             })
             .collect();
+        imported_enum_pairs.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, source_path) in imported_enum_pairs {
             if let Some(enum_info) = self.symbols.enums.get(&name).cloned() {
                 self.imported_source_context = Some(source_path);
@@ -64,30 +72,43 @@ impl IrLowerer<'_> {
         // imports in IrImport.items so the cross-module qualification
         // pass can route bare-name references to their qualified
         // forms after inlining.
-        let function_names: Vec<String> = self
+        let mut function_names: Vec<String> = self
             .symbols
             .functions
             .keys()
             .filter(|name| self.symbols.get_module_origin(name).is_some())
             .cloned()
             .collect();
+        function_names.sort();
         for name in function_names {
             self.try_track_imported_type(&name, ImportedKind::Function);
         }
-        let let_names: Vec<String> = self
+        let mut let_names: Vec<String> = self
             .symbols
             .lets
             .keys()
             .filter(|name| self.symbols.get_module_origin(name).is_some())
             .cloned()
             .collect();
+        let_names.sort();
         for name in let_names {
             self.try_track_imported_type(&name, ImportedKind::ModuleLet);
         }
 
         // Register types from imported nested modules (e.g., fill::Solid)
-        for (module_name, module_info) in &self.symbols.modules {
-            self.register_module_types(module_name, &module_info.symbols);
+        let mut module_names: Vec<&String> = self.symbols.modules.keys().collect();
+        module_names.sort();
+        let modules: Vec<(String, SymbolTable)> = module_names
+            .into_iter()
+            .filter_map(|name| {
+                self.symbols
+                    .modules
+                    .get(name)
+                    .map(|info| (name.clone(), info.symbols.clone()))
+            })
+            .collect();
+        for (module_name, module_symbols) in modules {
+            self.register_module_types(&module_name, &module_symbols);
         }
     }
 
@@ -97,7 +118,7 @@ impl IrLowerer<'_> {
         // traits are filled in after all names exist, since composition can
         // forward-reference traits in the same module.
         let mut pending_trait_composition: Vec<(String, Vec<String>)> = Vec::new();
-        for (name, trait_info) in &module_symbols.traits {
+        for (name, trait_info) in sorted_by_name(&module_symbols.traits) {
             let qualified_name = format!("{module_prefix}::{name}");
             let generic_params = self.lower_generic_params(&trait_info.generics);
             self.generic_scopes.push(generic_params.clone());
@@ -163,19 +184,19 @@ impl IrLowerer<'_> {
         }
 
         // Register structs from this module
-        for (name, struct_info) in &module_symbols.structs {
+        for (name, struct_info) in sorted_by_name(&module_symbols.structs) {
             let qualified_name = format!("{module_prefix}::{name}");
             self.register_struct(&qualified_name, struct_info);
         }
 
         // Register enums from this module
-        for (name, enum_info) in &module_symbols.enums {
+        for (name, enum_info) in sorted_by_name(&module_symbols.enums) {
             let qualified_name = format!("{module_prefix}::{name}");
             self.register_enum(&qualified_name, enum_info);
         }
 
         // Recursively register nested modules
-        for (nested_name, nested_module_info) in &module_symbols.modules {
+        for (nested_name, nested_module_info) in sorted_by_name(&module_symbols.modules) {
             let nested_prefix = format!("{module_prefix}::{nested_name}");
             self.register_module_types(&nested_prefix, &nested_module_info.symbols);
         }
@@ -187,9 +208,24 @@ impl IrLowerer<'_> {
         let generic_params = self.lower_generic_params(&enum_info.generics);
         self.generic_scopes.push(generic_params.clone());
 
-        let variants: Vec<IrEnumVariant> = enum_info
-            .variants
-            .keys()
+        // `EnumInfo::variants` is a `HashMap`, so iterating it directly
+        // ordered the variants by hash. A variant's index is its
+        // discriminant, so that made an imported enum's tags differ
+        // between two builds of the same program. Each entry carries
+        // the span it was declared at, so sorting by that restores the
+        // order the user wrote.
+        let mut variant_names: Vec<&String> = enum_info.variants.keys().collect();
+        variant_names.sort_by_key(|name| {
+            enum_info
+                .variants
+                .get(*name)
+                .map_or((usize::MAX, name.as_str()), |(_, span)| {
+                    (span.start.offset, name.as_str())
+                })
+        });
+
+        let variants: Vec<IrEnumVariant> = variant_names
+            .into_iter()
             .map(|variant_name| {
                 let fields = enum_info
                     .variant_fields
@@ -356,4 +392,16 @@ impl IrLowerer<'_> {
             }
         }
     }
+}
+
+/// The entries of `map`, ordered by key.
+///
+/// `SymbolTable` stores its definitions in `HashMap`s. Iterating one
+/// directly hands out IR ids in an order that is randomised per
+/// process, which makes the whole `IrModule` non-reproducible. Every
+/// loop that assigns an id goes through here.
+fn sorted_by_name<V>(map: &std::collections::HashMap<String, V>) -> Vec<(&String, &V)> {
+    let mut entries: Vec<(&String, &V)> = map.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
 }

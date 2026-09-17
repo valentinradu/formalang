@@ -1,0 +1,14 @@
+// expect: reject MutabilityMismatch
+// Rust's move/borrow matrix and Swift's `inout` rules, as one
+// grid: a `let` binding passed to a `mut `
+// parameter.
+
+fn takes(mut n: I32) -> I32 {
+    n
+}
+
+
+pub fn call() -> I32 {
+    let x: I32 = 7
+    takes(n: x)
+}

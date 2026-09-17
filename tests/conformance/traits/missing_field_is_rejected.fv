@@ -1,0 +1,10 @@
+// expect: reject MissingTraitField
+pub trait Named {
+    name: String
+}
+
+pub struct A {
+    other: I32
+}
+
+impl Named for A {}

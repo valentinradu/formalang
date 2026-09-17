@@ -1,0 +1,8 @@
+// expect: reject ArgumentCountMismatch
+// The rule holds for a closure bound by `let`, not only for a
+// parameter.
+
+pub fn use_it() -> I32 {
+    let f = (x: I32) -> x + 1
+    f(1, 2)
+}

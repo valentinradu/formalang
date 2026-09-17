@@ -1,0 +1,10 @@
+// expect: run
+pub fn run_checks() {
+    let x = 1
+    let inner = {
+        let x = 2
+        x
+    }
+    assert(condition: x == 1)
+    assert(condition: inner == 2)
+}

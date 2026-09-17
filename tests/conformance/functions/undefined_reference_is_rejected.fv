@@ -1,0 +1,4 @@
+// expect: reject UndefinedReference
+pub fn f() -> I32 {
+    no_such_name
+}

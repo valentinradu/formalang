@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    assert(condition: 2 + 3 * 4 - 6 / 2 == 11)
+    assert(condition: 1 < 2 && 3 > 2)
+    assert(condition: 1 > 2 || 3 > 2)
+    assert(condition: !(1 > 2) && !(3 < 2))
+}

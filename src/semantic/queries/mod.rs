@@ -4,6 +4,9 @@
 //! go-to-definition. Backed by the `SemanticAnalyzer`'s symbol table.
 
 mod hover_format;
+mod modules;
+
+use modules::{for_each_module, split_qualified};
 
 use super::symbol_table::{SymbolKind, SymbolTable};
 use crate::location::Span;
@@ -145,6 +148,40 @@ impl<'a> QueryProvider<'a> {
             ));
         }
 
+        // Everything declared inside a nested module, under its
+        // qualified name, plus the module name itself. Without this an
+        // editor offers no completion for `pub mod geometry { ... }`.
+        for_each_module("", self.symbols, &mut |path, symbols| {
+            completions.push(CompletionCandidate::new(
+                path.to_string(),
+                CompletionKind::Keyword,
+            ));
+            for name in symbols.traits.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::ModelTrait,
+                ));
+            }
+            for name in symbols.structs.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::Model,
+                ));
+            }
+            for name in symbols.enums.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::Enum,
+                ));
+            }
+            for name in symbols.lets.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::LetBinding,
+                ));
+            }
+        });
+
         completions
     }
 
@@ -179,6 +216,29 @@ impl<'a> QueryProvider<'a> {
                 CompletionKind::ModelTrait,
             ));
         }
+
+        // Types declared inside a nested module are usable in a type
+        // position through their qualified name, so offer them there.
+        for_each_module("", self.symbols, &mut |path, symbols| {
+            for name in symbols.structs.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::Model,
+                ));
+            }
+            for name in symbols.enums.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::Enum,
+                ));
+            }
+            for name in symbols.traits.keys() {
+                completions.push(CompletionCandidate::new(
+                    format!("{path}::{name}"),
+                    CompletionKind::ModelTrait,
+                ));
+            }
+        });
 
         completions
     }
@@ -231,11 +291,70 @@ impl<'a> QueryProvider<'a> {
             }
         }
 
-        None
+        // Nested modules. Accept both the qualified name the user
+        // writes (`geometry::Point`) and the bare one their caret sits
+        // on (`Point`).
+        let (wanted_path, wanted) = split_qualified(name);
+        let mut found: Option<HoverInfo> = None;
+        for_each_module("", self.symbols, &mut |path, symbols| {
+            if found.is_some() || (!wanted_path.is_empty() && wanted_path != path) {
+                return;
+            }
+            let qualified = format!("{path}::{wanted}");
+            found = symbols
+                .traits
+                .get(wanted)
+                .map(|i| hover_format::trait_info_to_hover(&qualified, i, SymbolKind::Trait))
+                .or_else(|| {
+                    symbols
+                        .structs
+                        .get(wanted)
+                        .map(|i| hover_format::struct_info_to_hover(&qualified, i))
+                })
+                .or_else(|| {
+                    symbols
+                        .enums
+                        .get(wanted)
+                        .map(|i| hover_format::enum_info_to_hover(&qualified, i))
+                })
+                .or_else(|| {
+                    symbols
+                        .lets
+                        .get(wanted)
+                        .map(|i| hover_format::let_info_to_hover(&qualified, i))
+                })
+                .or_else(|| {
+                    symbols
+                        .get_function(wanted)
+                        .map(|i| hover_format::function_info_to_hover(&qualified, i))
+                });
+        });
+        if found.is_some() {
+            return found;
+        }
+
+        // The module itself.
+        let mut module_hover: Option<HoverInfo> = None;
+        for_each_module("", self.symbols, &mut |path, _| {
+            if module_hover.is_none() && path == name {
+                module_hover = Some(HoverInfo {
+                    symbol_name: name.to_string(),
+                    kind: SymbolKind::Module,
+                    signature: format!("mod {name}"),
+                    documentation: None,
+                    source_span: Span::default(),
+                });
+            }
+        });
+        module_hover
     }
 
     /// Find definition location for a symbol by name
     #[must_use]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one lookup chain per scope — local, imported module cache, nested modules, the module itself"
+    )]
     pub fn find_definition_by_name(&self, name: &str) -> Option<DefinitionInfo> {
         let local = self
             .symbols
@@ -303,6 +422,58 @@ impl<'a> QueryProvider<'a> {
             }
         }
 
-        None
+        // Nested modules, by qualified or bare name.
+        let (wanted_path, wanted) = split_qualified(name);
+        let mut found: Option<DefinitionInfo> = None;
+        for_each_module("", self.symbols, &mut |path, symbols| {
+            if found.is_some() || (!wanted_path.is_empty() && wanted_path != path) {
+                return;
+            }
+            let hit = symbols
+                .traits
+                .get(wanted)
+                .map(|i| (SymbolKind::Trait, i.span))
+                .or_else(|| {
+                    symbols
+                        .structs
+                        .get(wanted)
+                        .map(|i| (SymbolKind::Struct, i.span))
+                })
+                .or_else(|| {
+                    symbols
+                        .enums
+                        .get(wanted)
+                        .map(|i| (SymbolKind::Enum, i.span))
+                })
+                .or_else(|| symbols.lets.get(wanted).map(|i| (SymbolKind::Let, i.span)))
+                .or_else(|| {
+                    symbols
+                        .get_function(wanted)
+                        .map(|i| (SymbolKind::Function, i.span))
+                });
+            if let Some((kind, span)) = hit {
+                found = Some(DefinitionInfo {
+                    symbol_name: format!("{path}::{wanted}"),
+                    kind,
+                    span,
+                });
+            }
+        });
+        if found.is_some() {
+            return found;
+        }
+
+        // The module itself.
+        let mut module_def: Option<DefinitionInfo> = None;
+        modules::visit_modules(self.symbols, &mut |path, info| {
+            if module_def.is_none() && path == name {
+                module_def = Some(DefinitionInfo {
+                    symbol_name: name.to_string(),
+                    kind: SymbolKind::Module,
+                    span: info.span,
+                });
+            }
+        });
+        module_def
     }
 }

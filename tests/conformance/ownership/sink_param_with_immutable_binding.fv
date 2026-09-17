@@ -1,0 +1,18 @@
+// expect: run
+// Rust's move/borrow matrix and Swift's `inout` rules, as one
+// grid: a `let` binding passed to a `sink `
+// parameter.
+
+fn takes(sink n: I32) -> I32 {
+    n
+}
+
+
+pub fn call() -> I32 {
+    let x: I32 = 7
+    takes(n: x)
+}
+
+pub fn run_checks() {
+    assert(condition: call() == 7)
+}

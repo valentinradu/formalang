@@ -1,0 +1,10 @@
+// expect: run
+pub mod a {
+    pub mod b {
+        pub fn deep() -> I32 { 7 }
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: a::b::deep() == 7)
+}

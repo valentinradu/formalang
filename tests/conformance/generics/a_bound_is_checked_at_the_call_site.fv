@@ -1,0 +1,28 @@
+// expect: reject GenericConstraintViolation
+// Rust: `T: Trait` is checked where `T` is chosen.
+
+pub trait Shape {
+    fn area(self) -> I32
+}
+
+pub struct Square {
+    side: I32
+}
+
+impl Shape for Square {
+    fn area(self) -> I32 {
+        self.side * self.side
+    }
+}
+
+pub struct NotAShape {
+    v: I32
+}
+
+pub fn area_of<T: Shape>(shape: T) -> I32 {
+    shape.area()
+}
+
+pub fn f() -> I32 {
+    area_of<NotAShape>(shape: NotAShape(v: 1))
+}

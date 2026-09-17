@@ -1,0 +1,7 @@
+// expect: reject SeqNotConsumed
+// A sequence is lazy: nothing runs until a terminal combinator
+// consumes it, so leaving one unconsumed is dead code.
+pub fn f(xs: [I32]) -> I32 {
+    for x in xs { x }
+    0
+}

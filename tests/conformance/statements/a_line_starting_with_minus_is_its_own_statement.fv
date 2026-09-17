@@ -1,0 +1,28 @@
+// expect: run
+// A newline ends a statement. The lexer used to discard newlines, so
+// the expression parser ran straight through one and a line beginning
+// with `-` was read as a continuation: `a` then `-1` computed `a - 1`
+// and the program silently returned 0.
+
+pub fn last_line_wins() -> I32 {
+    let a = 1
+    a
+    -1
+}
+
+pub fn parenthesised_line() -> I32 {
+    let a = 1
+    a
+    (2)
+}
+
+pub fn after_a_let() -> I32 {
+    let v: I32 = 0
+    -1
+}
+
+pub fn run_checks() {
+    assert(condition: last_line_wins() == -1)
+    assert(condition: parenthesised_line() == 2)
+    assert(condition: after_a_let() == -1)
+}

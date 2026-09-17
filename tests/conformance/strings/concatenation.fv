@@ -1,0 +1,8 @@
+// expect: run
+// `+` joins two strings.
+
+pub fn run_checks() {
+    assert(condition: "ab" + "cd" == "abcd")
+    assert(condition: "" + "x" == "x")
+    assert(condition: ("a" + "b").len() == 2)
+}

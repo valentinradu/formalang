@@ -1,0 +1,15 @@
+// expect: reject UnreachableMatchArm
+// `_` takes every remaining value, so nothing below it can run. This
+// compiled before, and `pick(e: E.a)` silently answered 0.
+
+pub enum E {
+    a,
+    b
+}
+
+pub fn pick(e: E) -> I32 {
+    match e {
+        _: 0,
+        .a: 1
+    }
+}

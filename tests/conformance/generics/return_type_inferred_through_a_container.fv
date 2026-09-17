@@ -1,0 +1,16 @@
+// expect: run
+// The argument's type is found inside a container, so the parameter
+// binds to the element type.
+
+pub fn first<T>(xs: [T]) -> T? {
+    xs[0]
+}
+
+pub fn run_checks() {
+    let got = first(xs: [4, 5, 6])
+    if let n = got {
+        assert(condition: n == 4)
+    } else {
+        assert(condition: false)
+    }
+}

@@ -1,5 +1,6 @@
 mod calls;
 mod fields;
+mod match_scope;
 mod mutability;
 
 use super::module_resolver::ModuleResolver;
@@ -125,10 +126,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Literal::Boolean(_) => SemType::Primitive(PrimitiveType::Boolean),
                 Literal::Nil => SemType::Nil,
             },
-            Expr::Array { elements, .. } => elements.first().map_or_else(
-                || SemType::array_of(SemType::Unknown),
-                |first| SemType::array_of(self.infer_type_sem(first, file)),
-            ),
+            Expr::Array { elements, .. } => {
+                // The element type is the join of every element's, not
+                // the first one's: `[1, nil]` is an array of `I32?`,
+                // and neither element names that type alone.
+                let element = elements
+                    .iter()
+                    .map(|e| self.infer_type_sem(e, file))
+                    .reduce(SemType::join)
+                    .unwrap_or(SemType::Unknown);
+                SemType::array_of(element)
+            }
             Expr::Tuple { fields, .. } => SemType::Tuple(
                 fields
                     .iter()
@@ -141,7 +149,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 args,
                 ..
             } => self.infer_type_invocation(path, type_args, args, file),
-            Expr::EnumInstantiation { enum_name, .. } => SemType::Named(enum_name.name.clone()),
+            Expr::EnumInstantiation {
+                enum_name,
+                variant,
+                data,
+                ..
+            } => self
+                .infer_enum_type_args(&enum_name.name, &variant.name, data, file)
+                .map_or_else(
+                    || SemType::Named(enum_name.name.clone()),
+                    |args| SemType::Generic {
+                        base: enum_name.name.clone(),
+                        args,
+                    },
+                ),
             Expr::InferredEnumInstantiation { .. } => SemType::InferredEnum,
             Expr::Reference { path, .. } => self.infer_type_reference(path, file),
             Expr::BinaryOp { left, op, .. } => self.infer_type_binary_op(left, *op, file),
@@ -174,7 +195,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } => {
                 let then_ty = self.infer_type_sem(then_branch, file);
                 else_branch.as_ref().map_or_else(
-                    || then_ty.clone(),
+                    // With no `else`, the expression produces nothing
+                    // when the condition is false, so it widens the
+                    // same way `T` and `nil` do. Taking the
+                    // then-branch's type instead let an `if` with no
+                    // `else` stand as the body of a function declared
+                    // to return that type: `fn f(n: I32) -> I32 { if
+                    // n > 0 { 1 } }` compiled, and answered nothing
+                    // for every `n` at or below zero.
+                    || SemType::widen_branches(&then_ty, &SemType::Nil),
                     |else_expr| {
                         let else_ty = self.infer_type_sem(else_expr, file);
                         SemType::widen_branches(&then_ty, &else_ty)
@@ -205,13 +234,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::Group { expr, .. } => self.infer_type_sem(expr, file),
             Expr::DictLiteral { entries, .. } => {
-                if let Some((first_key, first_value)) = entries.first() {
-                    let key = self.infer_type_sem(first_key, file);
-                    let value = self.infer_type_sem(first_value, file);
-                    SemType::dictionary(key, value)
-                } else {
-                    SemType::dictionary(SemType::Unknown, SemType::Unknown)
-                }
+                // Keys and values each join across the whole literal,
+                // for the same reason an array's elements do.
+                let key = entries
+                    .iter()
+                    .map(|(k, _)| self.infer_type_sem(k, file))
+                    .reduce(SemType::join)
+                    .unwrap_or(SemType::Unknown);
+                let value = entries
+                    .iter()
+                    .map(|(_, v)| self.infer_type_sem(v, file))
+                    .reduce(SemType::join)
+                    .unwrap_or(SemType::Unknown);
+                SemType::dictionary(key, value)
             }
             Expr::DictAccess { dict, .. } => {
                 // Both array indexing (`xs[i]`) and dictionary lookup

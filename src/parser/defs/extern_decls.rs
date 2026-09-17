@@ -6,6 +6,7 @@ use chumsky::prelude::*;
 use crate::ast::{ExternAbi, FnDef, FunctionDef, ImplDef};
 use crate::lexer::Token;
 
+use super::super::newlines;
 use super::super::{ident_parser, span_from_simple, types::type_parser, visibility_parser};
 use super::{
     fn_attributes_parser, fn_def_parser, fn_params_parser, fn_sig_parser, generic_params_parser,
@@ -106,8 +107,10 @@ where
         .then(generic_params_parser())
         .then(
             extern_impl_item
+                .padded_by(newlines())
                 .repeated()
                 .collect::<Vec<_>>()
+                .padded_by(newlines())
                 .delimited_by(just(Token::LBrace), just(Token::RBrace)),
         )
         .map_with(|(((trait_for_pair, name), generics), functions), e| {

@@ -1,0 +1,13 @@
+// expect: run
+pub fn f() -> I32 {
+    let x = 1
+    let inner = {
+        let x = 2
+        x
+    }
+    x * 10 + inner
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 12)
+}

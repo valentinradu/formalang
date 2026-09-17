@@ -221,3 +221,23 @@ Container<T: Layout>        // With trait constraint
 Widget<T: Render + Click>   // Multiple trait constraints
 Result<String, I32>         // Instantiated generic
 ```
+
+## Indexing
+
+Three types take an index: an array by position, a dictionary by key,
+and a string by byte offset. Nothing else does.
+
+```formalang
+let xs = [10, 20]
+let a = xs[1]            // I32? — the position may be out of range
+let d = ["k": 5]
+let b = d["k"]           // I32? — the key may be absent
+let c = "abc"[0]         // I32 — the byte at that offset
+
+let p = Point(x: 1)
+let e = p[0]             // error E139: a struct has no index operation
+```
+
+An array index and a dictionary lookup both produce an optional,
+because the position may be out of range and the key may be absent.
+See [Expressions / Indexing](expressions.md#indexing).

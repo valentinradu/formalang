@@ -1,0 +1,27 @@
+// expect: run
+// An array or dictionary literal takes its element type from the join
+// of its elements, not from the first one. `[1, nil]` is an array of
+// `I32?`, and neither element names that type alone.
+
+pub fn all_nil() -> [I32?] {
+    [nil]
+}
+
+pub fn value_then_nil() -> [I32?] {
+    [1, nil]
+}
+
+pub fn nil_then_value() -> [I32?] {
+    [nil, 1]
+}
+
+pub fn dictionary_value() -> [String: I32?] {
+    ["k": nil]
+}
+
+pub fn run_checks() {
+    assert(condition: all_nil().len() == 1)
+    assert(condition: value_then_nil().len() == 2)
+    assert(condition: nil_then_value().len() == 2)
+    assert(condition: dictionary_value().len() == 1)
+}

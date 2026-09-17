@@ -1,0 +1,16 @@
+// expect: run
+// An integer literal without a suffix is an I32. A float literal
+// without a suffix is an F64. A suffix picks the other width.
+
+pub fn run_checks() {
+    let a: I32 = 5
+    let b: I64 = 5I64
+    let c: F64 = 5.0
+    let d: F32 = 5.0F32
+    let e: I32 = -5
+    assert(condition: a == 5)
+    assert(condition: b == 5I64)
+    assert(condition: c == 5.0)
+    assert(condition: d == 5.0F32)
+    assert(condition: e == -5)
+}

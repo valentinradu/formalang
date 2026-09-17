@@ -1,0 +1,15 @@
+// expect: run
+// Returning nothing from an optional-returning function is the
+// point of optionals.
+pub fn nothing() -> I32? {
+    nil
+}
+
+pub fn something() -> I32? {
+    7
+}
+
+pub fn run_checks() {
+    assert(condition: nothing().is_none())
+    assert(condition: something().is_some())
+}

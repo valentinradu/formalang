@@ -1,0 +1,11 @@
+// expect: run
+pub fn run_checks() {
+    let d: [String: I32] = ["a": 1, "b": 2]
+    assert(condition: d["a"].is_some())
+    assert(condition: d["b"].is_some())
+    assert(condition: d[""].is_none())
+    assert(condition: d["c"].is_none())
+
+    let empty: [String: I32] = [:]
+    assert(condition: empty["a"].is_none())
+}

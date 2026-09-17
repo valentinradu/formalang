@@ -153,6 +153,26 @@ true || false && false   // true (AND before OR)
 user.age > 18 && user.verified  // Field access → comparison → AND
 ```
 
+### Operand Types
+
+Each operator group accepts a limited set of operands. There is no
+implicit conversion between types, so the two operands must have the
+same type.
+
+| Group | Operands |
+| --- | --- |
+| `+` | two numbers of one type, or two strings (concatenation) |
+| `-`, `*`, `/`, `%` | two numbers of one type |
+| `<`, `>`, `<=`, `>=` | two numbers of one type |
+| `==`, `!=` | two values of one type, if the type is equatable |
+| `&&`, `\|\|` | two booleans |
+| `..` | two integers (`I32` or `I64`) |
+
+Equality is structural: it compares each field of a struct and each
+element of a container. A closure has no structure to compare, so a
+closure is not equatable. Neither is a type that holds one — an array
+of closures, or a struct with a closure field.
+
 ## Indexing
 
 Both array indexing (`xs[i]`) and dictionary lookup (`d[k]`) return an
@@ -177,6 +197,9 @@ boundary so the optional is part of the public signature.
 The `..` operator produces a range from a start value (inclusive) to an end
 value (exclusive). It is the lowest-precedence binary operator, so its
 operands are evaluated before the range itself.
+
+A range counts in steps of one, so both bounds must be integers
+(`I32` or `I64`). To iterate floats, put them in an array.
 
 ```formalang
 // A simple range

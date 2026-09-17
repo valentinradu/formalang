@@ -1,0 +1,11 @@
+// expect: run
+// Float arithmetic, and mixed integer/float promotion.
+
+pub fn run_checks() {
+    assert(condition: 1.5 + 1.5 == 3.0)
+    assert(condition: 3.0 - 1.5 == 1.5)
+    assert(condition: 1.5 * 2.0 == 3.0)
+    assert(condition: 3.0 / 2.0 == 1.5)
+    assert(condition: 1.5 < 2.0)
+    assert(condition: 2.0 > 1.5)
+}

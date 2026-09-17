@@ -28,22 +28,36 @@ fn colour_enabled() -> bool {
 #[must_use]
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
     let with_colour = colour_enabled();
+
+    // `yansi`'s switch is process-global, and ariadne re-exports
+    // `yansi::Color`, so turning it off is the only way to stop the
+    // inline `Fmt::fg(...)` highlights inside label messages from
+    // emitting ANSI codes. Record what the caller had set and put it
+    // back afterwards: an embedder that disabled colour for its own
+    // output must not get it back because we rendered a diagnostic.
+    //
+    // This is still a global. Two threads rendering at once can see
+    // each other's setting, so an embedder that renders concurrently
+    // should set `NO_COLOR` once at startup rather than rely on the
+    // save and restore below.
+    let previously_enabled = yansi::is_enabled();
     if !with_colour {
-        // Disable yansi globally so inline `Fmt::fg(...)` highlights
-        // produce no ANSI codes. Restoring is best-effort: ariadne does
-        // not run multi-threaded internally, so toggling around the
-        // render call is safe; users who render concurrently should
-        // export `NO_COLOR` once at startup.
         yansi::disable();
     }
+
     let mut output = Vec::new();
     let report =
         build_error_report(error, filename).with_config(Config::default().with_color(with_colour));
     let render = report
         .finish()
         .write((filename, Source::from(source)), &mut output);
+
     if !with_colour {
-        yansi::enable();
+        if previously_enabled {
+            yansi::enable();
+        } else {
+            yansi::disable();
+        }
     }
     if let Err(write_error) = render {
         // Writing to a Vec<u8> buffer cannot fail for I/O reasons, so reaching this
@@ -138,6 +152,23 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::UnknownEnumVariant {
             variant, enum_name, ..
         } => errors::unknown_enum_variant(filename, span, variant, enum_name),
+        CompilerError::UnreachableMatchArm { .. } => {
+            errors_advanced::unreachable_match_arm(filename, span)
+        }
+        CompilerError::PrivateTypeInPublic {
+            type_name,
+            position,
+            ..
+        } => errors_advanced::private_type_in_public(filename, span, type_name, position),
+        CompilerError::NotIndexable { actual, .. } => {
+            errors_advanced::not_indexable(filename, span, actual)
+        }
+        CompilerError::ArgumentCountMismatch {
+            callee,
+            expected,
+            actual,
+            ..
+        } => errors_advanced::argument_count_mismatch(filename, span, callee, *expected, *actual),
         CompilerError::VariantArityMismatch {
             variant,
             expected,

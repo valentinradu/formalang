@@ -1,0 +1,12 @@
+// expect: run
+// `T??` is `T?`: the language has one level of absence, as Swift's
+// `Optional.flatMap` result does in practice.
+
+pub fn f() -> I32? {
+    let a: I32? = 1
+    a
+}
+
+pub fn run_checks() {
+    assert(condition: f().is_some())
+}

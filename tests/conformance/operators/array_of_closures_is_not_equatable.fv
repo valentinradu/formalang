@@ -1,0 +1,9 @@
+// expect: reject InvalidBinaryOp
+// Equality reaches every element, so a container of closures is
+// not equatable either.
+
+pub fn f() -> Boolean {
+    let a = [(n: I32) -> n]
+    let b = [(n: I32) -> n]
+    a != b
+}

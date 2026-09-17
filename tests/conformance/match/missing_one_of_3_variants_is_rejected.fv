@@ -1,0 +1,13 @@
+// expect: reject NonExhaustiveMatch
+pub enum E {
+    v0,
+    v1,
+    v2
+}
+
+pub fn pick(e: E) -> I32 {
+    match e {
+        .v0: 0,
+.v1: 1
+    }
+}

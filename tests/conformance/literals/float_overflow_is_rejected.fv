@@ -1,0 +1,7 @@
+// expect: reject InvalidNumber
+// A float literal that overflows F64 is refused rather than
+// becoming an infinity the IR cannot serialise.
+
+pub fn f() -> F64 {
+    1e400
+}

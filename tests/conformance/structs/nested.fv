@@ -1,0 +1,15 @@
+// expect: run
+pub struct Inner {
+    v: I32
+}
+
+pub struct Outer {
+    inner: Inner,
+    tag: String
+}
+
+pub fn run_checks() {
+    let o = Outer(inner: Inner(v: 7), tag: "t")
+    assert(condition: o.inner.v == 7)
+    assert(condition: o.tag == "t")
+}

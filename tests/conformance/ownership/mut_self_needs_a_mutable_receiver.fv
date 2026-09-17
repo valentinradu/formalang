@@ -1,0 +1,17 @@
+// expect: reject MutabilityMismatch
+// Swift's `mutating func` on a `let` value.
+
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn bump(mut self) -> I32 {
+        self.value + 1
+    }
+}
+
+pub fn f() -> I32 {
+    let c = Counter(value: 1)
+    c.bump()
+}

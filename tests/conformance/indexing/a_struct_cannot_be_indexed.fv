@@ -1,0 +1,10 @@
+// expect: reject NotIndexable
+pub struct Point {
+    x: I32
+}
+
+pub fn f() -> I32 {
+    let v = Point(x: 1)
+    let w = v[0]
+    0
+}

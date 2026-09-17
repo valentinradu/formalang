@@ -1,0 +1,8 @@
+// expect: reject InvalidBinaryOp
+// Two numbers of different widths do not add.
+
+pub fn f() -> I64 {
+    let a: I32 = 1
+    let b: I64 = 2I64
+    a + b
+}

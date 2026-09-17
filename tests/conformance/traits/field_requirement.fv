@@ -1,0 +1,16 @@
+// expect: run
+pub trait Named {
+    name: String
+}
+
+pub struct Widget {
+    name: String,
+    size: I32
+}
+
+impl Named for Widget {}
+
+pub fn run_checks() {
+    let w = Widget(name: "w", size: 1)
+    assert(condition: w.name == "w")
+}

@@ -20,10 +20,12 @@
 
 mod closures;
 mod control_flow;
+mod destructure;
 mod dispatch;
 mod helpers;
 mod literals_and_containers;
 mod operators;
+mod type_params;
 
 use super::IrLowerer;
 use crate::ast::Expr;

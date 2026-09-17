@@ -1,0 +1,7 @@
+// expect: reject InvalidBinaryOp
+// A range counts in steps of one, so a float bound has no meaning.
+
+pub fn f() -> I32 {
+    let r = 0.0 .. 3.0
+    0
+}

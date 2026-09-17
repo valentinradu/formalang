@@ -49,6 +49,7 @@ use crate::ir::{GenericBase, IrModule, ResolvedType, StructId};
 use crate::location::Span;
 use crate::pipeline::IrPass;
 
+mod call_ids;
 mod collect;
 mod compact;
 mod expr_walk;
@@ -59,6 +60,7 @@ mod rewrite;
 pub(in crate::ir) mod specialise;
 pub(super) mod walkers;
 
+use call_ids::resync_call_ids;
 use collect::collect_all_instantiations;
 use compact::{
     apply_impl_index_remap, apply_remaps, build_enum_remap, build_struct_remap, build_trait_remap,
@@ -161,7 +163,11 @@ impl IrPass for MonomorphisePass {
             // Phase 1c: inline imported impl blocks whose target type
             // is now in the local module. Method signatures and bodies
             // have their types externalised the same way as functions.
-            inline_imported_impls(&mut module, &self.imported_modules, &mut impl_clone_remap);
+            if let Err(mut e) =
+                inline_imported_impls(&mut module, &self.imported_modules, &mut impl_clone_remap)
+            {
+                errors.append(&mut e);
+            }
             // Phase 1d: inline imported pub `let`s under qualified
             // names. Initialiser expressions have their types
             // externalised the same way as function bodies.
@@ -406,6 +412,11 @@ impl IrPass for MonomorphisePass {
         // way they have no surviving callers and are dropped here.
         module.functions.retain(|f| f.generic_params.is_empty());
         module.rebuild_indices();
+
+        // Phase 3b: a call's `function_id` has to agree with its path.
+        // Specialisation rewrote the paths and compaction renumbered
+        // the functions; neither touched the ids.
+        resync_call_ids(&mut module);
 
         // Phase 4: sanity — no Generic should remain anywhere.
         let mut leftovers = LeftoverScanner::default();

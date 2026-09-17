@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+pub enum E {
+    one(v: I32, v: I32)
+}

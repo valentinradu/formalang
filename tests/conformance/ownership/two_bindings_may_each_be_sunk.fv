@@ -1,0 +1,16 @@
+// expect: run
+// Moving is per binding, not per type.
+
+fn consume(sink s: String) -> I32 {
+    s.len()
+}
+
+pub fn f() -> I32 {
+    let a: String = "alpha"
+    let b: String = "bravo"
+    consume(s: a) + consume(s: b)
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 10)
+}

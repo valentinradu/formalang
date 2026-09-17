@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    let d: [I32: String] = [1: "one", 2: "two"]
+    assert(condition: d.len() == 2)
+    assert(condition: d[1].is_some())
+    assert(condition: d[9].is_none())
+}

@@ -60,8 +60,37 @@ impl Collector {
     }
 }
 
+impl Collector {
+    /// Record a shape that has a call site but may have no values.
+    fn record_shape(&mut self, closure_ty: &ResolvedType) {
+        if !self.shapes.iter().any(|s| s.closure_ty == *closure_ty) {
+            self.shapes.push(Shape {
+                closure_ty: closure_ty.clone(),
+                targets: Vec::new(),
+            });
+        }
+    }
+}
+
 impl IrVisitor for Collector {
     fn visit_expr(&mut self, expr: &IrExpr) {
+        // A call site names a shape too, and the shape needs its enum
+        // and its dispatcher whether or not this module holds a value
+        // of it. A function declared `fn apply(f: (I32) -> I32)` that
+        // nothing calls yet has a `CallClosure` in its body and no
+        // `ClosureRef` anywhere, so collecting only from values left
+        // that call with nothing to dispatch through — and the pass
+        // then failed its own post-condition with "indirect call
+        // remains".
+        //
+        // The enum such a shape gets has no variants. Nothing can
+        // construct one, so the call is unreachable, which is the
+        // right answer for a callback nobody supplies.
+        if let IrExpr::CallClosure { closure, .. } = expr {
+            if let ResolvedType::Closure { .. } = closure.ty() {
+                self.record_shape(closure.ty());
+            }
+        }
         if let IrExpr::ClosureRef {
             funcref,
             env_struct,

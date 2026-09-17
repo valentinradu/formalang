@@ -2,6 +2,7 @@
 //! chains, and the `self` / `self.field` shortcut inside impl blocks.
 
 use super::super::super::module_resolver::ModuleResolver;
+use super::super::super::sem_type::SemType;
 use super::super::super::SemanticAnalyzer;
 use crate::ast::File;
 use crate::error::CompilerError;
@@ -113,43 +114,96 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Root must be something we can infer a type for. Both module-level
             // lets and local bindings carry a structural `SemType`; render with
             // `display()` so the chain validator sees a uniform name shape.
-            let root_type_string = if let Some(ty) = self.symbols.get_let_type(&first.name) {
-                ty.display()
+            let root_type = if let Some(ty) = self.symbols.get_let_type(&first.name) {
+                ty.clone()
             } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
-                ty.display()
+                ty.clone()
             } else {
                 return;
             };
             if let Some(rest) = path.get(1..) {
-                self.validate_field_chain(&root_type_string, rest, span);
+                self.validate_field_chain(&root_type, rest, span);
             }
         }
     }
 
     /// Walk a chain of field accesses starting from `root_type`, emitting
     /// `UnknownField` at the first segment that does not name a field of
-    /// the current struct type. Bails silently if the type cannot be
+    /// the current type. Bails silently if the type cannot be
     /// resolved — type inference is best-effort and we don't want to
     /// drown the user in spurious errors when inference itself is
     /// unreliable.
-    fn validate_field_chain(&mut self, root_type: &str, rest: &[crate::ast::Ident], span: Span) {
-        let mut current = root_type.trim_end_matches('?').to_string();
+    ///
+    /// A tuple names its fields the way a struct does, so it takes the
+    /// same walk. Without it the chain stopped at the tuple and the IR
+    /// lowering pass reported the missing field as an internal error,
+    /// which told the user to file a bug for a typo in their own
+    /// program.
+    fn validate_field_chain(
+        &mut self,
+        root_type: &SemType,
+        rest: &[crate::ast::Ident],
+        span: Span,
+    ) {
+        let mut current = root_type.clone();
         for seg in rest {
-            let Some(struct_info) = self.symbols.get_struct(&current) else {
-                return;
+            // An optional is unwrapped elsewhere; here it only stands
+            // between the walk and the fields underneath.
+            if let SemType::Optional(inner) = current {
+                current = *inner;
+            }
+
+            let next = match &current {
+                SemType::Tuple(fields) => fields
+                    .iter()
+                    .find(|(name, _)| name == &seg.name)
+                    .map(|(_, ty)| ty.clone()),
+                SemType::Primitive(_) | SemType::Closure { .. } | SemType::Nil => {
+                    // A number, a boolean or a closure carries no
+                    // fields, so this link is wrong however it is
+                    // spelled. Reported here rather than left to IR
+                    // lowering, which called it an internal error.
+                    None
+                }
+                SemType::Named(_)
+                | SemType::Array(_)
+                | SemType::Optional(_)
+                | SemType::Generic { .. }
+                | SemType::Dictionary { .. }
+                | SemType::Unknown
+                | SemType::InferredEnum => {
+                    let owner = Self::field_owner_name(&current);
+                    let Some(struct_info) = self.symbols.get_struct(&owner) else {
+                        // An enum value carries no fields: a payload
+                        // is read by a `match` arm. Any other
+                        // unresolved name may be an import, so the
+                        // walk leaves it alone.
+                        if self.symbols.get_enum_qualified(&owner).is_some() {
+                            self.errors.push(CompilerError::UnknownField {
+                                field: seg.name.clone(),
+                                type_name: owner,
+                                span,
+                            });
+                        }
+                        return;
+                    };
+                    struct_info
+                        .fields
+                        .iter()
+                        .find(|f| f.name == seg.name)
+                        .map(|f| SemType::from_ast(&f.ty))
+                }
             };
-            if let Some(field) = struct_info.fields.iter().find(|f| f.name == seg.name) {
-                current = Self::type_to_string(&field.ty)
-                    .trim_end_matches('?')
-                    .to_string();
-            } else {
+
+            let Some(next) = next else {
                 self.errors.push(CompilerError::UnknownField {
                     field: seg.name.clone(),
-                    type_name: current.clone(),
+                    type_name: current.display(),
                     span,
                 });
                 return;
-            }
+            };
+            current = next;
         }
     }
 }

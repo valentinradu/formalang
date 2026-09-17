@@ -1,0 +1,9 @@
+// expect: run
+// Escape sequences decode to one character each.
+
+pub fn run_checks() {
+    assert(condition: "\n".len() == 1)
+    assert(condition: "\t".len() == 1)
+    assert(condition: "a\"b".len() == 3)
+    assert(condition: "a\\b".len() == 3)
+}

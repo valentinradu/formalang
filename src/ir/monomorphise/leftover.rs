@@ -44,11 +44,18 @@ impl LeftoverScanner {
 
         let is_prelude_builtin =
             |name: &str| super::compact::is_prelude_struct_name(name) || name == "Optional";
-        let mut check = |ty: &ResolvedType| {
+
+        // Each survivor is reported with the definition it sits in.
+        // Without that the report is a bare "unresolved TypeParam(`T`)"
+        // against a zero span, which says some pass left work undone
+        // but not which definition to look at.
+        let mut found: Vec<String> = Vec::new();
+        let note_at = |found: &mut Vec<String>, ty: &ResolvedType, place: &str| {
             if let Some(sample) = first_leftover(ty, module) {
-                self.note(sample);
+                found.push(format!("{sample} in {place}"));
             }
         };
+
         // Walk every type slot in the module *except* the bodies of the
         // prelude built-ins themselves and their extern impl blocks.
         // Their fields, variants, and method signatures legitimately
@@ -60,9 +67,10 @@ impl LeftoverScanner {
                 continue;
             }
             for field in &s.fields {
-                check(&field.ty);
+                let place = format!("field `{}` of struct `{}`", field.name, s.name);
+                note_at(&mut found, &field.ty, &place);
                 if let Some(d) = &field.default {
-                    walk_expr_types(d, &mut check);
+                    walk_expr_types(d, &mut |ty| note_at(&mut found, ty, &place));
                 }
             }
         }
@@ -72,31 +80,34 @@ impl LeftoverScanner {
             }
             for v in &e.variants {
                 for f in &v.fields {
-                    check(&f.ty);
+                    let place = format!("field `{}` of variant `{}.{}`", f.name, e.name, v.name);
+                    note_at(&mut found, &f.ty, &place);
                     if let Some(d) = &f.default {
-                        walk_expr_types(d, &mut check);
+                        walk_expr_types(d, &mut |ty| note_at(&mut found, ty, &place));
                     }
                 }
             }
         }
         for t in &module.traits {
             for f in &t.fields {
-                check(&f.ty);
+                let place = format!("field `{}` of trait `{}`", f.name, t.name);
+                note_at(&mut found, &f.ty, &place);
                 if let Some(d) = &f.default {
-                    walk_expr_types(d, &mut check);
+                    walk_expr_types(d, &mut |ty| note_at(&mut found, ty, &place));
                 }
             }
             for sig in &t.methods {
+                let place = format!("method `{}` of trait `{}`", sig.name, t.name);
                 for p in &sig.params {
                     if let Some(ty) = &p.ty {
-                        check(ty);
+                        note_at(&mut found, ty, &place);
                     }
                     if let Some(d) = &p.default {
-                        walk_expr_types(d, &mut check);
+                        walk_expr_types(d, &mut |ty| note_at(&mut found, ty, &place));
                     }
                 }
                 if let Some(ty) = &sig.return_type {
-                    check(ty);
+                    note_at(&mut found, ty, &place);
                 }
             }
         }
@@ -114,15 +125,22 @@ impl LeftoverScanner {
                 continue;
             }
             for f in &imp.functions {
-                walk_function_types(f, &mut check);
+                let place = format!("method `{}` of an impl block", f.name);
+                walk_function_types(f, &mut |ty| note_at(&mut found, ty, &place));
             }
         }
         for f in &module.functions {
-            walk_function_types(f, &mut check);
+            let place = format!("function `{}`", f.name);
+            walk_function_types(f, &mut |ty| note_at(&mut found, ty, &place));
         }
         for l in &module.lets {
-            check(&l.ty);
-            walk_expr_types(&l.value, &mut check);
+            let place = format!("let `{}`", l.name);
+            note_at(&mut found, &l.ty, &place);
+            walk_expr_types(&l.value, &mut |ty| note_at(&mut found, ty, &place));
+        }
+
+        for detail in found {
+            self.note(detail);
         }
 
         // Tier-1 item E2: any `DispatchKind::Virtual` whose receiver

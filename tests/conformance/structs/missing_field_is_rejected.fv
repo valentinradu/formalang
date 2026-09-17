@@ -1,0 +1,9 @@
+// expect: reject MissingField
+pub struct Point {
+    x: I32,
+    y: I32
+}
+
+pub fn f() -> Point {
+    Point(x: 1)
+}

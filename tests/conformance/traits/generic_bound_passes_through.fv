@@ -1,0 +1,27 @@
+// expect: run
+// One bounded function passes its value to another with the same
+// bound. The parameter carries its own constraint.
+
+pub trait Shape {
+    fn area(self) -> I32
+}
+
+pub struct Square {
+    side: I32
+}
+
+impl Shape for Square {
+    fn area(self) -> I32 { self.side * self.side }
+}
+
+pub fn inner<T: Shape>(item: T) -> I32 {
+    item.area()
+}
+
+pub fn outer<U: Shape>(item: U) -> I32 {
+    inner(item: item)
+}
+
+pub fn run_checks() {
+    assert(condition: outer(item: Square(side: 4)) == 16)
+}

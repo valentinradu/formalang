@@ -1,0 +1,18 @@
+// expect: run
+pub enum E {
+    a,
+    b,
+    c
+}
+
+pub fn pick(e: E) -> I32 {
+    match e {
+        .a: 1,
+        _: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(e: E.a) == 1)
+    assert(condition: pick(e: E.c) == 0)
+}

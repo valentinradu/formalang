@@ -1,0 +1,13 @@
+// expect: reject InvalidBinaryOp
+// Equality reaches every field, so a struct that holds a closure is
+// not equatable.
+
+struct Holder {
+    f: (I32) -> I32
+}
+
+pub fn g() -> Boolean {
+    let a = Holder(f: (n: I32) -> n)
+    let b = Holder(f: (n: I32) -> n)
+    a == b
+}

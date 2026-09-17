@@ -1,0 +1,16 @@
+// expect: run
+// Monomorphisation renames the call's path to the specialised
+// function. Its `function_id` has to follow: it used to keep pointing
+// at whatever now sat at the old index, which for this program was
+// `probe` itself — so a backend dispatching on the id emitted a
+// function that called itself forever.
+
+fn identity<T>(item: T) -> T {
+    item
+}
+
+pub fn run_checks() {
+    assert(condition: identity(item: 7) == 7)
+    assert(condition: identity(item: 7) + identity(item: 1) == 8)
+    assert(condition: identity(item: "x") == "x")
+}

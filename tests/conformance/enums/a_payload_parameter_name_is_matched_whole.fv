@@ -1,0 +1,12 @@
+// expect: reject TypeMismatch
+// The same substring test guarded the enum payload check.
+
+pub enum Wrap<S> {
+    one(inner: String),
+    two(v: S)
+}
+
+pub fn f() -> I32 {
+    let w = Wrap.one(inner: 42)
+    0
+}

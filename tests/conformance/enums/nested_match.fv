@@ -1,0 +1,26 @@
+// expect: run
+pub enum Outer {
+    one(v: I32),
+    two
+}
+
+pub enum Inner {
+    yes,
+    no
+}
+
+pub fn combine(o: Outer, i: Inner) -> I32 {
+    match o {
+        .one(v): match i {
+            .yes: v * 2,
+            .no: v
+        },
+        .two: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: combine(o: Outer.one(v: 5), i: Inner.yes) == 10)
+    assert(condition: combine(o: Outer.one(v: 5), i: Inner.no) == 5)
+    assert(condition: combine(o: Outer.two, i: Inner.yes) == 0)
+}

@@ -123,15 +123,23 @@ impl IrLowerer<'_> {
         // via `expected_value_type` so the inner array can peel and
         // continue down to the closure.
         let saved_expected = self.expected_value_type.take();
-        let value_expected: Option<ResolvedType> = saved_expected
+        let kv_expected = saved_expected
             .as_ref()
-            .and_then(|t| self.dictionary_kv_ty(t))
-            .map(|(_, v)| v);
+            .and_then(|t| self.dictionary_kv_ty(t));
+        // The key needs the expected type as much as the value does: a
+        // `.variant` key has no enum to resolve against without it, and
+        // lowering it blind produced a `ResolvedType::Error` that
+        // reached the monomorphise pass as an internal error. So
+        // `let m: [Status: I32] = [.pending: 1]` told the user to file
+        // a bug for a correct program.
+        let key_expected = kv_expected.as_ref().map(|(k, _)| k.clone());
+        let value_expected = kv_expected.map(|(_, v)| v);
         let lowered_entries: Vec<(IrExpr, IrExpr)> = entries
             .iter()
             .map(|(k, v)| {
+                let lowered_k = self.lower_with_expected_value(k, key_expected.as_ref());
                 let lowered_v = self.lower_with_expected_value(v, value_expected.as_ref());
-                (self.lower_expr(k), lowered_v)
+                (lowered_k, lowered_v)
             })
             .collect();
         // Empty dict literal: both type args are `Never`. The
@@ -160,8 +168,13 @@ impl IrLowerer<'_> {
         key: &Expr,
     ) -> IrExpr {
         let dict_ir = self.lower_expr(dict);
-        let key_ir = self.lower_expr(key);
         let receiver_ty = dict_ir.ty().clone();
+        // The key is looked up in this dictionary, so the dictionary's
+        // key type is what the key expression must produce. Reading
+        // `m[.pending]` without it left the `.variant` with no enum to
+        // resolve against, the same way writing `[.pending: 1]` did.
+        let key_expected = self.dictionary_kv_ty(&receiver_ty).map(|(k, _)| k);
+        let key_ir = self.lower_with_expected_value(key, key_expected.as_ref());
 
         // SB-5: `s[i]` on a String receiver desugars to a method call
         // on the prelude's `extern impl String { fn byte_at(self, i: I32) -> I32 }`.

@@ -1,0 +1,5 @@
+// expect: reject FunctionReturnTypeMismatch
+pub fn f() -> String {
+    let t = (a: 1, b: 2)
+    t.a
+}

@@ -357,6 +357,13 @@ fn walk_dispatch(
         ..
     } = expr
     {
+        // `TraitId(u32::MAX)` is the sentinel lowering writes when it
+        // could not resolve a dispatch, which happens only after it has
+        // already reported why. Reporting it again here blames the
+        // compiler for a mistake the user was told about one pass ago.
+        if trait_id.0 == u32::MAX {
+            return;
+        }
         match trait_remap.get(trait_id.0 as usize).copied() {
             Some(Some(new)) => *trait_id = new,
             Some(None) => errors.push(CompilerError::InternalError {

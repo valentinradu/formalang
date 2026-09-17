@@ -1,0 +1,15 @@
+// expect: run
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    let a = Box<I32>(value: 42)
+    assert(condition: a.value == 42)
+    let b = Box(value: 1.5)
+    assert(condition: b.value == 1.5)
+    let c = Box(value: true)
+    assert(condition: c.value)
+    let d = Box(value: "s")
+    assert(condition: d.value == "s")
+}

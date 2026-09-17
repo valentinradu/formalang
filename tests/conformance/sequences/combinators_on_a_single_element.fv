@@ -1,0 +1,12 @@
+// expect: run
+pub fn run_checks() {
+    let xs: [I32] = [5]
+    assert(condition: for x in xs { x }.count() == 1)
+    assert(condition: for x in xs { x }.first().is_some())
+    assert(condition: for x in xs { x }.fold(initial: 0, f: (a, b) -> a + b) == 5)
+    assert(condition: for x in xs { x }.take(count: 0).count() == 0)
+    assert(condition: for x in xs { x }.take(count: 1).count() == 1)
+    assert(condition: for x in xs { x }.skip(count: 1).count() == 0)
+    assert(condition: for x in xs { x }.all(f: (v) -> v == 5))
+    assert(condition: for x in xs { x }.any(f: (v) -> v == 5))
+}

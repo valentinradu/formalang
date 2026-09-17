@@ -1,0 +1,9 @@
+// expect: run
+fn takes(p: String?) -> Boolean {
+    p.is_none()
+}
+
+pub fn run_checks() {
+    assert(condition: takes(p: nil))
+    assert(condition: !takes(p: "x"))
+}

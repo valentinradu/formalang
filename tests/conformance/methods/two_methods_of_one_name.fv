@@ -1,0 +1,19 @@
+// expect: reject DuplicateDefinition
+// A type may not declare two methods of one name. The IR names a
+// method call by its name and hardcodes its index, so it cannot tell
+// two apart: before this rule the second method was accepted at the
+// declaration and then silently never called, whatever the call site
+// asked for.
+//
+// A free function does overload by argument count, because a call to
+// one carries a resolved `function_id`. See
+// `passes/overloads_survive_the_pipeline.fv`.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, n: I32) -> I32 { self.x + n }
+    fn add(self, n: I32, m: I32) -> I32 { self.x + n + m }
+}

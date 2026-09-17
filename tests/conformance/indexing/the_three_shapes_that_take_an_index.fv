@@ -1,0 +1,18 @@
+// expect: run
+// An array by position, a dictionary by key, a string by byte.
+
+pub fn run_checks() {
+    let a = [10, 20]
+    if let n = a[1] {
+        assert(condition: n == 20)
+    } else {
+        assert(condition: false)
+    }
+    let d = ["k": 5]
+    if let n = d["k"] {
+        assert(condition: n == 5)
+    } else {
+        assert(condition: false)
+    }
+    assert(condition: "abc"[0] == 97)
+}

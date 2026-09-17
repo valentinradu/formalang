@@ -1,0 +1,9 @@
+// expect: run
+pub fn run_checks() {
+    let v = {
+        let a = 1
+        let b = 2
+        a + b
+    }
+    assert(condition: v == 3)
+}

@@ -1,0 +1,6 @@
+// expect: reject NotATrait
+pub struct A {
+    a: I32
+}
+
+pub trait Composed: A {}

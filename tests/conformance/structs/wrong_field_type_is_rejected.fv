@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+pub struct Point {
+    x: I32
+}
+
+pub fn f() -> Point {
+    Point(x: "one")
+}

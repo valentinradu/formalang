@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+pub fn f() -> [I32] {
+    [1, "two"]
+}

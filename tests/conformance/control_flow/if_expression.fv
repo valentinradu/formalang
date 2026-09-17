@@ -1,0 +1,9 @@
+// expect: run
+pub fn pick(c: Boolean) -> I32 {
+    if c { 1 } else { 2 }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(c: true) == 1)
+    assert(condition: pick(c: false) == 2)
+}

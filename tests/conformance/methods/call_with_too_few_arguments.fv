@@ -1,0 +1,14 @@
+// expect: reject ArgumentCountMismatch
+// A method call gives one argument for each parameter.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, n: I32) -> I32 { self.x + n }
+}
+
+pub fn f() -> I32 {
+    P(x: 1).add()
+}

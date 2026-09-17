@@ -1,0 +1,22 @@
+// expect: run
+pub enum Status {
+    a,
+    b,
+    c,
+    d
+}
+
+pub fn pick(s: Status) -> I32 {
+    match s {
+        .a: 1,
+        .b: 2,
+        _: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(s: Status.a) == 1)
+    assert(condition: pick(s: Status.b) == 2)
+    assert(condition: pick(s: Status.c) == 0)
+    assert(condition: pick(s: Status.d) == 0)
+}

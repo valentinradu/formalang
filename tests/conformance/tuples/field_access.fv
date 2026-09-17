@@ -1,0 +1,8 @@
+// expect: run
+pub fn run_checks() {
+    let t = (a: 1, b: 2)
+    assert(condition: t.a == 1)
+    assert(condition: t.b == 2)
+    let u: (a: I32, b: I32) = (a: 3, b: 4)
+    assert(condition: u.b == 4)
+}

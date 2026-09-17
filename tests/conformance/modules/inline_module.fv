@@ -1,0 +1,17 @@
+// expect: run
+pub mod geometry {
+    pub struct Point {
+        x: I32,
+        y: I32
+    }
+}
+
+pub fn origin() -> geometry::Point {
+    geometry::Point(x: 0, y: 0)
+}
+
+pub fn run_checks() {
+    let p = origin()
+    assert(condition: p.x == 0)
+    assert(condition: p.y == 0)
+}

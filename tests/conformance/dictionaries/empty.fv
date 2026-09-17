@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    let d: [String: I32] = [:]
+    assert(condition: d.is_empty())
+    assert(condition: d.len() == 0)
+    assert(condition: d["a"].is_none())
+}

@@ -1,0 +1,12 @@
+// expect: run
+pub fn run_checks() {
+    let s: String = "abc"
+    assert(condition: s.starts_with(prefix: ""))
+    assert(condition: s.starts_with(prefix: "a"))
+    assert(condition: s.starts_with(prefix: "abc"))
+    assert(condition: !s.starts_with(prefix: "abcd"))
+    assert(condition: s.contains(needle: ""))
+    assert(condition: s.contains(needle: "b"))
+    assert(condition: s.contains(needle: "abc"))
+    assert(condition: !s.contains(needle: "abcd"))
+}

@@ -1,0 +1,16 @@
+// expect: run
+// Indexing answers `T?`, so every out-of-range index is `nil`
+// rather than a fault — the property Swift's `Array` subscript
+// tests pin.
+
+pub fn run_checks() {
+    let xs: [I32] = [10, 20, 30]
+    assert(condition: xs[0].is_some())
+    assert(condition: xs[1].is_some())
+    assert(condition: xs[2].is_some())
+    assert(condition: xs[3].is_none())
+    assert(condition: xs[100].is_none())
+
+    let empty: [I32] = []
+    assert(condition: empty[0].is_none())
+}

@@ -1,0 +1,11 @@
+// expect: run
+// The implicit wrap: `T` where `T?` is declared.
+
+fn takes(v: I32?) -> Boolean {
+    v.is_some()
+}
+
+pub fn run_checks() {
+    assert(condition: takes(v: 1))
+    assert(condition: !takes(v: nil))
+}

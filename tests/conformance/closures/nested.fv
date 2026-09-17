@@ -1,0 +1,12 @@
+// expect: run
+pub fn f(base: I32) -> I32 {
+    let outer = (a: I32) -> {
+        let inner = (b: I32) -> b + base
+        inner(a)
+    }
+    outer(1)
+}
+
+pub fn run_checks() {
+    assert(condition: f(base: 41) == 42)
+}

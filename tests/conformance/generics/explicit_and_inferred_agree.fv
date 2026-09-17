@@ -1,0 +1,13 @@
+// expect: run
+// TypeScript: an explicit type argument and an inferred one must
+// name the same instantiation.
+
+pub struct Box<T> {
+    value: T
+}
+
+pub fn run_checks() {
+    let explicit = Box<I32>(value: 7)
+    let inferred = Box(value: 7)
+    assert(condition: explicit.value == inferred.value)
+}

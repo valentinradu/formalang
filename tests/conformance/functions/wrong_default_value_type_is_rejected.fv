@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+fn takes(n: I32 = "text") -> I32 {
+    n
+}

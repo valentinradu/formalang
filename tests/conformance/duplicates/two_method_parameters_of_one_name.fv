@@ -1,0 +1,8 @@
+// expect: reject DuplicateDefinition
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn add(self, n: I32, n: I32) -> I32 { self.x }
+}

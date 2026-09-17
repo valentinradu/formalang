@@ -1,0 +1,10 @@
+// expect: reject VisibilityViolation
+pub mod inner {
+    struct P {
+        x: I32
+    }
+}
+
+pub fn f() -> I32 {
+    inner::P(x: 1).x
+}

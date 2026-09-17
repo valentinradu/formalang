@@ -1,0 +1,11 @@
+// expect: run
+// Digit separators and scientific notation name the same values as
+// the plain spellings.
+
+pub fn run_checks() {
+    assert(condition: 1_000 == 1000)
+    assert(condition: 1_000_000 == 1000000)
+    assert(condition: 1e3 == 1000.0)
+    assert(condition: 1.5e2 == 150.0)
+    assert(condition: 1.5e-1 == 0.15)
+}

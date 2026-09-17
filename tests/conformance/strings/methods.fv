@@ -1,0 +1,15 @@
+// expect: run
+// Every method the prelude declares on String.
+
+pub fn run_checks() {
+    let s: String = "hello"
+    assert(condition: s.len() == 5)
+    assert(condition: !s.is_empty())
+    assert(condition: s.slice(start: 0, end: 2) == "he")
+    assert(condition: s.slice(start: 1, end: 4) == "ell")
+    assert(condition: s.starts_with(prefix: "he"))
+    assert(condition: !s.starts_with(prefix: "lo"))
+    assert(condition: s.contains(needle: "ell"))
+    assert(condition: !s.contains(needle: "xyz"))
+    assert(condition: s.byte_at(i: 0) == 104)
+}

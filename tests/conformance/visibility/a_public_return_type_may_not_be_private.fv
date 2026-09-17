@@ -1,0 +1,11 @@
+// expect: reject PrivateTypeInPublic
+// A caller in another module could call this, but could not name the
+// type of the result.
+
+struct Hidden {
+    x: I32
+}
+
+pub fn f() -> Hidden {
+    Hidden(x: 1)
+}

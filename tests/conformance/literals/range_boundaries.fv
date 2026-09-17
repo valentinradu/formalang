@@ -1,0 +1,11 @@
+// expect: run
+// A range is half-open, as in Rust and Python.
+
+pub fn run_checks() {
+    assert(condition: for i in 0..0 { i }.count() == 0)
+    assert(condition: for i in 0..1 { i }.count() == 1)
+    assert(condition: for i in 0..3 { i }.count() == 3)
+    assert(condition: for i in 3..3 { i }.count() == 0)
+    assert(condition: for i in 3..0 { i }.count() == 0)
+    assert(condition: for i in 0..3 { i }.fold(initial: 0, f: (a, b) -> a + b) == 3)
+}

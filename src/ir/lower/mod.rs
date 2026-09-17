@@ -257,6 +257,89 @@ impl<'a> IrLowerer<'a> {
         self.module.function_id(name)
     }
 
+    /// The id of the overload of `name` that the call's argument
+    /// labels select.
+    ///
+    /// `IrModule.function_names` maps a name to one id, so a later
+    /// overload overwrites an earlier one and every call to an
+    /// overloaded name lowered to whichever was registered last. The
+    /// semantic analyser resolved the overloads correctly, so the
+    /// program compiled — and then a backend emitted a call to the
+    /// wrong function. `format(value: x)` and
+    /// `format(value: x, precision: p)` both became a call to the
+    /// one-argument `format`.
+    ///
+    /// Selection mirrors the analyser: an overload is a candidate when
+    /// it can take every label the call supplies and the call supplies
+    /// every parameter it has no default for. Among candidates the one
+    /// firing the fewest defaults wins; a tie keeps the first, which is
+    /// the ambiguous case the analyser has already reported.
+    pub(super) fn find_overload_in_scope(
+        &self,
+        name: &str,
+        arg_labels: &[Option<String>],
+        arg_count: usize,
+    ) -> Option<crate::ir::FunctionId> {
+        let qualified = if self.current_module_prefix.is_empty() {
+            None
+        } else {
+            Some(format!("{}::{}", self.current_module_prefix, name))
+        };
+
+        let mut candidates: Vec<(crate::ir::FunctionId, &crate::ir::IrFunction)> = self
+            .module
+            .functions
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| qualified.as_deref() == Some(f.name.as_str()) || f.name == name)
+            .filter_map(|(i, f)| u32::try_from(i).ok().map(|i| (crate::ir::FunctionId(i), f)))
+            .collect();
+
+        // A call inside `mod math` means `math::add` when that exists,
+        // whatever a top-level `add` says. Narrowing here keeps that
+        // lexical rule ahead of the label matching below.
+        if let Some(prefixed) = qualified.as_deref() {
+            if candidates.iter().any(|(_, f)| f.name == prefixed) {
+                candidates.retain(|(_, f)| f.name == prefixed);
+            }
+        }
+
+        if candidates.len() <= 1 {
+            return candidates
+                .first()
+                .map(|(id, _)| *id)
+                .or_else(|| self.find_function_in_scope(name));
+        }
+
+        let mut best: Option<(usize, crate::ir::FunctionId)> = None;
+        for (id, f) in candidates {
+            let params: Vec<_> = f.params.iter().filter(|p| p.name != "self").collect();
+
+            // Every label the call gives must name a parameter.
+            let labels_fit = arg_labels.iter().flatten().all(|label| {
+                params
+                    .iter()
+                    .any(|p| p.name == *label || p.external_label.as_ref() == Some(label))
+            });
+            if !labels_fit {
+                continue;
+            }
+
+            let required = params.iter().filter(|p| p.default.is_none()).count();
+            if arg_count < required || arg_count > params.len() {
+                continue;
+            }
+
+            let defaults_fired = params.len().saturating_sub(arg_count);
+            if best.is_none_or(|(fewest, _)| defaults_fired < fewest) {
+                best = Some((defaults_fired, id));
+            }
+        }
+
+        best.map(|(_, id)| id)
+            .or_else(|| self.find_function_in_scope(name))
+    }
+
     /// Look up a local binding's resolved type by name from the innermost
     /// scope outwards.
     pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {
@@ -315,8 +398,13 @@ impl<'a> IrLowerer<'a> {
             }
         }
 
-        // Finalize imports: convert the map to a vec of IrImport
-        self.module.imports = self
+        // Finalize imports: convert the map to a vec of IrImport.
+        //
+        // Sorted by module path. Draining the `HashMap` directly put
+        // the imports — and, through them, the `file_table` and the
+        // order the monomorphiser inlines in — in hash order, so two
+        // builds of one program produced different IR.
+        let mut imports: Vec<IrImport> = self
             .imports_by_module
             .drain()
             .map(|(module_path, (items, source_file))| IrImport {
@@ -325,6 +413,8 @@ impl<'a> IrLowerer<'a> {
                 source_file,
             })
             .collect();
+        imports.sort_by(|a, b| a.module_path.cmp(&b.module_path));
+        self.module.imports = imports;
 
         if self.errors.is_empty() {
             Ok(())

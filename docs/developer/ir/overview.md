@@ -97,6 +97,19 @@ All `span` fields are `#[serde(default, skip_serializing_if =
 "IrSpan::is_default")]`, so synthetic / round-tripped IR doesn't
 bloat the serialised form.
 
+Every built-in pass carries these spans through the nodes it rewrites,
+so the positions survive `Pipeline::for_codegen`.
+`tests/metamorphic.rs` checks that with
+`no_pass_throws_away_source_positions`, which compares the count of
+nodes holding a real span before and after each pass.
+
+A node a pass *synthesises* carries the span of whatever it replaces
+where that is meaningful — a captured variable's `__env.x` access
+keeps the span of the reference it stands in for, and a folded
+constant keeps the span of the expression it collapsed. A node with no
+source counterpart, such as a lifted closure's wrapper, carries
+`FileId(0)`.
+
 Module nesting is flattened in the per-type vectors: a struct
 inside `mod foo { ... }` is stored on `IrModule.structs` with a
 qualified name `"foo::Bar"`. A parallel

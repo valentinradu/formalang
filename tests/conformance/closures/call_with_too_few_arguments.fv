@@ -1,0 +1,6 @@
+// expect: reject ArgumentCountMismatch
+// The same rule in the other direction.
+
+pub fn apply(f: (I32, I32) -> I32) -> I32 {
+    f(1)
+}

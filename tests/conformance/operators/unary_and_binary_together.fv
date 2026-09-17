@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    assert(condition: -1 + 2 == 1)
+    assert(condition: -(1 + 2) == -3)
+    assert(condition: 3 * -2 == -6)
+    assert(condition: !(1 == 2))
+}

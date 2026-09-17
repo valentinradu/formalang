@@ -1,0 +1,8 @@
+// expect: reject EnumVariantWithoutData
+pub enum E {
+    a
+}
+
+pub fn f() -> E {
+    E.a(v: 1)
+}

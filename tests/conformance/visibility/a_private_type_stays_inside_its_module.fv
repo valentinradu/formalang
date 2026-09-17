@@ -1,0 +1,15 @@
+// expect: run
+// A private type is fine anywhere that is not public: a private
+// function's signature, and any function's body.
+
+struct Hidden {
+    x: I32
+}
+
+fn build() -> Hidden {
+    Hidden(x: 7)
+}
+
+pub fn run_checks() {
+    assert(condition: build().x == 7)
+}

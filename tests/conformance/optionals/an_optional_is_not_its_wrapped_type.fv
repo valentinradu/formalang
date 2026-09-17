@@ -1,0 +1,10 @@
+// expect: reject TypeMismatch
+// Swift: `Int?` is not `Int`. Unwrapping is explicit.
+
+fn takes(n: I32) -> I32 {
+    n
+}
+
+pub fn f(v: I32?) -> I32 {
+    takes(n: v)
+}

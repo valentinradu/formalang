@@ -94,14 +94,14 @@ expression: lifted
                 span: IrSpan {
                     span: Span {
                         start: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 143,
+                            line: 6,
+                            column: 57,
                         },
                         end: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 144,
+                            line: 6,
+                            column: 58,
                         },
                     },
                     file: FileId(
@@ -225,14 +225,14 @@ expression: lifted
                     span: IrSpan {
                         span: Span {
                             start: Location {
-                                offset: 0,
-                                line: 1,
-                                column: 1,
+                                offset: 74,
+                                line: 3,
+                                column: 21,
                             },
                             end: Location {
-                                offset: 0,
-                                line: 1,
-                                column: 1,
+                                offset: 75,
+                                line: 3,
+                                column: 22,
                             },
                         },
                         file: FileId(
@@ -259,14 +259,14 @@ expression: lifted
                         span: IrSpan {
                             span: Span {
                                 start: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 78,
+                                    line: 3,
+                                    column: 25,
                                 },
                                 end: Location {
-                                    offset: 0,
-                                    line: 1,
-                                    column: 1,
+                                    offset: 79,
+                                    line: 3,
+                                    column: 26,
                                 },
                             },
                             file: FileId(
@@ -284,14 +284,14 @@ expression: lifted
                     span: IrSpan {
                         span: Span {
                             start: Location {
-                                offset: 0,
-                                line: 1,
-                                column: 1,
+                                offset: 78,
+                                line: 3,
+                                column: 25,
                             },
                             end: Location {
-                                offset: 0,
-                                line: 1,
-                                column: 1,
+                                offset: 79,
+                                line: 3,
+                                column: 26,
                             },
                         },
                         file: FileId(
@@ -305,14 +305,14 @@ expression: lifted
                 span: IrSpan {
                     span: Span {
                         start: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 74,
+                            line: 3,
+                            column: 21,
                         },
                         end: Location {
-                            offset: 0,
-                            line: 1,
-                            column: 1,
+                            offset: 79,
+                            line: 3,
+                            column: 26,
                         },
                     },
                     file: FileId(

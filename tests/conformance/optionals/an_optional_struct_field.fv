@@ -1,0 +1,18 @@
+// expect: run
+pub struct User {
+    name: String,
+    nickname: String?
+}
+
+pub fn display_length(u: User) -> I32 {
+    if let n = u.nickname {
+        n.len()
+    } else {
+        u.name.len()
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: display_length(u: User(name: "alice", nickname: "ali")) == 3)
+    assert(condition: display_length(u: User(name: "alice", nickname: nil)) == 5)
+}

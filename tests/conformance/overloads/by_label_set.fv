@@ -1,0 +1,15 @@
+// expect: run
+// Swift picks by argument label, not by position.
+
+fn draw(shape: I32) -> I32 {
+    1
+}
+
+fn draw(text: I32) -> I32 {
+    2
+}
+
+pub fn run_checks() {
+    assert(condition: draw(shape: 0) == 1)
+    assert(condition: draw(text: 0) == 2)
+}

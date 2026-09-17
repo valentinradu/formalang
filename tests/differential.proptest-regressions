@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 50e0c46395c1b5edc690544e46ca069b93a87959cd3cf024e3634e0cd8c5f426 # shrinks to expr = Add(Mul(Add(Int(0), Int(21)), Var(1)), Mul(If(And(Lt(Var(0), Int(57)), Eq(Var(0), Int(66))), Int(47), Int(-39)), Var(3))), bindings = [517, -442, -896, -710]
+cc 3f3b02ec90d3d676faeff46689957e4f795f535b7107cde3a429a2d85a3dad4b # shrinks to expr = Int(-1), bindings = [0, 0, 0, 0]

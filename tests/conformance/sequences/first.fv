@@ -1,0 +1,7 @@
+// expect: run
+pub fn run_checks() {
+    let xs: [I32] = [7, 8]
+    assert(condition: for x in xs { x }.first().is_some())
+    let empty: [I32] = []
+    assert(condition: for x in empty { x }.first().is_none())
+}

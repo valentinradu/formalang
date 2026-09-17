@@ -19,8 +19,24 @@ pub struct Lexer<'source> {
 impl<'source> Lexer<'source> {
     #[must_use]
     pub fn new(source: &'source str) -> Self {
+        let mut inner = Token::lexer(source);
+
+        // A leading UTF-8 byte-order mark is not part of the program.
+        // Several editors write one, and the user cannot see it, so
+        // reporting it as an invalid character points them at a
+        // character that is not on their screen.
+        //
+        // Skip it by advancing the lexer rather than by trimming the
+        // source, so every span still indexes the original bytes and a
+        // diagnostic snippet still lines up. A mark anywhere else stays
+        // an error: there it is a stray zero-width character, not an
+        // encoding marker.
+        if source.starts_with('\u{feff}') {
+            inner.bump('\u{feff}'.len_utf8());
+        }
+
         Self {
-            inner: Token::lexer(source),
+            inner,
             source,
             errors: Vec::new(),
         }
@@ -103,6 +119,12 @@ impl<'source> Lexer<'source> {
         let mut lexer = Self::new(source);
         let mut tokens = Vec::new();
 
+        // One index for the whole pass. Calling `fill_span_positions`
+        // per token built a fresh index each time, and each index costs
+        // a pass over the source, which made lexing quadratic in the
+        // source length.
+        let index = crate::location::LineIndex::new(source);
+
         while let Some((token, span)) = lexer.next_token() {
             // Logos signals end-of-input by returning `None` from
             // `next_token` — there is no separate EOF sentinel token.
@@ -110,7 +132,7 @@ impl<'source> Lexer<'source> {
             // guard that previously matched it here.)
             //
             // Fill in line/column positions from byte offsets
-            let span = crate::location::fill_span_positions(span, source);
+            let span = index.fill_span(span);
             tokens.push((token, span));
         }
 
@@ -138,11 +160,105 @@ impl<'source> Lexer<'source> {
         let errors = lexer
             .take_errors()
             .into_iter()
-            .map(|e| fill_error_span_positions(e, source))
+            .map(|e| fill_error_span_positions(e, &index))
             .collect();
 
-        (tokens, errors)
+        (drop_continuation_newlines(&tokens), errors)
     }
+}
+
+/// Whether a token can be the last one of a statement.
+///
+/// A newline only ends a statement when what came before it is
+/// complete. A line ending in `+`, `,` or `{` is plainly unfinished, so
+/// the newline after it continues.
+const fn can_end_a_statement(token: &Token) -> bool {
+    matches!(
+        token,
+        Token::Ident(_)
+            | Token::String(_)
+            | Token::Number(_)
+            | Token::True
+            | Token::False
+            | Token::Nil
+            | Token::SelfKeyword
+            | Token::RParen
+            | Token::RBracket
+            | Token::RBrace
+            | Token::Question
+    )
+}
+
+/// Whether a token can only continue what came before it, so a newline
+/// in front of it never ends a statement.
+///
+/// `.` keeps leading-dot continuation working — a match arm written as
+/// `.variant: body` on its own line, and a method chain broken across
+/// lines. `else` can only follow an `if`, and `{` opens a body for the
+/// line above.
+const fn only_continues(token: &Token) -> bool {
+    matches!(token, Token::Dot | Token::Else | Token::LBrace)
+}
+
+/// Drop every newline that continues a statement rather than ending
+/// one, leaving the parser a stream where a `Newline` is always a
+/// statement boundary.
+///
+/// A newline is kept when three things hold: no bracket is open, the
+/// token before it can end a statement, and the token after it is not
+/// one that can only continue. Anything inside `(` or `[` is part of
+/// one expression however many lines it spans, which is what lets
+/// `assert(\n    condition: x\n        == 40\n)` keep working.
+fn drop_continuation_newlines(tokens: &[(Token, Span)]) -> Vec<(Token, Span)> {
+    let mut out: Vec<(Token, Span)> = Vec::with_capacity(tokens.len());
+    let mut depth: usize = 0;
+    // The bracket depth of each enclosing `{`. A block starts a fresh
+    // count because its contents are statements again, however deep in
+    // brackets the block itself sits, and the count is restored at the
+    // matching `}`.
+    let mut enclosing: Vec<usize> = Vec::new();
+
+    for (index, (token, span)) in tokens.iter().enumerate() {
+        if matches!(token, Token::Newline) {
+            let previous = out.last().map(|(t, _)| t);
+            let next = tokens
+                .get(index.saturating_add(1)..)
+                .and_then(|rest| rest.iter().find(|(t, _)| !matches!(t, Token::Newline)))
+                .map(|(t, _)| t);
+
+            let ends_a_statement = depth == 0
+                && previous.is_some_and(can_end_a_statement)
+                && next.is_some_and(|t| !only_continues(t));
+
+            if ends_a_statement {
+                out.push((token.clone(), *span));
+            }
+            continue;
+        }
+
+        // A `(` or `[` opens one expression, however many lines it
+        // spans, so a newline inside one continues it.
+        //
+        // A `{` opens a body whose contents are statements, so a
+        // newline inside one is a boundary again — including a block
+        // written inside a call argument, which is where a closure
+        // body usually goes. Counting only brackets left that body's
+        // newlines dropped, and `a` on one line followed by `-1` on the
+        // next silently became `a - 1`.
+        if matches!(token, Token::LParen | Token::LBracket) {
+            depth = depth.saturating_add(1);
+        } else if matches!(token, Token::RParen | Token::RBracket) {
+            depth = depth.saturating_sub(1);
+        } else if matches!(token, Token::LBrace) {
+            enclosing.push(depth);
+            depth = 0;
+        } else if matches!(token, Token::RBrace) {
+            depth = enclosing.pop().unwrap_or(0);
+        }
+        out.push((token.clone(), *span));
+    }
+
+    out
 }
 
 /// Return the given error with its span upgraded to have line/column info.
@@ -157,8 +273,11 @@ impl<'source> Lexer<'source> {
     clippy::wildcard_enum_match_arm,
     reason = "Lexer::classify_error only produces a small set of lexer-error variants; enumerating every CompilerError variant would be noisy without adding safety"
 )]
-fn fill_error_span_positions(error: CompilerError, source: &str) -> CompilerError {
-    let span = crate::location::fill_span_positions(error.span(), source);
+fn fill_error_span_positions(
+    error: CompilerError,
+    index: &crate::location::LineIndex<'_>,
+) -> CompilerError {
+    let span = index.fill_span(error.span());
     match error {
         CompilerError::InvalidCharacter { character, .. } => {
             CompilerError::InvalidCharacter { character, span }

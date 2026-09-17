@@ -1,0 +1,16 @@
+// expect: reject GenericConstraintViolation
+pub trait Shape {
+    fn area(self) -> I32
+}
+
+pub struct NotAShape {
+    v: I32
+}
+
+pub fn area_of<T: Shape>(shape: T) -> I32 {
+    shape.area()
+}
+
+pub fn f() -> I32 {
+    area_of<NotAShape>(shape: NotAShape(v: 1))
+}

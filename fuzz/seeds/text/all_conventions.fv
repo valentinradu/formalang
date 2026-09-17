@@ -1,0 +1,4 @@
+pub struct S { a: I32 }
+fn take(mut n: I32, sink s: String, v: S) -> I32 {
+    n + s.len() + v.a
+}

@@ -1,0 +1,20 @@
+// expect: run
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn doubled(self) -> I32 {
+        self.value * 2
+    }
+
+    fn plus(self, n: I32) -> I32 {
+        self.value + n
+    }
+}
+
+pub fn run_checks() {
+    let c = Counter(value: 21)
+    assert(condition: c.doubled() == 42)
+    assert(condition: c.plus(n: 4) == 25)
+}

@@ -107,6 +107,24 @@ pub trait Container<T: Layout> {
 - Type arguments must match parameter count (arity)
 - Type inference works when types can be determined
 - Constraints must reference existing traits
+- A constraint holds wherever the type argument comes from — written at
+  the call site (`total<Square>(item: s)`) or inferred from the
+  argument (`total(item: s)`)
+
+```formalang
+pub trait Shape { fn area(self) -> I32 }
+pub struct Square { side: I32 }
+pub struct Plain { n: I32 }
+
+impl Shape for Square {
+  fn area(self) -> I32 { self.side * self.side }
+}
+
+fn total<T: Shape>(item: T) -> I32 { item.area() }
+
+let a: I32 = total(item: Square(side: 3))  // ok
+let b: I32 = total(item: Plain(n: 1))      // error E081: Plain is not a Shape
+```
 
 The `MonomorphisePass` clones generic definitions per unique
 argument tuple after parsing: see

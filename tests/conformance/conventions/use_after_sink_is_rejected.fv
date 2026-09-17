@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+fn consume(sink s: String) -> I32 {
+    s.len()
+}
+
+pub fn f() -> I32 {
+    let a: String = "x"
+    consume(s: a) + consume(s: a)
+}

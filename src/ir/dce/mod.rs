@@ -55,6 +55,18 @@ impl<'a> DeadCodeEliminator<'a> {
 
     /// Analyze the module to find all used definitions.
     pub fn analyze(&mut self) {
+        // A public definition is the module's contract with whatever
+        // links against it, so nothing inside the module needs to
+        // reference it for it to be live.
+        //
+        // Without this the pass removed an unreferenced `pub struct`
+        // while keeping every function, public or not — it never
+        // removes functions at all. A library whose types were only
+        // named by its callers came out of the pipeline with its API
+        // stripped, and the backend emitted nothing a consumer could
+        // use.
+        self.mark_public_definitions();
+
         // Walk impl-method bodies for references. Do NOT mark the impl's
         // target type as used purely because an impl block exists; an impl
         // is dead code if nothing else references its target. Impls whose
@@ -177,6 +189,33 @@ impl<'a> DeadCodeEliminator<'a> {
         }
     }
 
+    /// Seed the used sets with every `pub` struct, enum and trait.
+    fn mark_public_definitions(&mut self) {
+        use crate::ast::Visibility;
+
+        for (index, s) in self.module.structs.iter().enumerate() {
+            if s.visibility == Visibility::Public {
+                if let Ok(id) = u32::try_from(index) {
+                    self.used_structs.insert(StructId(id));
+                }
+            }
+        }
+        for (index, t) in self.module.traits.iter().enumerate() {
+            if t.visibility == Visibility::Public {
+                if let Ok(id) = u32::try_from(index) {
+                    self.used_traits.insert(TraitId(id));
+                }
+            }
+        }
+        for (index, e) in self.module.enums.iter().enumerate() {
+            if e.visibility == Visibility::Public {
+                if let Ok(id) = u32::try_from(index) {
+                    self.used_enums.insert(EnumId(id));
+                }
+            }
+        }
+    }
+
     /// Check if a struct is used.
     #[must_use]
     pub fn is_struct_used(&self, id: StructId) -> bool {
@@ -255,14 +294,50 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
 
     // Physically remove unused structs/traits/enums, then rewrite every ID
     // reference so the module stays internally consistent.
+    //
+    // Removing a definition can make another one unreachable: a trait
+    // whose method signature mentions `Dictionary` keeps `Dictionary`
+    // alive, so dropping the trait has to be followed by another look
+    // at `Dictionary`. One round is therefore not enough, and the pass
+    // used to leave that second definition behind — which also made it
+    // non-idempotent, since a second `run` removed what the first one
+    // missed. Repeat until nothing more goes.
+    //
+    // Each round removes at least one definition or stops, so the loop
+    // runs at most once per definition. The bound below is belt and
+    // braces against a future change that could make a round remove
+    // nothing while still reporting a different count.
     if remove_unused_structs {
-        let mut eliminator = DeadCodeEliminator::new(&result);
-        eliminator.analyze();
-        let used_structs = eliminator.used_structs.clone();
-        let used_traits = eliminator.used_traits.clone();
-        let used_enums = eliminator.used_enums.clone();
-        drop(eliminator);
-        remove_unused_definitions(&mut result, &used_structs, &used_traits, &used_enums);
+        let rounds = result
+            .structs
+            .len()
+            .saturating_add(result.traits.len())
+            .saturating_add(result.enums.len())
+            .saturating_add(1);
+        for _ in 0..rounds {
+            let before = (
+                result.structs.len(),
+                result.traits.len(),
+                result.enums.len(),
+            );
+
+            let mut eliminator = DeadCodeEliminator::new(&result);
+            eliminator.analyze();
+            let used_structs = eliminator.used_structs.clone();
+            let used_traits = eliminator.used_traits.clone();
+            let used_enums = eliminator.used_enums.clone();
+            drop(eliminator);
+            remove_unused_definitions(&mut result, &used_structs, &used_traits, &used_enums);
+
+            let after = (
+                result.structs.len(),
+                result.traits.len(),
+                result.enums.len(),
+            );
+            if before == after {
+                break;
+            }
+        }
     }
 
     result

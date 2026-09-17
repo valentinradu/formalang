@@ -1,0 +1,15 @@
+// expect: reject TypeMismatch
+// The same check at a call site.
+
+pub enum Maybe<T> {
+    some(v: T),
+    none
+}
+
+pub fn take(m: Maybe<I32>) -> I32 {
+    0
+}
+
+pub fn f() -> I32 {
+    take(m: Maybe.some(v: "text"))
+}

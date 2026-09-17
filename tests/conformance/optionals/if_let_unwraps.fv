@@ -1,0 +1,13 @@
+// expect: run
+pub fn length_or(n: String?, fallback: I32) -> I32 {
+    if let s = n {
+        s.len()
+    } else {
+        fallback
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: length_or(n: "abc", fallback: 0) == 3)
+    assert(condition: length_or(n: nil, fallback: 9) == 9)
+}

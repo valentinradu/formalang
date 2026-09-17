@@ -1,0 +1,7 @@
+// expect: reject SeqNotConsumed
+// A function with no return type discards what its body ends with.
+// A sequence there is never read, so the loop never runs.
+
+pub fn f(xs: [I32]) {
+    for x in xs { x }
+}

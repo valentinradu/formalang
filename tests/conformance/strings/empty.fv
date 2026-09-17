@@ -1,0 +1,9 @@
+// expect: run
+// The empty string.
+
+pub fn run_checks() {
+    let s: String = ""
+    assert(condition: s.is_empty())
+    assert(condition: s.len() == 0)
+    assert(condition: !s.contains(needle: "x"))
+}

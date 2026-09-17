@@ -44,7 +44,7 @@ fn ast_struct_and_impl() {
 #[test]
 fn ast_enum_and_match() {
     let source = r"
-        enum Status { active, inactive, pending(since: I32) }
+        pub enum Status { active, inactive, pending(since: I32) }
 
         pub fn label(s: Status) -> I32 {
             match s {
@@ -297,7 +297,7 @@ fn ir_struct_and_impl() {
 #[test]
 fn ir_enum_and_match() {
     let source = r"
-        enum Status { active, inactive, pending(since: I32) }
+        pub enum Status { active, inactive, pending(since: I32) }
 
         pub fn label(s: Status) -> I32 {
             match s {

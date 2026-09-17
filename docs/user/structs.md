@@ -73,3 +73,28 @@ pub let box_inferred = Box(value: "inferred as String")
 
 To attach methods to a struct, write an `impl` block: see
 [Traits & Impls](traits.md#impl-blocks).
+
+## Each Name Appears Once
+
+Two fields of one name leave no answer to what the name means, so a
+definition may not declare one twice. The same holds for the
+parameters of a function, a method, or a trait method, and for the
+payload fields of an enum variant.
+
+```formalang
+pub struct P {
+  x: I32,
+  x: I32          // error: Duplicate definition
+}
+
+fn g(a: I32, a: I32) -> I32 { a }   // error: Duplicate definition
+```
+
+Shadowing is a different thing and stays legal. A later `let` of the
+same name introduces a second binding that hides the first, and the
+name has a defined meaning at every point:
+
+```formalang
+let a = 1
+let a = 2         // ok: a is 2 from here on
+```
