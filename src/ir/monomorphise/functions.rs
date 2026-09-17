@@ -90,6 +90,25 @@ pub(super) fn specialise_generic_functions(
 /// (i.e. the call lives inside a generic function body that hasn't
 /// been specialised yet) are skipped — those will surface again in a
 /// later worklist iteration after their containing function is cloned.
+/// Which generic function, if any, a call's path names.
+///
+/// A function declared inside a module is registered under its
+/// qualified name — `m::identity` — while the call that reaches it
+/// writes `m::identity(...)`, whose last segment is just `identity`.
+/// Matching on the last segment alone therefore never found it, so a
+/// generic inside a module was never specialised: the template was
+/// compacted away and the call was left pointing at whatever took its
+/// index, which for a small module was the caller itself.
+fn matching_generic_name(path: &[String], generic_fn_names: &HashSet<String>) -> Option<String> {
+    let joined = path.join("::");
+    if generic_fn_names.contains(&joined) {
+        return Some(joined);
+    }
+    path.last()
+        .filter(|last| generic_fn_names.contains(*last))
+        .cloned()
+}
+
 fn collect_generic_fn_call_specs(
     module: &IrModule,
     generic_fn_names: &HashSet<String>,
@@ -97,12 +116,10 @@ fn collect_generic_fn_call_specs(
 ) {
     let mut visit = |expr: &IrExpr| {
         if let IrExpr::FunctionCall { path, args, .. } = expr {
-            if let Some(name) = path.last() {
-                if generic_fn_names.contains(name) {
-                    if let Some(func) = module.functions.iter().find(|f| f.name == *name) {
-                        if let Some(type_args) = infer_call_type_args(func, args) {
-                            out.push((name.clone(), type_args));
-                        }
+            if let Some(name) = matching_generic_name(path, generic_fn_names) {
+                if let Some(func) = module.functions.iter().find(|f| f.name == name) {
+                    if let Some(type_args) = infer_call_type_args(func, args) {
+                        out.push((name, type_args));
                     }
                 }
             }
@@ -406,20 +423,21 @@ fn rewrite_call_paths_expr(
         ..
     } = expr
     {
-        let Some(last) = path.last() else { return };
-        if !generic_fn_names.contains(last) {
+        let Some(name) = matching_generic_name(path, generic_fn_names) else {
             return;
-        }
-        let Some(callee) = snapshot.iter().find(|f| f.name == *last) else {
+        };
+        let Some(callee) = snapshot.iter().find(|f| f.name == name) else {
             return;
         };
         let Some(type_args) = infer_call_type_args(callee, args) else {
             return;
         };
-        if let Some(specialised) = fn_mapping.get(&(last.clone(), type_args.clone())) {
-            if let Some(seg) = path.last_mut() {
-                seg.clone_from(specialised);
-            }
+        if let Some(specialised) = fn_mapping.get(&(name, type_args.clone())) {
+            // The specialised name already carries any module prefix,
+            // so it replaces the whole path rather than its last
+            // segment — otherwise `m::identity` would become
+            // `m::m::identity__I32`.
+            *path = vec![specialised.clone()];
             // Rewrite the call's stored return type by substituting
             // each generic param with the inferred concrete arg.
             // Without this, `let n: I32 = identity(1)` keeps the

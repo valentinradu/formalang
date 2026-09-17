@@ -1,0 +1,34 @@
+// expect: run
+// A function declared inside a module is registered under its
+// qualified name — `m::identity` — while the call writes
+// `m::identity(...)`, whose last segment is just `identity`.
+// Specialisation matched on the last segment alone, so a generic
+// inside a module was never specialised: the template was compacted
+// away and the call was left pointing at whatever took its index,
+// which for a small module was `probe` itself.
+//
+// Its return type had the same gap on the semantic side: only the
+// unqualified path specialised `-> T` from the argument, so the
+// result came back as the bare `T`.
+
+pub mod m {
+    pub fn identity<T>(item: T) -> T {
+        item
+    }
+
+    pub fn helper(a: I32) -> I32 {
+        a + 1
+    }
+}
+
+fn helper(a: I32) -> I32 {
+    a + 100
+}
+
+pub fn run_checks() {
+    assert(condition: m::identity(item: 7) == 7)
+    assert(condition: m::identity(item: "x") == "x")
+    // A qualified call and a top-level one of the same name stay apart.
+    assert(condition: m::helper(a: 6) == 7)
+    assert(condition: helper(a: 6) == 106)
+}

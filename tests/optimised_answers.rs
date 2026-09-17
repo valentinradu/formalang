@@ -141,6 +141,22 @@ const PROGRAMS: &[Program] = &[
                  if let v = xs[2] { v } else { 0 }\n}\n",
     },
     Program {
+        what: "a module-qualified call",
+        source: "pub mod m {\n    pub fn helper(a: I32) -> I32 { a + 1 }\n}\n\n\
+                 pub fn probe() -> I32 {\n    m::helper(a: 6)\n}\n",
+    },
+    Program {
+        what: "a module-qualified call beside a top-level one of the same name",
+        source: "pub mod m {\n    pub fn helper(a: I32) -> I32 { a + 1 }\n}\n\n\
+                 fn helper(a: I32) -> I32 { a + 100 }\n\n\
+                 pub fn probe() -> I32 {\n    m::helper(a: 6) + helper(a: 0)\n}\n",
+    },
+    Program {
+        what: "a generic function inside a module",
+        source: "pub mod m {\n    pub fn identity<T>(item: T) -> T { item }\n}\n\n\
+                 pub fn probe() -> I32 {\n    m::identity(item: 7)\n}\n",
+    },
+    Program {
         what: "a nested generic",
         source: "struct Box<T> {\n    value: T\n}\n\n\
                  pub fn probe() -> I32 {\n    Box(value: Box(value: 14)).value.value\n}\n",

@@ -187,7 +187,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return SemType::Named(receiver.clone());
             }
             // Module-qualified function: walk through module symbol tables.
-            if let Some(ret) = self.lookup_qualified_function_return(path) {
+            if let Some(ret) = self.lookup_qualified_function_return(path, args, file) {
                 return ret;
             }
             SemType::Unknown
@@ -356,7 +356,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// `self.symbols.modules` segment by segment, then through the
     /// imported-module cache. Returns the function's declared return
     /// type as a string when found.
-    fn lookup_qualified_function_return(&self, path: &[crate::ast::Ident]) -> Option<SemType> {
+    fn lookup_qualified_function_return(
+        &self,
+        path: &[crate::ast::Ident],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
+    ) -> Option<SemType> {
         let last = path.last()?;
         let segments: Vec<&str> = path
             .iter()
@@ -372,9 +377,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             current.get_function(&last.name).map(|f| {
-                f.return_type
+                let raw = f
+                    .return_type
                     .as_ref()
-                    .map_or(SemType::Nil, SemType::from_ast)
+                    .map_or(SemType::Nil, SemType::from_ast);
+                // A function declared inside a module specialises its
+                // return type the same way a top-level one does. Doing
+                // it only for the unqualified path meant
+                // `m::identity(item: 7)` came back as the bare `T`,
+                // and every use of the result was a type mismatch
+                // against a parameter the call had already fixed.
+                self.specialise_generic_return(f, raw, args, file)
             })
         };
         if let Some(ty) = look(&self.symbols) {
