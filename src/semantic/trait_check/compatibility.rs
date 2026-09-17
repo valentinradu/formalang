@@ -80,13 +80,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.type_strings_compatible(declared, &found)
     }
 
-    /// Whether `inferred` is a container whose element type is `Nil`
-    /// and `declared` is the same container over an optional.
+    /// Whether a container of `T` or of `Nil` fits the same container
+    /// declared over `T?`.
     ///
-    /// `[nil]` infers `[Nil]`; that satisfies `[I32?]` and `[String?]`
-    /// alike, because `nil` is a value of every optional type. The
-    /// same holds for a dictionary's values: `["k": nil]` infers
-    /// `[String: Nil]` and satisfies `[String: I32?]`.
+    /// The implicit wrap that lets `let a: I32? = 3` work, one level
+    /// down. `[nil]` infers `[Nil]` and satisfies `[I32?]`, because
+    /// `nil` is a value of every optional type; `[3]` infers `[I32]`
+    /// and satisfies `[I32?]` the same way `3` satisfies `I32?`. A
+    /// dictionary's values follow: `["k": nil]` and `["k": 1]` both
+    /// satisfy `[String: I32?]`.
+    ///
+    /// Whether the optional was *worth* declaring is a separate
+    /// question, and a separate report — see
+    /// `check_optional_elements_are_used`.
     fn nil_container_fits(declared: &str, inferred: &str) -> bool {
         let Some(inferred_inner) = bracketed(inferred) else {
             return false;
@@ -100,12 +106,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             declared_inner.split_once(": "),
         ) {
             // Dictionaries: the key types must match and the declared
-            // value must be optional.
-            (Some((inferred_key, "Nil")), Some((declared_key, declared_value))) => {
-                inferred_key == declared_key && declared_value.ends_with('?')
+            // value must be an optional the inferred value fits.
+            (Some((inferred_key, inferred_value)), Some((declared_key, declared_value))) => {
+                inferred_key == declared_key && fits_optional(declared_value, inferred_value)
             }
             // Arrays: neither side is a dictionary.
-            (None, None) => inferred_inner == "Nil" && declared_inner.ends_with('?'),
+            (None, None) => fits_optional(declared_inner, inferred_inner),
             _ => false,
         }
     }
@@ -344,4 +350,14 @@ fn argument_fits(want: &str, got: &str) -> bool {
         return false;
     };
     inner == got || got == "Nil"
+}
+
+/// Whether `found` is a value of the optional type `declared`.
+///
+/// `nil` is a value of every optional; so is the wrapped type itself.
+fn fits_optional(declared: &str, found: &str) -> bool {
+    let Some(inner) = declared.strip_suffix('?') else {
+        return false;
+    };
+    found == "Nil" || found == inner
 }

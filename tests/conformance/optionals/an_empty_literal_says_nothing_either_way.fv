@@ -1,0 +1,8 @@
+// expect: run
+// An empty literal makes no claim about whether anything is optional,
+// so it is accepted whichever way the binding is declared.
+
+pub fn run_checks() {
+    let xs: [I32?] = []
+    assert(condition: xs.is_empty())
+}

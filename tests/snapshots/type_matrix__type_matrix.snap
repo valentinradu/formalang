@@ -1,5 +1,6 @@
 ---
 source: tests/type_matrix.rs
+assertion_line: 415
 expression: out
 ---
 Legend: . accepted   x rejected
@@ -168,8 +169,8 @@ String        x             x             x             x             x         
 [I32]         x             x             x             x             x             x             .             x             x             x             x             x             x             x             x             x             
 [String]      x             x             x             x             x             x             x             .             x             x             x             x             x             x             x             x             
 [String:I32]  x             x             x             x             x             x             x             x             .             x             x             x             x             x             x             x             
-I32?          x             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
-String?       x             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
+I32?          .             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
+String?       x             x             x             x             x             .             x             x             x             .             .             x             x             x             x             x             
 tuple         x             x             x             x             x             x             x             x             x             x             x             .             x             x             x             x             
 closure       x             x             x             x             x             x             x             x             x             x             x             x             .             x             x             x             
 Point         x             x             x             x             x             x             x             x             x             x             x             x             x             .             x             x             
@@ -187,8 +188,8 @@ String        x             x             x             x             x         
 [I32]         x             x             x             x             x             x             .             x             x             x             x             x             x             x             x             x             
 [String]      x             x             x             x             x             x             x             .             x             x             x             x             x             x             x             x             
 [String:I32]  x             x             x             x             x             x             x             x             .             x             x             x             x             x             x             x             
-I32?          x             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
-String?       x             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
+I32?          .             x             x             x             x             x             x             x             x             .             .             x             x             x             x             x             
+String?       x             x             x             x             x             .             x             x             x             .             .             x             x             x             x             x             
 tuple         x             x             x             x             x             x             x             x             x             x             x             .             x             x             x             x             
 closure       x             x             x             x             x             x             x             x             x             x             x             x             .             x             x             x             
 Point         x             x             x             x             x             x             x             x             x             x             x             x             x             .             x             x             

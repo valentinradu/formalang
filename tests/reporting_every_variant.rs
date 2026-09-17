@@ -184,6 +184,11 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             span,
         },
         CompilerError::UnreachableMatchArm { span },
+        CompilerError::PointlessOptionalElement {
+            declared: s("[I32?]"),
+            suggested: s("[I32]"),
+            span,
+        },
         CompilerError::PrivateTypeInPublic {
             type_name: s("Hidden"),
             position: s("the return type of f"),
@@ -402,6 +407,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::DuplicateMatchArm { .. } => "DuplicateMatchArm",
         CompilerError::UnknownEnumVariant { .. } => "UnknownEnumVariant",
         CompilerError::UnreachableMatchArm { .. } => "UnreachableMatchArm",
+        CompilerError::PointlessOptionalElement { .. } => "PointlessOptionalElement",
         CompilerError::PrivateTypeInPublic { .. } => "PrivateTypeInPublic",
         CompilerError::NotIndexable { .. } => "NotIndexable",
         CompilerError::ArgumentCountMismatch { .. } => "ArgumentCountMismatch",

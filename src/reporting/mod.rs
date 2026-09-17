@@ -155,6 +155,11 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::UnreachableMatchArm { .. } => {
             errors_advanced::unreachable_match_arm(filename, span)
         }
+        CompilerError::PointlessOptionalElement {
+            declared,
+            suggested,
+            ..
+        } => errors_advanced::pointless_optional_element(filename, span, declared, suggested),
         CompilerError::PrivateTypeInPublic {
             type_name,
             position,

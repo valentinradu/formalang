@@ -173,6 +173,18 @@ pub enum CompilerError {
         span: Span,
     },
 
+    #[error(
+        "Every element of this `{declared}` is present, so nothing is optional. \
+         Declare it `{suggested}`"
+    )]
+    PointlessOptionalElement {
+        /// The declared type, as written.
+        declared: String,
+        /// The same type without the optional, which is what was meant.
+        suggested: String,
+        span: Span,
+    },
+
     #[error("Private type '{type_name}' is named in {position}, which is public")]
     PrivateTypeInPublic {
         type_name: String,

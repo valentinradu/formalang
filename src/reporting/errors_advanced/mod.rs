@@ -42,7 +42,7 @@ pub(in crate::reporting) use misc::{
 };
 pub(in crate::reporting) use mutability::{mutability_mismatch, use_after_sink};
 pub(in crate::reporting) use optional::{
-    nil_assigned_to_non_optional, optional_used_as_non_optional,
+    nil_assigned_to_non_optional, optional_used_as_non_optional, pointless_optional_element,
 };
 pub(in crate::reporting) use traits::{
     missing_trait_field, missing_trait_method, trait_field_type_mismatch,

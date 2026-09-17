@@ -57,8 +57,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             // Equality operators: the same type, and a type that can
             // be compared.
+            //
+            // Comparing an optional to `nil` is the exception, and the
+            // plainest way to ask whether one holds anything. The two
+            // sides have different types by construction — `I32?` and
+            // `Nil` — so a same-type rule rejected `x == nil` and left
+            // `.is_none()` as the only spelling, without saying so.
             BinaryOperator::Eq | BinaryOperator::Ne => {
-                left_type == right_type && self.is_equatable(&left_sem)
+                if Self::compares_against_nil(&left_sem, &right_sem) {
+                    true
+                } else {
+                    left_type == right_type && self.is_equatable(&left_sem)
+                }
             }
             // Logical operators: Boolean + Boolean
             BinaryOperator::And | BinaryOperator::Or => {
@@ -74,6 +84,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             });
         }
+    }
+
+    /// Whether this comparison is an optional against `nil`.
+    ///
+    /// Either side may be the `nil`. Two `nil`s compare too: both are
+    /// empty, so the answer is true, and refusing to say so would be
+    /// a special case with nothing behind it.
+    fn compares_against_nil(left: &SemType, right: &SemType) -> bool {
+        let optional_or_nil = |ty: &SemType| matches!(ty, SemType::Optional(_) | SemType::Nil);
+        (matches!(left, SemType::Nil) && optional_or_nil(right))
+            || (matches!(right, SemType::Nil) && optional_or_nil(left))
     }
 
     /// Whether `==` and `!=` have an answer for this type.

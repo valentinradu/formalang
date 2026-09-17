@@ -1,0 +1,9 @@
+// expect: reject PointlessOptionalElement
+// A plain `let` has no later. Every element is present and always
+// will be, so `[I32?]` says more than the value means and `[I32]` is
+// what was wanted. The report names the type to use.
+
+pub fn f() -> I32 {
+    let xs: [I32?] = [3]
+    0
+}

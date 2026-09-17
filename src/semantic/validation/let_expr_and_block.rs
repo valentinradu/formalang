@@ -148,6 +148,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // same way the module-level path does.
                     if let Some(type_ann) = ty {
                         self.check_let_annotation(type_ann, value, value.span(), file);
+                        self.check_optional_elements_are_used(
+                            type_ann,
+                            value,
+                            *mutable,
+                            value.span(),
+                        );
                     }
                     self.check_inferred_enum_has_a_context(ty.as_ref(), value, file);
                     self.check_closure_literal_against_annotation(

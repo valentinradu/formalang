@@ -37,3 +37,23 @@ pub(in crate::reporting) fn optional_used_as_non_optional<'a>(
         )))
         .with_help("Unwrap the optional value before accessing its fields")
 }
+
+pub(in crate::reporting) fn pointless_optional_element<'a>(
+    filename: &'a str,
+    span: Span,
+    declared: &'a str,
+    suggested: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E142")
+        .with_message("Nothing in this array is optional")
+        .with_label(label(filename, span).with_message(format!(
+            "every element is present, so '{}' says more than it means",
+            declared.fg(Color::Red)
+        )))
+        .with_help(format!(
+            "declare it '{}'. An optional element is worth declaring when one \
+             of them may be 'nil' — either because the literal holds one, or \
+             because a 'let mut' will put one there later",
+            suggested.fg(Color::Green)
+        ))
+}

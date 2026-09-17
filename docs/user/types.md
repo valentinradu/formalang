@@ -241,3 +241,22 @@ let e = p[0]             // error E139: a struct has no index operation
 An array index and a dictionary lookup both produce an optional,
 because the position may be out of range and the key may be absent.
 See [Expressions / Indexing](expressions.md#indexing).
+
+## Optional Elements
+
+A value wraps into an optional wherever one is declared, and that
+reaches inside a container: `[T]` fits `[T?]` the same way `T` fits
+`T?`.
+
+Whether the optional is worth declaring is a separate question. A
+plain `let` has no later, so if every element of the literal is
+present, the optional says more than the value means:
+
+```formalang
+let a: [I32?] = [nil, 3]      // ok: one element really is absent
+let mut b: [I32?] = [3]       // ok: a nil may be put there later
+let c: [I32?] = [3]           // error E142: declare it [I32]
+let d: [I32?] = []            // ok: an empty literal claims nothing
+```
+
+The same holds for a dictionary's values.

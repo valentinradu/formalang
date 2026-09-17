@@ -1,0 +1,11 @@
+// expect: run
+// A literal holding a nil needs no `mut` to justify the optional: one
+// element really is absent.
+
+pub fn run_checks() {
+    let xs: [I32?] = [nil, 3]
+    assert(condition: xs.len() == 2)
+
+    let d: [String: I32?] = ["a": nil, "b": 1]
+    assert(condition: d.len() == 2)
+}

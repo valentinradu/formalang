@@ -1,0 +1,20 @@
+// expect: run
+// A `let mut` may have a nil put in it later, so a literal with every
+// element present is fine. The element type is a statement about the
+// future, not about the literal.
+
+pub fn run_checks() {
+    let mut xs: [I32?] = [3]
+    if let first = xs[0] {
+        if let v = first {
+            assert(condition: v == 3)
+        } else {
+            assert(condition: false)
+        }
+    } else {
+        assert(condition: false)
+    }
+
+    let mut d: [String: I32?] = ["k": 1]
+    assert(condition: d.len() == 1)
+}

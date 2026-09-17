@@ -168,6 +168,22 @@ same type.
 | `&&`, `\|\|` | two booleans |
 | `..` | two integers (`I32` or `I64`) |
 
+An optional compares to `nil`, which is the plainest way to ask
+whether it holds anything. Either side may be the `nil`:
+
+```formalang
+let held: I32? = 5
+let empty: I32? = nil
+
+held == nil      // false
+empty == nil     // true
+nil == empty     // true, the same question
+held != nil      // true
+```
+
+This answers exactly what `.is_some()` and `.is_none()` answer; pick
+whichever reads better where it sits.
+
 Equality is structural: it compares each field of a struct and each
 element of a container. A closure has no structure to compare, so a
 closure is not equatable. Neither is a type that holds one — an array

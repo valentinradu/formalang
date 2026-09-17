@@ -1,0 +1,24 @@
+// expect: run
+// `x == nil` is the plainest way to ask whether an optional holds
+// anything. The two sides have different types by construction —
+// `I32?` and `Nil` — so a same-type rule rejected it and left
+// `.is_none()` as the only spelling, without saying so.
+
+pub fn run_checks() {
+    let empty: I32? = nil
+    let held: I32? = 5
+
+    assert(condition: empty == nil)
+    assert(condition: !(held == nil))
+    assert(condition: held != nil)
+    assert(condition: !(empty != nil))
+
+    // Either side may be the nil.
+    assert(condition: nil == empty)
+    assert(condition: !(nil == held))
+
+    // It agrees with the method that asks the same question.
+    assert(condition: (empty == nil) == empty.is_none())
+    assert(condition: (held == nil) == held.is_none())
+    assert(condition: (held != nil) == held.is_some())
+}

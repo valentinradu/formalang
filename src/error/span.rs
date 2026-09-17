@@ -44,6 +44,7 @@ impl CompilerError {
             | Self::DuplicateMatchArm { span, .. }
             | Self::UnreachableMatchArm { span, .. }
             | Self::UnknownEnumVariant { span, .. }
+            | Self::PointlessOptionalElement { span, .. }
             | Self::PrivateTypeInPublic { span, .. }
             | Self::NotIndexable { span, .. }
             | Self::ArgumentCountMismatch { span, .. }

@@ -133,6 +133,62 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// Decide what a `[T?]` annotation means for a literal that holds
+    /// no `nil`.
+    ///
+    /// The element type says the array may hold nothing somewhere. For
+    /// a `let mut` that is a statement about the future — a `nil` can
+    /// be put there later — so the literal need not contain one.
+    ///
+    /// For a plain `let` there is no later. Every element is present
+    /// and always will be, so the optional says more than the value
+    /// means and `[T]` is what was wanted. Reporting it names the type
+    /// to use rather than a bare mismatch.
+    ///
+    /// Only an array literal is judged: a value from anywhere else may
+    /// hold a `nil` this file cannot see.
+    pub(super) fn check_optional_elements_are_used(
+        &mut self,
+        type_ann: &Type,
+        value: &Expr,
+        mutable: bool,
+        span: crate::location::Span,
+    ) {
+        if mutable {
+            return;
+        }
+        let Type::Array(element) = type_ann else {
+            return;
+        };
+        let Type::Optional(inner) = &**element else {
+            return;
+        };
+        let Expr::Array { elements, .. } = value else {
+            return;
+        };
+        // An empty literal says nothing either way.
+        if elements.is_empty() {
+            return;
+        }
+        if elements.iter().any(|e| {
+            matches!(
+                e,
+                Expr::Literal {
+                    value: crate::ast::Literal::Nil,
+                    ..
+                }
+            )
+        }) {
+            return;
+        }
+
+        self.errors.push(CompilerError::PointlessOptionalElement {
+            declared: Self::type_to_string(type_ann),
+            suggested: format!("[{}]", Self::type_to_string(inner)),
+            span,
+        });
+    }
+
     /// Report a `.variant` that has no enum to resolve against.
     ///
     /// A `let` with no annotation offers the value no context, so a
@@ -181,6 +237,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // inferred value type and the declared annotation.
         if let Some(type_ann) = &let_binding.type_annotation {
             self.check_let_annotation(type_ann, &let_binding.value, let_binding.span, file);
+            self.check_optional_elements_are_used(
+                type_ann,
+                &let_binding.value,
+                let_binding.mutable,
+                let_binding.span,
+            );
         }
         self.check_inferred_enum_has_a_context(
             let_binding.type_annotation.as_ref(),
