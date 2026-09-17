@@ -558,16 +558,20 @@ showed that:
 The whole tree is about 2600 mutants and each needs a test run, so a
 full pass takes hours. Run a directory at a time.
 
-## Open questions
+## What is left
 
-Two behaviours nobody has decided on purpose, both found by the
-matrices above and left alone rather than changed. Neither is a defect
-— each is a question about what the language should say:
+Nothing is parked: no `#[ignore]`, no `KNOWN_WRONG` cell, no `TODO`.
+The two behaviours this section used to list as undecided are decided
+and implemented — a value wraps into an optional inside a container,
+and an optional compares to `nil`. See
+[Types / Optional Elements](docs/user/types.md) and
+[Expressions](docs/user/expressions.md).
 
-- A plain value wraps into an optional at a `let` — `let a: I32? = 3`
-  — and inside an array **only when a `nil` forces it**:
-  `let xs: [I32?] = [nil, 3]` is accepted, `let xs: [I32?] = [3]` is
-  not.
-- `x == nil` is rejected for an optional `x`; `.is_none()` is the way
-  to ask. Defensible, but the error does not point at it.
+What is unfinished is the mutation sweep. `scripts/mutate.sh` has been
+run over one file — 20 of about 2600 mutants — and it found a real gap
+there within minutes: `ir::overload::defaults_fired` decides which
+overload a call means, and nothing noticed when it always answered
+zero. On that evidence a full pass will find more, and
+`src/semantic/validation` alone holds 191 mutants. It is an overnight
+job rather than an interactive one.
 
