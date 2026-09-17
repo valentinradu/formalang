@@ -422,9 +422,7 @@ fn canonicalise(value: &mut serde_json::Value) {
             for entry in map.values_mut() {
                 if let serde_json::Value::Array(items) = entry {
                     if !items.is_empty() && items.iter().all(serde_json::Value::is_number) {
-                        for item in items {
-                            *item = serde_json::Value::Null;
-                        }
+                        items.fill(serde_json::Value::Null);
                     }
                 }
             }

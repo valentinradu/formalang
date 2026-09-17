@@ -21,7 +21,7 @@ pub(super) fn format_parse_error(error: &Rich<'_, Token>) -> String {
         .map(|exp| match exp {
             RichPattern::Token(tok) => {
                 // tok is a Maybe<Token, &Token> which derefs to &Token
-                format!("{}", &**tok)
+                format!("{}", **tok)
             }
             RichPattern::Label(label) => label.to_string(),
             RichPattern::EndOfInput => "end of input".to_string(),

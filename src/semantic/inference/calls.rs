@@ -371,10 +371,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let look = |symbols: &super::super::symbol_table::SymbolTable| -> Option<SemType> {
             let mut current = symbols;
             for part in &segments {
-                match current.modules.get(*part) {
-                    Some(info) => current = &info.symbols,
-                    None => return None,
-                }
+                current = &current.modules.get(*part)?.symbols;
             }
             current.get_function(&last.name).map(|f| {
                 let raw = f

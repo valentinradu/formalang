@@ -296,7 +296,6 @@ pub fn walk_expr_children<V: IrVisitor + ?Sized>(visitor: &mut V, expr: &IrExpr)
             params: _,
             captures: _,
             body,
-            ty: _,
             ..
         } => {
             // `params` and `captures` carry only names and types, not

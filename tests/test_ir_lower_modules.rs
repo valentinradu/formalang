@@ -522,7 +522,7 @@ fn irexpr_ty_returns_type_from_literal() -> Result<(), Box<dyn std::error::Error
     if ty != &ResolvedType::Primitive(PrimitiveType::I32) {
         return Err(format!(
             "expected {:?} but got {:?}",
-            &ResolvedType::Primitive(PrimitiveType::I32),
+            ResolvedType::Primitive(PrimitiveType::I32),
             ty
         )
         .into());
@@ -545,7 +545,7 @@ fn irexpr_ty_returns_type_from_binary_op() -> Result<(), Box<dyn std::error::Err
     if ty != &ResolvedType::Primitive(PrimitiveType::Boolean) {
         return Err(format!(
             "expected {:?} but got {:?}",
-            &ResolvedType::Primitive(PrimitiveType::Boolean),
+            ResolvedType::Primitive(PrimitiveType::Boolean),
             ty
         )
         .into());

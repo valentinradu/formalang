@@ -204,13 +204,24 @@ fn compiling_is_roughly_linear_in_the_definition_count() {
 /// The smallest program the compiler accepts must compile quickly.
 ///
 /// Every entry point prepends the compiler-shipped prelude to the
-/// user's source. Parsing it used to run on every call and cost
-/// 3.6 ms, which was 94% of the 3.8 ms a minimal compile took. The
-/// parse now runs once per process and later calls clone the result.
+/// user's source, so every compile pays a fixed cost before it reads
+/// a byte the caller wrote. This test bounds that fixed cost in
+/// absolute terms, the way
+/// `a_deeply_nested_program_parses_quickly` bounds the nesting pair.
 ///
-/// The first call in a process still pays that one-time parse, so
-/// this test warms it up first and then measures what a caller pays
-/// per compile.
+/// The first call in a process pays a one-time prelude parse, so this
+/// test warms it up first and then measures what a caller pays per
+/// compile.
+///
+/// The bound is deliberately loose. A debug build of a minimal
+/// compile takes about 1.1 ms on a developer machine and about 3.2 ms
+/// on a shared CI runner, and a loaded runner can be several times
+/// worse again. A bound tight enough to catch a 3x regression would
+/// flake, so this one only catches an order-of-magnitude blow-up.
+/// The precise guard on the prelude — the regression that made the
+/// fixed cost 94% of a minimal compile — is
+/// `the_prelude_is_parsed_once_per_process`, which compares the two
+/// costs against each other and needs no absolute number.
 #[test]
 fn compiling_a_minimal_program_is_fast() {
     const SOURCE: &str = "pub struct A { a: I32 }";
@@ -228,7 +239,7 @@ fn compiling_a_minimal_program_is_fast() {
     let each = start.elapsed() / runs;
 
     assert!(
-        each < Duration::from_millis(2),
+        each < Duration::from_millis(50),
         "the smallest program the compiler accepts took {each:?} per compile"
     );
 }
