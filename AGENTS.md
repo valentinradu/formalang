@@ -113,6 +113,17 @@ per file, with a `// expect:` header. No Rust required.
 An `#[ignore]` test fails today; its reason says why. Drop the
 attribute when the defect is fixed or the feature lands.
 
+### The toolchain
+
+`rust-toolchain.toml` pins the exact compiler that CI and a developer
+machine both use. Do not run `rustup update` to fix a lint failure:
+that moves your machine off the pin and hides the problem instead of
+fixing it. To move the pin, raise `channel` in that file, run the
+clippy gate, and fix the new lints in the same commit.
+
+The pin is not the minimum supported Rust version. That is
+`rust-version` in `Cargo.toml`.
+
 ---
 
 ## FormaLang Compiler

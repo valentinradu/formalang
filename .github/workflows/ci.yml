@@ -50,8 +50,12 @@ jobs:
                       /opt/hostedtoolcache/PyPy
           df -h /
 
+      # `rust-toolchain.toml` names the version and the components.
+      # Run it with no argument so the file stays the only place that
+      # says which toolchain this repository uses; a developer machine
+      # picks up the same one.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup toolchain install --no-self-update
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -90,10 +94,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `clippy` and `rustfmt` come from the `components` list in
+      # `rust-toolchain.toml`.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+        run: rustup toolchain install --no-self-update
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -112,7 +116,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup toolchain install --no-self-update
 
       - name: Run cargo-audit
         uses: rustsec/audit-check@v2

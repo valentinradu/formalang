@@ -1,0 +1,23 @@
+# The one toolchain that builds and gates this repository.
+#
+# Without this file, a developer machine and the CI runner drift
+# apart. CI installed `stable`, which moved from 1.96 to 1.98 while
+# the local toolchain stayed on 1.96. Clippy 1.98 added lints that
+# 1.96 does not have, so the same commit passed locally and failed on
+# CI with nine errors. Pin the version and both sides run the same
+# compiler and the same lints.
+#
+# This is not the minimum supported Rust version. That is
+# `rust-version` in `Cargo.toml`, and it is a floor for downstream
+# users, not a statement about this repository.
+#
+# To move the pin: raise `channel` here, run `cargo clippy
+# --all-targets --all-features -- -D warnings`, and fix what the new
+# lints report in the same commit.
+#
+# `scripts/fuzz.sh` runs `cargo +nightly fuzz`. A `+toolchain`
+# argument takes precedence over this file, so fuzzing is unaffected.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
