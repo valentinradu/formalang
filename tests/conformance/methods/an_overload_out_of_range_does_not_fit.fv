@@ -1,0 +1,25 @@
+// expect: run
+// Selection accepts a call whose count lands between what is required
+// and what is declared. Mutation testing found that the two bounds
+// were never both load-bearing: turning the `&&` into `||` broke
+// nothing.
+//
+// `wide` requires two and declares three; `narrow` requires and
+// declares one. A call with two arguments is out of range for
+// `narrow` below and in range for `wide`, so only a rule that checks
+// both ends picks the right one.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn combine(self, a: I32) -> I32 { self.x + a }
+    fn combine(self, a: I32, b: I32, c: I32 = 100) -> I32 { self.x + a + b + c }
+}
+
+pub fn run_checks() {
+    assert(condition: P(x: 0).combine(a: 1) == 1)
+    assert(condition: P(x: 0).combine(a: 1, b: 2) == 103)
+    assert(condition: P(x: 0).combine(a: 1, b: 2, c: 3) == 6)
+}

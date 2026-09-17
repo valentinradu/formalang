@@ -1,0 +1,23 @@
+// expect: run
+// Two overloads both fit `pick(x: 5)`: the defaulted one by firing
+// its default, the plain one exactly. `docs/user/functions.md` says
+// the no-default match wins.
+//
+// The defaulted overload is declared *first* on purpose. Written the
+// other way round the first candidate is already the right one, and
+// the tie-break never has to decide — which is how a rule with a test
+// can still be untested. Mutation testing showed it: making
+// `defaults_fired` always answer zero broke nothing.
+
+fn pick(x: I32, y: I32 = 1) -> I32 {
+    x + y
+}
+
+fn pick(x: I32) -> I32 {
+    x
+}
+
+pub fn run_checks() {
+    assert(condition: pick(x: 5) == 5)
+    assert(condition: pick(x: 5, y: 2) == 7)
+}

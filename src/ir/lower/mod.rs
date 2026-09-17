@@ -311,33 +311,18 @@ impl<'a> IrLowerer<'a> {
                 .or_else(|| self.find_function_in_scope(name));
         }
 
-        let mut best: Option<(usize, crate::ir::FunctionId)> = None;
-        for (id, f) in candidates {
-            let params: Vec<_> = f.params.iter().filter(|p| p.name != "self").collect();
-
-            // Every label the call gives must name a parameter.
-            let labels_fit = arg_labels.iter().flatten().all(|label| {
-                params
-                    .iter()
-                    .any(|p| p.name == *label || p.external_label.as_ref() == Some(label))
-            });
-            if !labels_fit {
-                continue;
-            }
-
-            let required = params.iter().filter(|p| p.default.is_none()).count();
-            if arg_count < required || arg_count > params.len() {
-                continue;
-            }
-
-            let defaults_fired = params.len().saturating_sub(arg_count);
-            if best.is_none_or(|(fewest, _)| defaults_fired < fewest) {
-                best = Some((defaults_fired, id));
-            }
-        }
-
-        best.map(|(_, id)| id)
-            .or_else(|| self.find_function_in_scope(name))
+        // The same rule a method call uses — labels fit, count between
+        // required and declared, fewest defaults fired. One copy, so
+        // the two cannot drift and so one test covers both.
+        let ordered = candidates;
+        crate::ir::overload::choose(
+            ordered.iter().map(|(_, f)| *f).enumerate(),
+            |f| f.params.as_slice(),
+            arg_labels,
+            arg_count,
+        )
+        .and_then(|index| ordered.get(index).map(|(id, _)| *id))
+        .or_else(|| self.find_function_in_scope(name))
     }
 
     /// Look up a local binding's resolved type by name from the innermost

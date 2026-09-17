@@ -1,0 +1,20 @@
+// expect: run
+// Two methods of one name taking the same number of arguments, told
+// apart only by the label. Mutation testing found this: flipping the
+// label comparison in `ir::overload::call_fits` from `==` to `!=`
+// broke nothing, because every overload test until now differed by
+// arity as well, so the label was never what decided.
+
+pub struct Grid {
+    base: I32
+}
+
+impl Grid {
+    fn at(self, row: I32) -> I32 { self.base + row }
+    fn at(self, col: I32) -> I32 { self.base - col }
+}
+
+pub fn run_checks() {
+    assert(condition: Grid(base: 10).at(row: 1) == 11)
+    assert(condition: Grid(base: 10).at(col: 1) == 9)
+}

@@ -1,0 +1,18 @@
+// expect: run
+// The label a call writes may be an external one, different from the
+// parameter's own name. Overload selection reads both, and nothing
+// exercised the external half.
+
+pub struct Grid {
+    base: I32
+}
+
+impl Grid {
+    fn shift(self, up amount: I32) -> I32 { self.base + amount }
+    fn shift(self, down amount: I32) -> I32 { self.base - amount }
+}
+
+pub fn run_checks() {
+    assert(condition: Grid(base: 10).shift(up: 3) == 13)
+    assert(condition: Grid(base: 10).shift(down: 3) == 7)
+}

@@ -16,6 +16,7 @@ and where a new test belongs.
 | `scripts/fuzz.sh [target] [seconds]` | the cargo-fuzz targets | as long as you give it |
 | `RUSTFLAGS="--cfg loom" cargo test --bin fvc loom_watch` | the loom model check | seconds |
 | `scripts/check_file_sizes.sh` | the 500-line ceiling on `src/**/*.rs` | instant |
+| `scripts/mutate.sh` | whether the tests would notice a wrong compiler | hours | instant |
 
 ## Taxonomy
 
@@ -46,6 +47,7 @@ and where a new test belongs.
 | `tests/shape_equivalence.rs` | One computation written several ways, run and compared |
 | `tests/renaming.rs` | Renaming something does not change the verdict |
 | `tests/matrix_answers.rs` | The cells the matrices accept, run against algebraic laws |
+| `tests/tests_assert_something.rs` | No file gains a test that asserts nothing |
 | `tests/optimised_answers.rs` | Every optimising pass, run and compared against the unoptimised answer |
 | `tests/no_internal_errors.rs` | No wrong program earns an internal error |
 | `tests/differential.rs` | Generated programs against an independent oracle |
@@ -495,6 +497,66 @@ for (name, source) in examples() {
 ```
 
 Twenty-one loops use it today. Any new corpus-driven test should.
+
+## Are the tests actually testing anything?
+
+A passing suite is not evidence on its own. This one has been wrong
+about itself three times:
+
+- `test_overload_in_impl_block` declared two methods of one name,
+  compiled them, and asserted nothing. It passed for as long as method
+  overloading was impossible — the feature it covered could not be
+  performed at all.
+- `test_if_without_else_branch` asserted the opposite of what
+  `docs/user/control-flow.md` says.
+- `test_inferred_enum_in_let` asserted that a hole was correct.
+
+Coverage counts all three as covered, because the lines did execute.
+Two checks answer the question properly.
+
+### The cheap one: does the test look at what it compiled?
+
+`tests/tests_assert_something.rs` reads the test sources and counts the
+test functions that compile a program and then ask nothing of the
+result. There are 615 of them across 26 files, and the count per file
+is a ratchet: a new one has to displace an old one or assert
+something.
+
+Those 615 are not worthless — on a valid program, "this compiles" is
+the assertion that it is not falsely rejected, and the parser suites
+rest almost entirely on it. But such a test cannot tell a working
+feature from a missing one, which is exactly how the first example
+above survived.
+
+It is a text search, so it sees shape and not meaning. It runs in
+milliseconds, every time.
+
+### The thorough one: would the tests notice if the compiler were wrong?
+
+`scripts/mutate.sh` changes the compiler so it is wrong and checks
+whether any test fails. A change nothing notices marks a line the
+suite does not really cover.
+
+```bash
+scripts/mutate.sh                  # the modules most worth checking
+scripts/mutate.sh src/semantic     # a directory or a file
+```
+
+This works. Run by hand during the session that wrote these tests, it
+showed that:
+
+- changing `Sub` to `Add` in the **lowerer** broke eight laws in
+  `matrix_answers`, and the same change in the **constant folder**
+  broke nothing — which is how the gap in pass coverage was found;
+- reverting the `function_id` repair produced a precise failure naming
+  the program and the pass;
+- three mutants survived in `ir::overload`, because every overload
+  test until then differed by arity, so the label comparison was never
+  what decided. `methods/overloads_differ_by_label.fv` and its two
+  neighbours exist because of those three.
+
+The whole tree is about 2600 mutants and each needs a test run, so a
+full pass takes hours. Run a directory at a time.
 
 ## Open questions
 

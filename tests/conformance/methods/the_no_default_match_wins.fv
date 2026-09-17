@@ -1,0 +1,17 @@
+// expect: run
+// The same tie-break for a method, with the defaulted overload
+// declared first so the rule has to decide rather than source order.
+
+pub struct P {
+    base: I32
+}
+
+impl P {
+    fn go(self, a: I32, b: I32 = 100) -> I32 { self.base + a + b }
+    fn go(self, a: I32) -> I32 { self.base + a }
+}
+
+pub fn run_checks() {
+    assert(condition: P(base: 0).go(a: 5) == 5)
+    assert(condition: P(base: 0).go(a: 5, b: 2) == 7)
+}
