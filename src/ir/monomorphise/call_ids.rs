@@ -33,9 +33,8 @@ pub(in crate::ir::monomorphise) fn resync_call_ids(module: &mut IrModule) {
                 .push(crate::ir::FunctionId(i));
         }
     }
-    let names: Vec<String> = module.functions.iter().map(|f| f.name.clone()).collect();
 
-    let fix = |expr: &mut IrExpr| resync_expr(expr, &by_name, &names);
+    let fix = |expr: &mut IrExpr| resync_expr(expr, &by_name);
 
     for f in &mut module.functions {
         if let Some(body) = &mut f.body {
@@ -64,13 +63,9 @@ pub(in crate::ir::monomorphise) fn resync_call_ids(module: &mut IrModule) {
     }
 }
 
-fn resync_expr(
-    expr: &mut IrExpr,
-    by_name: &HashMap<String, Vec<crate::ir::FunctionId>>,
-    names: &[String],
-) {
+fn resync_expr(expr: &mut IrExpr, by_name: &HashMap<String, Vec<crate::ir::FunctionId>>) {
     for child in iter_expr_children_mut(expr) {
-        resync_expr(child, by_name, names);
+        resync_expr(child, by_name);
     }
     let IrExpr::FunctionCall {
         path, function_id, ..
@@ -89,23 +84,20 @@ fn resync_expr(
         return;
     };
 
-    // The id is only wrong when it no longer names what the path says.
-    // Leaving a correct id alone is what keeps overload resolution
-    // intact: the lowerer already chose which overload this call means,
-    // and specialisation did not rename it.
-    if let Some(current) = function_id {
-        if names
-            .get(current.0 as usize)
-            .is_some_and(|name| *name == joined || Some(name) == path.last())
-        {
-            return;
-        }
-    }
-
-    // The id is stale. Repair it only when the name picks out one
-    // function: with several overloads there is nothing here to say
-    // which was meant, and a guess would be worse than leaving the
-    // call for `ResolveReferencesPass` to rebind by path.
+    // Repair the id only when the name picks out one function.
+    //
+    // That single condition is also what keeps overload resolution
+    // intact. Where a name has several candidates there is nothing
+    // here to say which the call meant, so the id the lowerer already
+    // chose stands; where it has one, that one is the answer whether
+    // or not the id was already correct.
+    //
+    // An earlier version checked first whether the id was already
+    // right and returned early if so. Mutation testing showed that
+    // check could be inverted without any test noticing, and the
+    // reason is that it never decided anything: every path through it
+    // reaches the same id as the line below. It was removed rather
+    // than covered.
     if let [only] = candidates.as_slice() {
         *function_id = Some(*only);
     }
