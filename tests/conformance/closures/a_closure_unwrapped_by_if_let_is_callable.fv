@@ -1,0 +1,26 @@
+// expect: run
+// `if let` is desugared at parse time to a match on `.some` / `.none`,
+// so the binding it introduces is a match-arm binding. Only `let`-bound
+// closures were registered as callable, so `g(n)` here was reported as
+// an undefined reference while the identical closure bound by a plain
+// `let` worked.
+
+pub fn through_if_let(n: I32) -> I32 {
+    let xs = [(k: I32) -> k + 1]
+    if let g = xs[0] {
+        g(n)
+    } else {
+        0
+    }
+}
+
+pub fn through_let(n: I32) -> I32 {
+    let g = (k: I32) -> k + 1
+    g(n)
+}
+
+pub fn run_checks() {
+    assert(condition: through_if_let(n: 10) == 11)
+    // The two spellings must agree.
+    assert(condition: through_if_let(n: 10) == through_let(n: 10))
+}

@@ -172,6 +172,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr(scrutinee, file);
+                // Inferred once for the whole match, and only when the
+                // scrutinee could hold a closure at all. Doing this per
+                // arm cost more than the rest of a small compile put
+                // together.
+                let closure_scrutinee = {
+                    let ty = self.infer_type_sem(scrutinee, file);
+                    ty.holds_a_closure().then_some(ty)
+                };
                 let pre_match = self.consumed_bindings.clone();
                 let mut post_union: HashSet<String> = HashSet::new();
                 let mut arm_sems: Vec<SemType> = Vec::new();
@@ -181,7 +189,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         let scope: HashSet<String> =
                             bindings.iter().map(|b| b.name.clone()).collect();
                         self.closure_param_scopes.push(scope);
+                        // A binding that holds a closure is callable in
+                        // the arm. `if let` is desugared at parse time
+                        // to a match on `.some` / `.none`, so
+                        // `if let g = xs[0] { g(n) }` arrives here —
+                        // and registering only `let`-bound closures
+                        // left `g(n)` reported as an undefined
+                        // reference, while the same closure bound by a
+                        // plain `let` worked.
+                        let saved = closure_scrutinee.as_ref().map(|ty| {
+                            let saved = self.closure_binding_conventions.clone();
+                            self.register_closure_arm_bindings(ty, &arm.pattern);
+                            saved
+                        });
                         self.validate_expr(&arm.body, file);
+                        if let Some(saved) = saved {
+                            self.closure_binding_conventions = saved;
+                        }
                         self.closure_param_scopes.pop();
                     } else {
                         self.validate_expr(&arm.body, file);
@@ -445,5 +469,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             ty,
             SemType::Primitive(_) | SemType::Closure { .. } | SemType::Nil
         )
+    }
+
+    /// Register any binding in this arm's pattern that holds a closure,
+    /// so a call through it resolves.
+    ///
+    /// An inferred type carries no parameter conventions, so each
+    /// parameter takes the default. A closure written with `mut` or
+    /// `sink` parameters and then matched out of an optional keeps its
+    /// shape but not its conventions; the annotated `let` path still
+    /// records those exactly.
+    fn register_closure_arm_bindings(
+        &mut self,
+        scrutinee_ty: &SemType,
+        pattern: &crate::ast::Pattern,
+    ) {
+        let frame = self.build_match_arm_scope_for_type(scrutinee_ty, pattern);
+        for (name, ty) in frame {
+            if let SemType::Closure { params, .. } = ty {
+                let conventions = vec![crate::ast::ParamConvention::Let; params.len()];
+                self.closure_binding_conventions.insert(name, conventions);
+            }
+        }
     }
 }

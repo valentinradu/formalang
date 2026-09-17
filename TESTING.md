@@ -561,7 +561,8 @@ full pass takes hours. Run a directory at a time.
 ## Open questions
 
 Two behaviours nobody has decided on purpose, both found by the
-matrices above and left alone rather than changed:
+matrices above and left alone rather than changed. Neither is a defect
+— each is a question about what the language should say:
 
 - A plain value wraps into an optional at a `let` — `let a: I32? = 3`
   — and inside an array **only when a `nil` forces it**:
@@ -570,6 +571,3 @@ matrices above and left alone rather than changed:
 - `x == nil` is rejected for an optional `x`; `.is_none()` is the way
   to ask. Defensible, but the error does not point at it.
 
-And one open defect: a closure bound by `if let` is not callable, while
-the same closure bound by `let` is. `if let g = xs[0] { g(n) }` reports
-`UndefinedReference`.

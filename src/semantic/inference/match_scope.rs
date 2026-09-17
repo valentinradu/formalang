@@ -14,7 +14,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// arms used by the Rust-style `if let` desugaring; everything else
     /// falls back to `build_match_arm_scope` keyed on the bare enum
     /// name plus the receiver's generic args.
-    pub(super) fn build_match_arm_scope_for_type(
+    pub(in crate::semantic) fn build_match_arm_scope_for_type(
         &self,
         scrutinee_ty: &SemType,
         pattern: &crate::ast::Pattern,
