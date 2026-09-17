@@ -70,13 +70,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         match def {
             Definition::Struct(struct_def) => self.validate_struct_expressions(struct_def, file),
             Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
-            Definition::Function(func_def) => self.validate_function_body(func_def, file),
             Definition::Module(module_def) => {
                 for nested_def in &module_def.definitions {
                     self.validate_definition_expressions(nested_def, file);
                 }
             }
-            Definition::Trait(_) | Definition::Enum(_) => {}
+            // A function's body is validated by
+            // `validate_standalone_function`, which the type-resolution
+            // pass runs over every function. This arm used to call a
+            // second walk that did the same work, minus the parameter
+            // defaults — mutation testing replaced that walk with
+            // nothing and no test disagreed. A trait and an enum hold
+            // no expressions to walk.
+            Definition::Function(_) | Definition::Trait(_) | Definition::Enum(_) => {}
         }
     }
 
@@ -94,61 +100,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.current_impl_struct = None;
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
-        self.pop_generic_scope();
-    }
-
-    fn validate_function_body(&mut self, func_def: &crate::ast::FunctionDef, file: &File) {
-        // Push the function's generic params so uses of `T` inside the
-        // body and in param/return annotations don't trip the
-        // OutOfScopeTypeParameter check.
-        self.push_generic_scope(&func_def.generics);
-        self.local_let_bindings.clear();
-        self.consumed_bindings.clear();
-        // Snapshot closure-binding maps so entries introduced in
-        // this function body don't leak into later functions.
-        let saved_closure_conventions = self.closure_binding_conventions.clone();
-        let saved_closure_captures = self.closure_binding_captures.clone();
-        let saved_fn_scope_captures = std::mem::take(&mut self.fn_scope_closure_captures);
-        let saved_param_conventions = self.current_fn_param_conventions.clone();
-        self.current_fn_param_conventions.clear();
-        for param in &func_def.params {
-            if let Some(ty) = &param.ty {
-                self.validate_type(ty, param.span);
-            }
-            let param_sem = param.ty.as_ref().map_or(
-                crate::semantic::sem_type::SemType::Unknown,
-                crate::semantic::sem_type::SemType::from_ast,
-            );
-            let mutable = matches!(
-                param.convention,
-                crate::ast::ParamConvention::Mut | crate::ast::ParamConvention::Sink
-            );
-            self.local_let_bindings
-                .insert(param.name.name.clone(), (param_sem, mutable));
-            self.current_fn_param_conventions
-                .insert(param.name.name.clone(), param.convention);
-            // Register closure-typed parameters so they're callable inside the body.
-            // Parameters have no captures of their own — no closure_binding_captures entry.
-            if let Some(crate::ast::Type::Closure {
-                params: closure_params,
-                ..
-            }) = &param.ty
-            {
-                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
-                self.closure_binding_conventions
-                    .insert(param.name.name.clone(), conventions);
-            }
-        }
-        if let Some(body) = &func_def.body {
-            self.validate_expr(body, file);
-            self.validate_function_return_escape(func_def.return_type.as_ref(), body);
-        }
-        self.local_let_bindings.clear();
-        self.consumed_bindings.clear();
-        self.closure_binding_conventions = saved_closure_conventions;
-        self.closure_binding_captures = saved_closure_captures;
-        self.fn_scope_closure_captures = saved_fn_scope_captures;
-        self.current_fn_param_conventions = saved_param_conventions;
         self.pop_generic_scope();
     }
 
