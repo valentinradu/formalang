@@ -32,12 +32,16 @@ PROJECT="${PROJECT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 JOBS="${JOBS:-12}"
 TIMEOUT="${TIMEOUT:-300}"
 TMP="${TMP:-$HOME/.cache/formalang-mutants}"
+ACQUIRED=0
 TARGET="${1:-}"
 
 OUT="$TMP/out"
 LOG="$TMP/run.log"
 
 cleanup() {
+  # A run that never acquired the lock owns nothing: tearing down here
+  # would kill the sweep that does own it and delete its lock.
+  [ "${ACQUIRED:-0}" = "1" ] || return 0
   echo
   echo "cleaning working copies…"
   pkill -f cargo-mutants 2>/dev/null
@@ -50,6 +54,7 @@ cleanup() {
   done
   pkill -9 -f cargo-mutants 2>/dev/null
   sleep 1
+  rm -f "$LOCK" 2>/dev/null
   rm -rf "$TMP"/cargo-mutants-*.tmp 2>/dev/null
   left=$(ls -d "$TMP"/cargo-mutants-*.tmp 2>/dev/null | wc -l)
   if [ "$left" -gt 0 ]; then
@@ -65,19 +70,49 @@ command -v cargo-mutants >/dev/null || {
 }
 
 mkdir -p "$TMP"
+
+# One run at a time. Two runs share $TMP, and the second deletes the
+# first's output directory the moment it starts: the first then fails
+# on a missing path, and the second reports a clean sweep having
+# tested nothing. Give a second run its own TMP to run them on purpose.
+LOCK="$TMP/running.pid"
+if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "A sweep is already running (pid $(cat "$LOCK"))." >&2
+  echo "Wait for it, or give this one its own directory:" >&2
+  echo "    TMP=~/.cache/formalang-mutants-2 $0 $*" >&2
+  exit 1
+fi
+echo $$ > "$LOCK"
+ACQUIRED=1
+
 rm -rf "$OUT" "$LOG"
 
 # --- what are we mutating, and is there room -------------------------------
 cd "$PROJECT" || exit 1
 
-args=(-j "$JOBS" --timeout "$TIMEOUT" --output "$OUT")
-scope="the whole project"
+# `-f` takes a glob, not a path. A directory given plainly matches
+# nothing, and the run then reports success having tested zero
+# mutants — so a directory is expanded here rather than passed on.
+FILTER=""
 if [ -n "$TARGET" ] && [ "$TARGET" != "$PROJECT" ]; then
-  args+=(-f "$TARGET")
-  scope="$TARGET"
+  # Resolve against the project rather than the caller's directory:
+  # a relative path tested from elsewhere reads as "not a directory"
+  # and is passed on unexpanded, which matches nothing.
+  if [ -d "$PROJECT/${TARGET#"$PROJECT/"}" ] && [ "${TARGET%\*}" = "$TARGET" ]; then
+    FILTER="${TARGET%/}/**"
+  else
+    FILTER="$TARGET"
+  fi
 fi
 
-total=$(cargo mutants --list ${TARGET:+-f "$TARGET"} 2>/dev/null | wc -l)
+args=(-j "$JOBS" --timeout "$TIMEOUT" --output "$OUT")
+scope="the whole project"
+if [ -n "$FILTER" ]; then
+  args+=(-f "$FILTER")
+  scope="$FILTER"
+fi
+
+total=$(cargo mutants --list ${FILTER:+-f "$FILTER"} 2>/dev/null | wc -l)
 free_gb=$(df -BG --output=avail "$TMP" | tail -1 | tr -dc '0-9')
 
 echo "=============================================================="
@@ -87,6 +122,11 @@ echo "   jobs      $JOBS"
 echo "   copies in $TMP   ($free_gb GB free)"
 echo "=============================================================="
 echo
+if [ "$total" -eq 0 ]; then
+  echo "No mutants match '\$scope'. The -f filter takes a glob: a file," >&2
+  echo "or a directory, which is expanded to '<dir>/**' here." >&2
+  exit 1
+fi
 if [ "$free_gb" -lt 60 ]; then
   echo "Less than 60 GB free. Each job keeps its own target/ directory;" >&2
   echo "run 'cargo clean' first or lower JOBS." >&2
@@ -158,8 +198,37 @@ PY
 done
 
 # --- report ----------------------------------------------------------------
+wait "$runner" 2>/dev/null
+status=$?
+
+tested=0
+if [ -f "$OUT/mutants.out/outcomes.json" ]; then
+  tested=$(python3 -c '
+import json, sys
+from collections import Counter
+o = json.load(open(sys.argv[1])).get("outcomes", [])
+c = Counter(x["summary"] for x in o)
+print(len(o) - c.get("Success", 0))
+' "$OUT/mutants.out/outcomes.json" 2>/dev/null || echo 0)
+fi
+
 echo
 echo "=============================================================="
+# "No survivors" over a run that tested nothing is the same lie this
+# whole exercise exists to catch. Say what happened instead.
+if [ "$tested" -eq 0 ]; then
+  echo " Nothing was tested. The run ended before any mutant was reached" >&2
+  echo " (exit $status). The log says why:" >&2
+  echo "     $LOG" >&2
+  echo "==============================================================" >&2
+  exit 1
+fi
+if [ "$tested" -lt "$total" ]; then
+  echo " Stopped early: $tested of $total mutants tested (exit $status)."
+  echo " What follows covers only those."
+  echo
+fi
+
 if [ -s "$OUT/mutants.out/missed.txt" ]; then
   n=$(wc -l < "$OUT/mutants.out/missed.txt")
   echo " $n survivor(s) — each is a change to the compiler that no test"
