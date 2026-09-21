@@ -32,36 +32,28 @@ impl IrLowerer<'_> {
                 .impls
                 .get(impl_id.0 as usize)
                 .and_then(|imp| {
-                    let named = imp
-                        .functions
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, f)| f.name == method_name);
-                    crate::ir::overload::choose(
-                        named,
+                    crate::ir::overload::method_index(
+                        &imp.functions,
+                        |f| f.name.as_str(),
                         |f| f.params.as_slice(),
+                        method_name,
                         &labels,
                         call_args.len(),
                     )
-                    .or_else(|| imp.functions.iter().position(|f| f.name == method_name))
                 })
                 .unwrap_or(0) as u32,
             crate::ir::DispatchKind::Virtual { trait_id, .. } => {
                 self.module
                     .get_trait(*trait_id)
                     .and_then(|t| {
-                        let named = t
-                            .methods
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, m)| m.name == method_name);
-                        crate::ir::overload::choose(
-                            named,
+                        crate::ir::overload::method_index(
+                            &t.methods,
+                            |m| m.name.as_str(),
                             |m| m.params.as_slice(),
+                            method_name,
                             &labels,
                             call_args.len(),
                         )
-                        .or_else(|| t.methods.iter().position(|m| m.name == method_name))
                     })
                     .unwrap_or(0) as u32
             }

@@ -1,0 +1,13 @@
+// expect: reject FunctionReturnTypeMismatch
+// A generic function declared inside a module specialises its return
+// type from the call, the same way a top-level one does. `identity`
+// takes an `I32` here, so it gives an `I32` back, and `String` is the
+// wrong return type for `probe`.
+
+pub mod m {
+    pub fn identity<T>(item: T) -> T { item }
+}
+
+pub fn probe() -> String {
+    m::identity(item: 7)
+}

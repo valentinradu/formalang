@@ -343,6 +343,52 @@ fn method_call_static_dispatch_resolves_method_idx() -> TestResult {
     Ok(())
 }
 
+/// The pass writes the method index over what the module carries.
+///
+/// Lowering computes the index too, so a module compiled from source
+/// arrives with the right one already in place: a pass that did
+/// nothing would still look right. This test puts a wrong index in
+/// first, and calls the *first* of the two methods, so neither "leave
+/// it alone" nor "always answer one" passes. A backend that builds IR
+/// by hand depends on exactly this.
+#[test]
+fn method_call_static_dispatch_rewrites_a_wrong_method_idx() -> TestResult {
+    let mut module = compile_to_ir(
+        r"
+        pub struct Counter { n: I32 }
+        impl Counter {
+            fn first(self) -> I32 { 1 }
+            fn second(self) -> I32 { 2 }
+        }
+        pub fn pick(c: Counter) -> I32 { c.first() }
+        ",
+    )
+    .map_err(|e| format!("compile: {e:?}"))?;
+
+    let body = module
+        .functions
+        .iter_mut()
+        .find(|f| f.name == "pick")
+        .and_then(|f| f.body.as_mut())
+        .ok_or("no body")?;
+    let IrExpr::MethodCall { method_idx, .. } = body else {
+        return Err(format!("expected MethodCall, got {body:?}").into());
+    };
+    *method_idx = MethodIdx(7);
+
+    let mut pass = formalang::ir::ResolveReferencesPass::new();
+    let module = pass.run(module).map_err(|e| format!("pass: {e:?}"))?;
+
+    let body = function_body(&module, "pick").ok_or("no body")?;
+    let IrExpr::MethodCall { method_idx, .. } = body else {
+        return Err(format!("expected MethodCall, got {body:?}").into());
+    };
+    if *method_idx != MethodIdx(0) {
+        return Err(format!("expected MethodIdx(0), got {method_idx:?}").into());
+    }
+    Ok(())
+}
+
 #[test]
 fn nested_module_struct_registered_with_qualified_name() -> TestResult {
     // Structs declared inside `mod foo { … }` end up in

@@ -83,3 +83,122 @@ where
     }
     best.map(|(_, index)| index)
 }
+
+/// The index of the method a call means, inside the impl block or the
+/// trait that declares it.
+///
+/// [`choose`] decides between the methods of that name. When none of
+/// them fits the call, the index goes to the first method of that name
+/// instead: the call still points at something a diagnostic can name,
+/// rather than at whatever method sits at index zero.
+///
+/// The semantic analyser rejects a call that fits no method before
+/// lowering runs, so a module built by hand is the only way to reach
+/// that fallback. `ResolveReferencesPass` reads such modules.
+///
+/// Two places computed this index, and each held its own copy of the
+/// rule: lowering writes it, and `ResolveReferencesPass` writes it
+/// again over a module it did not lower. One copy is enough.
+#[must_use]
+pub(crate) fn method_index<'a, T>(
+    methods: &'a [T],
+    name_of: impl Fn(&'a T) -> &'a str,
+    params_of: impl Fn(&'a T) -> &'a [IrFunctionParam],
+    method_name: &str,
+    arg_labels: &[Option<String>],
+    arg_count: usize,
+) -> Option<usize> {
+    let named = methods
+        .iter()
+        .enumerate()
+        .filter(|&(_, m)| name_of(m) == method_name);
+    choose(named, params_of, arg_labels, arg_count)
+        .or_else(|| methods.iter().position(|m| name_of(m) == method_name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{method_index, IrFunctionParam};
+    use crate::ir::BindingId;
+
+    /// A stand-in for a method: a name and its parameters. The rule
+    /// under test is generic over the method type, so the test does
+    /// not have to build a whole `IrFunction`.
+    struct Method {
+        name: &'static str,
+        params: Vec<IrFunctionParam>,
+    }
+
+    fn param(name: &str, default: bool) -> IrFunctionParam {
+        IrFunctionParam {
+            binding_id: BindingId(0),
+            name: name.to_string(),
+            external_label: None,
+            ty: None,
+            default: default.then(|| crate::ir::IrExpr::Literal {
+                value: crate::ast::Literal::Nil,
+                ty: crate::ir::ResolvedType::Primitive(crate::ast::PrimitiveType::I32),
+                span: crate::ir::IrSpan::default(),
+            }),
+            convention: crate::ast::ParamConvention::Let,
+            span: crate::ir::IrSpan::default(),
+        }
+    }
+
+    fn methods() -> Vec<Method> {
+        vec![
+            Method {
+                name: "zero",
+                params: vec![param("self", false)],
+            },
+            Method {
+                name: "at",
+                params: vec![param("self", false), param("row", false)],
+            },
+            Method {
+                name: "at",
+                params: vec![
+                    param("self", false),
+                    param("row", false),
+                    param("col", false),
+                ],
+            },
+        ]
+    }
+
+    /// The index that a call of this name, these labels and this many
+    /// arguments takes.
+    fn index_of(method_name: &str, labels: &[&str], arg_count: usize) -> Option<usize> {
+        let all = methods();
+        let labels: Vec<Option<String>> = labels.iter().map(|l| Some((*l).to_string())).collect();
+        method_index(
+            &all,
+            |m| m.name,
+            |m| m.params.as_slice(),
+            method_name,
+            &labels,
+            arg_count,
+        )
+    }
+
+    #[test]
+    fn a_call_takes_the_overload_it_fits() {
+        assert_eq!(index_of("at", &["row"], 1), Some(1));
+        assert_eq!(index_of("at", &["row", "col"], 2), Some(2));
+    }
+
+    /// The fallback. No method of that name fits the call, so the
+    /// index goes to the first method of that name — index 1 — and not
+    /// to index 0, which holds a method of another name.
+    #[test]
+    fn a_call_that_fits_no_overload_takes_the_first_of_its_name() {
+        assert_eq!(index_of("at", &[], 0), Some(1));
+        assert_eq!(index_of("at", &["row"], 3), Some(1));
+        assert_eq!(index_of("at", &["nosuch"], 1), Some(1));
+    }
+
+    #[test]
+    fn a_name_no_method_carries_has_no_index() {
+        assert_eq!(index_of("missing", &[], 0), None);
+    }
+}

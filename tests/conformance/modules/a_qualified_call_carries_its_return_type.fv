@@ -1,0 +1,13 @@
+// expect: reject FunctionReturnTypeMismatch
+// A call written through a module path carries the return type the
+// function declares. Mutation testing found this: making the
+// qualified lookup answer "no type" broke nothing, because every test
+// of a qualified call put the result where any type fits.
+
+pub mod m {
+    pub fn helper(a: I32) -> I32 { a + 1 }
+}
+
+pub fn probe() -> String {
+    m::helper(a: 1)
+}

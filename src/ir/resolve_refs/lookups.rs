@@ -30,25 +30,27 @@ pub(super) fn lookup_method_idx(
     match dispatch {
         DispatchKind::Static { impl_id } => {
             let imp = module.impls.get(impl_id.0 as usize)?;
-            let named = imp
-                .functions
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| f.name == method);
-            crate::ir::overload::choose(named, |f| f.params.as_slice(), &labels, args.len())
-                .or_else(|| imp.functions.iter().position(|f| f.name == method))
-                .map(|i| i as u32)
+            crate::ir::overload::method_index(
+                &imp.functions,
+                |f| f.name.as_str(),
+                |f| f.params.as_slice(),
+                method,
+                &labels,
+                args.len(),
+            )
+            .map(|i| i as u32)
         }
         DispatchKind::Virtual { trait_id, .. } => {
             let t = module.get_trait(*trait_id)?;
-            let named = t
-                .methods
-                .iter()
-                .enumerate()
-                .filter(|(_, m)| m.name == method);
-            crate::ir::overload::choose(named, |m| m.params.as_slice(), &labels, args.len())
-                .or_else(|| t.methods.iter().position(|m| m.name == method))
-                .map(|i| i as u32)
+            crate::ir::overload::method_index(
+                &t.methods,
+                |m| m.name.as_str(),
+                |m| m.params.as_slice(),
+                method,
+                &labels,
+                args.len(),
+            )
+            .map(|i| i as u32)
         }
     }
 }
