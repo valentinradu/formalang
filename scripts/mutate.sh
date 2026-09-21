@@ -2,21 +2,28 @@
 #
 # Mutation sweep for formalang, with progress.
 #
+#   scripts/mutate.sh --in-diff             # only the code you changed
+#   scripts/mutate.sh --in-diff origin/main # …against another base
 #   scripts/mutate.sh                       # whole project
 #   scripts/mutate.sh src/semantic          # one directory
 #   scripts/mutate.sh src/ir/overload.rs    # one file
 #
+# Prefer --in-diff. A sweep of the whole project tests every mutant
+# again, most of them unchanged since the last sweep; a sweep of the
+# diff tests the lines you wrote. It is the everyday command. Run the
+# whole project before a release, or after a change to the test suite.
+#
 # Environment:
-#   JOBS=12        concurrent mutants (default 12)
+#   JOBS=4         concurrent mutants (default 4)
 #   TMP=<dir>      where the working copies go (default ~/.cache/…, on disk)
 #   TIMEOUT=300    seconds per mutant before it counts as a hang
 #
 # A note on JOBS. Each job runs its own `cargo build`, and cargo already
-# uses every core, so JOBS=12 on a 12-core machine asks for far more
-# threads than there are cores. It still finishes — the jobs spend much
-# of their time waiting on one another's I/O — but if the machine
-# becomes unusable, halve it. The wall-clock difference between 6 and 12
-# is smaller than the number suggests.
+# uses every core, so more jobs than a handful asks for far more threads
+# than the machine has: the jobs then wait on one another, and each one
+# takes longer than it would alone. More jobs also means more working
+# copies on disk. Four is a good default on a 12-core machine; raise it
+# only if the machine sits idle during a sweep.
 #
 # A note on disk. Each job keeps a full working copy with its own
 # target/ directory. That is tens of gigabytes at twelve jobs, which is
@@ -29,11 +36,40 @@ set -uo pipefail
 
 # The repository root, found from this script rather than hard-coded.
 PROJECT="${PROJECT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-JOBS="${JOBS:-12}"
+JOBS="${JOBS:-4}"
 TIMEOUT="${TIMEOUT:-300}"
 TMP="${TMP:-$HOME/.cache/formalang-mutants}"
 ACQUIRED=0
-TARGET="${1:-}"
+
+# --- arguments -------------------------------------------------------------
+TARGET=""
+BASE=""
+IN_DIFF=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --in-diff)
+      IN_DIFF=1
+      # An optional base follows. Anything that starts with a dash is
+      # the next option, not a base.
+      if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then
+        BASE="$2"
+        shift
+      fi
+      ;;
+    -h|--help)
+      sed -n '3,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    -*)
+      echo "unknown option: $1" >&2
+      exit 1
+      ;;
+    *)
+      TARGET="$1"
+      ;;
+  esac
+  shift
+done
 
 OUT="$TMP/out"
 LOG="$TMP/run.log"
@@ -112,7 +148,48 @@ if [ -n "$FILTER" ]; then
   scope="$FILTER"
 fi
 
-total=$(cargo mutants --list ${FILTER:+-f "$FILTER"} 2>/dev/null | wc -l)
+# --- the diff --------------------------------------------------------------
+# cargo-mutants keeps only the mutants that fall on lines the diff
+# touches. The diff holds the committed changes and the working tree,
+# but not a file that git does not track yet: `git add -N <file>` makes
+# a new file visible here.
+DIFF="$TMP/changes.diff"
+if [ "$IN_DIFF" = "1" ]; then
+  if [ -z "$BASE" ]; then
+    if git rev-parse --verify --quiet origin/main >/dev/null; then
+      BASE=origin/main
+    else
+      BASE=main
+    fi
+  fi
+  git rev-parse --verify --quiet "$BASE" >/dev/null || {
+    echo "'$BASE' is not a commit this repository knows." >&2
+    exit 1
+  }
+  git diff "$BASE" -- '*.rs' > "$DIFF" || exit 1
+  if [ ! -s "$DIFF" ]; then
+    echo "No Rust file differs from $BASE, so there is nothing to mutate." >&2
+    echo "A new file that git does not track yet needs 'git add -N <file>'." >&2
+    exit 1
+  fi
+  args+=(--in-diff "$DIFF")
+  scope="what changed against $BASE"
+  [ -n "$FILTER" ] && scope="$FILTER, limited to what changed against $BASE"
+fi
+
+# --- the compiler cache ----------------------------------------------------
+# Every working copy builds the dependency tree again, and the trees are
+# identical from one copy to the next. sccache hands back the object
+# files it already has instead of compiling them again. Without sccache
+# installed the sweep still runs, and only builds more.
+if [ -z "${RUSTC_WRAPPER:-}" ] && command -v sccache >/dev/null; then
+  export RUSTC_WRAPPER=sccache
+fi
+
+list_args=()
+[ -n "$FILTER" ] && list_args+=(-f "$FILTER")
+[ "$IN_DIFF" = "1" ] && list_args+=(--in-diff "$DIFF")
+total=$(cargo mutants --list ${list_args[@]+"${list_args[@]}"} 2>/dev/null | wc -l)
 free_gb=$(df -BG --output=avail "$TMP" | tail -1 | tr -dc '0-9')
 
 echo "=============================================================="
@@ -123,8 +200,13 @@ echo "   copies in $TMP   ($free_gb GB free)"
 echo "=============================================================="
 echo
 if [ "$total" -eq 0 ]; then
-  echo "No mutants match '\$scope'. The -f filter takes a glob: a file," >&2
-  echo "or a directory, which is expanded to '<dir>/**' here." >&2
+  if [ "$IN_DIFF" = "1" ]; then
+    echo "No mutant falls on a line that differs from $BASE. The changed" >&2
+    echo "lines hold no code to mutate — comments, tests, or a data file." >&2
+  else
+    echo "No mutants match '$scope'. The -f filter takes a glob: a file," >&2
+    echo "or a directory, which is expanded to '<dir>/**' here." >&2
+  fi
   exit 1
 fi
 if [ "$free_gb" -lt 60 ]; then

@@ -128,7 +128,7 @@ types are represented as `External` variants in `ResolvedType`. The
 > pass, **`ResolvedType::External` is a transient artifact that
 > doesn't reach the backend**: backends consume one flat `IrModule`
 > regardless of how many source files contributed to it. See
-> `tests/cross_module.rs` for what the pass covers today and the per-phase
+> `tests/suite/cross_module.rs` for what the pass covers today and the per-phase
 > commit history.
 
 ### IrImport

@@ -20,7 +20,7 @@ fuzz_target!(|source: &str| {
                     // levels, and the AST reaches that at roughly 37
                     // nested array literals or 58 nested operators.
                     // That limit is the reader's, not a defect in the
-                    // tree, and `tests/ast_serde_depth.rs` pins where
+                    // tree, and `tests/suite/ast_serde_depth.rs` pins where
                     // it falls. Anything else is a real failure.
                     assert!(
                         error.to_string().contains("recursion limit exceeded"),

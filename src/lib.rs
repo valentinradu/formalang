@@ -273,7 +273,7 @@ pub fn compile_to_ir_with_path(
 /// also imported, a generic import specialised at the instantiation
 /// the caller asks for, and an imported trait, which arrives with the
 /// impl that records the conformance so a generic bound on it can
-/// still be satisfied. `tests/cross_module.rs` holds the acceptance
+/// still be satisfied. `tests/suite/cross_module.rs` holds the acceptance
 /// tests for each.
 ///
 /// Single-file consumers should prefer [`compile_to_ir`] — that path skips

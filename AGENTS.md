@@ -90,7 +90,8 @@ This guidance takes precedence over anything else in this file that reads as
 
 ### Testing
 
-- Tests in `tests/` for integration
+- Tests in `tests/suite/` for integration. The suite is one binary: add
+  a file there, and a `mod <name>;` line to `tests/suite/main.rs`
 - Tests in `src/` with `#[cfg(test)]` for unit
 - All public APIs need tests
 - ```rust``` examples in doc comments are exercised by `cargo test --doc`
@@ -102,7 +103,7 @@ example-based suites there are five surfaces:
 | ------- | ------- |
 | Metamorphic, property and conformance tests | `cargo test` |
 | Open defects and unfinished features | `cargo test --no-fail-fast -- --ignored` |
-| Differential testing against an oracle | `PROPTEST_CASES=N cargo test --release --test differential` |
+| Differential testing against an oracle | `PROPTEST_CASES=N cargo test --release --test suite differential::` |
 | Benchmarks and scaling | `cargo bench` |
 | Fuzzing (needs nightly) | `scripts/fuzz.sh` |
 | Loom model check | `RUSTFLAGS="--cfg loom" cargo test --bin fvc loom_watch` |

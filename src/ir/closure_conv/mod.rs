@@ -108,7 +108,7 @@
 //! to this iteration order, and any change here will silently shift
 //! the numbers. The
 //! `numbering_follows_documented_walk_order` regression test in
-//! `tests/closure_conv.rs` pins the order in place: if the test
+//! `tests/suite/closure_conv.rs` pins the order in place: if the test
 //! breaks, either fix the regression or update both this section
 //! and the test together.
 //!

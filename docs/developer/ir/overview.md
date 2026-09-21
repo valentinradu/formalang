@@ -99,7 +99,7 @@ bloat the serialised form.
 
 Every built-in pass carries these spans through the nodes it rewrites,
 so the positions survive `Pipeline::for_codegen`.
-`tests/metamorphic.rs` checks that with
+`tests/suite/metamorphic.rs` checks that with
 `no_pass_throws_away_source_positions`, which compares the count of
 nodes holding a real span before and after each pass.
 

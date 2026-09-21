@@ -9,14 +9,15 @@ and where a new test belongs.
 | --- | --- | --- |
 | `cargo test` | unit + integration + doctests | ~1 min |
 | `cargo test -- --ignored` | repros for open defects and unfinished features | seconds |
-| `PROPTEST_CASES=N cargo test --release --test differential` | generated programs against an oracle | seconds to minutes |
-| `PROPTEST_CASES=N cargo test --release --test proptest_frontend` | property tests with a bigger budget | seconds to minutes |
+| `PROPTEST_CASES=N cargo test --release --test suite differential::` | generated programs against an oracle | seconds to minutes |
+| `PROPTEST_CASES=N cargo test --release --test suite proptest_frontend::` | property tests with a bigger budget | seconds to minutes |
 | `cargo bench` | the divan benchmark suite | ~5 min |
 | `cargo bench --bench scaling` | how each phase grows with program size | ~3 min |
 | `scripts/fuzz.sh [target] [seconds]` | the cargo-fuzz targets | as long as you give it |
 | `RUSTFLAGS="--cfg loom" cargo test --bin fvc loom_watch` | the loom model check | seconds |
 | `scripts/check_file_sizes.sh` | the 500-line ceiling on `src/**/*.rs` | instant |
-| `scripts/mutate.sh` | whether the tests would notice a wrong compiler | hours | instant |
+| `scripts/mutate.sh --in-diff` | whether the tests would notice a wrong compiler, over what you changed | minutes |
+| `scripts/mutate.sh` | the same, over the whole project | hours |
 
 ## Taxonomy
 
@@ -25,39 +26,67 @@ and where a new test belongs.
 | File | What it guards |
 | --- | --- |
 | `src/**/*.rs` (`#[cfg(test)]`) | Module-local invariants |
-| `tests/*.rs` | One file per feature area — the parser, the semantic analyser, each IR pass |
-| `tests/snapshots.rs`, `tests/closure_conv.rs` | `insta` snapshots of the AST and the IR |
-| `tests/metamorphic.rs` | Properties that hold over the whole example corpus |
-| `tests/proptest_frontend.rs` | Random inputs that shrink to a minimal counterexample |
-| `tests/concurrency.rs` | What the library promises a multi-threaded caller |
-| `tests/performance.rs` | How each phase scales — shape, not speed |
-| `tests/diagnostics_from_source.rs` | One snippet per diagnostic, and the variants no program can reach |
-| `tests/reporting_every_variant.rs` | Every `CompilerError` variant, rendered four ways |
-| `tests/editor_surface.rs` | The node finder, the position helpers and the query provider, swept over every offset |
-| `tests/closure_captures.rs` | Capture analysis, one case per expression form |
-| `tests/cli.rs` | The `fvc` binary, end to end |
-| `tests/cross_module.rs` | Compiling through a resolver, and the gaps that remain |
-| `tests/ast_serde_depth.rs` | How deep an AST can nest and still be read back |
-| `tests/run_examples.rs` | Every example's `run_checks()`, executed |
-| `tests/conformance.rs` + `tests/conformance/**.fv` | One rule per file, run or rejected |
-| `tests/type_matrix.rs` | Every context x type pair, as a snapshot |
-| `tests/operator_matrix.rs` | Every operator x operand pair, as a snapshot |
-| `tests/method_matrix.rs` | Every prelude method x receiver pair, as a snapshot |
-| `tests/execution_matrix.rs` | Every value x context pair, run and checked |
-| `tests/shape_equivalence.rs` | One computation written several ways, run and compared |
-| `tests/renaming.rs` | Renaming something does not change the verdict |
-| `tests/matrix_answers.rs` | The cells the matrices accept, run against algebraic laws |
-| `tests/tests_assert_something.rs` | No file gains a test that asserts nothing |
-| `tests/optimised_answers.rs` | Every optimising pass, run and compared against the unoptimised answer |
-| `tests/no_internal_errors.rs` | No wrong program earns an internal error |
-| `tests/differential.rs` | Generated programs against an independent oracle |
-| `tests/known_issues.rs` | One `#[ignore]` repro per open defect |
+| `tests/suite/*.rs` | One file per feature area — the parser, the semantic analyser, each IR pass |
+| `tests/suite/snapshots.rs`, `tests/suite/closure_conv.rs` | `insta` snapshots of the AST and the IR |
+| `tests/suite/metamorphic.rs` | Properties that hold over the whole example corpus |
+| `tests/suite/proptest_frontend.rs` | Random inputs that shrink to a minimal counterexample |
+| `tests/suite/concurrency.rs` | What the library promises a multi-threaded caller |
+| `tests/suite/performance.rs` | How each phase scales — shape, not speed |
+| `tests/suite/diagnostics_from_source.rs` | One snippet per diagnostic, and the variants no program can reach |
+| `tests/suite/reporting_every_variant.rs` | Every `CompilerError` variant, rendered four ways |
+| `tests/suite/editor_surface.rs` | The node finder, the position helpers and the query provider, swept over every offset |
+| `tests/suite/closure_captures.rs` | Capture analysis, one case per expression form |
+| `tests/suite/cli.rs` | The `fvc` binary, end to end |
+| `tests/suite/cross_module.rs` | Compiling through a resolver, and the gaps that remain |
+| `tests/suite/ast_serde_depth.rs` | How deep an AST can nest and still be read back |
+| `tests/suite/run_examples.rs` | Every example's `run_checks()`, executed |
+| `tests/suite/conformance.rs` + `tests/conformance/**.fv` | One rule per file, run or rejected |
+| `tests/suite/type_matrix.rs` | Every context x type pair, as a snapshot |
+| `tests/suite/operator_matrix.rs` | Every operator x operand pair, as a snapshot |
+| `tests/suite/method_matrix.rs` | Every prelude method x receiver pair, as a snapshot |
+| `tests/suite/execution_matrix.rs` | Every value x context pair, run and checked |
+| `tests/suite/shape_equivalence.rs` | One computation written several ways, run and compared |
+| `tests/suite/renaming.rs` | Renaming something does not change the verdict |
+| `tests/suite/matrix_answers.rs` | The cells the matrices accept, run against algebraic laws |
+| `tests/suite/tests_assert_something.rs` | No file gains a test that asserts nothing |
+| `tests/suite/optimised_answers.rs` | Every optimising pass, run and compared against the unoptimised answer |
+| `tests/suite/no_internal_errors.rs` | No wrong program earns an internal error |
+| `tests/suite/differential.rs` | Generated programs against an independent oracle |
+| `tests/suite/known_issues.rs` | One `#[ignore]` repro per open defect |
 
 All of these run in `cargo test`.
 
+#### One binary, many files
+
+Cargo compiles each `tests/*.rs` file as its own crate, and links each
+one against the whole dependency set. At eighty files that link took 40
+seconds after a one-line change to `src/`, and every mutation-sweep
+copy paid it again.
+
+The files therefore live in `tests/suite/`, and `tests/suite/main.rs`
+declares each one as a module. The suite links once: the same rebuild
+takes 6 seconds.
+
+What this asks of a new test file:
+
+- put it in `tests/suite/`, and add a `mod <name>;` line to
+  `tests/suite/main.rs`;
+- reach the shared helpers through `crate::common::`;
+- give `include_str!` a path relative to `tests/suite/`, so
+  `../fixtures/complete.fv`;
+- name the whole test when a test starts itself as a child process.
+  The name now carries the module: `crate::common::test_name` builds
+  it. See `tests/suite/metamorphic.rs`;
+- run one file with a filter rather than with `--test`:
+  `cargo test --test suite differential::`.
+
+An `insta` snapshot file is named after the module path of the
+assertion, so every snapshot in `tests/suite/snapshots/` carries a
+`suite__` prefix.
+
 #### The reference interpreter
 
-`tests/common/interpreter.rs` evaluates a lowered `IrModule`. It is
+`tests/suite/common/interpreter.rs` evaluates a lowered `IrModule`. It is
 test-only — not shipped, not fast, and not a specification. It is a
 second opinion, and it is what makes the three surfaces below possible:
 each of them states what a program should *compute*, which no amount of
@@ -120,7 +149,7 @@ an obvious thing to try, and each turned out to be a real hole.
 
 #### The type matrix
 
-`tests/type_matrix.rs` generates every (context, declared type, value
+`tests/suite/type_matrix.rs` generates every (context, declared type, value
 type) triple — fourteen contexts by sixteen types by sixteen types —
 compiles each, and snapshots the accept/reject grid.
 
@@ -137,7 +166,7 @@ the entry comes out.
 
 #### The operator matrix
 
-`tests/operator_matrix.rs` is the companion to the type matrix. It
+`tests/suite/operator_matrix.rs` is the companion to the type matrix. It
 generates every (operator, left operand, right operand) triple —
 fourteen operators by sixteen types by sixteen types — and snapshots
 the same accept/reject grid.
@@ -149,7 +178,7 @@ closure has no structure to compare.
 
 #### The method matrix
 
-`tests/method_matrix.rs` is the third grid. The prelude declares
+`tests/suite/method_matrix.rs` is the third grid. The prelude declares
 twenty methods across six carriers — `Optional`, `Array`, `Seq`,
 `Dictionary`, `Range` and `String` — and each method belongs to exactly
 one of them, so most cells are rejections. Each cell also gets a call
@@ -166,7 +195,7 @@ The matrices above generate programs and ask the compiler for a
 verdict. That leaves a whole class of defect invisible: one that lets a
 program compile and then compute the wrong answer.
 
-`tests/execution_matrix.rs` closes it. Fourteen values by eighteen
+`tests/suite/execution_matrix.rs` closes it. Fourteen values by eighteen
 contexts — a `let`, a struct field, a field default, a tuple field, an
 array element, a dictionary value, an argument, a return, a default
 parameter, two calls deep, a closure return, a closure argument, either
@@ -175,7 +204,7 @@ block — and each cell is **run**. No oracle is written down: a value put
 into a context and read back must equal itself, and the program under
 test makes the comparison.
 
-`tests/shape_equivalence.rs` does the same for syntax rather than
+`tests/suite/shape_equivalence.rs` does the same for syntax rather than
 types. One computation is written six ways — a plain body, a closure in
 a call argument, a nested call, a `let`-bound block, an
 immediately-called closure, behind a second function — all six are run,
@@ -193,7 +222,7 @@ and defunctionalisation all run in a pipeline that, for a long time, no
 test called — six passes that rewrite the IR, with no behavioural
 coverage at all.
 
-`tests/optimised_answers.rs` covers them with the property that matters
+`tests/suite/optimised_answers.rs` covers them with the property that matters
 for an optimiser: **run the program, then run the optimised program,
 and the two answers must agree.** The unoptimised run is the
 specification, so no oracle has to be written down, and which answer is
@@ -202,8 +231,8 @@ well as in combination, so a disagreement names one pass.
 
 The programs are the hand-written ones aimed at a pass each, plus
 **every cell of the value-by-context matrix** that
-`tests/execution_matrix.rs` uses — the tables live in
-`tests/common/matrix.rs` so both suites widen together. That is roughly
+`tests/suite/execution_matrix.rs` uses — the tables live in
+`tests/suite/common/matrix.rs` so both suites widen together. That is roughly
 270 programs through 8 pipeline configurations: about 2160 optimised
 runs, each compared against its own unoptimised answer. A pass rewrites
 whole shapes, and a handful of hand-written programs cannot reach them
@@ -252,7 +281,7 @@ there is nothing to run. For the 375 that accept there is: each
 compiles to a program that produces a value, and for a long time none
 of them was ever asked what that value was.
 
-`tests/matrix_answers.rs` asks. It checks laws rather than a table of
+`tests/suite/matrix_answers.rs` asks. It checks laws rather than a table of
 expected answers, because a law cannot be copied wrong from the
 implementation — it does not mention the implementation. `a == a`,
 `a <= a`, `(a + b) - b == a`, `a && a == a`, and the answer every
@@ -260,7 +289,7 @@ prelude method owes its own carrier.
 
 #### Renaming
 
-`tests/renaming.rs` asserts that a name is not part of the meaning:
+`tests/suite/renaming.rs` asserts that a name is not part of the meaning:
 renaming a generic parameter, or a binding, must not change the
 verdict. Eight shapes by eleven adversarial names, each a substring of
 a type the language ships — `S` of `String`, `I` of `I32`, `A` of
@@ -284,19 +313,19 @@ words "semantic should have caught this" appear in the lowering code —
 and wherever the semantic check was missing, ordinary wrong programs
 came back as bug reports. One sweep found 107 of them.
 
-`tests/no_internal_errors.rs` pins that shut. It pairs every value
+`tests/suite/no_internal_errors.rs` pins that shut. It pairs every value
 shape with every context that consumes one — an annotation, a return,
 an argument, a field read, a method call, an index, a loop, a `match`,
 an `if let`, a call — and asserts that no rejection among the 1216
 programs is an internal error. What the verdict is does not matter
 here; other tests cover that. It may not be a bug report.
 
-`tests/conformance.rs` enforces the same rule on every case in the
+`tests/suite/conformance.rs` enforces the same rule on every case in the
 corpus.
 
 #### Differential testing
 
-`tests/differential.rs` builds a random expression tree, computes its
+`tests/suite/differential.rs` builds a random expression tree, computes its
 value in Rust, renders the same tree as `FormaLang`, compiles it, and
 checks the two answers agree. It also checks that constant folding does
 not change the answer.
@@ -310,7 +339,7 @@ A metamorphic test changes the input in a way that must not change the
 output, then checks that the output did not change. It needs no
 expected value, so it covers ground that example-based tests cannot.
 
-`tests/metamorphic.rs` holds:
+`tests/suite/metamorphic.rs` holds:
 
 - **Determinism** — two compiles of one source, in one process and in
   two, must produce byte-identical IR.
@@ -332,7 +361,7 @@ every such walk fixed it, and
 
 #### Property tests
 
-`tests/proptest_frontend.rs` generates two kinds of input.
+`tests/suite/proptest_frontend.rs` generates two kinds of input.
 
 - **Token soup** — a random sequence of real grammar fragments. Fully
   random bytes almost never reach the parser's interesting paths; a
@@ -351,7 +380,7 @@ The compiler is single-threaded. Its callers are not: a build tool
 compiles many files at once, and an editor runs the analyser on a
 worker.
 
-`tests/concurrency.rs` checks the three things that follow from that —
+`tests/suite/concurrency.rs` checks the three things that follow from that —
 the public types are `Send` and `Sync`, compiling on eight threads
 gives what compiling on one gives, and rendering a diagnostic on eight
 threads produces a report on each.
@@ -436,9 +465,9 @@ cargo test --no-fail-fast -- --ignored
 
 They sit in two places:
 
-- `tests/known_issues.rs` — open defects, one repro each, with the
+- `tests/suite/known_issues.rs` — open defects, one repro each, with the
   file that holds the cause.
-- `tests/cross_module.rs` — shapes the cross-module inline pass has
+- `tests/suite/cross_module.rs` — shapes the cross-module inline pass has
   not reached: an imported type in a function signature, an imported
   return type, a generic import, and an imported trait's conformance.
   Each reports a `CompilerError::InternalError` rather than emitting a
@@ -458,8 +487,8 @@ cause and the file that holds it.
 - **A feature that crosses phases?** Add or extend a file in `tests/`,
   named after what it guards.
 - **A property that must hold over any program?** Add it to
-  `tests/metamorphic.rs` if it holds over the example corpus, or to
-  `tests/proptest_frontend.rs` if it needs generated input.
+  `tests/suite/metamorphic.rs` if it holds over the example corpus, or to
+  `tests/suite/proptest_frontend.rs` if it needs generated input.
 - **An input that must never crash the compiler?** Add a fuzz target
   in `fuzz/fuzz_targets/`, and a seed in `fuzz/seeds/text/` if the target
   takes source text.
@@ -468,14 +497,14 @@ cause and the file that holds it.
 - **A question about how something scales?** Add a generator to
   `benches/scaling.rs`.
 - **A user-facing diagnostic?** Add a row to
-  `tests/diagnostics_from_source.rs` pairing a snippet with the
+  `tests/suite/diagnostics_from_source.rs` pairing a snippet with the
   variant it must produce.
-- **Anything an editor calls?** Add it to `tests/editor_surface.rs`,
+- **Anything an editor calls?** Add it to `tests/suite/editor_surface.rs`,
   and sweep every offset rather than probing a few.
 - **A language rule?** Add a file to `tests/conformance/`. That is
   the cheapest surface and the one to reach for first.
 - **A defect you are not fixing now?** Add a repro to
-  `tests/known_issues.rs` with `#[ignore]`, and name the cause.
+  `tests/suite/known_issues.rs` with `#[ignore]`, and name the cause.
 
 ## Assertions must actually run
 
@@ -516,7 +545,7 @@ Two checks answer the question properly.
 
 ### The cheap one: does the test look at what it compiled?
 
-`tests/tests_assert_something.rs` reads the test sources and counts the
+`tests/suite/tests_assert_something.rs` reads the test sources and counts the
 test functions that compile a program and then ask nothing of the
 result. There are 615 of them across 26 files, and the count per file
 is a ratchet: a new one has to displace an old one or assert
@@ -538,9 +567,27 @@ whether any test fails. A change nothing notices marks a line the
 suite does not really cover.
 
 ```bash
-scripts/mutate.sh                  # the modules most worth checking
+scripts/mutate.sh --in-diff        # only the code you changed
+scripts/mutate.sh                  # the whole project
 scripts/mutate.sh src/semantic     # a directory or a file
 ```
+
+`--in-diff` is the everyday command. It writes `git diff` against
+`origin/main` — your commits and your working tree — and keeps only the
+mutants that fall on a line the diff touches. A sweep of the whole
+project tests 2621 mutants, nearly all of them unchanged since the last
+sweep; a sweep of one change tests tens. Give it another base as an
+argument: `scripts/mutate.sh --in-diff HEAD~3`. A file that git does
+not track yet is not in the diff, so `git add -N <file>` first.
+
+Three more things make a sweep shorter. The script sets them for you:
+
+- the suite is one test binary, so each of the hundreds of builds links
+  once rather than eighty times;
+- four concurrent jobs, not twelve. Each job runs its own `cargo
+  build`, which already uses every core;
+- `sccache`, when it is installed, so the working copies share one
+  build of the dependency tree instead of building it again each.
 
 This works. Run by hand during the session that wrote these tests, it
 showed that:
@@ -555,8 +602,8 @@ showed that:
   what decided. `methods/overloads_differ_by_label.fv` and its two
   neighbours exist because of those three.
 
-The whole tree is about 2600 mutants and each needs a test run, so a
-full pass takes hours. Run a directory at a time.
+The whole tree is 2621 mutants and each needs a build and a test run,
+so a full pass takes hours. Run `--in-diff`, or a directory at a time.
 
 ## What is left
 
@@ -572,6 +619,7 @@ run over one file — 20 of about 2600 mutants — and it found a real gap
 there within minutes: `ir::overload::defaults_fired` decides which
 overload a call means, and nothing noticed when it always answered
 zero. On that evidence a full pass will find more, and
-`src/semantic/validation` alone holds 191 mutants. It is an overnight
-job rather than an interactive one.
+`src/semantic/validation` alone holds 191 mutants. A full pass is still
+an overnight job; `--in-diff` keeps each change covered in the
+meantime.
 
