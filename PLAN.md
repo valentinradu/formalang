@@ -53,7 +53,7 @@ These override every other consideration in this document.
   acceptable and it is not this plan's problem.
 - **Ignore backwards compatibility.** Serialised `IrModule` JSON, the
   public API surface, and the `File` `format_version` may all break.
-  This extends the pre-1.0 rule in `AGENTS.md` to cover the two
+  This extends the pre-1.0 rule in `CLAUDE.md` to cover the two
   exceptions that rule still listed.
 - **Ignore version churn.** Take the newest stable release of every
   dependency. Raise the minimum Rust version when a dependency demands

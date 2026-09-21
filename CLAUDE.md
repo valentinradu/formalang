@@ -61,7 +61,6 @@ This guidance takes precedence over anything else in this file that reads as
 
 ### Git Rules
 
-- **Never commit to main directly**
 - **No Claude attribution** in commits, PRs, or code
 - Commit format: `type(scope): description` (max 72 chars)
 - Types: feat, fix, docs, refactor, test, chore

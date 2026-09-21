@@ -1,7 +1,7 @@
 //! The IR decode surface.
 //!
 //! `IrModule` JSON on disk is a compatibility contract with external
-//! consumers (see `AGENTS.md`). A backend that reads an `IrModule` a
+//! consumers (see `CLAUDE.md`). A backend that reads an `IrModule` a
 //! different tool wrote is reading untrusted input: the ids inside it
 //! can point anywhere.
 //!
