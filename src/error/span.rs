@@ -77,6 +77,7 @@ impl CompilerError {
             | Self::SeqInvalidPosition { span, .. }
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }
+            | Self::AssignmentToElement { span, .. }
             | Self::UseAfterSink { span, .. }
             | Self::ExpressionDepthExceeded { span }
             | Self::TooManyDefinitions { span, .. }

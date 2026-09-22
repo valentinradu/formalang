@@ -1,0 +1,8 @@
+// expect: reject AssignmentToElement
+// The binding here is immutable too, so two rules could speak. The
+// element rule wins, because it is the one the user cannot satisfy:
+// adding `mut` to the binding does not make this program legal.
+pub fn f() {
+    let xs: [I32] = [1, 2, 3]
+    xs[0] = 9
+}

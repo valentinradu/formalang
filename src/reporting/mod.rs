@@ -214,6 +214,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::AssignmentToImmutable { .. } => {
             errors_advanced::assignment_to_immutable(filename, span)
         }
+        CompilerError::AssignmentToElement { .. } => {
+            errors_advanced::assignment_to_element(filename, span)
+        }
         CompilerError::PositionalArgInStruct {
             struct_name,
             position,

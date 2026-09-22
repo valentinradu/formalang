@@ -208,6 +208,10 @@ If you need a non-optional value, supply a fallback at the call site
 (e.g. via a host helper that yields a default) or pin the type at the
 boundary so the optional is part of the public signature.
 
+An index reads; it never writes. `xs[0] = 9` is an error, and `let mut`
+does not make it legal. See
+[Type System / Immutable Elements](types.md#immutable-elements).
+
 ## Range Operator
 
 The `..` operator produces a range from a start value (inclusive) to an end

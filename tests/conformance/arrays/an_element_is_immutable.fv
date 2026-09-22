@@ -1,0 +1,7 @@
+// expect: reject AssignmentToElement
+// An array never changes after you make it. `let mut` makes the
+// binding assignable, not the elements.
+pub fn f() {
+    let mut xs: [I32] = [1, 2, 3]
+    xs[0] = 9
+}

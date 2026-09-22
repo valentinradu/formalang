@@ -1,0 +1,12 @@
+// expect: reject AssignmentToElement
+// A closure body reaches the rule through its own validation path. A
+// `mut` parameter does not buy an element write, the same way `let mut`
+// does not.
+pub fn f() {
+    let c: (mut [I32]) -> I32 = (mut ys: [I32]) -> {
+        ys[0] = 9
+        1
+    }
+    let mut xs: [I32] = [1]
+    let n: I32 = c(xs)
+}

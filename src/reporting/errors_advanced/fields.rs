@@ -48,6 +48,16 @@ pub(in crate::reporting) fn assignment_to_immutable(
         .with_help("Declare the binding with 'let mut' to allow assignment")
 }
 
+pub(in crate::reporting) fn assignment_to_element(filename: &str, span: Span) -> ReportBuilder<'_> {
+    report(filename, span, "E143")
+        .with_message("Cannot assign to an element")
+        .with_label(label(filename, span).with_message("this element never changes"))
+        .with_help(
+            "An array, a dictionary and a string are immutable in their elements. \
+             'let mut' does not change this. Make a new value, and assign the binding",
+        )
+}
+
 pub(in crate::reporting) fn positional_arg_in_struct<'a>(
     filename: &'a str,
     span: Span,

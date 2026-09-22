@@ -22,8 +22,8 @@ mod optional;
 mod traits;
 
 pub(in crate::reporting) use fields::{
-    assignment_to_immutable, enum_variant_requires_data, enum_variant_without_data, missing_field,
-    positional_arg_in_struct, unknown_field,
+    assignment_to_element, assignment_to_immutable, enum_variant_requires_data,
+    enum_variant_without_data, missing_field, positional_arg_in_struct, unknown_field,
 };
 pub(in crate::reporting) use functions::{
     ambiguous_call, argument_count_mismatch, cannot_infer_enum_type, extern_fn_with_body,

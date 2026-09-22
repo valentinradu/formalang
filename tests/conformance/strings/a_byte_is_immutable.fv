@@ -1,0 +1,8 @@
+// expect: reject AssignmentToElement
+// A string never changes after you make it. `slice` is zero-copy and
+// shares the memory of the source, so a write would reach every slice
+// that the source made.
+pub fn f() {
+    let mut s: String = "ab"
+    s[0] = 65
+}

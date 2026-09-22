@@ -231,7 +231,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 } => {
                     self.validate_expr(target, file);
                     self.validate_expr(value, file);
-                    if !self.is_expr_mutable(target, file) {
+                    // An element target loses to the stronger rule, so it
+                    // reports that rule and not the binding rule. `let mut`
+                    // is no help here, and the binding is often already
+                    // `mut` at this point.
+                    if Self::is_element_target(target) {
+                        self.errors
+                            .push(CompilerError::AssignmentToElement { span: *span });
+                    } else if !self.is_expr_mutable(target, file) {
                         self.errors
                             .push(CompilerError::AssignmentToImmutable { span: *span });
                     }

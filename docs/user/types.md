@@ -242,6 +242,68 @@ An array index and a dictionary lookup both produce an optional,
 because the position may be out of range and the key may be absent.
 See [Expressions / Indexing](expressions.md#indexing).
 
+## Immutable Elements
+
+The three types that take an index never change after you make them.
+The language has no write through an index. One rule covers all three:
+
+```formalang
+let mut xs: [I32] = [1, 2, 3]
+xs[0] = 9                  // error E143: cannot assign to an element
+
+let mut d: [String: I32] = ["a": 1]
+d["a"] = 9                 // error E143
+
+let mut s: String = "ab"
+s[0] = 65                  // error E143
+```
+
+`let mut` does not change this. It lets you assign the binding, and it
+says nothing about the contents. A field above the index makes no
+difference either: `h.xs[0] = 9` reports the same error, because the
+write still passes through the index.
+
+Three kinds of write are legal. You assign a whole binding, you assign
+a struct field, and you pass a `mut` parameter:
+
+```formalang
+let mut xs: [I32] = [1, 2]
+xs = [3, 4, 5]             // ok: the binding takes a new array
+
+let mut p: Point = Point(x: 1)
+p.x = 9                    // ok: a field, through a mut binding
+```
+
+To change the elements, make a new value. A `for` pipeline builds one
+in a single pass:
+
+```formalang
+let mut xs: [I32] = [1, 2, 3]
+xs = for x in xs { x * 2 }.collect()
+```
+
+A host can still offer mutation. The signature shows it, and the
+runtime does the work:
+
+```formalang
+extern fn push(mut xs: [I32], value: I32)
+```
+
+### Why the elements are immutable
+
+Three properties depend on the rule.
+
+- **A string slice is zero-copy.** `slice` shares the memory of the
+  source. A write to a string would therefore reach every slice that
+  the source made.
+- **The language uses Mutable Value Semantics.** An element write makes
+  `let ys = xs` need a copy. The copy would happen where nobody asked
+  for it. See [Functions](functions.md).
+- **A `for` yields a lazy sequence.** Nothing runs until a terminal
+  combinator consumes it. If the source could change in between, the
+  result of a pipeline would depend on evaluation order. See
+  [Large Data](large-data.md).
+
 ## Optional Elements
 
 A value wraps into an optional wherever one is declared, and that

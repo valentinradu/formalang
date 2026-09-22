@@ -1,0 +1,7 @@
+// expect: reject AssignmentToElement
+// A dictionary never changes after you make it. The same rule holds
+// for an array element and for a string byte.
+pub fn f() {
+    let mut d: [String: I32] = ["a": 1]
+    d["a"] = 9
+}

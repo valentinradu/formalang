@@ -221,6 +221,7 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             span,
         },
         CompilerError::AssignmentToImmutable { span },
+        CompilerError::AssignmentToElement { span },
         CompilerError::PositionalArgInStruct {
             struct_name: s("Sample"),
             position: 2,
@@ -415,6 +416,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::MissingField { .. } => "MissingField",
         CompilerError::UnknownField { .. } => "UnknownField",
         CompilerError::AssignmentToImmutable { .. } => "AssignmentToImmutable",
+        CompilerError::AssignmentToElement { .. } => "AssignmentToElement",
         CompilerError::PositionalArgInStruct { .. } => "PositionalArgInStruct",
         CompilerError::EnumVariantWithoutData { .. } => "EnumVariantWithoutData",
         CompilerError::EnumVariantRequiresData { .. } => "EnumVariantRequiresData",

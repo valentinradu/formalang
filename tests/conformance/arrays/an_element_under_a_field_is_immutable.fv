@@ -1,0 +1,10 @@
+// expect: reject AssignmentToElement
+// A field above the index does not change the answer. The write still
+// has to pass through the index, and the index is what the language
+// refuses.
+pub struct Holder { xs: [I32] }
+
+pub fn f() {
+    let mut h: Holder = Holder(xs: [1, 2])
+    h.xs[0] = 9
+}

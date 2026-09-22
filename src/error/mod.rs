@@ -232,6 +232,12 @@ pub enum CompilerError {
     #[error("Cannot assign to immutable binding")]
     AssignmentToImmutable { span: Span },
 
+    /// An assignment names an element of an array, an entry of a
+    /// dictionary, or a byte of a string. All three are immutable in
+    /// their elements, so no binding mutability makes the write legal.
+    #[error("Cannot assign to an element")]
+    AssignmentToElement { span: Span },
+
     #[error(
         "Struct '{struct_name}' requires named arguments (field: value), but argument {position} is positional"
     )]

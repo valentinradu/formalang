@@ -15,7 +15,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// - It's a reference to a mutable let binding
     /// - It's a field access where the entire chain is mutable (upward propagation)
     /// - It's a context access that was marked as mutable
-    /// - It's an array element where the array is mutable
+    ///
+    /// An element of an array, an entry of a dictionary and a byte of a
+    /// string are never mutable. [`Self::is_element_target`] names that
+    /// rule on its own, because a caller must report it separately: no
+    /// binding mutability makes such a write legal.
     #[expect(
         clippy::indexing_slicing,
         reason = "path[1..] is valid: path.len() >= 2 is guaranteed by the len==1 early return above"
@@ -78,6 +82,50 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
             // Block expressions delegate to their result
             Expr::Block { result, .. } => self.is_expr_mutable(result, file),
+        }
+    }
+
+    /// Report whether an assignment target names an element of a
+    /// container.
+    ///
+    /// An array, a dictionary and a string are immutable in their
+    /// elements, so `xs[0] = v`, `d[k] = v` and `s[0] = v` are all
+    /// illegal, whatever the mutability of the binding. A field or a
+    /// group above the index does not change the answer: `xs[0].f = v`
+    /// still writes through the index.
+    ///
+    /// The rule is separate from [`Self::is_expr_mutable`] so that the
+    /// caller reports the real cause. `let mut` is the fix for an
+    /// immutable binding; it is not the fix for an element.
+    pub(in crate::semantic) fn is_element_target(expr: &Expr) -> bool {
+        match expr {
+            Expr::DictAccess { .. } => true,
+
+            // These three carry the target forward; the index below one
+            // of them still governs the write.
+            Expr::Group { expr: inner, .. } | Expr::FieldAccess { object: inner, .. } => {
+                Self::is_element_target(inner)
+            }
+            Expr::LetExpr { body, .. } => Self::is_element_target(body),
+            Expr::Block { result, .. } => Self::is_element_target(result),
+
+            // Everything else is either a fresh value or a binding, and
+            // neither reaches an element.
+            Expr::Reference { .. }
+            | Expr::Array { .. }
+            | Expr::Tuple { .. }
+            | Expr::Literal { .. }
+            | Expr::Invocation { .. }
+            | Expr::EnumInstantiation { .. }
+            | Expr::InferredEnumInstantiation { .. }
+            | Expr::BinaryOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::ForExpr { .. }
+            | Expr::IfExpr { .. }
+            | Expr::MatchExpr { .. }
+            | Expr::DictLiteral { .. }
+            | Expr::ClosureExpr { .. }
+            | Expr::MethodCall { .. } => false,
         }
     }
 
