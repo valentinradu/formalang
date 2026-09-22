@@ -1,0 +1,36 @@
+# Spell check for the whole repository. Run `typos` to check, and
+# `typos --write-changes` to correct.
+#
+# `typos` flags only known misspellings. It does not deny a word it has
+# never seen, so this file stays short: an entry here means the
+# correction list is wrong about a word this repository uses on purpose.
+# A growing list is a warning sign, not a routine cost.
+#
+# `typos` reads `.gitignore`, so `target/` needs no entry.
+
+[default.extend-identifiers]
+# The typed HIR of the Rust compiler. `docs/developer/ir/rationale.md`
+# names it beside HIR and MIR.
+THIR = "THIR"
+
+# A type name that does not exist, on purpose. The test asserts that the
+# compiler reports `UndefinedType` for it.
+Numbr = "Numbr"
+
+[default.extend-words]
+# mdBook's own CSS variable, `--sidebar-non-existant`. Its `chrome.css`
+# reads the name, so the theme override must spell it the same way.
+existant = "existant"
+
+# A prefix in "mis-kinded" and "mis-classified", not a short spelling of
+# "miss".
+mis = "mis"
+
+# Short for `SemType`, in names such as `arm_sems` and `value_sem`.
+sems = "sems"
+
+# Both spellings are current. The code says "unparseable".
+unparseable = "unparseable"
+
+# Standard in programming prose: a closure parameter is invokable.
+invokable = "invokable"

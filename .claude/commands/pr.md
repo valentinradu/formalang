@@ -25,8 +25,8 @@ cargo test --test '*'
 cargo fmt --check
 cargo clippy --all-targets --all-features
 cargo check --all-targets --all-features
-markdownlint-cli2 "**/*.md"
-cspell "**/*.md"
+typos
+mdbook-linkcheck -s
 ```
 
 **All checks must pass. VSCode must show zero errors.**

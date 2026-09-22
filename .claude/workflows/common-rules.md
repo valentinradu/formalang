@@ -61,8 +61,8 @@ Before any PR:
 - All tests pass
 - `cargo fmt --check` passes
 - `cargo clippy` passes
-- `markdownlint-cli2` passes (zero errors)
-- `cspell` passes (zero errors)
+- `typos` passes (zero findings)
+- `mdbook-linkcheck -s` passes (zero broken links)
 - VSCode shows zero errors
 
 ## Collaboration

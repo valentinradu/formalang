@@ -21,6 +21,11 @@ env:
   # Combined with `cargo test --jobs 2` below, total link parallelism
   # is 2 — comfortably fits memory.
   RUSTFLAGS: -C link-arg=-Wl,--threads=1
+  # The documentation gates, pinned the way `rust-toolchain.toml` pins
+  # the compiler. Raise a version here, and the cache key below moves
+  # with it.
+  TYPOS_VERSION: "1.50.2"
+  LINKCHECK_VERSION: "0.7.7"
 
 jobs:
   test:
@@ -109,6 +114,44 @@ jobs:
 
       - name: File-size ceiling (≤500 LOC, ratchet via allowlist)
         run: ./scripts/check_file_sizes.sh
+
+      # The documentation gates. `markdownlint-cli2` and `cspell` held
+      # this slot before, and neither ever ran in CI: both need node,
+      # and nothing installed it. The two tools below are Rust, so they
+      # pin like a crate and this job stays node-free.
+      #
+      # `cargo install` builds both from source, so the two binaries are
+      # cached on their pinned versions. The key carries both versions
+      # and there is no `restore-keys` fallback, so a version bump misses
+      # the cache and rebuilds. Each step below installs only when the
+      # binary is absent: cargo keeps its "already installed" ledger in
+      # `~/.cargo/.crates2.json`, which this cache does not hold, so
+      # cargo alone would rebuild every run.
+      - name: Cache documentation tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/typos
+            ~/.cargo/bin/mdbook-linkcheck
+          key: ${{ runner.os }}-doc-tools-${{ env.TYPOS_VERSION }}-${{ env.LINKCHECK_VERSION }}
+
+      # `typos` flags known misspellings only. `typos.toml` holds the
+      # short allowlist of words this repository uses on purpose.
+      - name: Spelling
+        run: |
+          command -v typos >/dev/null \
+            || cargo install typos-cli --locked --version "${TYPOS_VERSION}"
+          typos
+
+      # A dead link reaches the published site in silence, which is the
+      # failure the old markdown gate never looked for. `-s` runs the
+      # checker on its own, so this job needs no mdBook download; it
+      # reads `book.toml` for the source directory.
+      - name: Documentation links
+        run: |
+          command -v mdbook-linkcheck >/dev/null \
+            || cargo install mdbook-linkcheck --locked --version "${LINKCHECK_VERSION}"
+          mdbook-linkcheck -s
 
   audit:
     name: Security audit

@@ -109,8 +109,8 @@ Run in sequence:
 2. **quality**: Check code quality
    - `cargo fmt --check`
    - `cargo clippy`
-   - `markdownlint-cli2`
-   - `cspell`
+   - `typos`
+   - `mdbook-linkcheck -s`
 
 3. **perf** (if applicable): Run benchmarks
 

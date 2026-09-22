@@ -85,8 +85,8 @@ If new dependencies are proposed:
 2. **Quality agent**: Check code quality
    - `cargo fmt --check`
    - `cargo clippy`
-   - `markdownlint-cli2`
-   - `cspell`
+   - `typos`
+   - `mdbook-linkcheck -s`
 
 3. **Perf agent** (if applicable): Run benchmarks
    - Only for performance-critical features

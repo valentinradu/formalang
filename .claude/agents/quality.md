@@ -18,7 +18,8 @@ Static analysis and quality assurance. Ensure code meets standards and VSCode sh
 ## Critical Requirements
 
 - VSCode must show **zero** errors/warnings on all files before PR approval
-- Run spell-check tools that VSCode recognizes (cSpell, etc.)
+- Run `typos` for spelling, and `mdbook-linkcheck -s` for documentation
+  links
 - Report violations with file:line references
 - **Suggest fixes but don't apply them**
 

@@ -165,9 +165,19 @@ system.
 
 ### Documentation Quality
 
-- `markdownlint-cli2`: Zero errors required
-- `cspell`: Zero spelling errors required
-- Custom words in `.cspell.json`
+Both tools are Rust. Nothing in this repository needs node, and the
+documentation gates must not reintroduce it.
+
+- `typos`: zero findings required. Install with
+  `cargo install typos-cli --locked`. It flags known misspellings only,
+  so `typos.toml` holds a short allowlist rather than a dictionary. A
+  growing allowlist is a warning sign.
+- `mdbook-linkcheck -s`: zero broken links required. Install with
+  `cargo install mdbook-linkcheck --locked`. It checks that every link
+  target exists. It does not check an `#anchor`, so a heading link still
+  needs a human.
+
+CI pins both versions in `.github/workflows/ci.yml`.
 
 ---
 
@@ -216,6 +226,7 @@ Before any PR:
 - `cargo clippy` passes
 - `cargo audit` passes (install with `cargo install cargo-audit --locked`
   if not present; CI runs it via `rustsec/audit-check`)
-- `markdownlint-cli2` passes
-- `cspell` passes
+- `typos` passes (install with `cargo install typos-cli --locked`)
+- `mdbook-linkcheck -s` passes (install with
+  `cargo install mdbook-linkcheck --locked`)
 - VSCode shows zero errors

@@ -108,7 +108,7 @@ Brief synthesis of findings relevant to the task.
 4. Make updates with correct formatting
 5. Use references instead of duplicating
 6. Update date/status metadata
-7. Run `markdownlint-cli2` and `cspell`
+7. Run `typos` and `mdbook-linkcheck -s`
 
 **Never skip steps** without explicit justification + user confirmation.
 

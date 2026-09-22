@@ -42,8 +42,8 @@ You are making documentation changes only. Follow this workflow.
 ## Phase 4: Validation (quality)
 
 1. **Quality agent**: Check documentation quality
-   - `markdownlint-cli2` (zero errors)
-   - `cspell` (zero spelling errors)
+   - `typos` (zero findings)
+   - `mdbook-linkcheck -s` (zero broken links)
 
 **All checks must pass.**
 
