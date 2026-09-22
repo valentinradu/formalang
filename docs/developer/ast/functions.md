@@ -74,6 +74,11 @@ Semantic rules enforced during validation:
   immutable binding produces `MutabilityMismatch`.
 - A `Sink` parameter consumes the argument binding. Any subsequent use
   of that binding produces `UseAfterSink`.
+- Two arguments of one call must not reach the same place when one of
+  them fills a `Mut` or `Sink` parameter. The method receiver counts as
+  an argument. Such a call produces `OverlappingArguments`. The check
+  follows fields, so `p.x` and `p.y` do not overlap, and `p` and `p.x`
+  do.
 
 `self` parameters follow the same conventions: `fn f(self)`,
 `fn f(mut self)`, `fn f(sink self)`.

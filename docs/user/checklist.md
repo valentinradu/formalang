@@ -82,6 +82,8 @@
 - Trait conformance validation
 - Cycle detection
 - Function overload resolution
+- Exclusive access: a `mut` or `sink` argument shares its value with no
+  other argument of the same call
 
 **Source Spans** (for tooling / source maps / DWARF):
 

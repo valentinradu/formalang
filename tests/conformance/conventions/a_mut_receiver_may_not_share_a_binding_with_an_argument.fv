@@ -1,0 +1,15 @@
+// expect: reject OverlappingArguments
+// The receiver of a method is an argument, with the convention of its
+// `self` parameter.
+pub struct Counter { n: I32 }
+
+impl Counter {
+    fn set(mut self, to: I32) {
+        self.n = to
+    }
+}
+
+pub fn f() {
+    let mut c: Counter = Counter(n: 1)
+    c.set(to: c.n)
+}

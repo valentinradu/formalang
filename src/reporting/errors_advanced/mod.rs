@@ -40,7 +40,9 @@ pub(in crate::reporting) use misc::{
     seq_invalid_position, seq_not_consumed, seq_used_twice, too_many_definitions,
     unreachable_match_arm, visibility_violation,
 };
-pub(in crate::reporting) use mutability::{mutability_mismatch, use_after_sink};
+pub(in crate::reporting) use mutability::{
+    mutability_mismatch, overlapping_arguments, use_after_sink,
+};
 pub(in crate::reporting) use optional::{
     nil_assigned_to_non_optional, optional_used_as_non_optional, pointless_optional_element,
 };

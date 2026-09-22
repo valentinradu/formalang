@@ -35,3 +35,20 @@ pub(in crate::reporting) fn use_after_sink<'a>(
             "Each 'sink' parameter consumes its argument; do not use the binding after the call",
         )
 }
+
+pub(in crate::reporting) fn overlapping_arguments<'a>(
+    filename: &'a str,
+    span: Span,
+    path: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E144")
+        .with_message(format!("Two arguments of this call reach '{path}'"))
+        .with_label(label(filename, span).with_message(format!(
+            "one argument may change or take '{}' while another points at it",
+            path.fg(Color::Red)
+        )))
+        .with_help(
+            "A 'mut' or 'sink' argument needs sole access to its value. \
+             Copy one argument into its own binding with 'let', and pass that",
+        )
+}

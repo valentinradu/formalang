@@ -21,12 +21,15 @@
 //!   return-type validation. The `validate_function_return_type` and
 //!   `validate_standalone_function` entry points are called from
 //!   `type_resolution`.
+//! - [`exclusivity`]: two arguments of one call must not reach the same
+//!   place when one of them is `mut` or `sink`.
 //! - [`qualified_types`]: free helpers for traversing nested module paths
 //!   like `m1::m2::Foo`.
 
 mod closures;
 mod control_flow;
 mod duplicate_names;
+mod exclusivity;
 mod expr;
 mod functions;
 mod invocation;

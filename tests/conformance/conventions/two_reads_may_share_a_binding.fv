@@ -1,0 +1,11 @@
+// expect: run
+// Nothing changes a value that only default arguments reach, so they
+// may share it.
+pub fn add(a: I32, b: I32) -> I32 {
+    a + b
+}
+
+pub fn run_checks() {
+    let x: I32 = 2
+    assert(condition: add(a: x, b: x) == 4)
+}

@@ -1,0 +1,15 @@
+// expect: compile
+// The check is field-sensitive. `p.x` and `p.y` share the root `p`,
+// but not one place, so both may go to `mut` parameters.
+pub struct Point { x: I32, y: I32 }
+
+pub fn swap(mut a: I32, mut b: I32) {
+    let t: I32 = a
+    a = b
+    b = t
+}
+
+pub fn f() {
+    let mut p: Point = Point(x: 1, y: 2)
+    swap(a: p.x, b: p.y)
+}

@@ -1,0 +1,11 @@
+// expect: reject OverlappingArguments
+// A default argument goes by pointer too. So it would see the change
+// that the callee makes through the `mut` argument.
+pub fn put(mut a: I32, b: I32) {
+    a = b
+}
+
+pub fn f() {
+    let mut x: I32 = 1
+    put(a: x, b: x)
+}

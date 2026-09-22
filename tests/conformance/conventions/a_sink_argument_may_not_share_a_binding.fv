@@ -1,0 +1,9 @@
+// expect: reject OverlappingArguments
+// A `sink` argument takes the value away, so no other argument of the
+// same call may still point at it.
+pub fn take(sink a: [I32], b: [I32]) {}
+
+pub fn f() {
+    let xs: [I32] = [1]
+    take(a: xs, b: xs)
+}

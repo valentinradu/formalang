@@ -1,0 +1,10 @@
+// expect: reject OverlappingArguments
+// `p` holds `p.x`, so the two arguments reach one place.
+pub struct Point { x: I32, y: I32 }
+
+pub fn put(mut a: Point, b: I32) {}
+
+pub fn f() {
+    let mut p: Point = Point(x: 1, y: 2)
+    put(a: p, b: p.x)
+}

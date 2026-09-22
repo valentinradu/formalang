@@ -217,6 +217,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::AssignmentToElement { .. } => {
             errors_advanced::assignment_to_element(filename, span)
         }
+        CompilerError::OverlappingArguments { path, .. } => {
+            errors_advanced::overlapping_arguments(filename, span, path)
+        }
         CompilerError::PositionalArgInStruct {
             struct_name,
             position,

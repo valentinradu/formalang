@@ -1,0 +1,12 @@
+// expect: compile
+// The fix the error suggests: copy one argument into its own binding.
+// Under value semantics the copy is a separate place.
+pub fn put(mut a: I32, b: I32) {
+    a = b
+}
+
+pub fn f() {
+    let mut x: I32 = 1
+    let y: I32 = x
+    put(a: x, b: y)
+}

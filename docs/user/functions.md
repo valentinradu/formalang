@@ -130,6 +130,46 @@ let result = bump(n)   // n is let mut, so it satisfies mut convention
 Closure parameters carry the same conventions; the convention constrains
 the **caller of the closure**: see [Closures](closures.md) for details.
 
+### Exclusive Access
+
+A `mut` argument and a `sink` argument each need sole access to the
+value for the whole call. So two arguments of one call must not reach
+the same value when one of them is `mut` or `sink`:
+
+```formalang
+fn swap(mut a: I32, mut b: I32) { ... }
+fn put(mut a: I32, b: I32) { ... }
+
+let mut x: I32 = 1
+swap(a: x, b: x)         // error E144: two arguments reach 'x'
+put(a: x, b: x)          // error E144: 'b' reads what 'a' changes
+```
+
+A default argument goes by pointer too, so it would see the change that
+the callee makes. That is why a read and a write may not share a value.
+Two reads may.
+
+The check follows fields. Two different fields of one binding are two
+places, and a field is part of its struct:
+
+```formalang
+let mut p: Point = Point(x: 1, y: 2)
+swap(a: p.x, b: p.y)     // ok: two places
+put(a: p, b: p.x)        // error E144: 'p' holds 'p.x'
+```
+
+The receiver of a method counts as an argument, with the convention of
+its `self` parameter. So `c.set(to: c.n)` is an error when `set` takes
+`mut self`. A call to a closure binding follows the same rule.
+
+To pass the same value twice, copy it into its own binding first. Under
+value semantics the copy is a separate place:
+
+```formalang
+let y: I32 = x
+put(a: x, b: y)          // ok
+```
+
 ## Function Overloading
 
 Multiple functions with the same name are allowed when their signatures differ.

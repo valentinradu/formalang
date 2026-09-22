@@ -69,7 +69,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let params = fn_def.params.clone();
             let generics = impl_generics.to_vec();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
-            self.validate_fn_param_conventions_args(&params, args, span, file);
+            let mut accesses = self.validate_fn_param_conventions_args(&params, args, span, file);
+            // The receiver is an argument too, with the convention of
+            // `self`. A method with no `self` takes no receiver.
+            if let Some(self_param) = params.iter().find(|p| p.name.name == "self") {
+                accesses.push((self_param.convention, receiver));
+            }
+            self.validate_exclusive_access(&accesses, span);
             // A method call checked its argument labels and conventions
             // but never their types, so `h.takes(p: "text")` against
             // `fn takes(self, p: I32)` compiled. Same rule as a free
@@ -197,15 +203,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Check `mut` / `sink` conventions on non-self parameters using AST `FnParam` directly.
-    fn validate_fn_param_conventions_args(
+    ///
+    /// Returns each argument with the convention of the parameter it
+    /// fills, for the exclusive-access check. An argument that fills no
+    /// parameter goes in as `Let`.
+    fn validate_fn_param_conventions_args<'a>(
         &mut self,
         params: &[crate::ast::FnParam],
-        args: &[(Option<crate::ast::Ident>, Expr)],
+        args: &'a [(Option<crate::ast::Ident>, Expr)],
         span: Span,
         file: &File,
-    ) {
+    ) -> Vec<(crate::ast::ParamConvention, &'a Expr)> {
         use crate::ast::ParamConvention;
         let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        let mut accesses = Vec::new();
         for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
             let param = label_opt.as_ref().map_or_else(
                 || non_self.get(i).copied(),
@@ -221,6 +232,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .copied()
                 },
             );
+            accesses.push((
+                param.map_or(ParamConvention::Let, |p| p.convention),
+                arg_expr,
+            ));
             if let Some(param) = param {
                 if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
                 {
@@ -238,6 +253,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        accesses
     }
 
     /// Enforce closure param conventions at a call site where the callee is a closure binding.
@@ -249,6 +265,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
     ) {
         use crate::ast::ParamConvention;
+        let accesses: Vec<(ParamConvention, &Expr)> = args
+            .iter()
+            .enumerate()
+            .map(|(i, (_, arg_expr))| (conventions.get(i).copied().unwrap_or_default(), arg_expr))
+            .collect();
+        self.validate_exclusive_access(&accesses, span);
         for (i, (_, arg_expr)) in args.iter().enumerate() {
             let Some(&convention) = conventions.get(i) else {
                 break;

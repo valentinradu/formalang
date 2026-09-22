@@ -78,6 +78,7 @@ impl CompilerError {
             | Self::FunctionReturnTypeMismatch { span, .. }
             | Self::AssignmentToImmutable { span, .. }
             | Self::AssignmentToElement { span, .. }
+            | Self::OverlappingArguments { span, .. }
             | Self::UseAfterSink { span, .. }
             | Self::ExpressionDepthExceeded { span }
             | Self::TooManyDefinitions { span, .. }

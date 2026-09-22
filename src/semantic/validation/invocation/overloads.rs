@@ -20,6 +20,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         use crate::ast::ParamConvention;
         let non_self: Vec<_> = params.iter().filter(|p| p.name.name != "self").collect();
+        let mut accesses: Vec<(ParamConvention, &crate::ast::Expr)> = Vec::new();
         for (i, (label_opt, arg_expr)) in args.iter().enumerate() {
             let param = label_opt.as_ref().map_or_else(
                 || non_self.get(i).copied(),
@@ -35,6 +36,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         .map(|v| &**v)
                 },
             );
+            accesses.push((
+                param.map_or(ParamConvention::Let, |p| p.convention),
+                arg_expr,
+            ));
             if let Some(param) = param {
                 if param.convention == ParamConvention::Mut && !self.is_expr_mutable(arg_expr, file)
                 {
@@ -53,6 +58,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+        self.validate_exclusive_access(&accesses, span);
     }
 
     /// Check each call argument against the type its parameter

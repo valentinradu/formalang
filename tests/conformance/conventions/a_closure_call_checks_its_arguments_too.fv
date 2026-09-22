@@ -1,0 +1,8 @@
+// expect: reject OverlappingArguments
+// A call to a closure binding takes the same rule as a call to a
+// function: a `mut` argument needs sole access to its value.
+pub fn f() {
+    let g: (mut I32, I32) -> I32 = (mut a: I32, b: I32) -> a + b
+    let mut x: I32 = 1
+    let n: I32 = g(x, x)
+}

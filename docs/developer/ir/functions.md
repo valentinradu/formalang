@@ -95,8 +95,16 @@ interpret it as follows:
 | Variant  | Meaning for the backend                                                                       |
 |----------|-----------------------------------------------------------------------------------------------|
 | `Let`    | Immutable read access. The backend may pass by reference or copy.                             |
-| `Mut`    | Exclusive mutable access. The backend must ensure no aliasing.                                |
+| `Mut`    | Exclusive mutable access. The frontend guarantees no aliasing: see below.                     |
 | `Sink`   | Ownership transfer. The value is logically moved; the caller cannot use it after this call.   |
+
+**No two arguments of one call alias, when one of them is `Mut` or
+`Sink`.** The semantic analyser rejects such a call with `E144
+OverlappingArguments`, and the check follows fields: `p.x` and `p.y`
+are two places, while `p` and `p.x` are one. So a backend may pass a
+`Mut` argument as a raw pointer and add no alias check. A `Let`
+argument may still share a value with another `Let` argument, because
+nothing changes it.
 
 All three conventions use identical call syntax in FormaLang source;
 the distinction is purely semantic. Backends that target languages with

@@ -1,0 +1,11 @@
+// expect: reject OverlappingArguments
+// A `mut` argument needs sole access to its value. Two `mut` pointers
+// to one binding would let the callee change it through either one.
+pub fn swap(mut a: I32, mut b: I32) {
+    a = b
+}
+
+pub fn f() {
+    let mut x: I32 = 1
+    swap(a: x, b: x)
+}

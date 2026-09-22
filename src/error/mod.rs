@@ -238,6 +238,12 @@ pub enum CompilerError {
     #[error("Cannot assign to an element")]
     AssignmentToElement { span: Span },
 
+    /// Two arguments of one call reach the same place, and one of them
+    /// is `mut` or `sink`. The callee would change or take a value that
+    /// another argument still points at.
+    #[error("Two arguments of one call reach '{path}', and one of them is mut or sink")]
+    OverlappingArguments { path: String, span: Span },
+
     #[error(
         "Struct '{struct_name}' requires named arguments (field: value), but argument {position} is positional"
     )]

@@ -222,6 +222,10 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
         },
         CompilerError::AssignmentToImmutable { span },
         CompilerError::AssignmentToElement { span },
+        CompilerError::OverlappingArguments {
+            path: s("sample"),
+            span,
+        },
         CompilerError::PositionalArgInStruct {
             struct_name: s("Sample"),
             position: 2,
@@ -417,6 +421,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::UnknownField { .. } => "UnknownField",
         CompilerError::AssignmentToImmutable { .. } => "AssignmentToImmutable",
         CompilerError::AssignmentToElement { .. } => "AssignmentToElement",
+        CompilerError::OverlappingArguments { .. } => "OverlappingArguments",
         CompilerError::PositionalArgInStruct { .. } => "PositionalArgInStruct",
         CompilerError::EnumVariantWithoutData { .. } => "EnumVariantWithoutData",
         CompilerError::EnumVariantRequiresData { .. } => "EnumVariantRequiresData",
