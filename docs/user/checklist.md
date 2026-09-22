@@ -40,7 +40,7 @@
 
 **Expressions**:
 
-- All literals (string, multi-line string, number with suffix, boolean, nil, path, regex, array, dictionary)
+- All literals (string, multi-line string, number with suffix, boolean, nil, array, dictionary)
 - Binary operators (arithmetic, comparison, equality, logical, concatenation)
 - Field access (including nested)
 - Destructuring (arrays, structs, enums)

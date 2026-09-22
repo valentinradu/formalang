@@ -173,14 +173,14 @@ fn primitive_redefinition_function() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn primitive_redefinition_let() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let Path: I32 = 5
+        let F64: I32 = 5
     ";
     let errors = compile(source).err().ok_or("expected compilation error")?;
     let has_redef = errors
         .iter()
-        .any(|e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "Path"));
+        .any(|e| matches!(e, CompilerError::PrimitiveRedefinition { name, .. } if name == "F64"));
     if !has_redef {
-        return Err(format!("expected PrimitiveRedefinition for 'Path', got {errors:?}").into());
+        return Err(format!("expected PrimitiveRedefinition for 'F64', got {errors:?}").into());
     }
     Ok(())
 }

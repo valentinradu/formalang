@@ -29,7 +29,7 @@ pub(crate) fn collect_bindings_from_pattern(pattern: &BindingPattern) -> Vec<Pat
 pub(crate) fn is_primitive_name(name: &str) -> bool {
     matches!(
         name,
-        "String" | "I32" | "I64" | "F32" | "F64" | "Boolean" | "Path" | "Regex" | "Never"
+        "String" | "I32" | "I64" | "F32" | "F64" | "Boolean" | "Never"
     )
 }
 

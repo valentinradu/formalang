@@ -1,0 +1,19 @@
+// expect: run
+// `Path` and `Regex` left the language, so the names are free. They
+// stayed on the reserved list for a while, and the compiler then
+// refused `struct Path` as a primitive redefinition while it also
+// called `Path` undefined at type position.
+pub struct Path {
+    segments: I32
+}
+
+pub struct Regex {
+    flags: I32
+}
+
+pub fn run_checks() {
+    let p: Path = Path(segments: 3)
+    let r: Regex = Regex(flags: 1)
+    assert(condition: p.segments == 3)
+    assert(condition: r.flags == 1)
+}

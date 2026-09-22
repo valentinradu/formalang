@@ -36,7 +36,7 @@ pub enum GenericBase {
 )]
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ResolvedType {
-    /// Primitive type (String, I32, I64, F32, F64, Boolean, Path, Regex, Never)
+    /// Primitive type (String, I32, I64, F32, F64, Boolean, Never)
     Primitive(PrimitiveType),
 
     /// Reference to a struct definition
@@ -53,11 +53,12 @@ pub enum ResolvedType {
 
     /// Generic type instantiation: `Box<String>`, `Optional<I32>`, etc.
     ///
-    /// The four built-in compound types are also represented through
+    /// The five built-in compound types are also represented through
     /// this variant: `[T]` is `Generic { base: Struct(prelude_array_id), args: [T] }`,
     /// `T?` is `Generic { base: Enum(prelude_optional_id), args: [T] }`,
     /// `[K: V]` is `Generic { base: Struct(prelude_dictionary_id), args: [K, V] }`,
-    /// and `start..end` produces `Generic { base: Struct(prelude_range_id), args: [T] }`.
+    /// `start..end` produces `Generic { base: Struct(prelude_range_id), args: [T] }`,
+    /// and a `for` produces `Generic { base: Struct(prelude_seq_id), args: [T] }`.
     /// The prelude declares those built-ins as ordinary generic
     /// definitions so dispatch and lookup are uniform with user types.
     Generic { base: GenericBase, args: Vec<Self> },

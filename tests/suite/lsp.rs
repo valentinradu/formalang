@@ -6,7 +6,7 @@ use formalang::semantic::node_finder::{find_node_at_offset, NodeAtPosition};
 use formalang::semantic::position::{
     get_line_at_position, get_word_at_offset, span_contains_offset, LspPosition,
 };
-use formalang::semantic::queries::QueryProvider;
+use formalang::semantic::queries::{CompletionKind, QueryProvider};
 use formalang::{compile_with_analyzer, Location, Span};
 
 // =============================================================================
@@ -1613,6 +1613,36 @@ fn test_find_node_trait_field() -> Result<(), Box<dyn std::error::Error>> {
 
     if !(found_specific_node(&context)) {
         return Err("Should find node at trait field".into());
+    }
+    Ok(())
+}
+
+/// The primitive completions match the primitives the parser accepts.
+///
+/// `Path` and `Regex` left the language, but stayed on this list. So
+/// completion offered two types that do not parse, and left out
+/// `Never`, which does. Compare the whole set, in both directions.
+#[test]
+fn test_type_completions_match_the_real_primitives() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "let x: I32 = 1";
+    let (_, analyzer) = compile_with_analyzer(source).map_err(|e| format!("{e:?}"))?;
+    let provider = QueryProvider::new(analyzer.symbols());
+
+    let mut offered: Vec<String> = provider
+        .get_type_completions()
+        .into_iter()
+        .filter(|c| c.kind == CompletionKind::PrimitiveType)
+        .map(|c| c.label)
+        .collect();
+    offered.sort();
+
+    let expected: Vec<String> = ["Boolean", "F32", "F64", "I32", "I64", "Never", "String"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+    if offered != expected {
+        return Err(format!("primitive completions are {offered:?}, expected {expected:?}").into());
     }
     Ok(())
 }

@@ -72,7 +72,7 @@ pub enum DispatchKind {
 
 ```rust
 pub enum IrExpr {
-    /// Literal value: string, number, boolean, regex, path, nil
+    /// Literal value: string, number, boolean, nil
     Literal {
         value: Literal,
         ty: ResolvedType,

@@ -195,8 +195,7 @@ impl<'a> QueryProvider<'a> {
             CompletionCandidate::new("F32", CompletionKind::PrimitiveType),
             CompletionCandidate::new("F64", CompletionKind::PrimitiveType),
             CompletionCandidate::new("Boolean", CompletionKind::PrimitiveType),
-            CompletionCandidate::new("Path", CompletionKind::PrimitiveType),
-            CompletionCandidate::new("Regex", CompletionKind::PrimitiveType),
+            CompletionCandidate::new("Never", CompletionKind::PrimitiveType),
         ];
 
         for name in self.symbols.structs.keys() {
