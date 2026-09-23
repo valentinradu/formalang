@@ -86,10 +86,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         match overloads.len() {
             0 => {
-                // Check if this is a closure binding call — enforce closure param conventions
-                let closure_conventions =
-                    self.closure_binding_conventions.get(simple_name).cloned();
-                if let Some(conventions) = closure_conventions {
+                // A call through a binding that holds a closure. Its
+                // type gives the parameter conventions and the shape.
+                if let Some(SemType::Closure { params, .. }) = self.lookup_closure_type(simple_name)
+                {
                     // Before applying param conventions (which may mark new bindings
                     // as consumed), check if any captured binding has already been
                     // consumed — that's an after-the-fact use-after-sink via the
@@ -105,8 +105,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             }
                         }
                     }
+                    let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
                     self.validate_closure_call_conventions(&conventions, args, span, file);
-                    self.validate_closure_call_shape(simple_name, args, span, file);
+                    self.validate_closure_call_shape(&params, args, span, file);
                 } else if !self.resolve_qualified_function(name) {
                     // a missing function is an undefined
                     // reference, not an undefined type — use the correct
@@ -130,49 +131,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             _ => {
                 // Multiple overloads: resolve by argument labels or first-arg type
-                let call_labels: Vec<Option<String>> = args
-                    .iter()
-                    .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
-                    .collect();
-
-                let matching: Vec<_> = overloads
-                    .iter()
-                    .filter(|overload| self.overload_matches(overload, &call_labels, args, file))
-                    .collect();
-
-                // DP-3: most-specific wins under defaults. When several
-                // overloads pass the broadened arity check, prefer the
-                // one whose `non_self_count - args.len()` is smallest
-                // (i.e., fewest default values fired). Ties at the same
-                // gap fall through to the existing ambiguous-call path.
-                let min_gap: Option<usize> = matching
-                    .iter()
-                    .map(|overload| {
-                        let non_self = overload
-                            .params
-                            .iter()
-                            .filter(|p| p.name.name != "self")
-                            .count();
-                        non_self.saturating_sub(args.len())
-                    })
-                    .min();
-                let most_specific: Vec<_> = min_gap.map_or_else(
-                    || matching.clone(),
-                    |g| {
-                        matching
-                            .iter()
-                            .copied()
-                            .filter(|overload| {
-                                let non_self = overload
-                                    .params
-                                    .iter()
-                                    .filter(|p| p.name.name != "self")
-                                    .count();
-                                non_self.saturating_sub(args.len()) == g
-                            })
-                            .collect()
-                    },
-                );
+                let most_specific = self.most_specific_overloads(overloads, args, file);
 
                 match most_specific.len() {
                     0 => {
@@ -219,15 +178,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// parameter.
     fn validate_closure_call_shape(
         &mut self,
-        name: &str,
+        params: &[(crate::ast::ParamConvention, SemType)],
         args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
         span: Span,
         file: &File,
     ) {
-        let Some(SemType::Closure { params, .. }) = self.lookup_closure_type(name) else {
-            return;
-        };
-
         if args.len() != params.len() {
             self.errors.push(CompilerError::ArgumentCountMismatch {
                 callee: "This closure".to_string(),
@@ -238,7 +193,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
 
-        for ((_, arg_expr), declared) in args.iter().zip(params.iter()) {
+        for ((_, arg_expr), (_, declared)) in args.iter().zip(params.iter()) {
             // A parameter the closure left untyped takes anything:
             // `(x) -> x + 1` states no type, so there is nothing to
             // check against.
@@ -254,25 +209,5 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
             }
         }
-    }
-
-    /// Look up the type of a closure-typed binding by name.
-    ///
-    /// Mirrors the lookup in
-    /// [`crate::semantic::SemanticAnalyzer::infer_type_invocation`]:
-    /// the inference scope stack first, because an inner scope shadows
-    /// an outer one, then the function's own bindings, which hold both
-    /// its `let`s and its parameters.
-    fn lookup_closure_type(&self, name: &str) -> Option<SemType> {
-        let from_scope = {
-            let stack = self.inference_scope_stack.borrow();
-            stack
-                .iter()
-                .rev()
-                .find_map(|frame| frame.get(name).cloned())
-        };
-        from_scope
-            .or_else(|| self.local_let_bindings.get(name).map(|(ty, _)| ty.clone()))
-            .filter(|ty| matches!(ty, SemType::Closure { .. }))
     }
 }

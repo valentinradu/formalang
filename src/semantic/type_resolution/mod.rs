@@ -4,11 +4,10 @@
 mod validate;
 
 use super::module_resolver::ModuleResolver;
-use super::symbol_table::{self, FieldInfo, SymbolTable};
+use super::symbol_table::{self, SymbolTable};
 use super::SemanticAnalyzer;
 use crate::ast::{Definition, File, Statement, StructDef, TraitDef};
 use crate::error::CompilerError;
-use crate::location::Span;
 use std::collections::HashMap;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -48,70 +47,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.pop_generic_scope();
                     }
                     Definition::Module(module_def) => {
-                        // Temporarily import module symbols so internal
-                        // references resolve, then restore parent scope.
-                        let module_symbols = Self::collect_module_symbols(module_def);
-                        for (name, trait_info) in &module_symbols.traits {
-                            self.symbols.traits.insert(name.clone(), trait_info.clone());
-                        }
-                        for (name, struct_info) in &module_symbols.structs {
-                            self.symbols
-                                .structs
-                                .insert(name.clone(), struct_info.clone());
-                        }
-                        for (name, enum_info) in &module_symbols.enums {
-                            self.symbols.enums.insert(name.clone(), enum_info.clone());
-                        }
-
-                        for nested_def in &module_def.definitions {
-                            match nested_def {
-                                Definition::Trait(trait_def) => {
-                                    self.resolve_trait_types(trait_def);
-                                }
-                                Definition::Struct(struct_def) => {
-                                    self.resolve_struct_types(struct_def);
-                                }
-                                Definition::Impl(impl_def) => {
-                                    self.push_impl_generic_scope(
-                                        &impl_def.generics,
-                                        &impl_def.name.name,
-                                    );
-                                    self.current_impl_struct = Some(impl_def.name.name.clone());
-                                    self.local_let_bindings.clear();
-                                    for func in &impl_def.functions {
-                                        self.validate_function_return_type(func, file);
-                                    }
-                                    self.current_impl_struct = None;
-                                    self.local_let_bindings.clear();
-                                    self.pop_generic_scope();
-                                }
-                                Definition::Enum(enum_def) => {
-                                    self.push_generic_scope(&enum_def.generics);
-                                    for variant in &enum_def.variants {
-                                        for field in &variant.fields {
-                                            self.validate_type(&field.ty, field.span);
-                                        }
-                                    }
-                                    self.pop_generic_scope();
-                                }
-                                Definition::Module(nested_module) => {
-                                    self.resolve_module_types(nested_module, file);
-                                }
-                                Definition::Function(func_def) => {
-                                    self.validate_standalone_function(func_def.as_ref(), file);
-                                }
-                            }
-                        }
-
-                        for name in module_symbols.traits.keys() {
-                            self.symbols.traits.remove(name);
-                        }
-                        for name in module_symbols.structs.keys() {
-                            self.symbols.structs.remove(name);
-                        }
-                        for name in module_symbols.enums.keys() {
-                            self.symbols.enums.remove(name);
-                        }
+                        self.resolve_module_types(module_def, file);
                     }
                     Definition::Function(func_def) => {
                         self.validate_standalone_function(func_def.as_ref(), file);
@@ -121,109 +57,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Snapshot a module's defined symbols so the parent scope can pull them
-    /// in temporarily during type resolution.
-    pub(super) fn collect_module_symbols(module_def: &crate::ast::ModuleDef) -> SymbolTable {
-        let mut symbols = SymbolTable::new();
-        for def in &module_def.definitions {
-            match def {
-                Definition::Trait(trait_def) => {
-                    let fields: Vec<symbol_table::FieldInfo> = trait_def
-                        .fields
-                        .iter()
-                        .map(|f| symbol_table::FieldInfo {
-                            name: f.name.name.clone(),
-                            ty: f.ty.clone(),
-                            doc: f.doc.clone(),
-                        })
-                        .collect();
-                    let composed_traits: Vec<String> =
-                        trait_def.traits.iter().map(|t| t.name.clone()).collect();
-                    symbols.define_trait(
-                        trait_def.name.name.clone(),
-                        trait_def.visibility,
-                        trait_def.span,
-                        trait_def.generics.clone(),
-                        fields,
-                        composed_traits,
-                        trait_def.methods.clone(),
-                        trait_def.doc.clone(),
-                    );
-                }
-                Definition::Struct(struct_def) => {
-                    let fields: Vec<_> = struct_def
-                        .fields
-                        .iter()
-                        .map(|f| symbol_table::FieldInfo {
-                            name: f.name.name.clone(),
-                            ty: f.ty.clone(),
-                            doc: f.doc.clone(),
-                        })
-                        .collect();
-                    symbols.define_struct(
-                        struct_def.name.name.clone(),
-                        struct_def.visibility,
-                        struct_def.span,
-                        struct_def.generics.clone(),
-                        fields,
-                        struct_def.doc.clone(),
-                    );
-                }
-                Definition::Enum(enum_def) => {
-                    let variants: HashMap<String, (usize, Span)> = enum_def
-                        .variants
-                        .iter()
-                        .map(|v| (v.name.name.clone(), (v.fields.len(), v.span)))
-                        .collect();
-                    let variant_fields: HashMap<String, Vec<FieldInfo>> = enum_def
-                        .variants
-                        .iter()
-                        .map(|v| {
-                            (
-                                v.name.name.clone(),
-                                v.fields
-                                    .iter()
-                                    .map(|f| FieldInfo {
-                                        name: f.name.name.clone(),
-                                        ty: f.ty.clone(),
-                                        doc: f.doc.clone(),
-                                    })
-                                    .collect(),
-                            )
-                        })
-                        .collect();
-                    symbols.define_enum(
-                        enum_def.name.name.clone(),
-                        enum_def.visibility,
-                        enum_def.span,
-                        enum_def.generics.clone(),
-                        variants,
-                        variant_fields,
-                        Vec::new(),
-                        enum_def.doc.clone(),
-                    );
-                }
-                Definition::Impl(_) | Definition::Module(_) | Definition::Function(_) => {}
-            }
-        }
-        symbols
-    }
-
     /// Recurse into a nested module: pulls its symbols into scope, walks its
     /// definitions, then restores the parent scope.
     pub(super) fn resolve_module_types(&mut self, module_def: &crate::ast::ModuleDef, file: &File) {
-        let module_symbols = Self::collect_module_symbols(module_def);
-        for (name, trait_info) in &module_symbols.traits {
-            self.symbols.traits.insert(name.clone(), trait_info.clone());
-        }
-        for (name, struct_info) in &module_symbols.structs {
-            self.symbols
-                .structs
-                .insert(name.clone(), struct_info.clone());
-        }
-        for (name, enum_info) in &module_symbols.enums {
-            self.symbols.enums.insert(name.clone(), enum_info.clone());
-        }
+        let shadowed = self.enter_module_scope(module_def);
 
         for nested_def in &module_def.definitions {
             match nested_def {
@@ -264,15 +101,65 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
-        for name in module_symbols.traits.keys() {
-            self.symbols.traits.remove(name);
+        self.leave_module_scope(shadowed);
+    }
+
+    /// Bring the traits, structs, enums and functions of `module_def`
+    /// into scope, so the code of the module names them without the
+    /// module prefix. A module name shadows an outer name. Returns the
+    /// outer entries that the module shadows, for
+    /// [`Self::leave_module_scope`].
+    pub(in crate::semantic) fn enter_module_scope(
+        &mut self,
+        module_def: &crate::ast::ModuleDef,
+    ) -> ShadowedNames {
+        let mut module_symbols = SymbolTable::new();
+        // Pass 1 has reported the errors of these definitions already.
+        let mut already_reported = Vec::new();
+        for def in &module_def.definitions {
+            Self::collect_definition_into(&mut module_symbols, &mut already_reported, def);
         }
-        for name in module_symbols.structs.keys() {
-            self.symbols.structs.remove(name);
+        self.module_path.push(module_def.name.name.clone());
+        let mut shadowed = ShadowedNames::default();
+        for (name, info) in module_symbols.traits {
+            let outer = self.symbols.traits.insert(name.clone(), info);
+            shadowed.traits.push((name, outer));
         }
-        for name in module_symbols.enums.keys() {
-            self.symbols.enums.remove(name);
+        for (name, info) in module_symbols.structs {
+            let outer = self.symbols.structs.insert(name.clone(), info);
+            shadowed.structs.push((name, outer));
         }
+        for (name, info) in module_symbols.enums {
+            let outer = self.symbols.enums.insert(name.clone(), info);
+            shadowed.enums.push((name, outer));
+        }
+        for (name, overloads) in module_symbols.functions {
+            let outer = self.symbols.functions.insert(name.clone(), overloads);
+            shadowed.functions.push((name, outer));
+        }
+        shadowed
+    }
+
+    /// Restore the outer entries that [`Self::enter_module_scope`]
+    /// shadowed, and remove the names that only the module declares.
+    pub(in crate::semantic) fn leave_module_scope(&mut self, shadowed: ShadowedNames) {
+        fn restore<V>(map: &mut HashMap<String, V>, entries: Vec<(String, Option<V>)>) {
+            for (name, outer) in entries {
+                match outer {
+                    Some(outer) => {
+                        map.insert(name, outer);
+                    }
+                    None => {
+                        map.remove(&name);
+                    }
+                }
+            }
+        }
+        restore(&mut self.symbols.traits, shadowed.traits);
+        restore(&mut self.symbols.structs, shadowed.structs);
+        restore(&mut self.symbols.enums, shadowed.enums);
+        restore(&mut self.symbols.functions, shadowed.functions);
+        self.module_path.pop();
     }
 
     pub(super) fn resolve_trait_types(&mut self, trait_def: &TraitDef) {
@@ -315,4 +202,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         self.pop_generic_scope();
     }
+}
+
+/// The outer symbol-table entries that the names of an inline module
+/// shadow while the code of that module is checked. `None` marks a
+/// name that only the module declares.
+#[derive(Default)]
+pub(in crate::semantic) struct ShadowedNames {
+    traits: Vec<(String, Option<symbol_table::TraitInfo>)>,
+    structs: Vec<(String, Option<symbol_table::StructInfo>)>,
+    enums: Vec<(String, Option<symbol_table::EnumInfo>)>,
+    functions: Vec<(String, Option<Vec<symbol_table::FunctionInfo>>)>,
 }

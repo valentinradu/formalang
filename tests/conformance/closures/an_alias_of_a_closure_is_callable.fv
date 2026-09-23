@@ -1,0 +1,12 @@
+// expect: run
+// The type of a binding, not its value, makes it callable. A binding
+// that copies a closure from another binding is callable too.
+let inc = (x: I32) -> x + 1
+
+pub fn run_checks() {
+    let f = inc
+    assert(condition: f(1) == 2)
+    let triple = (x: I32) -> x * 3
+    let g = triple
+    assert(condition: g(2) == 6)
+}

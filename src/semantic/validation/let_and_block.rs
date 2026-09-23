@@ -28,6 +28,33 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Both `let` paths call this. Only the module-level one did
     /// before, so `let c: () -> I32 = () -> "text"` inside a function
     /// body compiled.
+    /// Record the captures of each module-level closure literal, for
+    /// the use-after-sink check at its call sites. This runs before
+    /// the function bodies are checked, so a call in any body sees the
+    /// captures. The conventions of a call come from the type of the
+    /// binding.
+    pub(in crate::semantic) fn register_module_closure_captures(&mut self, file: &File) {
+        for statement in &file.statements {
+            let crate::ast::Statement::Let(let_binding) = statement else {
+                continue;
+            };
+            let Expr::ClosureExpr {
+                params: cparams,
+                body,
+                ..
+            } = &let_binding.value
+            else {
+                continue;
+            };
+            let param_set: HashSet<String> = cparams.iter().map(|p| p.name.name.clone()).collect();
+            let captures = Self::collect_free_variables(body, &param_set);
+            for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+                self.closure_binding_captures
+                    .insert(binding.name, captures.clone());
+            }
+        }
+    }
+
     pub(super) fn check_closure_literal_against_annotation(
         &mut self,
         type_ann: Option<&Type>,
@@ -52,6 +79,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         };
 
         if lit_params.len() != declared_params.len() {
+            // A closure with the wrong number of parameters has the
+            // wrong shape. With an untyped parameter, the closure check
+            // reports it (`check_closure_parameter_types`), so this
+            // reports only a fully typed literal.
+            if lit_params.iter().all(|p| p.ty.is_some()) {
+                if let Some(annotation) = type_ann {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: Self::type_to_string(annotation),
+                        found: self.infer_type_sem(value, file).display(),
+                        span,
+                    });
+                }
+            }
             return;
         }
 
@@ -232,7 +272,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // value/declared compatibility check would mask it.
             self.validate_type(type_ann, let_binding.span);
         }
-        self.validate_expr(&let_binding.value, file);
+        let expected = let_binding.type_annotation.as_ref().map(SemType::from_ast);
+        self.validate_expr_expecting(&let_binding.value, expected, file);
         // Reject nil-into-nonopt and any other mismatch between the
         // inferred value type and the declared annotation.
         if let Some(type_ann) = &let_binding.type_annotation {
@@ -255,47 +296,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             let_binding.span,
             file,
         );
-        // Register closure-typed module-level bindings for call-site enforcement.
-        //
-        // Conventions can come from either the explicit type annotation
-        // (`let f: I32 -> I32 = ...`) or, when the let is unannotated, from
-        // the closure literal's own parameter list (`let f = |n: I32| n + 1`).
-        // Without the literal-based path, the call site `f(x)` resolves no
-        // overload and emits `UndefinedReference`.
-        let conventions_opt: Option<Vec<crate::ast::ParamConvention>> =
-            match (&let_binding.type_annotation, &let_binding.value) {
-                (Some(Type::Closure { params, .. }), _) => {
-                    Some(params.iter().map(|(c, _)| *c).collect())
-                }
-                (None, Expr::ClosureExpr { params, .. }) => {
-                    Some(params.iter().map(|p| p.convention).collect())
-                }
-                _ => None,
-            };
-        if let Some(conventions) = conventions_opt {
-            let captures = if let Expr::ClosureExpr {
-                params: cparams,
-                body,
-                ..
-            } = &let_binding.value
-            {
-                let param_set: HashSet<String> =
-                    cparams.iter().map(|p| p.name.name.clone()).collect();
-                Some(Self::collect_free_variables(body, &param_set))
-            } else {
-                None
-            };
-            for binding in collect_bindings_from_pattern(&let_binding.pattern) {
-                self.closure_binding_conventions
-                    .insert(binding.name.clone(), conventions.clone());
-                if let Some(caps) = &captures {
-                    self.closure_binding_captures
-                        .insert(binding.name.clone(), caps.clone());
-                    self.fn_scope_closure_captures
-                        .insert(binding.name, caps.clone());
-                }
-            }
-        }
         self.validate_destructuring_pattern(
             &let_binding.pattern,
             &let_binding.value,

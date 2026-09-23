@@ -211,7 +211,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         let tokens = Lexer::tokenize_all(source);
 
-        let file = match parser::parse_file_with_source(&tokens, source) {
+        let mut file = match parser::parse_file_with_source(&tokens, source) {
             Ok(file) => file,
             Err(errors) => {
                 // Convert parse errors to compiler errors
@@ -299,8 +299,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let saved_consumed_bindings = std::mem::take(&mut self.consumed_bindings);
 
         self.resolve_modules(&file);
+        super::value_paths::rewrite_value_paths(&mut file, &self.symbols);
         self.validate_generic_parameters(&file);
         self.infer_let_types(&file);
+        self.register_module_closure_captures(&file);
         self.resolve_types(&file);
         self.validate_expressions(&file);
         self.validate_trait_implementations(&file);

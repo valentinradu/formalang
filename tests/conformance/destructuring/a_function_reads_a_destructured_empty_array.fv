@@ -1,0 +1,10 @@
+// expect: run
+// The type of `first` is settled only when the value lowers. A
+// function that reads it lowers first, and still gets its type.
+let [first] = [[]]
+
+fn size() -> I32 { first.len() }
+
+pub fn run_checks() {
+    assert(condition: size() == 0)
+}

@@ -579,7 +579,7 @@ fn test_dict_empty() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_identity() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let identity = (x) -> x
+        let identity = (x: I32) -> x
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())
@@ -597,7 +597,7 @@ fn test_closure_constant() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_binary() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let pair = (x, y) -> (first: x, second: y)
+        let pair = (x: I32, y: String) -> (first: x, second: y)
     ";
     compile(source).map_err(|e| format!("Failed: {e:?}"))?;
     Ok(())

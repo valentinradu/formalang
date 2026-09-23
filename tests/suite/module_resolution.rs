@@ -364,14 +364,14 @@ fn test_module_error_clone() -> Result<(), Box<dyn std::error::Error>> {
 
 fn analyze_with_mock(source: &str, resolver: MockModuleResolver) -> Result<(), Vec<CompilerError>> {
     let tokens = Lexer::tokenize_all(source);
-    let file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
+    let mut file = parser::parse_file_with_source(&tokens, source).map_err(|errors| {
         errors
             .into_iter()
             .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
             .collect::<Vec<_>>()
     })?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
-    analyzer.analyze(&file)
+    analyzer.analyze(&mut file)
 }
 
 #[test]
@@ -1010,10 +1010,10 @@ struct Main { h: Helper }
     let mut resolver = MockModuleResolver::new();
     resolver.add_module(vec!["utils".to_string()], "pub struct Helper { x: String }");
     let tokens = Lexer::tokenize_all(source);
-    let file =
+    let mut file =
         parser::parse_file_with_source(&tokens, source).map_err(|errors| format!("{errors:?}"))?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
-    analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
+    analyzer.analyze(&mut file).map_err(|e| format!("{e:?}"))?;
 
     let cache = analyzer.imported_ir_modules();
     if cache.is_empty() {
@@ -1049,10 +1049,10 @@ struct Main { h: Helper<I32> }
     );
 
     let tokens = Lexer::tokenize_all(main_source);
-    let file = parser::parse_file_with_source(&tokens, main_source)
+    let mut file = parser::parse_file_with_source(&tokens, main_source)
         .map_err(|errors| format!("{errors:?}"))?;
     let mut analyzer = SemanticAnalyzer::new_with_file(resolver, PathBuf::from("main.forma"));
-    analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
+    analyzer.analyze(&mut file).map_err(|e| format!("{e:?}"))?;
 
     let mut module = lower_to_ir(&file, analyzer.symbols()).map_err(|e| format!("{e:?}"))?;
 

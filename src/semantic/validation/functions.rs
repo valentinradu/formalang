@@ -6,8 +6,9 @@
 //! orchestrator (standalone functions).
 
 use super::super::module_resolver::ModuleResolver;
+use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
-use crate::ast::{File, Type};
+use crate::ast::File;
 use crate::error::CompilerError;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -22,7 +23,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.consumed_bindings.clear();
         // Snapshot closure-binding maps so entries introduced in this function
         // body don't leak into later functions.
-        let saved_closure_conventions = self.closure_binding_conventions.clone();
         let saved_closure_captures = self.closure_binding_captures.clone();
         let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
         let saved_param_conventions = self.current_fn_param_conventions.clone();
@@ -56,18 +56,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .insert(param.name.name.clone(), (param_sem, mutable));
             self.current_fn_param_conventions
                 .insert(param.name.name.clone(), param.convention);
-            // Register closure-typed parameters so they're callable inside the
-            // body. Parameters have no captures of their own — no
-            // closure_binding_captures entry.
-            if let Some(Type::Closure {
-                params: closure_params,
-                ..
-            }) = &param.ty
-            {
-                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
-                self.closure_binding_conventions
-                    .insert(param.name.name.clone(), conventions);
-            }
         }
 
         // Check each default value against the type its parameter
@@ -80,7 +68,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             else {
                 continue;
             };
-            self.validate_expr(default, file);
+            self.validate_expr_expecting(default, Some(SemType::from_ast(declared_ty)), file);
             let declared = Self::type_to_string(declared_ty);
             let inferred_sem = self.infer_type_sem(default, file);
             if !self.value_satisfies_declared(&declared, &inferred_sem) {
@@ -94,7 +82,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Validate the function body expression (only if body exists)
         if let Some(body) = &func.body {
-            self.validate_expr(body, file);
+            // The declared return type is the expected type of the
+            // body, so a closure in the result takes its types.
+            let expected = func.return_type.as_ref().map(SemType::from_ast);
+            self.validate_expr_expecting(body, expected, file);
             self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
@@ -120,7 +111,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
-        self.closure_binding_conventions = saved_closure_conventions;
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
@@ -141,7 +131,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.consumed_bindings.clear();
         // Snapshot closure-binding maps so entries introduced in this function
         // body don't leak into later functions.
-        let saved_closure_conventions = self.closure_binding_conventions.clone();
         let saved_closure_captures = self.closure_binding_captures.clone();
         let saved_fn_scope_captures = self.fn_scope_closure_captures.clone();
         let saved_param_conventions = self.current_fn_param_conventions.clone();
@@ -165,15 +154,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .insert(param.name.name.clone(), (param_sem, mutable));
             self.current_fn_param_conventions
                 .insert(param.name.name.clone(), param.convention);
-            if let Some(Type::Closure {
-                params: closure_params,
-                ..
-            }) = &param.ty
-            {
-                let conventions: Vec<_> = closure_params.iter().map(|(c, _)| *c).collect();
-                self.closure_binding_conventions
-                    .insert(param.name.name.clone(), conventions);
-            }
         }
 
         // Check each default value against the type its parameter
@@ -186,7 +166,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             else {
                 continue;
             };
-            self.validate_expr(default, file);
+            self.validate_expr_expecting(default, Some(SemType::from_ast(declared_ty)), file);
             let declared = Self::type_to_string(declared_ty);
             let inferred_sem = self.infer_type_sem(default, file);
             if !self.value_satisfies_declared(&declared, &inferred_sem) {
@@ -205,7 +185,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Validate the function body if present
         if let Some(body) = &func.body {
-            self.validate_expr(body, file);
+            // The declared return type is the expected type of the
+            // body, so a closure in the result takes its types.
+            let expected = func.return_type.as_ref().map(SemType::from_ast);
+            self.validate_expr_expecting(body, expected, file);
             self.validate_function_return_escape(func.return_type.as_ref(), body);
 
             // If there's a declared return type, check it matches the body type
@@ -231,7 +214,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Clear local let bindings after function
         self.local_let_bindings.clear();
-        self.closure_binding_conventions = saved_closure_conventions;
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;

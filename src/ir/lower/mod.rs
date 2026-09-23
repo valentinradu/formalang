@@ -18,7 +18,7 @@ mod register;
 mod tests;
 mod types;
 
-use crate::ast::{File, ParamConvention, Statement};
+use crate::ast::{Definition, File, ParamConvention, Statement};
 use crate::error::CompilerError;
 use crate::semantic::{SymbolKind, SymbolTable};
 
@@ -159,6 +159,28 @@ struct IrLowerer<'a> {
     /// function) get appended to the topmost node as each definition
     /// is registered. Tier-1 item G.
     pub(super) module_node_stack: Vec<crate::ir::IrModuleNode>,
+    /// The type of each module-level `let`, by name. The lowering
+    /// records it before it lowers the definitions, because a function
+    /// body can refer to a `let` that the lowering has not lowered yet.
+    /// A name is absent when semantic inference did not settle its
+    /// type; see [`crate::semantic::sem_type::SemType::to_ast`].
+    pub(super) module_let_types: HashMap<String, ResolvedType>,
+    /// The module-level `let` of each name whose type the pre-pass
+    /// could not record: `let empty = []`, `let [first] = [[]]`. A
+    /// reference before the `let` lowers computes the type from the
+    /// value; see `module_let_type`.
+    pub(super) deferred_module_lets: HashMap<String, crate::ast::LetBinding>,
+    /// True while the declare pass runs: the function and impl
+    /// lowerings then lower each signature with no body, into
+    /// `declared_functions` and `declared_impls`.
+    pub(super) signatures_only: bool,
+    /// The signature of each free function, with no body, lowered
+    /// before any body. A call that comes before its callee in the file
+    /// reads the callee's parameters and return type here.
+    pub(super) declared_functions: Vec<crate::ir::IrFunction>,
+    /// The impl blocks with the signatures of their methods, with no
+    /// bodies. A method call before the impl of its type reads them.
+    pub(super) declared_impls: Vec<crate::ir::IrImpl>,
     /// While `register_imported_types` is lowering an imported struct's
     /// or enum's field types, this holds the source module's logical
     /// path. The `lower_type` fallback uses it to default unresolved
@@ -232,6 +254,11 @@ impl<'a> IrLowerer<'a> {
             expected_closure_type: None,
             expected_value_type: None,
             module_node_stack: Vec::new(),
+            module_let_types: HashMap::new(),
+            deferred_module_lets: HashMap::new(),
+            signatures_only: false,
+            declared_functions: Vec::new(),
+            declared_impls: Vec::new(),
             imported_source_context: None,
         }
     }
@@ -325,6 +352,27 @@ impl<'a> IrLowerer<'a> {
         .or_else(|| self.find_function_in_scope(name))
     }
 
+    /// The name under which the type `name`, written in the current
+    /// module, is registered.
+    ///
+    /// A type in an inline `mod` is registered by its qualified name,
+    /// `m::P`, and the code in `m` names it `P`. The current module
+    /// comes first, then each enclosing module, then the top level.
+    pub(super) fn scoped_type_name(&self, name: &str) -> String {
+        let mut prefix = self.current_module_prefix.as_str();
+        while !prefix.is_empty() {
+            let qualified = format!("{prefix}::{name}");
+            if self.module.struct_id(&qualified).is_some()
+                || self.module.enum_id(&qualified).is_some()
+                || self.module.trait_id(&qualified).is_some()
+            {
+                return qualified;
+            }
+            prefix = prefix.rsplit_once("::").map_or("", |(outer, _)| outer);
+        }
+        name.to_string()
+    }
+
     /// Look up a local binding's resolved type by name from the innermost
     /// scope outwards.
     pub(super) fn lookup_local_binding(&self, name: &str) -> Option<&ResolvedType> {
@@ -346,7 +394,7 @@ impl<'a> IrLowerer<'a> {
 
     /// Whether `name` matches a generic parameter declared in any
     /// currently-active generic scope (struct/enum/trait/impl/function).
-    /// Used by `lower_type` and `string_to_resolved_type` to tell
+    /// Used by `lower_type` to tell
     /// legitimate type-parameter references apart from references to
     /// names that fail to resolve to any known type.
     pub(super) fn is_generic_param_in_scope(&self, name: &str) -> bool {
@@ -368,6 +416,17 @@ impl<'a> IrLowerer<'a> {
                 self.register_definition(def.as_ref());
             }
         }
+
+        // Record the types of the module-level lets. The definitions
+        // refer to them, but the lets are lowered last: their values can
+        // use the structs and impls of the definitions.
+        for statement in &file.statements {
+            if let Statement::Let(let_binding) = statement {
+                self.record_module_let_types(let_binding);
+            }
+        }
+
+        self.declare_signatures(file);
 
         // Second pass: lower all definitions with resolved types
         for statement in &file.statements {
@@ -406,6 +465,32 @@ impl<'a> IrLowerer<'a> {
         } else {
             Err(std::mem::take(&mut self.errors))
         }
+    }
+
+    /// Lower the signature of each function and each impl method, with
+    /// no body. The bodies lower in source order after this, so a call
+    /// that comes before its callee reads the callee's signature from
+    /// `declared_functions` or `declared_impls`.
+    ///
+    /// The errors and the imports that this pass records are dropped:
+    /// the full lowering records them again.
+    fn declare_signatures(&mut self, file: &File) {
+        let errors_before = self.errors.len();
+        let saved_imports = self.imports_by_module.clone();
+        self.signatures_only = true;
+        for statement in &file.statements {
+            if let Statement::Definition(def) = statement {
+                if matches!(
+                    &**def,
+                    Definition::Function(_) | Definition::Impl(_) | Definition::Module(_)
+                ) {
+                    self.lower_definition(def.as_ref());
+                }
+            }
+        }
+        self.signatures_only = false;
+        self.errors.truncate(errors_before);
+        self.imports_by_module = saved_imports;
     }
 
     /// Track an external import if the given name is imported from another module.

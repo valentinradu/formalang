@@ -92,13 +92,14 @@ impl SymbolTable {
         all_traits
     }
 
-    /// Get enum variants
+    /// Get enum variants. A qualified name, `m::E`, names the enum of
+    /// an inline module.
     #[must_use]
     pub fn get_enum_variants(
         &self,
         name: &str,
     ) -> Option<&HashMap<String, (usize, crate::location::Span)>> {
-        self.enums.get(name).map(|info| &info.variants)
+        self.get_enum_qualified(name).map(|info| &info.variants)
     }
 
     /// Get the first function overload by name (for backward compatibility)
@@ -206,10 +207,11 @@ impl SymbolTable {
         self.structs.contains_key(name)
     }
 
-    /// Check if a name is an enum
+    /// Check if a name is an enum. A qualified name, `m::E`, names the
+    /// enum of an inline module.
     #[must_use]
     pub fn is_enum(&self, name: &str) -> bool {
-        self.enums.contains_key(name)
+        self.get_enum_qualified(name).is_some()
     }
 
     /// Check if a name is a let binding

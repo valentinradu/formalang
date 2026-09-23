@@ -28,6 +28,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(in crate::semantic) fn validate_expr(&mut self, expr: &Expr, file: &File) {
         // Check recursion depth to prevent stack overflow
         const MAX_EXPR_DEPTH: usize = 500;
+        // The expected type is for this expression only. Each child
+        // gets its own through `validate_expr_expecting`.
+        let expected = self.expected_type.take();
         self.validate_expr_depth = self.validate_expr_depth.saturating_add(1);
         if self.validate_expr_depth > MAX_EXPR_DEPTH {
             self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
@@ -41,8 +44,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_numeric_literal(value, *span);
             }
             Expr::Array { elements, span } => {
+                let element_expected = Self::expected_element(expected.as_ref());
                 for elem in elements {
-                    self.validate_expr(elem, file);
+                    self.validate_expr_expecting(elem, element_expected.clone(), file);
                 }
                 // Escape analysis: any closure value stored in the array escapes
                 // with the collection — mark its captures as consumed.
@@ -56,8 +60,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_array_homogeneity(elements, *span, file);
             }
             Expr::Tuple { fields, .. } => {
-                for (_, field_expr) in fields {
-                    self.validate_expr(field_expr, file);
+                for (name, field_expr) in fields {
+                    let field_expected = Self::expected_tuple_field(expected.as_ref(), &name.name);
+                    self.validate_expr_expecting(field_expr, field_expected, file);
                 }
                 // Escape analysis: closure values stored in a tuple escape.
                 for (_, field_expr) in fields {
@@ -81,14 +86,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 data,
                 span,
             } => {
-                for (_, data_expr) in data {
-                    self.validate_expr(data_expr, file);
+                for (field, data_expr) in data {
+                    let field_expected =
+                        self.expected_payload(Some(&enum_name.name), &variant.name, &field.name);
+                    self.validate_expr_expecting(data_expr, Some(field_expected), file);
                 }
                 self.validate_enum_instantiation(enum_name, variant, data, *span, file);
             }
-            Expr::InferredEnumInstantiation { data, .. } => {
-                for (_, data_expr) in data {
-                    self.validate_expr(data_expr, file);
+            Expr::InferredEnumInstantiation { variant, data, .. } => {
+                // The enum comes from the expected type, as in
+                // `let s: Status = .done(then: (x) -> x)`.
+                let enum_name = expected.as_ref().and_then(Self::expected_enum_name);
+                for (field, data_expr) in data {
+                    let field_expected =
+                        self.expected_payload(enum_name.as_deref(), &variant.name, &field.name);
+                    self.validate_expr_expecting(data_expr, Some(field_expected), file);
                 }
             }
             Expr::BinaryOp {
@@ -135,12 +147,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // Snapshot consumed_bindings; the post-join union is
                 // conservative (may over-report UseAfterSink, never miss).
                 let pre_if = self.consumed_bindings.clone();
-                self.validate_expr(then_branch, file);
+                self.validate_expr_expecting(then_branch, expected.clone(), file);
                 // after_then takes over `self.consumed_bindings`; swap pre_if in
                 // so the else branch starts from pre-branch state.
                 let after_then = std::mem::replace(&mut self.consumed_bindings, pre_if);
                 if let Some(else_expr) = else_branch {
-                    self.validate_expr(else_expr, file);
+                    self.validate_expr_expecting(else_expr, expected.clone(), file);
                     // Branch types must unify under optional widening
                     // (T + Nil → T?, T + T? → T?).
                     let then_sem = self.infer_type_sem(then_branch, file);
@@ -197,20 +209,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // left `g(n)` reported as an undefined
                         // reference, while the same closure bound by a
                         // plain `let` worked.
-                        let saved = closure_scrutinee.as_ref().map(|ty| {
-                            let saved = self.closure_binding_conventions.clone();
-                            self.register_closure_arm_bindings(ty, &arm.pattern);
-                            saved
-                        });
-                        self.validate_expr(&arm.body, file);
-                        if let Some(saved) = saved {
-                            self.closure_binding_conventions = saved;
+                        let frame = closure_scrutinee
+                            .as_ref()
+                            .map(|ty| self.build_match_arm_scope_for_type(ty, &arm.pattern));
+                        if let Some(frame) = frame.clone() {
+                            self.inference_scope_stack.borrow_mut().push(frame);
+                        }
+                        self.validate_expr_expecting(&arm.body, expected.clone(), file);
+                        // Infer the arm's type while its bindings are
+                        // in scope, so a binding shadows an outer name.
+                        arm_sems.push(self.infer_type_sem(&arm.body, file));
+                        if frame.is_some() {
+                            self.inference_scope_stack.borrow_mut().pop();
                         }
                         self.closure_param_scopes.pop();
                     } else {
-                        self.validate_expr(&arm.body, file);
+                        self.validate_expr_expecting(&arm.body, expected.clone(), file);
+                        arm_sems.push(self.infer_type_sem(&arm.body, file));
                     }
-                    arm_sems.push(self.infer_type_sem(&arm.body, file));
                     // Drain the per-arm state into post_union without cloning.
                     post_union.extend(self.consumed_bindings.drain());
                 }
@@ -241,11 +257,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
                 self.validate_match(scrutinee, arms, *span, file);
             }
-            Expr::Group { expr, .. } => self.validate_expr(expr, file),
+            Expr::Group { expr, .. } => self.validate_expr_expecting(expr, expected, file),
             Expr::DictLiteral { entries, span, .. } => {
+                let (key_expected, value_expected) = Self::expected_entry(expected.as_ref());
                 for (key, value) in entries {
-                    self.validate_expr(key, file);
-                    self.validate_expr(value, file);
+                    self.validate_expr_expecting(key, key_expected.clone(), file);
+                    self.validate_expr_expecting(value, value_expected.clone(), file);
                 }
                 // Escape analysis: closure values stored as dict keys/values escape.
                 for (key, value) in entries {
@@ -366,10 +383,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 body,
                 ..
             } => {
-                self.validate_expr_closure(params, return_type.as_ref(), body, file);
+                self.validate_expr_closure(
+                    params,
+                    return_type.as_ref(),
+                    body,
+                    expected.as_ref(),
+                    file,
+                );
             }
             Expr::LetExpr { .. } => {
-                self.validate_expr_let(expr, file);
+                self.validate_expr_let(expr, expected, file);
             }
             Expr::MethodCall {
                 receiver,
@@ -382,7 +405,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Expr::Block {
                 statements, result, ..
             } => {
-                self.validate_expr_block(statements, result, file);
+                self.validate_expr_block(statements, result, expected, file);
             }
         }
 
@@ -469,27 +492,5 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             ty,
             SemType::Primitive(_) | SemType::Closure { .. } | SemType::Nil
         )
-    }
-
-    /// Register any binding in this arm's pattern that holds a closure,
-    /// so a call through it resolves.
-    ///
-    /// An inferred type carries no parameter conventions, so each
-    /// parameter takes the default. A closure written with `mut` or
-    /// `sink` parameters and then matched out of an optional keeps its
-    /// shape but not its conventions; the annotated `let` path still
-    /// records those exactly.
-    fn register_closure_arm_bindings(
-        &mut self,
-        scrutinee_ty: &SemType,
-        pattern: &crate::ast::Pattern,
-    ) {
-        let frame = self.build_match_arm_scope_for_type(scrutinee_ty, pattern);
-        for (name, ty) in frame {
-            if let SemType::Closure { params, .. } = ty {
-                let conventions = vec![crate::ast::ParamConvention::Let; params.len()];
-                self.closure_binding_conventions.insert(name, conventions);
-            }
-        }
     }
 }

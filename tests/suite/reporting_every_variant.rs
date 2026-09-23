@@ -322,6 +322,10 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             variant: s("active"),
             span,
         },
+        CompilerError::ClosureParameterNeedsType {
+            param: s("x"),
+            span,
+        },
         CompilerError::FloatDictionaryKey {
             key_type: s("F64"),
             span,
@@ -443,6 +447,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::AmbiguousCall { .. } => "AmbiguousCall",
         CompilerError::NoMatchingOverload { .. } => "NoMatchingOverload",
         CompilerError::CannotInferEnumType { .. } => "CannotInferEnumType",
+        CompilerError::ClosureParameterNeedsType { .. } => "ClosureParameterNeedsType",
         CompilerError::FloatDictionaryKey { .. } => "FloatDictionaryKey",
         CompilerError::SeqNotConsumed { .. } => "SeqNotConsumed",
         CompilerError::SeqUsedTwice { .. } => "SeqUsedTwice",

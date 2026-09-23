@@ -6,7 +6,7 @@ mod mutability;
 use super::module_resolver::ModuleResolver;
 use super::sem_type::SemType;
 use super::SemanticAnalyzer;
-use crate::ast::{BinaryOperator, Expr, File, Literal, UnaryOperator};
+use crate::ast::{BinaryOperator, Expr, File, Literal, ParamConvention, UnaryOperator};
 use std::collections::HashMap;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -306,9 +306,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let return_ty = return_type
                     .as_ref()
                     .map_or(inferred_body_type, SemType::from_ast);
-                let param_tys: Vec<SemType> = params
+                let param_tys: Vec<(ParamConvention, SemType)> = params
                     .iter()
-                    .map(|p| p.ty.as_ref().map_or(SemType::Unknown, SemType::from_ast))
+                    .map(|p| {
+                        let ty = p.ty.as_ref().map_or(SemType::Unknown, SemType::from_ast);
+                        (p.convention, ty)
+                    })
                     .collect();
                 SemType::closure(param_tys, return_ty)
             }

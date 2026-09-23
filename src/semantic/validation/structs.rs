@@ -116,16 +116,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Find a struct definition in the current file and module cache
+    /// Find a struct definition in the current file and module cache.
+    ///
+    /// The code of an inline `mod` names the module's structs by their
+    /// short names, so the search starts in the module that holds the
+    /// code, then goes out to each enclosing module and the top level.
     pub(super) fn find_struct_def_in_files<'a>(
         &'a self,
         struct_name: &str,
         current_file: &'a File,
     ) -> Option<&'a StructDef> {
-        // Search in current file
-        for statement in &current_file.statements {
-            if let Statement::Definition(def) = statement {
-                if let Definition::Struct(struct_def) = &**def {
+        // Search in current file, innermost module first
+        for scope in self.definitions_in_scope(current_file).iter().rev() {
+            for def in scope {
+                if let Definition::Struct(struct_def) = def {
                     if struct_def.name.name == struct_name {
                         return Some(struct_def);
                     }
@@ -149,6 +153,38 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         None
     }
 
+    /// The definitions that the code under check can name, one list per
+    /// level: the top level of the file first, then each module on
+    /// `module_path`, down to the module that holds the code.
+    fn definitions_in_scope<'a>(&self, file: &'a File) -> Vec<Vec<&'a Definition>> {
+        let top: Vec<&Definition> = file
+            .statements
+            .iter()
+            .filter_map(|s| match s {
+                Statement::Definition(def) => Some(&**def),
+                Statement::Use(_) | Statement::Let(_) => None,
+            })
+            .collect();
+        let mut levels = vec![top];
+        for name in &self.module_path {
+            let inner = levels.last().and_then(|defs| {
+                defs.iter().find_map(|def| {
+                    if let Definition::Module(m) = def {
+                        if &m.name.name == name {
+                            return Some(m.definitions.iter().collect::<Vec<_>>());
+                        }
+                    }
+                    None
+                })
+            });
+            match inner {
+                Some(defs) => levels.push(defs),
+                None => break,
+            }
+        }
+        levels
+    }
+
     /// Walk the struct's named arguments and run closure-escape
     /// analysis on any closure-typed field: a closure stored in a struct
     /// field escapes with the struct, so its captures must be marked
@@ -163,57 +199,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
         _span: Span,
     ) {
-        let struct_info: Option<Vec<(String, bool)>> = {
-            let mut found = None;
-            for statement in &file.statements {
-                if let Statement::Definition(def) = statement {
-                    if let Definition::Struct(struct_def) = &**def {
-                        if struct_def.name.name == struct_name {
-                            let info: Vec<(String, bool)> = struct_def
-                                .fields
-                                .iter()
-                                .map(|f| {
-                                    (
-                                        f.name.name.clone(),
-                                        matches!(f.ty, crate::ast::Type::Closure { .. }),
-                                    )
-                                })
-                                .collect();
-                            found = Some(info);
-                            break;
-                        }
-                    }
-                }
-            }
-            if found.is_none() {
-                for (cached_file, _) in self.module_cache.values() {
-                    for statement in &cached_file.statements {
-                        if let Statement::Definition(def) = statement {
-                            if let Definition::Struct(struct_def) = &**def {
-                                if struct_def.name.name == struct_name {
-                                    let info: Vec<(String, bool)> = struct_def
-                                        .fields
-                                        .iter()
-                                        .map(|f| {
-                                            (
-                                                f.name.name.clone(),
-                                                matches!(f.ty, crate::ast::Type::Closure { .. }),
-                                            )
-                                        })
-                                        .collect();
-                                    found = Some(info);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if found.is_some() {
-                        break;
-                    }
-                }
-            }
-            found
-        };
+        let struct_info: Option<Vec<(String, bool)>> =
+            self.find_struct_def_in_files(struct_name, file).map(|def| {
+                def.fields
+                    .iter()
+                    .map(|f| {
+                        (
+                            f.name.name.clone(),
+                            matches!(f.ty, crate::ast::Type::Closure { .. }),
+                        )
+                    })
+                    .collect()
+            });
         let Some(fields) = struct_info else {
             return;
         };

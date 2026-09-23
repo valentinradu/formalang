@@ -1,0 +1,10 @@
+// expect: run
+// `Q.x` on a value with an uppercase name reads a field. It is not an
+// enum variant, because no enum has the name `Q`.
+pub struct Point { x: I32 }
+
+let Q: Point = Point(x: 7)
+
+pub fn run_checks() {
+    assert(condition: Q.x == 7)
+}

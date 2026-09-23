@@ -16,7 +16,19 @@ impl IrLowerer<'_> {
     /// closure lowerer reads for un-annotated params. Every other type
     /// goes to `expected_value_type`: a container peels one layer and
     /// recurses, and an inferred-enum literal resolves `.variant`
-    /// against it.
+    /// against it. An optional closure type goes to both: its closure
+    /// to `expected_closure_type` for a closure literal, and the whole
+    /// type to `expected_value_type` for `nil` or `.none`.
+    /// Take the expected type of the expression that is lowering now,
+    /// from whichever slot [`Self::lower_with_expected_value`] put it
+    /// in. The value slot holds the whole type when both are set: an
+    /// optional closure type.
+    pub(in crate::ir::lower) fn take_expected_type(&mut self) -> Option<ResolvedType> {
+        let value = self.expected_value_type.take();
+        let closure = self.expected_closure_type.take();
+        value.or(closure)
+    }
+
     pub(in crate::ir::lower) fn lower_with_expected_value(
         &mut self,
         expr: &Expr,
@@ -31,10 +43,18 @@ impl IrLowerer<'_> {
                 lowered
             }
             Some(t) => {
+                let inner_closure = self
+                    .module
+                    .optional_inner_ty(t)
+                    .filter(|inner| matches!(inner, ResolvedType::Closure { .. }))
+                    .cloned();
                 let saved = self.expected_value_type.take();
+                let saved_closure = self.expected_closure_type.take();
                 self.expected_value_type = Some(t.clone());
+                self.expected_closure_type = inner_closure;
                 let lowered = self.lower_expr(expr);
                 self.expected_value_type = saved;
+                self.expected_closure_type = saved_closure;
                 lowered
             }
             None => self.lower_expr(expr),

@@ -16,12 +16,20 @@ impl IrLowerer<'_> {
         variant: &str,
         data: &[(crate::ast::Ident, Expr)],
     ) -> IrExpr {
-        let (enum_id, ty) = self.module.enum_id(enum_name).map_or_else(
+        let scoped = self.scoped_type_name(enum_name);
+        let (enum_id, ty) = self.module.enum_id(&scoped).map_or_else(
             || {
-                self.try_external_type(enum_name, vec![]).map_or_else(
-                    || (None, ResolvedType::TypeParam(enum_name.to_string())),
-                    |external_ty| (None, external_ty),
-                )
+                let ty = self
+                    .try_external_type(enum_name, vec![])
+                    .unwrap_or_else(|| {
+                        // Semantic analysis refuses an enum name that no
+                        // enum has, so this is a compiler bug, not a user
+                        // error.
+                        self.internal_error_type(format!(
+                            "IR lowering: enum `{enum_name}` of `.{variant}` is not defined"
+                        ))
+                    });
+                (None, ty)
             },
             |id| (Some(id), ResolvedType::Enum(id)),
         );

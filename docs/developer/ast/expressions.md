@@ -126,6 +126,15 @@ pub enum Expr {
 }
 ```
 
+The parser reads `Name.variant` and `Name.variant(label: value)` as an
+`EnumInstantiation` when `Name` starts with an uppercase letter. The
+same text is a field access or a method call when `Name` is a value,
+for example `G.slice(start: 1, end: 3)` on `let G: String`. The parser
+cannot tell the two apart. After the semantic analyzer builds the
+symbol table, it changes each `EnumInstantiation` whose name is not a
+type or a trait into a `Reference` path or a `MethodCall`. The code is
+in `src/semantic/value_paths.rs`.
+
 ## BlockStatement
 
 ```rust

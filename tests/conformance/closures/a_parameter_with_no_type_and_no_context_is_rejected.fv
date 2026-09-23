@@ -1,0 +1,8 @@
+// expect: reject ClosureParameterNeedsType
+// Nothing gives `x` a type: the binding has no annotation. The
+// compiler does not infer a parameter type from the body or from a
+// later call.
+pub fn run_checks() -> I32 {
+    let f = (x) -> x + 1
+    f(1)
+}

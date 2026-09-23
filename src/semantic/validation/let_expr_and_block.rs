@@ -9,15 +9,28 @@ use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
 use crate::ast::{BlockStatement, Expr, File, Type};
 use crate::error::CompilerError;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// Put `name` in the innermost inference frame, so it shadows the
+    /// same name in an outer frame.
+    fn bind_in_frame(&self, name: &str, ty: &SemType) {
+        if let Some(frame) = self.inference_scope_stack.borrow_mut().last_mut() {
+            frame.insert(name.to_string(), ty.clone());
+        }
+    }
+
     /// Validate a let expression
     ///
     /// Like block statements, `let ... in body` introduces bindings that are
     /// scoped to `body` and must not leak out. Snapshots are taken on entry
     /// and restored on exit.
-    pub(super) fn validate_expr_let(&mut self, expr: &Expr, file: &File) {
+    pub(super) fn validate_expr_let(
+        &mut self,
+        expr: &Expr,
+        expected: Option<SemType>,
+        file: &File,
+    ) {
         let Expr::LetExpr {
             mutable,
             pattern,
@@ -32,7 +45,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(type_ann) = ty {
             self.validate_type(type_ann, *span);
         }
-        self.validate_expr(value, file);
+        self.validate_expr_expecting(value, ty.as_ref().map(SemType::from_ast), file);
         // nil literals must not be assigned to non-optional types
         if let Some(type_ann) = ty {
             let declared = Self::type_to_string(type_ann);
@@ -46,7 +59,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         self.validate_destructuring_pattern(pattern, value, *span, file);
         let saved_let_bindings = self.local_let_bindings.clone();
-        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        // A frame for the names this scope binds. They shadow an outer
+        // frame, such as the parameters of an enclosing closure.
+        self.inference_scope_stack.borrow_mut().push(HashMap::new());
         let saved_closure_captures = self.closure_binding_captures.clone();
         let saved_consumed = self.consumed_bindings.clone();
         // Collect closure captures once for reuse across all pattern bindings.
@@ -74,23 +89,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 });
                 continue;
             }
-            let inferred_ty = self.infer_type_sem(value, file);
-            // If annotated as a closure type, record param conventions for call-site enforcement
-            if let Some(Type::Closure { params, .. }) = ty {
-                let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
-                self.closure_binding_conventions
-                    .insert(binding.name.clone(), conventions);
-            }
+            // An annotation on a simple binding is its type. It keeps
+            // the conventions of a closure, which the value may not
+            // state: `let f: (mut I32) -> I32 = (x) -> x`.
+            let inferred_ty = match (pattern, ty) {
+                (crate::ast::BindingPattern::Simple(_), Some(annotation)) => {
+                    SemType::from_ast(annotation)
+                }
+                _ => self.infer_type_sem(value, file),
+            };
             if let Some(caps) = &captures {
                 self.closure_binding_captures
                     .insert(binding.name.clone(), caps.clone());
                 self.fn_scope_closure_captures
                     .insert(binding.name.clone(), caps.clone());
             }
+            self.bind_in_frame(&binding.name, &inferred_ty);
             self.local_let_bindings
                 .insert(binding.name, (inferred_ty, *mutable));
         }
-        self.validate_expr(body, file);
+        self.validate_expr_expecting(body, expected, file);
         // Preserve consumption for outer-scope names (function locals, module
         // lets, closure captures). Drop only names introduced by this LetExpr.
         let mut restored_consumed = saved_consumed;
@@ -101,8 +119,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 restored_consumed.insert(name.clone());
             }
         }
+        self.inference_scope_stack.borrow_mut().pop();
         self.local_let_bindings = saved_let_bindings;
-        self.closure_binding_conventions = saved_closure_conventions;
         self.closure_binding_captures = saved_closure_captures;
         self.consumed_bindings = restored_consumed;
     }
@@ -120,10 +138,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &mut self,
         statements: &[BlockStatement],
         result: &Expr,
+        expected: Option<SemType>,
         file: &File,
     ) {
         let saved_let_bindings = self.local_let_bindings.clone();
-        let saved_closure_conventions = self.closure_binding_conventions.clone();
+        // A frame for the names this scope binds. They shadow an outer
+        // frame, such as the parameters of an enclosing closure.
+        self.inference_scope_stack.borrow_mut().push(HashMap::new());
         let saved_closure_captures = self.closure_binding_captures.clone();
         let saved_consumed = self.consumed_bindings.clone();
         for stmt in statements {
@@ -143,7 +164,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     if let Some(type_ann) = ty {
                         self.validate_type(type_ann, value.span());
                     }
-                    self.validate_expr(value, file);
+                    self.validate_expr_expecting(value, ty.as_ref().map(SemType::from_ast), file);
                     // Compare the value against the annotation, the
                     // same way the module-level path does.
                     if let Some(type_ann) = ty {
@@ -183,16 +204,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     } else {
                         None
                     };
-                    let conventions_opt: Option<Vec<crate::ast::ParamConvention>> =
-                        match (ty.as_ref(), value) {
-                            (Some(Type::Closure { params, .. }), _) => {
-                                Some(params.iter().map(|(c, _)| *c).collect())
-                            }
-                            (None, Expr::ClosureExpr { params, .. }) => {
-                                Some(params.iter().map(|p| p.convention).collect())
-                            }
-                            _ => None,
-                        };
                     let binding_pairs = self.pattern_binding_types(pattern, &value_sem, file);
                     let binding_spans: std::collections::HashMap<String, crate::location::Span> =
                         collect_bindings_from_pattern(pattern)
@@ -210,16 +221,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             });
                             continue;
                         }
-                        if let Some(conventions) = &conventions_opt {
-                            self.closure_binding_conventions
-                                .insert(binding_name.clone(), conventions.clone());
-                        }
                         if let Some(caps) = &captures {
                             self.closure_binding_captures
                                 .insert(binding_name.clone(), caps.clone());
                             self.fn_scope_closure_captures
                                 .insert(binding_name.clone(), caps.clone());
                         }
+                        self.bind_in_frame(&binding_name, &binding_sem);
                         self.local_let_bindings
                             .insert(binding_name, (binding_sem, *mutable));
                     }
@@ -230,7 +238,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     span,
                 } => {
                     self.validate_expr(target, file);
-                    self.validate_expr(value, file);
+                    // The target's type is the expected type of the
+                    // value, as IR lowering reads it.
+                    let target_ty = self.infer_type_sem(target, file);
+                    self.validate_expr_expecting(value, Some(target_ty), file);
                     // An element target loses to the stronger rule, so it
                     // reports that rule and not the binding rule. `let mut`
                     // is no help here, and the binding is often already
@@ -279,7 +290,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
-        self.validate_expr(result, file);
+        self.validate_expr_expecting(result, expected, file);
         // Restore outer let/closure-convention scope. For consumption flags, keep
         // any binding consumed inside the block that belongs to an outer scope
         // (block did not introduce it). This preserves consumption of outer
@@ -293,8 +304,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 restored_consumed.insert(name.clone());
             }
         }
+        self.inference_scope_stack.borrow_mut().pop();
         self.local_let_bindings = saved_let_bindings;
-        self.closure_binding_conventions = saved_closure_conventions;
         self.closure_binding_captures = saved_closure_captures;
         self.consumed_bindings = restored_consumed;
     }

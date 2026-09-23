@@ -481,14 +481,17 @@ impl IrLowerer<'_> {
         self.current_impl_struct = None;
         self.current_impl_method_returns = saved_impl_returns;
 
-        if let Err(err) = self.module.add_impl(IrImpl {
+        let block = IrImpl {
             target,
             trait_ref,
             is_extern: i.is_extern,
             generic_params,
             functions,
             span: self.current_ir_span(),
-        }) {
+        };
+        if self.signatures_only {
+            self.declared_impls.push(block);
+        } else if let Err(err) = self.module.add_impl(block) {
             self.errors.push(err);
         }
     }

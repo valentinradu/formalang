@@ -1,0 +1,9 @@
+// expect: reject UnknownEnumVariant
+// Inside the module, `E` is the module's enum, and it has no `c`.
+pub mod m {
+    pub enum E { a }
+
+    pub fn bad() -> E { E.c }
+}
+
+pub fn run_checks() -> I32 { 1 }

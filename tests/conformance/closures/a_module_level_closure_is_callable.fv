@@ -1,0 +1,10 @@
+// expect: run
+// A module-level `let` that holds a closure is callable from a
+// function body, with an annotation or without one.
+let inc = (x: I32) -> x + 1
+let double: (I32) -> I32 = (x) -> x * 2
+
+pub fn run_checks() {
+    assert(condition: inc(1) == 2)
+    assert(condition: double(4) == 8)
+}

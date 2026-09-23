@@ -107,13 +107,99 @@ impl IrLowerer<'_> {
                     .map(|info| (name.clone(), info.symbols.clone()))
             })
             .collect();
-        for (module_name, module_symbols) in modules {
-            self.register_module_types(&module_name, &module_symbols);
+        // Step 1 registers every item of each module tree. A field type
+        // can name an item that registers later in the same step, so
+        // this step's errors are dropped. Step 2 lowers the field types
+        // again, when every name exists, and reports its errors.
+        let errors_before = self.errors.len();
+        for (module_name, module_symbols) in &modules {
+            self.register_module_types(module_name, module_symbols);
         }
+        self.errors.truncate(errors_before);
+        for (module_name, module_symbols) in &modules {
+            self.refresh_module_field_types(module_name, module_symbols);
+        }
+    }
+
+    /// Lower the field types of each struct, enum variant and trait in
+    /// a module tree again, and store them on the registered items.
+    ///
+    /// The code of a module names the module's types without the
+    /// prefix, so the types lower with `current_module_prefix` set to
+    /// the module.
+    fn refresh_module_field_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
+        let saved_prefix =
+            std::mem::replace(&mut self.current_module_prefix, module_prefix.to_string());
+        for (name, info) in sorted_by_name(&module_symbols.structs) {
+            let Some(id) = self.module.struct_id(&format!("{module_prefix}::{name}")) else {
+                continue;
+            };
+            let generics = self.lower_generic_params(&info.generics);
+            self.generic_scopes.push(generics);
+            let types: Vec<_> = info.fields.iter().map(|f| self.lower_type(&f.ty)).collect();
+            self.generic_scopes.pop();
+            if let Some(ir) = self.module.struct_mut(id) {
+                for (field, ty) in ir.fields.iter_mut().zip(types) {
+                    field.ty = ty;
+                }
+            }
+        }
+        for (name, info) in sorted_by_name(&module_symbols.enums) {
+            let Some(id) = self.module.enum_id(&format!("{module_prefix}::{name}")) else {
+                continue;
+            };
+            let generics = self.lower_generic_params(&info.generics);
+            self.generic_scopes.push(generics);
+            let variant_names: Vec<String> = self
+                .module
+                .get_enum(id)
+                .map(|e| e.variants.iter().map(|v| v.name.clone()).collect())
+                .unwrap_or_default();
+            let types: Vec<Vec<_>> = variant_names
+                .iter()
+                .map(|variant| {
+                    info.variant_fields
+                        .get(variant)
+                        .map_or_else(Vec::new, |fields| {
+                            fields.iter().map(|f| self.lower_type(&f.ty)).collect()
+                        })
+                })
+                .collect();
+            self.generic_scopes.pop();
+            if let Some(ir) = self.module.enum_mut(id) {
+                for (variant, variant_types) in ir.variants.iter_mut().zip(types) {
+                    for (field, ty) in variant.fields.iter_mut().zip(variant_types) {
+                        field.ty = ty;
+                    }
+                }
+            }
+        }
+        for (name, info) in sorted_by_name(&module_symbols.traits) {
+            let Some(id) = self.module.trait_id(&format!("{module_prefix}::{name}")) else {
+                continue;
+            };
+            let generics = self.lower_generic_params(&info.generics);
+            self.generic_scopes.push(generics);
+            let types: Vec<_> = info.fields.iter().map(|f| self.lower_type(&f.ty)).collect();
+            self.generic_scopes.pop();
+            if let Some(ir) = self.module.trait_mut(id) {
+                for (field, ty) in ir.fields.iter_mut().zip(types) {
+                    field.ty = ty;
+                }
+            }
+        }
+        for (nested_name, nested) in sorted_by_name(&module_symbols.modules) {
+            let nested_prefix = format!("{module_prefix}::{nested_name}");
+            self.refresh_module_field_types(&nested_prefix, &nested.symbols);
+        }
+        self.current_module_prefix = saved_prefix;
     }
 
     /// Register types from a nested module recursively
     fn register_module_types(&mut self, module_prefix: &str, module_symbols: &SymbolTable) {
+        // The module's own names resolve with its prefix.
+        let saved_prefix =
+            std::mem::replace(&mut self.current_module_prefix, module_prefix.to_string());
         // Register traits from this module with their real shape. Composed
         // traits are filled in after all names exist, since composition can
         // forward-reference traits in the same module.
@@ -200,6 +286,7 @@ impl IrLowerer<'_> {
             let nested_prefix = format!("{module_prefix}::{nested_name}");
             self.register_module_types(&nested_prefix, &nested_module_info.symbols);
         }
+        self.current_module_prefix = saved_prefix;
     }
 
     /// Helper method to register an enum using `EnumInfo::variant_fields`

@@ -188,7 +188,7 @@ impl IrLowerer<'_> {
         }
 
         if let ResolvedType::Struct(struct_id) = receiver_ty {
-            for impl_block in &self.module.impls {
+            for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.struct_id() == Some(*struct_id) {
                     if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
                         {
@@ -235,7 +235,7 @@ impl IrLowerer<'_> {
             } else {
                 Vec::new()
             };
-            for impl_block in &self.module.impls {
+            for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 let matches_target = match impl_block.target {
                     crate::ir::ImplTarget::Struct(id) => Some(id) == target_struct_id,
                     crate::ir::ImplTarget::Enum(id) => Some(id) == target_enum_id,
@@ -251,11 +251,20 @@ impl IrLowerer<'_> {
                             .clone()
                             .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
                             .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
-                        let subs: HashMap<String, ResolvedType> = generic_params
-                            .iter()
-                            .cloned()
-                            .zip(args.iter().cloned())
-                            .collect();
+                        // A target that is not lowered yet has no
+                        // generic parameters in the module. The impl
+                        // declares the same names, in the same order.
+                        let names: Vec<String> = if generic_params.is_empty() {
+                            impl_block
+                                .generic_params
+                                .iter()
+                                .map(|p| p.name.clone())
+                                .collect()
+                        } else {
+                            generic_params
+                        };
+                        let subs: HashMap<String, ResolvedType> =
+                            names.into_iter().zip(args.iter().cloned()).collect();
                         substitute_typeparam_in_resolved(&mut ret, &subs);
                         return ret;
                     }
@@ -264,7 +273,7 @@ impl IrLowerer<'_> {
         }
 
         if let ResolvedType::Primitive(prim) = receiver_ty {
-            for impl_block in &self.module.impls {
+            for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if matches!(impl_block.target, crate::ir::ImplTarget::Primitive(p) if p == *prim) {
                     if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
                         {
@@ -282,7 +291,7 @@ impl IrLowerer<'_> {
         }
 
         if let ResolvedType::Enum(enum_id) = receiver_ty {
-            for impl_block in &self.module.impls {
+            for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.enum_id() == Some(*enum_id) {
                     if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
                         {
@@ -411,12 +420,18 @@ impl IrLowerer<'_> {
         }
 
         if let Some(info) = self.symbols.get_function(fn_name) {
-            return info
+            // The return type can name the callee's own generic
+            // parameters, so it lowers in the callee's generic scope.
+            let generics = self.lower_generic_params(&info.generics);
+            self.generic_scopes.push(generics);
+            let ty = info
                 .return_type
                 .as_ref()
                 .map_or(ResolvedType::Primitive(PrimitiveType::Never), |t| {
                     self.lower_type(t)
                 });
+            self.generic_scopes.pop();
+            return ty;
         }
 
         self.errors.push(CompilerError::InternalError {

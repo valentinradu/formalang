@@ -7,6 +7,45 @@ use crate::error::CompilerError;
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrExpr, ResolvedType};
 
+/// One parameter that a call argument can fill.
+///
+/// A labelled argument names the parameter by its external label or
+/// by its name, as semantic analysis matches it. An unlabelled one
+/// fills the parameter at its position, so each parameter keeps its
+/// slot even when it has no type.
+pub(in crate::ir::lower) struct ArgSlot {
+    pub(in crate::ir::lower) name: String,
+    pub(in crate::ir::lower) label: Option<String>,
+    pub(in crate::ir::lower) ty: Option<ResolvedType>,
+}
+
+impl ArgSlot {
+    /// The slot of an IR function parameter.
+    pub(in crate::ir::lower) fn of_param(p: &crate::ir::IrFunctionParam) -> Self {
+        Self {
+            name: p.name.clone(),
+            label: p.external_label.clone(),
+            ty: p.ty.clone(),
+        }
+    }
+}
+
+/// A copy of `f` with no body: the parts a call site reads.
+pub(in crate::ir::lower) fn signature_of(f: &crate::ir::IrFunction) -> crate::ir::IrFunction {
+    crate::ir::IrFunction {
+        name: f.name.clone(),
+        visibility: f.visibility,
+        generic_params: f.generic_params.clone(),
+        params: f.params.clone(),
+        return_type: f.return_type.clone(),
+        body: None,
+        extern_abi: f.extern_abi,
+        attributes: f.attributes.clone(),
+        doc: f.doc.clone(),
+        span: f.span,
+    }
+}
+
 impl IrLowerer<'_> {
     pub(super) fn lower_binary_op_expr(
         &mut self,
@@ -57,10 +96,6 @@ impl IrLowerer<'_> {
         }
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "single-pass reference resolution covers every binding shape (self, struct field, module-level let, local, function call); splitting would scatter the cases"
-    )]
     pub(super) fn lower_reference(&mut self, path: &[crate::ast::Ident]) -> IrExpr {
         let path_strs: Vec<String> = path.iter().map(|i| i.name.clone()).collect();
 
@@ -97,25 +132,15 @@ impl IrLowerer<'_> {
             }
         }
 
-        // Check for module-level let binding reference
+        // A module-level `let`, unless a local binding shadows it.
         if path_strs.len() == 1 {
             #[expect(
                 clippy::indexing_slicing,
                 reason = "len == 1 check above guarantees index 0"
             )]
             let name = &path_strs[0];
-            if let Some(let_type) = self
-                .symbols
-                .get_let_type(name)
-                .filter(|t| !t.is_indeterminate())
-                .map(crate::semantic::sem_type::SemType::display)
-            {
-                // prefer the simple-name resolution; fall
-                // back to the value's known type for composite type
-                // strings the helper can't reparse (closures, tuples,
-                // arrays, etc.). The let was previously lowered, so its
-                // resolved type is already cached on the IR side.
-                if let Some(ty) = self.string_to_resolved_type(&let_type) {
+            if self.lookup_local_binding(name).is_none() {
+                if let Some(ty) = self.module_let_type(name) {
                     return IrExpr::LetRef {
                         name: name.clone(),
                         binding_id: crate::ir::BindingId(0),
@@ -123,49 +148,27 @@ impl IrLowerer<'_> {
                         span: self.current_ir_span(),
                     };
                 }
-                let ty = self
-                    .module
-                    .lets
-                    .iter()
-                    .find(|l| l.name == *name)
-                    .map_or_else(|| ResolvedType::Error, |l| l.value.ty().clone());
-                return IrExpr::LetRef {
-                    name: name.clone(),
-                    binding_id: crate::ir::BindingId(0),
-                    ty,
-                    span: self.current_ir_span(),
-                };
             }
         }
 
-        // Resolve the root of the path. Try, in order:
-        //   1. a local binding (function param, `self`, closure capture),
-        //   2. a module-level `let` — needed for multi-segment paths like
-        //      `sample.tags` where the single-segment LetRef branch above
-        //      doesn't apply.
-        // For a multi-segment path whose root is a local binding, emit a
-        // chain of `FieldAccess` over a `LetRef` rather than keeping the
-        // joined path on `IrExpr::Reference`. The resolve-references
-        // pass only matches `Reference` paths against module-level
-        // symbols, so a multi-segment `b.value` would otherwise surface
-        // as `UndefinedReference("b::value")` even when `b` is a local.
-        let root_is_local = path_strs
-            .first()
-            .is_some_and(|n| self.lookup_local_binding(n).is_some());
-        if root_is_local && path_strs.len() > 1 {
-            #[expect(
-                clippy::indexing_slicing,
-                reason = "first()/lookup_local_binding above guarantee at least one segment"
-            )]
-            let root_name = path_strs[0].clone();
-            #[expect(
-                clippy::expect_used,
-                reason = "lookup_local_binding above proved this binding is in scope"
-            )]
-            let root_ty = self
-                .lookup_local_binding(&root_name)
-                .cloned()
-                .expect("root local binding present");
+        // For a multi-segment path whose root is a local binding or a
+        // module-level `let`, emit a chain of `FieldAccess` over a
+        // `LetRef` rather than keeping the joined path on
+        // `IrExpr::Reference`. The resolve-references pass only matches
+        // `Reference` paths against module-level symbols, so a
+        // multi-segment `b.value` would otherwise surface as
+        // `UndefinedReference("b::value")` even when `b` is a local.
+        let root_binding = if path_strs.len() > 1 {
+            path_strs.first().and_then(|n| {
+                self.lookup_local_binding(n)
+                    .cloned()
+                    .or_else(|| self.module_let_type(n))
+                    .map(|ty| (n.clone(), ty))
+            })
+        } else {
+            None
+        };
+        if let Some((root_name, root_ty)) = root_binding {
             let mut current_expr = IrExpr::LetRef {
                 name: root_name,
                 binding_id: crate::ir::BindingId(0),
@@ -184,15 +187,11 @@ impl IrLowerer<'_> {
             }
             return current_expr;
         }
-        let root = path_strs.first().and_then(|n| {
-            self.lookup_local_binding(n).cloned().or_else(|| {
-                self.module
-                    .lets
-                    .iter()
-                    .find(|l| l.name == *n)
-                    .map(|l| l.value.ty().clone())
-            })
-        });
+        // A single local binding. A module-level `let` and every
+        // multi-segment path with a known root returned above.
+        let root = path_strs
+            .first()
+            .and_then(|n| self.lookup_local_binding(n).cloned());
         let ty = if let Some(root_ty) = root {
             let mut current = root_ty;
             for seg in path_strs.iter().skip(1) {
@@ -213,6 +212,34 @@ impl IrLowerer<'_> {
             ty,
             span: self.current_ir_span(),
         }
+    }
+
+    /// The type of the module-level `let` with the name `name`, or
+    /// `None` if no module-level `let` has that name.
+    ///
+    /// The pre-pass records each type that semantic analysis settled.
+    /// Any other type comes from the lowered value, so it is known only
+    /// after the lowering of the `let`. A reference before that is an
+    /// internal error, not a silent `Error` type.
+    pub(in crate::ir::lower) fn module_let_type(&mut self, name: &str) -> Option<ResolvedType> {
+        if let Some(ty) = self.module_let_types.get(name) {
+            return Some(ty.clone());
+        }
+        if let Some(ty) = self.deferred_module_let_type(name) {
+            return Some(ty);
+        }
+        self.symbols.get_let_type(name)?;
+        let lowered = self
+            .module
+            .lets
+            .iter()
+            .find(|l| l.name == name)
+            .map(|l| l.value.ty().clone());
+        Some(lowered.unwrap_or_else(|| {
+            self.internal_error_type(format!(
+                "IR lowering: the type of module-level let `{name}` is not known before its value is lowered"
+            ))
+        }))
     }
 
     pub(super) fn lower_method_call(
@@ -333,7 +360,7 @@ impl IrLowerer<'_> {
     /// argument before lowering. Returns an empty vec when the function
     /// isn't yet in the IR (forward reference) — in that case we fall
     /// back to `Unknown` for closure-literal params, same as before.
-    pub(super) fn lookup_function_param_types(&self, fn_name: &str) -> Vec<(String, ResolvedType)> {
+    pub(super) fn lookup_function_param_types(&self, fn_name: &str) -> Vec<ArgSlot> {
         // Match the same module-aware resolution `find_function_in_scope`
         // uses so a call from inside `mod foo { fn caller() { add(...) } }`
         // gets `foo::add`'s declared params (not a same-named top-level
@@ -348,13 +375,40 @@ impl IrLowerer<'_> {
                 .find(|f| f.name == qualified)
                 .or_else(|| self.module.functions.iter().find(|f| f.name == fn_name))
         };
-        f.map(|f| {
-            f.params
-                .iter()
-                .filter_map(|p| p.ty.as_ref().map(|t| (p.name.clone(), t.clone())))
-                .collect()
-        })
-        .unwrap_or_default()
+        f.map(|f| f.params.iter().map(ArgSlot::of_param).collect())
+            .unwrap_or_default()
+    }
+
+    /// The signature of the free function that a call means, when the
+    /// call comes before the function in the file: the function is in
+    /// `declared_functions` but not yet in `module.functions`. The
+    /// module rule and the overload rule are the ones that
+    /// `find_overload_in_scope` applies.
+    pub(super) fn declared_callee(
+        &self,
+        fn_name: &str,
+        arg_labels: &[Option<String>],
+        arg_count: usize,
+    ) -> Option<crate::ir::IrFunction> {
+        let qualified = (!self.current_module_prefix.is_empty())
+            .then(|| format!("{}::{}", self.current_module_prefix, fn_name));
+        let mut candidates: Vec<&crate::ir::IrFunction> = self
+            .declared_functions
+            .iter()
+            .filter(|f| qualified.as_deref() == Some(f.name.as_str()) || f.name == fn_name)
+            .collect();
+        if let Some(prefixed) = qualified.as_deref() {
+            if candidates.iter().any(|f| f.name == prefixed) {
+                candidates.retain(|f| f.name == prefixed);
+            }
+        }
+        let index = crate::ir::overload::choose(
+            candidates.iter().copied().enumerate(),
+            |f| f.params.as_slice(),
+            arg_labels,
+            arg_count,
+        )?;
+        candidates.get(index).map(|f| signature_of(f))
     }
 
     /// pick the expected parameter type for arg
@@ -364,19 +418,19 @@ impl IrLowerer<'_> {
     /// `Closure { .. }` — non-closure expected types don't influence
     /// closure-literal lowering.
     pub(super) fn expected_arg_ty(
-        expected: &[(String, ResolvedType)],
+        expected: &[ArgSlot],
         i: usize,
         name: Option<&crate::ast::Ident>,
     ) -> Option<ResolvedType> {
-        name.map_or_else(
-            || expected.get(i).map(|(_, t)| t.clone()),
+        let slot = name.map_or_else(
+            || expected.get(i),
             |n| {
                 expected
                     .iter()
-                    .find(|(pname, _)| pname == &n.name)
-                    .map(|(_, t)| t.clone())
+                    .find(|s| s.label.as_deref() == Some(n.name.as_str()) || s.name == n.name)
             },
-        )
+        );
+        slot.and_then(|s| s.ty.clone())
     }
 
     /// locate the impl method matching
@@ -390,7 +444,7 @@ impl IrLowerer<'_> {
         &self,
         receiver_ty: &ResolvedType,
         method_name: &str,
-    ) -> Vec<(String, ResolvedType)> {
+    ) -> Vec<ArgSlot> {
         let target = match receiver_ty {
             ResolvedType::Generic { base, .. } => match base {
                 crate::ir::GenericBase::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
@@ -421,21 +475,36 @@ impl IrLowerer<'_> {
         // closure argument has nothing concrete to take its parameter
         // types from, and `T` survives into monomorphisation.
         let subs = self.receiver_type_substitution(receiver_ty, target);
-        for impl_block in &self.module.impls {
+        for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
             if impl_block.target != target {
                 continue;
             }
             if let Some(func) = impl_block.functions.iter().find(|f| f.name == method_name) {
+                // A target that is not lowered yet has no generic
+                // parameters in the module. The impl declares the same
+                // names, in the same order.
+                let subs = if let (ResolvedType::Generic { args, .. }, true) =
+                    (receiver_ty, subs.is_empty())
+                {
+                    impl_block
+                        .generic_params
+                        .iter()
+                        .zip(args)
+                        .map(|(p, a)| (p.name.clone(), a.clone()))
+                        .collect()
+                } else {
+                    subs
+                };
                 return func
                     .params
                     .iter()
                     .filter(|p| p.name != "self")
-                    .filter_map(|p| {
-                        p.ty.as_ref().map(|t| {
-                            let mut ty = t.clone();
-                            crate::ir::monomorphise::specialise::substitute_type(&mut ty, &subs);
-                            (p.name.clone(), ty)
-                        })
+                    .map(|p| {
+                        let mut slot = ArgSlot::of_param(p);
+                        if let Some(ty) = &mut slot.ty {
+                            crate::ir::monomorphise::specialise::substitute_type(ty, &subs);
+                        }
+                        slot
                     })
                     .collect();
             }

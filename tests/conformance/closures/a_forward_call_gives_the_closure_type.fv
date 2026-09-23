@@ -1,0 +1,8 @@
+// expect: run
+// A call before the definition of its function in the file still
+// gives a closure argument its parameter types.
+pub fn run_checks() {
+    assert(condition: apply(f: (x) -> x * 2) == 2)
+}
+
+fn apply(f: (I32) -> I32) -> I32 { f(1) }

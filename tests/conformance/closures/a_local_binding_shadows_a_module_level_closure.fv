@@ -1,0 +1,17 @@
+// expect: run
+// A match-arm binding and a closure parameter shadow a module-level
+// closure with the same name. A call through the inner `f` checks
+// against the inner type, `(String) -> String`.
+let f = (x: I32) -> x + 1
+
+fn through_an_arm(o: ((String) -> String)?) -> String {
+    match o { some(f): f("a"), none: "none" }
+}
+
+pub fn run_checks() {
+    assert(condition: f(1) == 2)
+    let echo: ((String) -> String)? = (s) -> s
+    assert(condition: through_an_arm(o: echo) == "a")
+    let call: ((String) -> String) -> String = (f: (String) -> String) -> f("b")
+    assert(condition: call((s) -> s) == "b")
+}

@@ -19,9 +19,9 @@ fn test_semantic_analyzer_new_constructor() -> Result<(), Box<dyn std::error::Er
     let resolver = FileSystemResolver::new(PathBuf::from("."));
     let mut analyzer = SemanticAnalyzer::new(resolver);
     let tokens = formalang::lexer::Lexer::tokenize_all("struct Foo { x: I32 }");
-    let file = formalang::parse_file_with_source(&tokens, "struct Foo { x: I32 }")
+    let mut file = formalang::parse_file_with_source(&tokens, "struct Foo { x: I32 }")
         .map_err(|e| format!("parse error: {e:?}"))?;
-    analyzer.analyze(&file).map_err(|e| format!("{e:?}"))?;
+    analyzer.analyze(&mut file).map_err(|e| format!("{e:?}"))?;
     Ok(())
 }
 

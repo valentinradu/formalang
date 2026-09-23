@@ -30,6 +30,7 @@ mod closures;
 mod control_flow;
 mod duplicate_names;
 mod exclusivity;
+mod expected;
 mod expr;
 mod functions;
 mod invocation;
@@ -74,9 +75,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Definition::Struct(struct_def) => self.validate_struct_expressions(struct_def, file),
             Definition::Impl(impl_def) => self.validate_impl_expressions(impl_def, file),
             Definition::Module(module_def) => {
+                // The code of the module names its own items by their
+                // short names, as in type resolution.
+                let shadowed = self.enter_module_scope(module_def);
                 for nested_def in &module_def.definitions {
                     self.validate_definition_expressions(nested_def, file);
                 }
+                self.leave_module_scope(shadowed);
             }
             // A function's body is validated by
             // `validate_standalone_function`, which the type-resolution
@@ -115,7 +120,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Validate field defaults
         for field in &struct_def.fields {
             if let Some(default_expr) = &field.default {
-                self.validate_expr(default_expr, file);
+                let expected = Some(crate::semantic::sem_type::SemType::from_ast(&field.ty));
+                self.validate_expr_expecting(default_expr, expected, file);
                 // Check that the default expression type matches the declared field type
                 let inferred_sem = self.infer_type_sem(default_expr, file);
                 let inferred = inferred_sem.display();

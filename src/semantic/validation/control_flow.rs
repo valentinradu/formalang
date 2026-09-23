@@ -152,8 +152,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        // Check if the enum exists
-        if !self.symbols.is_enum(&enum_name.name) {
+        // Check if the enum exists. A qualified name, `m::E`, names the
+        // enum of an inline module.
+        if self.symbols.get_enum_qualified(&enum_name.name).is_none() {
             self.errors.push(CompilerError::UndefinedType {
                 name: enum_name.name.clone(),
                 span: enum_name.span,
@@ -191,7 +192,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let provided_fields: HashSet<&str> =
                     data.iter().map(|(name, _)| name.name.as_str()).collect();
                 let required_fields: HashSet<&str> =
-                    fields.iter().map(|f| f.name.name.as_str()).collect();
+                    fields.iter().map(|f| f.name.as_str()).collect();
 
                 // Check for missing fields
                 for field in &required_fields {
@@ -222,7 +223,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // says an integer.
                 let declared_types: Vec<(String, Option<crate::ast::Type>)> = fields
                     .iter()
-                    .map(|f| (f.name.name.clone(), Some(f.ty.clone())))
+                    .map(|f| (f.name.clone(), Some(f.ty.clone())))
                     .collect();
                 // A payload field declared as one of the enum's own
                 // generic parameters — `error(err: E)` on
@@ -240,10 +241,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     else {
                         continue;
                     };
-                    let declared = Self::type_to_string(declared_ty);
                     if super::type_names::type_mentions_any(declared_ty, &generic_names) {
                         continue;
                     }
+                    // The enum of an inline module declares its payload
+                    // types by their short names; the caller names them
+                    // `m::Q`.
+                    let declared = if enum_name.name.contains("::") {
+                        self.qualify_for_owner(&enum_name.name, SemType::from_ast(declared_ty))
+                            .display()
+                    } else {
+                        Self::type_to_string(declared_ty)
+                    };
                     let inferred_sem = self.infer_type_sem(value, file);
                     if !self.value_satisfies_declared(&declared, &inferred_sem) {
                         self.errors.push(CompilerError::TypeMismatch {
@@ -272,8 +281,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         enum_name: &str,
         variant_name: &str,
         current_file: &File,
-    ) -> Option<Vec<crate::ast::FieldDef>> {
-        // First, search in the current file
+    ) -> Option<Vec<crate::semantic::symbol_table::FieldInfo>> {
+        // The symbol table first. It holds the enums of an inline `mod`
+        // while the code of that module is checked, so `E.a` inside
+        // `mod m` finds `m`'s `E`. The file's top level does not.
+        if let Some(info) = self.symbols.get_enum_qualified(enum_name) {
+            return info.variant_fields.get(variant_name).cloned();
+        }
+        let to_info = |fields: &[crate::ast::FieldDef]| {
+            fields
+                .iter()
+                .map(|f| crate::semantic::symbol_table::FieldInfo {
+                    name: f.name.name.clone(),
+                    ty: f.ty.clone(),
+                    doc: f.doc.clone(),
+                })
+                .collect::<Vec<_>>()
+        };
+        // Then the current file
         for statement in &current_file.statements {
             if let Statement::Definition(def) = statement {
                 if let Definition::Enum(enum_def) = &**def {
@@ -281,7 +306,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Find the variant
                         for variant in &enum_def.variants {
                             if variant.name.name == variant_name {
-                                return Some(variant.fields.clone());
+                                return Some(to_info(&variant.fields));
                             }
                         }
                         return None; // Variant not found
@@ -299,7 +324,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                             // Find the variant
                             for variant in &enum_def.variants {
                                 if variant.name.name == variant_name {
-                                    return Some(variant.fields.clone());
+                                    return Some(to_info(&variant.fields));
                                 }
                             }
                             return None; // Variant not found

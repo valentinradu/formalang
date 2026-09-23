@@ -71,6 +71,7 @@ impl CompilerError {
             | Self::AmbiguousCall { span, .. }
             | Self::NoMatchingOverload { span, .. }
             | Self::CannotInferEnumType { span, .. }
+            | Self::ClosureParameterNeedsType { span, .. }
             | Self::FloatDictionaryKey { span, .. }
             | Self::SeqNotConsumed { span }
             | Self::SeqUsedTwice { span, .. }

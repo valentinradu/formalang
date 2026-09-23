@@ -15,7 +15,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::ast::{ParamConvention, PrimitiveType, Type};
+use crate::ast::{Ident, ParamConvention, PrimitiveType, TupleField, Type};
+use crate::location::Span;
 
 /// Structural type used during semantic analysis.
 ///
@@ -40,8 +41,10 @@ pub enum SemType {
         key: Box<Self>,
         value: Box<Self>,
     },
+    /// Each parameter keeps its convention, so a call through any
+    /// binding of this type can check `mut` and `sink` arguments.
     Closure {
-        params: Vec<Self>,
+        params: Vec<(ParamConvention, Self)>,
         return_ty: Box<Self>,
     },
     /// Type could not be determined. Propagates through composition
@@ -170,7 +173,7 @@ impl SemType {
     }
 
     /// Construct a closure shape from parameter and return types.
-    pub(super) fn closure(params: Vec<Self>, return_ty: Self) -> Self {
+    pub(super) fn closure(params: Vec<(ParamConvention, Self)>, return_ty: Self) -> Self {
         Self::Closure {
             params,
             return_ty: Box::new(return_ty),
@@ -207,7 +210,7 @@ impl SemType {
             Self::Generic { args, .. } => args.iter().any(Self::is_indeterminate),
             Self::Dictionary { key, value } => key.is_indeterminate() || value.is_indeterminate(),
             Self::Closure { params, return_ty } => {
-                params.iter().any(Self::is_indeterminate) || return_ty.is_indeterminate()
+                params.iter().any(|(_, p)| p.is_indeterminate()) || return_ty.is_indeterminate()
             }
             Self::Primitive(_) | Self::Named(_) | Self::Nil => false,
         }
@@ -228,8 +231,7 @@ impl SemType {
     }
 
     /// Render to a canonical string form (e.g. `[I32]`, `Box<T>`,
-    /// `(K) -> V`). Used for diagnostics, hover output, and IR-side
-    /// type-string parsing during lowering.
+    /// `(K) -> V`). Used for diagnostics and hover output.
     pub fn display(&self) -> String {
         match self {
             Self::Primitive(p) => primitive_name(*p).to_string(),
@@ -258,7 +260,14 @@ impl SemType {
             // every `->` in rendered output is preceded by `)` — matching
             // the surface syntax.
             Self::Closure { params, return_ty } => {
-                let rendered: Vec<String> = params.iter().map(Self::display).collect();
+                let rendered: Vec<String> = params
+                    .iter()
+                    .map(|(convention, p)| match convention {
+                        ParamConvention::Let => p.display(),
+                        ParamConvention::Mut => format!("mut {}", p.display()),
+                        ParamConvention::Sink => format!("sink {}", p.display()),
+                    })
+                    .collect();
                 format!("({}) -> {}", rendered.join(", "), return_ty.display())
             }
             Self::Unknown => "Unknown".to_string(),
@@ -311,11 +320,64 @@ impl SemType {
             Type::Closure { params, ret } => Self::Closure {
                 params: params
                     .iter()
-                    .map(|(_, p): &(ParamConvention, Type)| Self::from_ast(p))
+                    .map(|(c, p)| (*c, Self::from_ast(p)))
                     .collect(),
                 return_ty: Box::new(Self::from_ast(ret)),
             },
         }
+    }
+
+    /// Convert back to an AST [`Type`], so IR lowering can resolve it
+    /// with `lower_type`. Every name gets `span`.
+    ///
+    /// Returns `None` for an indeterminate type.
+    pub(crate) fn to_ast(&self, span: Span) -> Option<Type> {
+        Some(match self {
+            Self::Primitive(p) => Type::Primitive(*p),
+            Self::Named(name) => primitive_from_name(name).map_or_else(
+                || Type::Ident(Ident::new(name.clone(), span)),
+                Type::Primitive,
+            ),
+            Self::Array(inner) => Type::Array(Box::new(inner.to_ast(span)?)),
+            Self::Optional(inner) => Type::Optional(Box::new(inner.to_ast(span)?)),
+            Self::Tuple(fields) => Type::Tuple(
+                fields
+                    .iter()
+                    .map(|(name, ty)| {
+                        Some(TupleField {
+                            name: Ident::new(name.clone(), span),
+                            ty: ty.to_ast(span)?,
+                            span,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            Self::Generic { base, args } if args.is_empty() => {
+                Type::Ident(Ident::new(base.clone(), span))
+            }
+            Self::Generic { base, args } => Type::Generic {
+                name: Ident::new(base.clone(), span),
+                args: args
+                    .iter()
+                    .map(|a| a.to_ast(span))
+                    .collect::<Option<Vec<_>>>()?,
+                span,
+            },
+            Self::Dictionary { key, value } => Type::Dictionary {
+                key: Box::new(key.to_ast(span)?),
+                value: Box::new(value.to_ast(span)?),
+            },
+            Self::Closure { params, return_ty } => Type::Closure {
+                params: params
+                    .iter()
+                    .map(|(c, p)| Some((*c, p.to_ast(span)?)))
+                    .collect::<Option<Vec<_>>>()?,
+                ret: Box::new(return_ty.to_ast(span)?),
+            },
+            // `nil` has the type `Optional<Never>`.
+            Self::Nil => Type::Optional(Box::new(Type::Primitive(PrimitiveType::Never))),
+            Self::Unknown | Self::InferredEnum => return None,
+        })
     }
 
     /// Combine two branch types for if-expressions and match expressions.
@@ -379,6 +441,45 @@ impl SemType {
         false
     }
 
+    /// Replace each [`Self::Named`] with what `f` returns for its name.
+    pub(super) fn map_named(&self, f: &dyn Fn(&str) -> Self) -> Self {
+        let walk = |t: &Self| t.map_named(f);
+        match self {
+            Self::Named(n) => f(n),
+            Self::Primitive(_) | Self::Unknown | Self::InferredEnum | Self::Nil => self.clone(),
+            Self::Array(inner) => Self::Array(Box::new(walk(inner))),
+            Self::Optional(inner) => Self::Optional(Box::new(walk(inner))),
+            Self::Tuple(fields) => {
+                Self::Tuple(fields.iter().map(|(n, t)| (n.clone(), walk(t))).collect())
+            }
+            Self::Generic { base, args } => Self::Generic {
+                base: base.clone(),
+                args: args.iter().map(walk).collect(),
+            },
+            Self::Dictionary { key, value } => Self::Dictionary {
+                key: Box::new(walk(key)),
+                value: Box::new(walk(value)),
+            },
+            Self::Closure { params, return_ty } => Self::Closure {
+                params: params.iter().map(|(c, p)| (*c, walk(p))).collect(),
+                return_ty: Box::new(walk(return_ty)),
+            },
+        }
+    }
+
+    /// Replace each [`Self::Named`] that `is_known` refuses with
+    /// [`Self::Unknown`]. A generic parameter that no substitution
+    /// reached is such a name: `T` in `(T, T) -> T`.
+    pub(super) fn unknown_names_to_unknown(&self, is_known: &dyn Fn(&str) -> bool) -> Self {
+        self.map_named(&|n| {
+            if is_known(n) {
+                Self::Named(n.to_string())
+            } else {
+                Self::Unknown
+            }
+        })
+    }
+
     /// Substitute every standalone occurrence of [`Self::Named(param)`]
     /// inside `self` with `concrete`. Structural by design so `T` in
     /// `Box<T>` is substituted but a substring `T` inside a name like
@@ -415,7 +516,7 @@ impl SemType {
             Self::Closure { params, return_ty } => Self::Closure {
                 params: params
                     .iter()
-                    .map(|p| p.substitute_named(param, concrete))
+                    .map(|(c, p)| (*c, p.substitute_named(param, concrete)))
                     .collect(),
                 return_ty: Box::new(return_ty.substitute_named(param, concrete)),
             },

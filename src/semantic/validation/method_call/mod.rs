@@ -21,9 +21,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
     ) {
         self.validate_expr(receiver, file);
-        for (_, arg) in args {
-            self.validate_expr(arg, file);
-        }
         let receiver_sem = self.infer_type_sem(receiver, file);
         // The four built-in compound shapes route to the prelude-defined
         // generic structs/enum so `xs.len()`, `opt.is_some()`, `d.len()`,
@@ -34,37 +31,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Indeterminate receivers (`SemType::Unknown` or types
         // containing `Unknown` anywhere) skip method validation;
         // there's nothing to check until inference resolves them.
-        if receiver_sem.is_indeterminate() {
-            return;
-        }
-        let receiver_type = match &receiver_sem {
-            crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
-            crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
-            crate::semantic::sem_type::SemType::Dictionary { .. } => "Dictionary".to_string(),
-            // A generic receiver is named by its base. `display()`
-            // renders it with its arguments — `Seq<I32>`, `Box<I32>` —
-            // and the impl blocks are declared against the bare name,
-            // so matching on the rendered form found nothing and every
-            // check below was skipped. `s.collect(1, 2, 3)` and
-            // `b.get(99, 100)` both compiled.
-            crate::semantic::sem_type::SemType::Generic { base, .. } => base.clone(),
-            crate::semantic::sem_type::SemType::Primitive(_)
-            | crate::semantic::sem_type::SemType::Named(_)
-            | crate::semantic::sem_type::SemType::Tuple(_)
-            | crate::semantic::sem_type::SemType::Closure { .. }
-            | crate::semantic::sem_type::SemType::Unknown
-            | crate::semantic::sem_type::SemType::InferredEnum
-            | crate::semantic::sem_type::SemType::Nil => receiver_sem.display(),
-        };
+        let receiver_type =
+            (!receiver_sem.is_indeterminate()).then(|| Self::method_receiver_name(&receiver_sem));
         // A method overloads by the shape of the call. Check the call
         // against the overload it fits; only when none fits is
         // anything wrong, and then the first is what the message
-        // names.
-        let overloads = Self::find_method_overloads(&receiver_type, &method.name, file);
+        // names. The arguments take their expected types from the
+        // same choice.
+        let overloads = receiver_type.as_ref().map_or_else(Vec::new, |name| {
+            Self::find_method_overloads(name, &method.name, file)
+        });
         let chosen = overloads
             .iter()
             .find(|(fn_def, _)| Self::method_arity_mismatch(&fn_def.params, args).is_none())
-            .or_else(|| overloads.first());
+            .or_else(|| overloads.first())
+            .copied();
+        let expected = Self::method_argument_types(&receiver_sem, chosen, args);
+        for ((_, arg), arg_expected) in args.iter().zip(expected) {
+            self.validate_expr_expecting(arg, arg_expected, file);
+        }
+        let Some(receiver_type) = receiver_type else {
+            return;
+        };
         if let Some((fn_def, impl_generics)) = chosen {
             let params = fn_def.params.clone();
             let generics = impl_generics.to_vec();
@@ -111,6 +99,92 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// The name of the type whose impl blocks hold the methods of a
+    /// receiver of type `receiver_sem`.
+    ///
+    /// The four built-in compound shapes route to the prelude-defined
+    /// generic structs and enum. A generic receiver is named by its
+    /// base, because the impl blocks are declared against the bare
+    /// name, not against `Seq<I32>`.
+    fn method_receiver_name(receiver_sem: &crate::semantic::sem_type::SemType) -> String {
+        match receiver_sem {
+            crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
+            crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
+            crate::semantic::sem_type::SemType::Dictionary { .. } => "Dictionary".to_string(),
+            // A generic receiver is named by its base. `display()`
+            // renders it with its arguments — `Seq<I32>`, `Box<I32>` —
+            // and the impl blocks are declared against the bare name,
+            // so matching on the rendered form found nothing and every
+            // check below was skipped. `s.collect(1, 2, 3)` and
+            // `b.get(99, 100)` both compiled.
+            crate::semantic::sem_type::SemType::Generic { base, .. } => base.clone(),
+            crate::semantic::sem_type::SemType::Primitive(_)
+            | crate::semantic::sem_type::SemType::Named(_)
+            | crate::semantic::sem_type::SemType::Tuple(_)
+            | crate::semantic::sem_type::SemType::Closure { .. }
+            | crate::semantic::sem_type::SemType::Unknown
+            | crate::semantic::sem_type::SemType::InferredEnum
+            | crate::semantic::sem_type::SemType::Nil => receiver_sem.display(),
+        }
+    }
+
+    /// The type arguments of a receiver, in the order its type declares
+    /// its parameters: `[I32]` for `Seq<I32>` and for `[I32]`, and the
+    /// key and value types for a dictionary.
+    fn receiver_type_arguments(
+        receiver_sem: &crate::semantic::sem_type::SemType,
+    ) -> Vec<crate::semantic::sem_type::SemType> {
+        use crate::semantic::sem_type::SemType;
+        match receiver_sem {
+            SemType::Generic { args, .. } => args.clone(),
+            SemType::Array(inner) | SemType::Optional(inner) => vec![(**inner).clone()],
+            SemType::Dictionary { key, value } => vec![(**key).clone(), (**value).clone()],
+            SemType::Primitive(_)
+            | SemType::Named(_)
+            | SemType::Tuple(_)
+            | SemType::Closure { .. }
+            | SemType::Unknown
+            | SemType::InferredEnum
+            | SemType::Nil => Vec::new(),
+        }
+    }
+
+    /// The expected type of each argument of a method call: the
+    /// declared type of the parameter it fills, in `chosen`, the
+    /// overload that the call fits. `Some(SemType::Unknown)` for each
+    /// argument when the method is not known here.
+    fn method_argument_types(
+        receiver_sem: &crate::semantic::sem_type::SemType,
+        chosen: Option<(&crate::ast::FnDef, &[crate::ast::GenericParam])>,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> Vec<Option<crate::semantic::sem_type::SemType>> {
+        let Some((fn_def, impl_generics)) = chosen else {
+            return vec![Some(crate::semantic::sem_type::SemType::Unknown); args.len()];
+        };
+        let views: Vec<_> = fn_def
+            .params
+            .iter()
+            .map(crate::semantic::validation::invocation::overloads::ParamView::of_fn_param)
+            .collect();
+        // The impl names the receiver's type parameters: `T` in
+        // `impl Seq<T>`. Replace each with the receiver's own type
+        // argument, so `(T, T) -> T` on a `Seq<I32>` is `(I32, I32) -> I32`.
+        let receiver_args = Self::receiver_type_arguments(receiver_sem);
+        args.iter()
+            .enumerate()
+            .map(|(i, (label, _))| {
+                let declared = Self::expected_argument(&views, i, label.as_ref());
+                let substituted = impl_generics
+                    .iter()
+                    .zip(&receiver_args)
+                    .fold(declared, |ty, (generic, arg)| {
+                        ty.substitute_named(&generic.name.name, arg)
+                    });
+                Some(substituted)
+            })
+            .collect()
+    }
+
     /// Whether a method call gives the wrong number of arguments.
     ///
     /// Returns `Some((expected, actual))` when it does. `expected` is
@@ -155,20 +229,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         method_name: &str,
         file: &'f File,
     ) -> Vec<(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])> {
-        let mut out = Vec::new();
-        for stmt in &file.statements {
-            if let crate::ast::Statement::Definition(def) = stmt {
-                if let crate::ast::Definition::Impl(impl_def) = &**def {
-                    if impl_def.name.name == type_name {
+        /// Push the methods called `method_name` of each impl for
+        /// `type_name` in `defs`, and in each module nested inside. An
+        /// impl in an inline `mod` names its type without the prefix.
+        fn collect<'f>(
+            defs: impl Iterator<Item = &'f crate::ast::Definition>,
+            type_name: &str,
+            method_name: &str,
+            out: &mut Vec<(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])>,
+        ) {
+            for def in defs {
+                match def {
+                    crate::ast::Definition::Impl(impl_def) if impl_def.name.name == type_name => {
                         for func in &impl_def.functions {
                             if func.name.name == method_name {
                                 out.push((func, impl_def.generics.as_slice()));
                             }
                         }
                     }
+                    crate::ast::Definition::Module(m) => {
+                        collect(m.definitions.iter(), type_name, method_name, out);
+                    }
+                    crate::ast::Definition::Impl(_)
+                    | crate::ast::Definition::Trait(_)
+                    | crate::ast::Definition::Struct(_)
+                    | crate::ast::Definition::Enum(_)
+                    | crate::ast::Definition::Function(_) => {}
                 }
             }
         }
+        let mut out = Vec::new();
+        let top_level = file.statements.iter().filter_map(|stmt| match stmt {
+            crate::ast::Statement::Definition(def) => Some(&**def),
+            crate::ast::Statement::Use(_) | crate::ast::Statement::Let(_) => None,
+        });
+        collect(top_level, type_name, method_name, &mut out);
         out
     }
 

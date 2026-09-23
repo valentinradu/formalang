@@ -74,7 +74,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(struct_info) = self.symbols.get_struct_qualified(lookup_name) {
             for field in &struct_info.fields {
                 if field.name == field_name {
-                    return wrap(SemType::from_ast(&field.ty));
+                    let ty = self.qualify_for_owner(lookup_name, SemType::from_ast(&field.ty));
+                    return wrap(ty);
                 }
             }
         }

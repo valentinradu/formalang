@@ -372,6 +372,12 @@ pub enum CompilerError {
     #[error("Cannot infer enum type for variant '.{variant}' from context")]
     CannotInferEnumType { variant: String, span: Span },
 
+    /// A closure parameter with no type, in a position that gives the
+    /// closure no type. A `let` annotation, a declared parameter or
+    /// field type, or a declared return type gives one.
+    #[error("Closure parameter '{param}' needs a type")]
+    ClosureParameterNeedsType { param: String, span: Span },
+
     /// A dictionary key typed `F32` or `F64`.
     #[error("'{key_type}' cannot be a dictionary key")]
     FloatDictionaryKey { key_type: String, span: Span },

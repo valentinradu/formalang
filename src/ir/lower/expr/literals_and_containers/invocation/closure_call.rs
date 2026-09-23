@@ -1,15 +1,17 @@
 use crate::ast::Expr;
+use crate::ir::lower::expr::operators::ArgSlot;
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrExpr, ResolvedType};
 
 impl IrLowerer<'_> {
     /// Detect when an `Invocation` whose path is a single segment
-    /// resolves to a closure-typed local binding rather than a top-
-    /// level function, and lower it as [`IrExpr::CallClosure`]
-    /// targeting that binding.
+    /// resolves to a closure-typed binding rather than a top-level
+    /// function, and lower it as [`IrExpr::CallClosure`] targeting that
+    /// binding. The binding is a local, or a module-level `let` that no
+    /// local shadows.
     ///
     /// Returns `None` when the path doesn't refer to a closure-typed
-    /// local; the caller falls through to the regular
+    /// binding; the caller falls through to the regular
     /// [`IrExpr::FunctionCall`] path.
     pub(super) fn try_lower_closure_invocation(
         &mut self,
@@ -20,7 +22,10 @@ impl IrLowerer<'_> {
             return None;
         };
         let name = &ident.name;
-        let local_ty = self.lookup_local_binding(name)?.clone();
+        let local_ty = match self.lookup_local_binding(name) {
+            Some(ty) => ty.clone(),
+            None => self.module_let_type(name)?,
+        };
         let ResolvedType::Closure {
             param_tys,
             return_ty,
@@ -29,10 +34,14 @@ impl IrLowerer<'_> {
             return None;
         };
         let return_ty = (**return_ty).clone();
-        let expected_param_tys: Vec<(String, ResolvedType)> = param_tys
+        let expected_param_tys: Vec<ArgSlot> = param_tys
             .iter()
             .enumerate()
-            .map(|(i, (_, ty))| (format!("__closure_arg_{i}"), ty.clone()))
+            .map(|(i, (_, ty))| ArgSlot {
+                name: format!("__closure_arg_{i}"),
+                label: None,
+                ty: Some(ty.clone()),
+            })
             .collect();
         let lowered_args: Vec<(Option<String>, IrExpr)> = args
             .iter()

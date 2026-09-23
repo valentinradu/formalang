@@ -98,6 +98,55 @@ fn a_deeply_nested_program_parses_quickly() {
     }
 }
 
+/// A parameter type nested `n` deep. A balanced group is `((I32))`.
+/// An unclosed group is the `formajit` fuzz repro: the parser refuses
+/// it at the first `(` that a type cannot hold.
+fn nested_type(n: usize, balanced: bool) -> String {
+    let open = "(".repeat(n);
+    if balanced {
+        let close = ")".repeat(n);
+        format!("pub fn f(x: {open}I32{close}) -> I32 {{ 1 }}\n")
+    } else {
+        format!("pub fn answ({open}er() -> I32 {{ 1 }}\n")
+    }
+}
+
+/// Parse cost must not grow with the nesting depth of a type.
+///
+/// Three type forms start with `(`: the closure, the named tuple and
+/// the grouped type. The parser tried each one, and each one parsed
+/// the full group again, so each level of nesting doubled the work. A
+/// parameter of type `((...(I32)...))` 20 deep took one second, and the
+/// same depth of unclosed groups took as long to refuse. One parser now
+/// reads the group once and selects the form after the `)`.
+#[test]
+fn parse_time_does_not_follow_the_nesting_depth_of_a_type() {
+    for (name, balanced) in [("balanced", true), ("unclosed", false)] {
+        let shallow = time_parse(&nested_type(10, balanced));
+        let deep = time_parse(&nested_type(14, balanced));
+        let ratio = deep.as_secs_f64() / shallow.as_secs_f64().max(1e-9);
+        assert!(
+            ratio < 8.0,
+            "{name}: four more levels of type nesting multiplied the parse \
+             time by {ratio:.1}, which is exponential growth"
+        );
+    }
+}
+
+/// A deeply nested type must parse, or be refused, quickly in
+/// absolute terms.
+#[test]
+fn a_deeply_nested_type_parses_quickly() {
+    for (name, balanced) in [("balanced", true), ("unclosed", false)] {
+        let source = nested_type(40, balanced);
+        let elapsed = time_parse(&source);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "{name}: parsing a type nested 40 deep took {elapsed:?}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Source length
 // ---------------------------------------------------------------------------

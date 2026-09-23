@@ -1,0 +1,9 @@
+// expect: reject MutabilityMismatch
+// The annotation `(mut I32) -> I32` is the type of `f`, so a call must
+// pass a mutable argument, although the closure literal does not say
+// `mut`.
+pub fn run_checks() -> I32 {
+    let f: (mut I32) -> I32 = (x) -> x
+    let y = 1
+    f(y)
+}

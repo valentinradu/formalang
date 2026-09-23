@@ -8,151 +8,189 @@ use crate::ir::lower::IrLowerer;
 use crate::ir::{IrBlockStatement, IrExpr, ResolvedType};
 
 impl IrLowerer<'_> {
-    pub(super) fn lower_let_array_destructure(
+    /// The bindings that `pattern` makes from `value`: one
+    /// `(name, type, value)` triple for each name, at any depth.
+    ///
+    /// An array element reads `value[i]`, a tuple or struct field reads
+    /// `value.field`, and a nested pattern destructures that read in
+    /// turn. A rest binding, `...rest`, holds the elements after the
+    /// ones before it: `for e in value { e }.skip(count: i).collect()`.
+    pub(in crate::ir::lower) fn destructure(
         &mut self,
-        elements: &[crate::ast::ArrayPatternElement],
-        mutable: bool,
-        ir_value: &IrExpr,
-    ) -> Vec<IrBlockStatement> {
-        let bad_recv = ir_value.ty().clone();
+        pattern: &ast::BindingPattern,
+        value: IrExpr,
+    ) -> Vec<(String, ResolvedType, IrExpr)> {
+        match pattern {
+            ast::BindingPattern::Simple(ident) => {
+                vec![(ident.name.clone(), value.ty().clone(), value)]
+            }
+            ast::BindingPattern::Array { elements, .. } => self.destructure_array(elements, &value),
+            ast::BindingPattern::Struct { fields, .. } => fields
+                .iter()
+                .map(|field| {
+                    let field_name = field.name.name.clone();
+                    let binding_name = field
+                        .alias
+                        .as_ref()
+                        .map_or_else(|| field_name.clone(), |a| a.name.clone());
+                    let field_ty = self.get_field_type_from_resolved(value.ty(), &field_name);
+                    let access = IrExpr::FieldAccess {
+                        object: Box::new(value.clone()),
+                        field: field_name,
+                        field_idx: crate::ir::FieldIdx(0),
+                        ty: field_ty.clone(),
+                        span: self.current_ir_span(),
+                    };
+                    (binding_name, field_ty, access)
+                })
+                .collect(),
+            ast::BindingPattern::Tuple { elements, .. } => self.destructure_tuple(elements, &value),
+        }
+    }
+
+    fn destructure_array(
+        &mut self,
+        elements: &[ast::ArrayPatternElement],
+        value: &IrExpr,
+    ) -> Vec<(String, ResolvedType, IrExpr)> {
+        let bad_recv = value.ty().clone();
         let elem_ty = self.array_element_ty(&bad_recv).unwrap_or_else(|| {
             self.internal_error_type_if_concrete(
                 &bad_recv,
-                format!("let array-destructure receiver lowered to non-array type {bad_recv:?}"),
+                format!("array-destructuring receiver lowered to non-array type {bad_recv:?}"),
             )
         });
-        elements
-            .iter()
-            .enumerate()
-            .filter_map(|(i, elem)| {
-                Self::extract_block_binding_name(elem).map(|name| {
+        let mut out = Vec::new();
+        for (i, element) in elements.iter().enumerate() {
+            match element {
+                ast::ArrayPatternElement::Binding(inner) => {
                     #[expect(
                         clippy::cast_precision_loss,
-                        reason = "array indices are small positions that fit in f64 mantissa"
+                        reason = "array destructuring indices are small source positions that fit in f64 mantissa"
                     )]
                     let key = IrExpr::Literal {
                         value: Literal::Number((i as f64).into()),
                         ty: ResolvedType::Primitive(PrimitiveType::I32),
                         span: self.current_ir_span(),
                     };
-                    IrBlockStatement::Let {
-                        binding_id: crate::ir::BindingId(0),
-                        name,
-                        mutable,
-                        ty: Some(elem_ty.clone()),
-                        value: IrExpr::DictAccess {
-                            dict: Box::new(ir_value.clone()),
-                            key: Box::new(key),
-                            ty: elem_ty.clone(),
-                            span: self.current_ir_span(),
-                        },
-
-                        span: crate::ir::IrSpan::default(),
-                    }
-                })
-            })
-            .collect()
-    }
-
-    pub(super) fn lower_let_struct_destructure(
-        &mut self,
-        fields: &[crate::ast::StructPatternField],
-        mutable: bool,
-        ir_value: &IrExpr,
-    ) -> Vec<IrBlockStatement> {
-        fields
-            .iter()
-            .map(|field| {
-                let field_name = field.name.name.clone();
-                let binding_name = field
-                    .alias
-                    .as_ref()
-                    .map_or_else(|| field_name.clone(), |a| a.name.clone());
-                let field_ty = self.get_field_type_from_resolved(ir_value.ty(), &field_name);
-                IrBlockStatement::Let {
-                    binding_id: crate::ir::BindingId(0),
-                    name: binding_name,
-                    mutable,
-                    ty: Some(field_ty.clone()),
-                    value: IrExpr::FieldAccess {
-                        object: Box::new(ir_value.clone()),
-                        field: field_name,
-                        field_idx: crate::ir::FieldIdx(0),
-                        ty: field_ty,
+                    let access = IrExpr::DictAccess {
+                        dict: Box::new(value.clone()),
+                        key: Box::new(key),
+                        ty: elem_ty.clone(),
                         span: self.current_ir_span(),
-                    },
-
-                    span: crate::ir::IrSpan::default(),
+                    };
+                    out.extend(self.destructure(inner, access));
                 }
-            })
-            .collect()
+                ast::ArrayPatternElement::Rest(Some(ident)) => {
+                    let rest = self.lower_rest(value, i);
+                    out.push((ident.name.clone(), rest.ty().clone(), rest));
+                }
+                ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => {}
+            }
+        }
+        out
     }
 
-    pub(super) fn lower_let_tuple_destructure(
+    fn destructure_tuple(
         &mut self,
-        elements: &[crate::ast::BindingPattern],
-        mutable: bool,
-        ir_value: &IrExpr,
-    ) -> Vec<IrBlockStatement> {
-        let bad_tuple = ir_value.ty().clone();
-        let tuple_types = if let ResolvedType::Tuple(fields) = &bad_tuple {
+        elements: &[ast::BindingPattern],
+        value: &IrExpr,
+    ) -> Vec<(String, ResolvedType, IrExpr)> {
+        let bad_recv = value.ty().clone();
+        let tuple_types = if let ResolvedType::Tuple(fields) = &bad_recv {
             fields.clone()
         } else {
             let _ = self.internal_error_type_if_concrete(
-                &bad_tuple,
-                format!("let tuple-destructure receiver lowered to non-tuple type {bad_tuple:?}"),
+                &bad_recv,
+                format!("tuple-destructuring receiver lowered to non-tuple type {bad_recv:?}"),
             );
             Vec::new()
         };
-        // The "out-of-range" placeholder is only used if a binding index
-        // overshoots the tuple's fields; we lazily build it to avoid
-        // pushing a spurious error on every well-formed destructure.
-        let out_of_range_ty = if elements.len() > tuple_types.len() && !tuple_types.is_empty() {
-            self.internal_error_type(format!(
-                "let tuple-destructure binds {} names but receiver has {} fields",
-                elements.len(),
-                tuple_types.len(),
-            ))
-        } else {
-            ResolvedType::Error
-        };
-        elements
-            .iter()
-            .enumerate()
-            .filter_map(|(i, elem)| {
-                IrLowerer::extract_simple_binding_name(elem).map(|name| {
-                    let (field_name, ty) = tuple_types.get(i).map_or_else(
-                        || (i.to_string(), out_of_range_ty.clone()),
-                        |(n, t)| (n.clone(), t.clone()),
-                    );
-                    IrBlockStatement::Let {
-                        binding_id: crate::ir::BindingId(0),
-                        name,
-                        mutable,
-                        ty: Some(ty.clone()),
-                        value: IrExpr::FieldAccess {
-                            object: Box::new(ir_value.clone()),
-                            field: field_name,
-                            field_idx: crate::ir::FieldIdx(0),
-                            ty,
-                            span: self.current_ir_span(),
-                        },
-
-                        span: crate::ir::IrSpan::default(),
-                    }
-                })
-            })
-            .collect()
+        let mut out = Vec::new();
+        for (i, element) in elements.iter().enumerate() {
+            let (field_name, ty) = if let Some((n, t)) = tuple_types.get(i) {
+                (n.clone(), t.clone())
+            } else {
+                let ty = self.internal_error_type_if_concrete(
+                    &bad_recv,
+                    format!(
+                        "tuple-destructuring pattern binds {} names but the receiver has {} fields",
+                        elements.len(),
+                        tuple_types.len()
+                    ),
+                );
+                (i.to_string(), ty)
+            };
+            let access = IrExpr::FieldAccess {
+                object: Box::new(value.clone()),
+                field: field_name,
+                field_idx: crate::ir::FieldIdx(0),
+                ty,
+                span: self.current_ir_span(),
+            };
+            out.extend(self.destructure(element, access));
+        }
+        out
     }
 
-    fn extract_block_binding_name(elem: &crate::ast::ArrayPatternElement) -> Option<String> {
-        match elem {
-            crate::ast::ArrayPatternElement::Binding(p) => {
-                IrLowerer::extract_simple_binding_name(p)
-            }
-            crate::ast::ArrayPatternElement::Rest(Some(ident)) => Some(ident.name.clone()),
-            crate::ast::ArrayPatternElement::Rest(None)
-            | crate::ast::ArrayPatternElement::Wildcard => None,
+    /// The elements of the array `value` after the first `skip`:
+    /// `{ let source = value; for e in source { e }.skip(count: skip).collect() }`.
+    fn lower_rest(&mut self, value: &IrExpr, skip: usize) -> IrExpr {
+        // Names a program cannot write, so they shadow nothing.
+        const SOURCE: &str = "rest#source";
+        const ELEMENT: &str = "rest#element";
+        let span = self.current_span;
+        let ident = |name: &str| ast::Ident::new(name, span);
+        let reference = |name: &str| ast::Expr::Reference {
+            path: vec![ident(name)],
+            span,
+        };
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "array destructuring indices are small source positions that fit in f64 mantissa"
+        )]
+        let count = ast::Expr::Literal {
+            value: Literal::Number((skip as f64).into()),
+            span,
+        };
+        let pipeline = ast::Expr::MethodCall {
+            receiver: Box::new(ast::Expr::MethodCall {
+                receiver: Box::new(ast::Expr::ForExpr {
+                    var: ident(ELEMENT),
+                    collection: Box::new(reference(SOURCE)),
+                    body: Box::new(reference(ELEMENT)),
+                    span,
+                }),
+                method: ident("skip"),
+                args: vec![(Some(ident("count")), count)],
+                span,
+            }),
+            method: ident("collect"),
+            args: Vec::new(),
+            span,
+        };
+        let source_ty = value.ty().clone();
+        let mut frame = std::collections::HashMap::new();
+        frame.insert(
+            SOURCE.to_string(),
+            (ast::ParamConvention::Let, source_ty.clone()),
+        );
+        self.local_binding_scopes.push(frame);
+        let lowered = self.lower_expr(&pipeline);
+        self.local_binding_scopes.pop();
+        let ty = lowered.ty().clone();
+        IrExpr::Block {
+            statements: vec![IrBlockStatement::Let {
+                binding_id: crate::ir::BindingId(0),
+                name: SOURCE.to_string(),
+                mutable: false,
+                ty: Some(source_ty),
+                value: value.clone(),
+                span: self.current_ir_span(),
+            }],
+            result: Box::new(lowered),
+            ty,
+            span: self.current_ir_span(),
         }
     }
 

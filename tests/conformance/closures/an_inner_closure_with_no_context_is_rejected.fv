@@ -1,0 +1,7 @@
+// expect: reject ClosureParameterNeedsType
+// The outer closure declares no return type, so the inner closure is
+// in a position with no type, and `y` needs one.
+pub fn run_checks() -> I32 {
+    let f = (x: I32) -> (y) -> x + y
+    1
+}

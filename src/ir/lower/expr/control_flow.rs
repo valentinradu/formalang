@@ -18,16 +18,14 @@ impl IrLowerer<'_> {
         // branch: `lower_with_expected_value` consumes the slot, so
         // the else branch would otherwise get nothing and an inferred
         // `.variant` there would fail to resolve.
-        let expected = self.expected_value_type.take();
-        // A closure-typed context arrives in the other slot, and the
-        // first branch consumes that one too. Keep a copy for the
-        // second, so `let f: () -> E = if c { () -> .a } else { () -> .b }`
-        // types both closures.
-        let expected_closure = self.expected_closure_type.clone();
+        // A closure-typed context arrives in the other slot; the
+        // helper takes both, so the condition sees neither, and each
+        // branch gets the whole type: `let f: () -> E = if c { () -> .a }
+        // else { () -> .b }` types both closures.
+        let expected = self.take_expected_type();
         let then_ir = self.lower_with_expected_value(then_branch, expected.as_ref());
         let ty = then_ir.ty().clone();
         let condition_ir = self.lower_expr(condition);
-        self.expected_closure_type = expected_closure;
         let else_ir =
             else_branch.map(|e| Box::new(self.lower_with_expected_value(e, expected.as_ref())));
         IrExpr::If {
@@ -139,29 +137,11 @@ impl IrLowerer<'_> {
         value: &Expr,
         body: &Expr,
     ) -> IrExpr {
-        let ir_value = self.lower_expr(value);
         let ir_ty = ty.map(|t| self.lower_type(t));
-
-        let statements: Vec<IrBlockStatement> = match pattern {
-            BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
-                binding_id: crate::ir::BindingId(0),
-                name: ident.name.clone(),
-                mutable,
-                ty: ir_ty,
-                value: ir_value,
-
-                span: crate::ir::IrSpan::default(),
-            }],
-            BindingPattern::Array { elements, .. } => {
-                self.lower_let_array_destructure(elements, mutable, &ir_value)
-            }
-            BindingPattern::Struct { fields, .. } => {
-                self.lower_let_struct_destructure(fields, mutable, &ir_value)
-            }
-            BindingPattern::Tuple { elements, .. } => {
-                self.lower_let_tuple_destructure(elements, mutable, &ir_value)
-            }
-        };
+        // The annotation is the expected type of the value, as in a
+        // block `let`, so a closure literal takes its parameter types.
+        let ir_value = self.lower_with_expected_value(value, ir_ty.as_ref());
+        let statements = self.pattern_lets(pattern, mutable, ir_ty, ir_value);
         // Make the let-introduced names visible to the body, mirroring
         // `lower_block_expr`. Without this frame, `let x = ... in x` lowered
         // the body with no scope to find `x` in, and the reference fell back
@@ -198,6 +178,39 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// The block `let` statements for `let pattern: ty = value`. A
+    /// simple pattern keeps its annotation. A destructuring one binds
+    /// each name to its part of the value; see `destructure`.
+    fn pattern_lets(
+        &mut self,
+        pattern: &BindingPattern,
+        mutable: bool,
+        ty: Option<ResolvedType>,
+        value: IrExpr,
+    ) -> Vec<IrBlockStatement> {
+        if let BindingPattern::Simple(ident) = pattern {
+            return vec![IrBlockStatement::Let {
+                binding_id: crate::ir::BindingId(0),
+                name: ident.name.clone(),
+                mutable,
+                ty,
+                value,
+                span: crate::ir::IrSpan::default(),
+            }];
+        }
+        self.destructure(pattern, value)
+            .into_iter()
+            .map(|(name, ty, value)| IrBlockStatement::Let {
+                binding_id: crate::ir::BindingId(0),
+                name,
+                mutable,
+                ty: Some(ty),
+                value,
+                span: crate::ir::IrSpan::default(),
+            })
+            .collect()
+    }
+
     pub(super) fn lower_block_expr(
         &mut self,
         statements: &[BlockStatement],
@@ -209,8 +222,9 @@ impl IrLowerer<'_> {
         // rewriting.
         // The result is the block's tail position, so it inherits the
         // expected type. Take it before the statements lower, since any
-        // one of them could consume the slot first.
-        let expected = self.expected_value_type.take();
+        // one of them could consume the slot first. A closure type is
+        // in the other slot, and a closure in a statement would take it.
+        let expected = self.take_expected_type();
         self.local_binding_scopes.push(HashMap::new());
         let mut ir_statements: Vec<IrBlockStatement> = Vec::new();
         for stmt in statements {
@@ -266,26 +280,7 @@ impl IrLowerer<'_> {
                 // inferred `.variant` finds its enum. Mirrors the
                 // module-level path in `lower_simple_let`.
                 let ir_value = self.lower_with_expected_value(value, ir_ty.as_ref());
-                match pattern {
-                    BindingPattern::Simple(ident) => vec![IrBlockStatement::Let {
-                        binding_id: crate::ir::BindingId(0),
-                        name: ident.name.clone(),
-                        mutable: *mutable,
-                        ty: ir_ty,
-                        value: ir_value,
-
-                        span: crate::ir::IrSpan::default(),
-                    }],
-                    BindingPattern::Array { elements, .. } => {
-                        self.lower_let_array_destructure(elements, *mutable, &ir_value)
-                    }
-                    BindingPattern::Struct { fields, .. } => {
-                        self.lower_let_struct_destructure(fields, *mutable, &ir_value)
-                    }
-                    BindingPattern::Tuple { elements, .. } => {
-                        self.lower_let_tuple_destructure(elements, *mutable, &ir_value)
-                    }
-                }
+                self.pattern_lets(pattern, *mutable, ir_ty, ir_value)
             }
             BlockStatement::Assign { target, value, .. } => {
                 // The target's type is what the value must produce, so

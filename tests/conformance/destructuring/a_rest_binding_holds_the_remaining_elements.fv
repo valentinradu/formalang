@@ -1,0 +1,13 @@
+// expect: run
+// `...rest` holds the elements after the ones before it, at module
+// level and in a function.
+let [head, ...tail] = [1, 2, 3]
+
+pub fn run_checks() {
+    assert(condition: head == 1)
+    assert(condition: tail.len() == 2)
+    let [a, b, ...more] = [10, 20, 30, 40, 50]
+    assert(condition: a + b == 30)
+    assert(condition: more.len() == 3)
+    assert(condition: match more[0] { some(v): v == 30, none: false })
+}

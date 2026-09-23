@@ -106,9 +106,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         enum_name: &str,
         variant_name: &str,
     ) -> Option<Vec<SemType>> {
-        if let Some(info) = self.symbols.enums.get(enum_name) {
+        if let Some(info) = self.symbols.get_enum_qualified(enum_name) {
             if let Some(fields) = info.variant_fields.get(variant_name) {
-                return Some(fields.iter().map(|f| SemType::from_ast(&f.ty)).collect());
+                return Some(
+                    fields
+                        .iter()
+                        .map(|f| self.qualify_for_owner(enum_name, SemType::from_ast(&f.ty)))
+                        .collect(),
+                );
             }
         }
         for (_, symbols) in self.module_cache.values() {

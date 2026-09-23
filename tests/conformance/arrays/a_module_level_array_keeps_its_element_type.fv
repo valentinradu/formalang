@@ -1,0 +1,12 @@
+// expect: run
+// A module-level array keeps its element type when a function body
+// reads it, with an annotation or without one.
+let XS: [I32] = [4, 5, 6]
+let YS = [7, 8, 9]
+
+pub fn run_checks() {
+    let xs = XS
+    let ys = YS
+    assert(condition: match xs[1] { some(v): v == 5, none: false })
+    assert(condition: match ys[2] { some(v): v == 9, none: false })
+}

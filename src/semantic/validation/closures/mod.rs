@@ -299,6 +299,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         params: &[crate::ast::ClosureParam],
         return_type: Option<&crate::ast::Type>,
         body: &Expr,
+        expected: Option<&crate::semantic::sem_type::SemType>,
         file: &File,
     ) {
         for param in params {
@@ -306,6 +307,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_type(ty, param.span);
             }
         }
+        self.check_closure_parameter_types(params, expected);
+        let body_expected = Self::closure_body_expected(return_type, expected);
         if let Some(ty) = return_type {
             self.validate_type(ty, body.span());
         }
@@ -323,8 +326,42 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             &mut self.errors,
             &mut inner_scopes,
         );
+        // Give the body the type of each parameter: its annotation, or
+        // the type that the expected closure gives it. A call through a
+        // parameter then checks against that type, and a parameter
+        // shadows an outer binding with the same name.
+        let slots = match expected.map(Self::closure_slot) {
+            Some(crate::semantic::sem_type::SemType::Closure { params: slots, .. })
+                if slots.len() == params.len() =>
+            {
+                Some(slots)
+            }
+            _ => None,
+        };
+        let frame: HashMap<String, crate::semantic::sem_type::SemType> = params
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let ty = p.ty.as_ref().map_or_else(
+                    || {
+                        slots
+                            .and_then(|s| s.get(i))
+                            .map_or(crate::semantic::sem_type::SemType::Unknown, |(_, t)| {
+                                t.clone()
+                            })
+                    },
+                    crate::semantic::sem_type::SemType::from_ast,
+                );
+                // A name that no type declares is a generic parameter
+                // that no substitution reached. Its type is not known.
+                let ty = ty.unknown_names_to_unknown(&|n| self.names_a_type(n));
+                (p.name.name.clone(), ty)
+            })
+            .collect();
         self.closure_param_scopes.push(param_scope);
-        self.validate_expr(body, file);
+        self.inference_scope_stack.borrow_mut().push(frame);
+        self.validate_expr_expecting(body, body_expected, file);
+        self.inference_scope_stack.borrow_mut().pop();
         self.closure_param_scopes.pop();
 
         // when a pipe closure declares a return type, verify the

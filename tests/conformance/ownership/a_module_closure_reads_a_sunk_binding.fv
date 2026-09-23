@@ -1,0 +1,13 @@
+// expect: reject UseAfterSink
+// `F` captures `XS`. After `take` sinks `XS`, a call of `F` reads a
+// moved value, the same as a local closure would.
+let XS = [1]
+
+let F = () -> XS.len()
+
+fn take(sink v: [I32]) -> I32 { v.len() }
+
+pub fn run_checks() -> I32 {
+    let n = take(v: XS)
+    F() + n
+}

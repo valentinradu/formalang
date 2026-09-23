@@ -25,7 +25,8 @@ impl IrLowerer<'_> {
                     .iter()
                     .filter_map(|c| match c {
                         GenericConstraint::Trait { name, args } => {
-                            self.module.trait_id(&name.name).map(|trait_id| {
+                            let scoped = self.scoped_type_name(&name.name);
+                            self.module.trait_id(&scoped).map(|trait_id| {
                                 let lowered_args: Vec<ResolvedType> =
                                     args.iter().map(|t| self.lower_type(t)).collect();
                                 crate::ir::IrTraitRef {
@@ -84,7 +85,8 @@ impl IrLowerer<'_> {
             Type::Primitive(p) => ResolvedType::Primitive(*p),
 
             Type::Ident(ident) => {
-                let name = &ident.name;
+                // A short name in an inline `mod` means that module's type.
+                let name = &self.scoped_type_name(&ident.name);
 
                 // For path-qualified names like `geom::Point`, the IR's
                 // symbol table registers the type under the fully
@@ -148,15 +150,16 @@ impl IrLowerer<'_> {
                 if let Some(external) = self.try_external_type(&name.name, type_args.clone()) {
                     return external;
                 }
+                let scoped = self.scoped_type_name(&name.name);
                 // Local generic struct
-                if let Some(id) = self.module.struct_id(&name.name) {
+                if let Some(id) = self.module.struct_id(&scoped) {
                     return ResolvedType::Generic {
                         base: crate::ir::GenericBase::Struct(id),
                         args: type_args,
                     };
                 }
                 // Local generic enum
-                if let Some(id) = self.module.enum_id(&name.name) {
+                if let Some(id) = self.module.enum_id(&scoped) {
                     return ResolvedType::Generic {
                         base: crate::ir::GenericBase::Enum(id),
                         args: type_args,

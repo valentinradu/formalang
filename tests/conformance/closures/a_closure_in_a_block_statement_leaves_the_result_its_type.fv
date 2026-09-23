@@ -1,0 +1,12 @@
+// expect: run
+// A closure in a block statement does not take the expected type of
+// the block result. The result closure still gets `(I32) -> I32`.
+fn make() -> (I32) -> I32 {
+    let unused = [(s: I32) -> s]
+    (x) -> x + 1
+}
+
+pub fn run_checks() {
+    let inc = make()
+    assert(condition: inc(1) == 2)
+}

@@ -1,0 +1,8 @@
+// expect: run
+// The other arguments of a generic call fix its type parameters, and
+// a closure argument takes the result: `f` here is `(I32) -> I32`.
+fn apply<T>(f: (T) -> T, v: T) -> T { f(v) }
+
+pub fn run_checks() {
+    assert(condition: apply(f: (x) -> x * 3, v: 2) == 6)
+}

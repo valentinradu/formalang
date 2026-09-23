@@ -100,8 +100,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .collect::<Vec<_>>()
             .join("::");
 
-        for (_, arg_expr) in args {
-            self.validate_expr(arg_expr, file);
+        let expected = self.invocation_argument_types(&name, args, file);
+        for ((_, arg_expr), arg_expected) in args.iter().zip(expected) {
+            self.validate_expr_expecting(arg_expr, arg_expected, file);
         }
         for type_arg in type_args {
             self.validate_type(type_arg, span);

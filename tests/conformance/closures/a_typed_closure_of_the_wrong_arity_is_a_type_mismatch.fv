@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// A closure with typed parameters has the wrong shape for the
+// annotation when the number of parameters differs.
+pub fn run_checks() -> I32 {
+    let f: (I32) -> I32 = (a: I32, b: I32) -> a
+    1
+}

@@ -60,13 +60,43 @@ impl Form {
 - Empty parameters: `() -> expr`.
 - Convention keywords (`mut`, `sink`) precede the parameter name
   inside the parens.
-- Type annotations are optional when the closure type can be inferred
-  from the binding annotation or call context.
+- A parameter type is optional only where a declared type gives it.
+  See [Parameter Types](#parameter-types).
 - Convention on a closure param means the **caller of the closure**
   must satisfy it.
 - Closures are **internal-only**: a `pub struct` field, or a `pub enum`
   variant field, cannot have a closure type. Drop the `pub` (so the type
   stays inside its module), or replace the field with a non-closure type.
+
+## Parameter Types
+
+A closure parameter with no type takes its type from the position of
+the closure. A position gives a type only when a declared type gives
+it:
+
+- the annotation of a `let`: `let f: (I32) -> I32 = (x) -> x + 1`;
+- the declared type of a parameter, for an argument:
+  `apply(f: (x) -> x * 2)`;
+- the declared type of a field, and of a parameter or field default;
+- the declared return type, for the result of a function, or of a
+  closure that declares its return type.
+
+The type goes through `( )`, the branches of `if` and `match`, the
+result of a block, and the elements of an array, a tuple and a
+dictionary. An optional closure slot, such as `(() -> E)?`, gives the
+type of its closure.
+
+In each other position, a parameter with no type is an error:
+
+```formalang
+let f = (x) -> x + 1            // error E145: 'x' needs a type
+let g = (x: I32) -> x + 1       // ok
+let h: (I32) -> I32 = (x) -> x  // ok
+```
+
+The compiler does not infer a parameter type from the body, or from a
+later call. A closure with the wrong number of parameters for its
+position is a type mismatch.
 
 ## The Call Shape
 

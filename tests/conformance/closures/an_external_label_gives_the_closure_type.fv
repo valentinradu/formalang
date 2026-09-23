@@ -1,0 +1,8 @@
+// expect: run
+// A labelled argument names its parameter by the external label. The
+// closure takes its parameter types from that parameter.
+fn apply(with f: (I32) -> I32) -> I32 { f(1) }
+
+pub fn run_checks() {
+    assert(condition: apply(with: (a) -> a + 1) == 2)
+}

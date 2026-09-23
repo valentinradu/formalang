@@ -1,0 +1,25 @@
+// expect: run
+// A method call can come before the impl of its type in the file,
+// also on a generic type and with a closure argument.
+fn doubled(b: B) -> I32 { b.twice() }
+
+fn first(b: Bx<I32>) -> I32 { b.get() }
+
+fn mapped(b: Bx<I32>) -> I32 { b.apply(f: (x) -> x + 1) }
+
+struct B { n: I32 }
+
+impl B { fn twice(self) -> I32 { self.n * 2 } }
+
+struct Bx<T> { v: T }
+
+impl Bx<T> {
+    fn get(self) -> T { self.v }
+    fn apply(self, f: (T) -> T) -> T { f(self.v) }
+}
+
+pub fn run_checks() {
+    assert(condition: doubled(b: B(n: 4)) == 8)
+    assert(condition: first(b: Bx(v: 7)) == 7)
+    assert(condition: mapped(b: Bx(v: 7)) == 8)
+}

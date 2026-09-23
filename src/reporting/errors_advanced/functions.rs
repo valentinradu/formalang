@@ -125,6 +125,20 @@ pub(in crate::reporting) fn cannot_infer_enum_type<'a>(
         .with_help("Add a type annotation: let x: MyEnum = .variant")
 }
 
+pub(in crate::reporting) fn closure_parameter_needs_type<'a>(
+    filename: &'a str,
+    span: Span,
+    param: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E145")
+        .with_message(format!("Closure parameter '{param}' needs a type"))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' has no type, and nothing here gives the closure a type",
+            param.fg(Color::Red)
+        )))
+        .with_help("Write the type, as in (x: I32) -> x + 1, or annotate the binding: let f: (I32) -> I32 = (x) -> x + 1")
+}
+
 pub(in crate::reporting) fn argument_count_mismatch<'a>(
     filename: &'a str,
     span: Span,

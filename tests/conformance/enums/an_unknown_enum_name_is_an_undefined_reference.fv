@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+// A name that is not a type is read as a value. An unknown enum name
+// is then a reference to a value that does not exist.
+pub enum Status { active }
+
+pub fn run_checks() -> Status { NoSuchEnum.active }

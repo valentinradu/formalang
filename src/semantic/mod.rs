@@ -30,7 +30,7 @@ pub mod symbol_table;
 pub(crate) mod type_graph;
 
 mod circular;
-mod helpers;
+pub(crate) mod helpers;
 mod imports;
 mod inference;
 mod module_collect;
@@ -40,6 +40,7 @@ pub mod sem_type;
 mod trait_check;
 mod type_resolution;
 mod validation;
+mod value_paths;
 
 #[cfg(test)]
 mod tests;
@@ -128,8 +129,13 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// have to thread `&mut self` through every helper. Frame values are
     /// [`SemType`] for the same reason as `local_let_bindings`.
     pub(super) inference_scope_stack: std::cell::RefCell<Vec<HashMap<String, SemType>>>,
-    /// Conventions for closure-typed bindings: `binding_name` → param conventions in order
-    closure_binding_conventions: HashMap<String, Vec<ParamConvention>>,
+    /// The expected type of the next expression that `validate_expr`
+    /// visits. A parent sets it for one child, and `validate_expr`
+    /// takes it as it starts. See `validation::expected`.
+    expected_type: Option<SemType>,
+    /// The names of the inline modules around the code under check,
+    /// outermost first. Empty at the top level of the file.
+    module_path: Vec<String>,
     /// Free-variable captures for closure-typed let bindings, used for
     /// escape-aware ownership propagation.
     ///
@@ -204,7 +210,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
             inference_scope_stack: std::cell::RefCell::new(Vec::new()),
-            closure_binding_conventions: HashMap::new(),
+            expected_type: None,
+            module_path: Vec::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
             current_fn_param_conventions: HashMap::new(),
@@ -229,7 +236,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             local_let_bindings: HashMap::new(),
             consumed_bindings: HashSet::new(),
             inference_scope_stack: std::cell::RefCell::new(Vec::new()),
-            closure_binding_conventions: HashMap::new(),
+            expected_type: None,
+            module_path: Vec::new(),
             closure_binding_captures: HashMap::new(),
             fn_scope_closure_captures: HashMap::new(),
             current_fn_param_conventions: HashMap::new(),
@@ -242,7 +250,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// # Errors
     ///
     /// Returns `Err(Vec<CompilerError>)` if any semantic errors are found during analysis.
-    pub fn analyze(&mut self, file: &File) -> Result<(), Vec<CompilerError>> {
+    pub fn analyze(&mut self, file: &mut File) -> Result<(), Vec<CompilerError>> {
         self.run_passes(file);
 
         // Return errors if any
@@ -295,18 +303,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Drive all six semantic passes in order. Shared by [`Self::analyze`]
     /// and [`Self::analyze_and_classify`] so the two entry points stay in
     /// lockstep.
-    fn run_passes(&mut self, file: &File) {
+    fn run_passes(&mut self, file: &mut File) {
         // Pass 0: Module resolution (process use statements)
         self.resolve_modules(file);
 
         // Pass 1: Build symbol table (collect all definitions)
         self.build_symbol_table(file);
 
+        // Pass 1.1: Change each value path that the parser read as an
+        // enum instantiation. The symbol table must be complete first.
+        value_paths::rewrite_value_paths(file, &self.symbols);
+
         // Pass 1.5: Validate generic parameters
         self.validate_generic_parameters(file);
 
         // Pass 1.6: Infer let binding types
         self.infer_let_types(file);
+        self.register_module_closure_captures(file);
 
         // Pass 2: Resolve type references
         self.resolve_types(file);

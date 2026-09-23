@@ -17,7 +17,7 @@ impl IrLowerer<'_> {
         let type_args_resolved: Vec<ResolvedType> =
             type_args.iter().map(|t| self.lower_type(t)).collect();
 
-        if let Some(id) = self.module.struct_id(&name) {
+        if let Some(id) = self.module.struct_id(&self.scoped_type_name(&name)) {
             self.lower_struct_invocation(id, type_args_resolved, args)
         } else if let Some(external_ty) = self.try_external_type(&name, type_args_resolved.clone())
         {

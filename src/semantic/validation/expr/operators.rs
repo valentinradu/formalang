@@ -177,7 +177,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             SemType::Closure { params, return_ty } => {
-                for param in params {
+                for (_, param) in params {
                     Self::for_each_inner_type(param, visit);
                 }
                 Self::for_each_inner_type(return_ty, visit);

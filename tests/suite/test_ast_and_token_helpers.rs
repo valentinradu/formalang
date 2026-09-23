@@ -75,7 +75,7 @@ fn test_expr_span_dict_access() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_expr_span_closure() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let add = (x, y) -> 0
+        let add = (x: I32, y: I32) -> 0
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
     Ok(())
@@ -1443,18 +1443,19 @@ fn test_error_enum_unknown_variant() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_error_undefined_enum() -> Result<(), Box<dyn std::error::Error>> {
-    // Using an enum that doesn't exist
+    // A name that is not a type is read as a value, so an unknown
+    // enum is an undefined reference to its name.
     let source = r"
         struct Response { status: String = NonExistent.ok }
     ";
     let errors = compile(source)
         .err()
-        .ok_or("expected UndefinedType error")?;
-    let has_error = errors
-        .iter()
-        .any(|e| matches!(e, CompilerError::UndefinedType { .. }));
+        .ok_or("expected UndefinedReference error")?;
+    let has_error = errors.iter().any(
+        |e| matches!(e, CompilerError::UndefinedReference { name, .. } if name == "NonExistent"),
+    );
     if !has_error {
-        return Err(format!("expected UndefinedType, got: {errors:?}").into());
+        return Err(format!("expected UndefinedReference, got: {errors:?}").into());
     }
     Ok(())
 }

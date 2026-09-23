@@ -307,7 +307,22 @@ impl<'m> Interpreter<'m> {
         let Some(f) = self.module.functions.iter().find(|f| f.name == function) else {
             return Err(Fault::Unresolved(format!("function `{function}`")));
         };
+        self.define_module_lets()?;
         self.call_function(f, Vec::new())
+    }
+
+    /// Evaluate the module-level lets, in source order, into the
+    /// outermost scope. A function body reads them from there.
+    fn define_module_lets(&mut self) -> Result<(), Fault> {
+        if !self.env.scopes.is_empty() {
+            return Ok(());
+        }
+        self.env.push();
+        for binding in &self.module.lets {
+            let value = self.eval(&binding.value)?;
+            self.env.define(&binding.name, value);
+        }
+        Ok(())
     }
 
     /// Whether the module declares a function by that name with a body.

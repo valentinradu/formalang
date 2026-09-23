@@ -1,0 +1,31 @@
+// expect: run
+// Code outside an inline `mod` names the module's items by their
+// qualified names: `m::E`, `m::E.b(...)`, `m::mk()`. A type that the
+// module returns, stores in a field, or carries in a payload is that
+// same `m::` type outside.
+pub mod m {
+    pub struct Q { n: I32 }
+
+    pub enum E { a, b(q: Q) }
+
+    pub struct P { e: E }
+
+    pub fn mk() -> E { E.b(q: Q(n: 3)) }
+
+    pub fn wrap() -> P { P(e: E.a) }
+}
+
+fn made() -> m::E { m::mk() }
+
+fn stored() -> m::E {
+    let p = m::wrap()
+    p.e
+}
+
+fn payload(e: m::E) -> I32 { match e { a: 0, b(q): q.n } }
+
+pub fn run_checks() {
+    assert(condition: payload(e: made()) == 3)
+    assert(condition: payload(e: stored()) == 0)
+    assert(condition: payload(e: m::E.b(q: m::Q(n: 5))) == 5)
+}

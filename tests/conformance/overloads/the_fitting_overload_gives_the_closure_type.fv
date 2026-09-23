@@ -1,0 +1,10 @@
+// expect: run
+// With two overloads, a closure argument takes its parameter types
+// from the overload that the call fits, not from the first overload.
+fn apply(f: (I32) -> I32) -> I32 { f(1) }
+fn apply(f: (I32, I32) -> I32, n: I32) -> I32 { f(n, n) }
+
+pub fn run_checks() {
+    assert(condition: apply(f: (a) -> a + 1) == 2)
+    assert(condition: apply(f: (a, b) -> a + b, n: 2) == 4)
+}

@@ -7,6 +7,28 @@ use crate::ir::{IrBlockStatement, IrExpr, ResolvedType};
 use std::collections::HashMap;
 
 impl IrLowerer<'_> {
+    /// The type of a closure parameter: its annotation, or else the
+    /// type that the expected closure type gives it.
+    ///
+    /// Semantic analysis refuses a parameter with neither
+    /// (`ClosureParameterNeedsType`), so reaching that case here is an
+    /// internal error.
+    fn lower_closure_param_type(
+        &mut self,
+        param: &ClosureParam,
+        expected: Option<ResolvedType>,
+    ) -> ResolvedType {
+        if let Some(t) = &param.ty {
+            return self.lower_type(t);
+        }
+        expected.unwrap_or_else(|| {
+            self.internal_error_type(format!(
+                "IR lowering: closure parameter `{}` has no type and no expected type",
+                param.name.name
+            ))
+        })
+    }
+
     /// Lower a closure expression.
     ///
     /// Lowers parameters and body to a `Closure` IR node, and collects the
@@ -43,15 +65,8 @@ impl IrLowerer<'_> {
                 .iter()
                 .enumerate()
                 .map(|(i, p)| {
-                    let ty = p.ty.as_ref().map_or_else(
-                        || {
-                            expected_param_tys
-                                .get(i)
-                                .and_then(std::clone::Clone::clone)
-                                .unwrap_or(ResolvedType::Error)
-                        },
-                        |t| self.lower_type(t),
-                    );
+                    let expected = expected_param_tys.get(i).and_then(Clone::clone);
+                    let ty = self.lower_closure_param_type(p, expected);
                     (
                         p.convention,
                         crate::ir::BindingId(0),
@@ -86,7 +101,8 @@ impl IrLowerer<'_> {
             .map(|t| self.lower_type(t))
             .or_else(|| expected_return_ty.clone());
 
-        let body_ir = self.lower_expr(body);
+        let body_expected = self.current_function_return_type.clone();
+        let body_ir = self.lower_with_expected_value(body, body_expected.as_ref());
 
         self.current_function_return_type = saved_return_type;
         // prefer the declared return type when

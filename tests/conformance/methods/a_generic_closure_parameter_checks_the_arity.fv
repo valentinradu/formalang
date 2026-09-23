@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// `map` declares `(T) -> T`. A typed closure with two parameters has
+// the wrong shape, whatever `T` is.
+pub fn run_checks() -> I32 {
+    for i in 0..3 { i }.map((a: I32, b: I32) -> a).count()
+}

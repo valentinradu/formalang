@@ -26,9 +26,9 @@ pub(in crate::reporting) use fields::{
     enum_variant_without_data, missing_field, positional_arg_in_struct, unknown_field,
 };
 pub(in crate::reporting) use functions::{
-    ambiguous_call, argument_count_mismatch, cannot_infer_enum_type, extern_fn_with_body,
-    extern_impl_with_body, function_return_type_mismatch, no_matching_overload,
-    regular_fn_without_body, required_param_after_default,
+    ambiguous_call, argument_count_mismatch, cannot_infer_enum_type, closure_parameter_needs_type,
+    extern_fn_with_body, extern_impl_with_body, function_return_type_mismatch,
+    no_matching_overload, regular_fn_without_body, required_param_after_default,
 };
 pub(in crate::reporting) use generics::{
     duplicate_generic_param, generic_arity_mismatch, generic_constraint_violation,

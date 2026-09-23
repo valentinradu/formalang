@@ -588,7 +588,7 @@ fn test_closure_no_params() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let double = (x) -> 2
+        let double = (x: I32) -> 2
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())
@@ -597,7 +597,7 @@ fn test_closure_single_param() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_closure_multi_params() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
-        let add = (x, y) -> 0
+        let add = (x: I32, y: I32) -> 0
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
     Ok(())

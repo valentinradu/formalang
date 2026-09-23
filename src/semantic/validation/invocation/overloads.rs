@@ -166,7 +166,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return true;
         }
         match declared {
-            Type::Closure { .. } => matches!(inferred, SemType::Closure { .. }),
+            // The number of parameters is part of the outer shape.
+            Type::Closure { params, .. } => matches!(
+                inferred,
+                SemType::Closure { params: found, .. } if found.len() == params.len()
+            ),
             Type::Array(_) => matches!(inferred, SemType::Array(_)),
             Type::Dictionary { .. } => matches!(inferred, SemType::Dictionary { .. }),
             Type::Tuple(_) => matches!(inferred, SemType::Tuple(_)),
@@ -254,6 +258,64 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .get_all_traits_for_struct(name)
             .contains(&wanted)
             || self.symbols.get_all_traits_for_enum(name).contains(&wanted)
+    }
+
+    /// The overloads that fit the call best.
+    ///
+    /// An overload fits when [`Self::overload_matches`] accepts the
+    /// call. Among the ones that fit, the most specific wins: the one
+    /// that fills its parameters with the fewest defaults (DP-3). More
+    /// than one result is an ambiguous call, and none is a call that
+    /// fits no overload.
+    pub(in crate::semantic::validation) fn most_specific_overloads<'o>(
+        &self,
+        overloads: &'o [crate::semantic::symbol_table::FunctionInfo],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        file: &File,
+    ) -> Vec<&'o crate::semantic::symbol_table::FunctionInfo> {
+        let call_labels: Vec<Option<String>> = args
+            .iter()
+            .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
+            .collect();
+
+        let matching: Vec<_> = overloads
+            .iter()
+            .filter(|overload| self.overload_matches(overload, &call_labels, args, file))
+            .collect();
+
+        // DP-3: most-specific wins under defaults. When several
+        // overloads pass the broadened arity check, prefer the
+        // one whose `non_self_count - args.len()` is smallest
+        // (i.e., fewest default values fired). Ties at the same
+        // gap fall through to the existing ambiguous-call path.
+        let min_gap: Option<usize> = matching
+            .iter()
+            .map(|overload| {
+                let non_self = overload
+                    .params
+                    .iter()
+                    .filter(|p| p.name.name != "self")
+                    .count();
+                non_self.saturating_sub(args.len())
+            })
+            .min();
+        min_gap.map_or_else(
+            || matching.clone(),
+            |g| {
+                matching
+                    .iter()
+                    .copied()
+                    .filter(|overload| {
+                        let non_self = overload
+                            .params
+                            .iter()
+                            .filter(|p| p.name.name != "self")
+                            .count();
+                        non_self.saturating_sub(args.len()) == g
+                    })
+                    .collect()
+            },
+        )
     }
 
     /// Check whether a single overload matches the given call arguments.

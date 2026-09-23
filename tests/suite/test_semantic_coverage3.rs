@@ -1220,10 +1220,10 @@ fn test_imported_ir_modules_returns_empty() -> Result<(), Box<dyn std::error::Er
     let resolver = FileSystemResolver::new(PathBuf::from("."));
     let mut analyzer = SemanticAnalyzer::new(resolver);
     let tokens = formalang::lexer::Lexer::tokenize_all("struct Foo { x: I32 }");
-    let file = formalang::parse_file_with_source(&tokens, "struct Foo { x: I32 }")
+    let mut file = formalang::parse_file_with_source(&tokens, "struct Foo { x: I32 }")
         .map_err(|e| format!("parse: {e:?}"))?;
     analyzer
-        .analyze(&file)
+        .analyze(&mut file)
         .map_err(|e| format!("analyze: {e:?}"))?;
     let ir_modules = analyzer.imported_ir_modules();
     // No imports were processed, so should be empty

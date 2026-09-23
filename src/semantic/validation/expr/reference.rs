@@ -61,43 +61,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         if let Some(first) = path.first().filter(|_| path.len() == 1) {
-            let name = &first.name;
-            if self.symbols.is_let(name) {
-                return;
+            if !self.names_a_value_in_scope(&first.name) {
+                self.errors.push(CompilerError::UndefinedReference {
+                    name: first.name.clone(),
+                    span,
+                });
             }
-            if self.local_let_bindings.contains_key(name) {
-                return;
-            }
-            for scope in &self.loop_var_scopes {
-                if scope.contains_key(name) {
-                    return;
-                }
-            }
-            for scope in &self.closure_param_scopes {
-                if scope.contains(name) {
-                    return;
-                }
-            }
-            if self.symbols.is_struct(name)
-                || self.symbols.is_enum(name)
-                || self.symbols.is_trait(name)
-                || self.symbols.functions.contains_key(name.as_str())
-            {
-                return;
-            }
-            if let Some(ref struct_name) = self.current_impl_struct.clone() {
-                if let Some(struct_info) = self.symbols.get_struct(struct_name) {
-                    for field in &struct_info.fields {
-                        if field.name == *name {
-                            return;
-                        }
-                    }
-                }
-            }
-            self.errors.push(CompilerError::UndefinedReference {
-                name: name.clone(),
-                span,
-            });
             return;
         }
 
@@ -119,12 +88,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
                 ty.clone()
             } else {
+                // A root with no known type can still be in scope, for
+                // example a loop variable. A root that is not in scope
+                // is an error here, and not only in IR lowering.
+                if !self.names_a_value_in_scope(&first.name) {
+                    self.errors.push(CompilerError::UndefinedReference {
+                        name: first.name.clone(),
+                        span: first.span,
+                    });
+                }
                 return;
             };
             if let Some(rest) = path.get(1..) {
                 self.validate_field_chain(&root_type, rest, span);
             }
         }
+    }
+
+    /// True when `name` is a binding, a field of the current impl's
+    /// struct, a type, a trait or a function that is in scope.
+    fn names_a_value_in_scope(&self, name: &str) -> bool {
+        if self.symbols.is_let(name) || self.local_let_bindings.contains_key(name) {
+            return true;
+        }
+        if self.loop_var_scopes.iter().any(|s| s.contains_key(name))
+            || self.closure_param_scopes.iter().any(|s| s.contains(name))
+        {
+            return true;
+        }
+        if self.symbols.is_struct(name)
+            || self.symbols.is_enum(name)
+            || self.symbols.is_trait(name)
+            || self.symbols.functions.contains_key(name)
+        {
+            return true;
+        }
+        self.current_impl_struct
+            .as_ref()
+            .and_then(|s| self.symbols.get_struct(s))
+            .is_some_and(|info| info.fields.iter().any(|f| f.name == name))
     }
 
     /// Walk a chain of field accesses starting from `root_type`, emitting

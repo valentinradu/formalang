@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// The parameter declares a closure with one parameter. A literal with
+// two is the wrong shape, whatever its parameter types are.
+fn apply(f: (I32) -> I32) -> I32 { f(1) }
+
+pub fn run_checks() -> I32 { apply(f: (x, y) -> x) }

@@ -87,7 +87,7 @@ fn unify_sem(pattern: &SemType, concrete: &SemType, out: &mut HashMap<String, Se
                 return_ty: c_ret,
             },
         ) => {
-            for (pt, ct) in p_params.iter().zip(c_params.iter()) {
+            for ((_, pt), (_, ct)) in p_params.iter().zip(c_params.iter()) {
                 unify_sem(pt, ct, out);
             }
             unify_sem(p_ret, c_ret, out);
@@ -97,6 +97,85 @@ fn unify_sem(pattern: &SemType, concrete: &SemType, out: &mut HashMap<String, Se
 }
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// The type of the binding `name` when it holds a closure.
+    ///
+    /// The inner scopes come first, because an inner scope shadows an
+    /// outer one: the inference scope stack, then the loop variables.
+    /// A closure parameter or a match-arm binding with no known type
+    /// shadows the outer names too, so the lookup stops there. Then
+    /// the function's own bindings, which hold both its `let`s and its
+    /// parameters. Then the module-level lets. The type, not the name,
+    /// tells a closure binding apart, so an alias `let g = f` is
+    /// callable, and the check does not depend on the order in which
+    /// the passes see the bindings.
+    pub(in crate::semantic) fn lookup_closure_type(&self, name: &str) -> Option<SemType> {
+        let from_scope = {
+            let stack = self.inference_scope_stack.borrow();
+            stack
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(name).cloned())
+        };
+        let from_inner = from_scope.or_else(|| {
+            self.loop_var_scopes
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(name).cloned())
+        });
+        let ty = match from_inner {
+            Some(ty) => ty,
+            None if self.closure_param_scopes.iter().any(|s| s.contains(name)) => return None,
+            None => self
+                .local_let_bindings
+                .get(name)
+                .map(|(ty, _)| ty.clone())
+                .or_else(|| self.symbols.get_let_type(name).cloned())?,
+        };
+        matches!(ty, SemType::Closure { .. }).then_some(ty)
+    }
+
+    /// Give each name in `ty` that `module` declares the path `prefix`,
+    /// so `E` in module `m` becomes `m::E`.
+    ///
+    /// Code inside an inline module names the module's types without
+    /// the prefix. A type read from that module by code outside it, such
+    /// as the return type of `m::mk` or a field of `m::P`, needs the
+    /// qualified name the outside code uses, or the two names of one
+    /// type do not match.
+    pub(in crate::semantic) fn qualify_module_names(
+        module: &super::super::symbol_table::SymbolTable,
+        prefix: &str,
+        ty: &SemType,
+    ) -> SemType {
+        if prefix.is_empty() {
+            return ty.clone();
+        }
+        ty.map_named(&|n| {
+            if module.is_type(n) || module.is_trait(n) {
+                SemType::Named(format!("{prefix}::{n}"))
+            } else {
+                SemType::Named(n.to_string())
+            }
+        })
+    }
+
+    /// [`Self::qualify_module_names`] for a type read from the item
+    /// `owner`: nothing for a top-level item, and the module of `owner`
+    /// for a qualified one, `m::P`.
+    pub(in crate::semantic) fn qualify_for_owner(&self, owner: &str, ty: SemType) -> SemType {
+        let Some((prefix, _)) = owner.rsplit_once("::") else {
+            return ty;
+        };
+        let mut module = &self.symbols;
+        for part in prefix.split("::") {
+            match module.modules.get(part) {
+                Some(info) => module = &info.symbols,
+                None => return ty,
+            }
+        }
+        Self::qualify_module_names(module, prefix, &ty)
+    }
+
     pub(super) fn infer_type_invocation(
         &self,
         path: &[crate::ast::Ident],
@@ -114,16 +193,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // `cb: (...) -> R`). Unpack the closure shape structurally
         // and yield its return type.
         if path.len() == 1 {
-            let scope_lookup = {
-                let stack = self.inference_scope_stack.borrow();
-                stack
-                    .iter()
-                    .rev()
-                    .find_map(|frame| frame.get(&name).cloned())
-            };
-            let resolved_ty =
-                scope_lookup.or_else(|| self.local_let_bindings.get(&name).map(|(t, _)| t.clone()));
-            if let Some(SemType::Closure { return_ty, .. }) = resolved_ty {
+            if let Some(SemType::Closure { return_ty, .. }) = self.lookup_closure_type(&name) {
                 return *return_ty;
             }
         }
@@ -373,11 +443,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             for part in &segments {
                 current = &current.modules.get(*part)?.symbols;
             }
+            // The module names its own types without the prefix. The
+            // caller is outside the module and names them `m::E`.
+            let prefix = segments.join("::");
             current.get_function(&last.name).map(|f| {
                 let raw = f
                     .return_type
                     .as_ref()
                     .map_or(SemType::Nil, SemType::from_ast);
+                let raw = Self::qualify_module_names(current, &prefix, &raw);
                 // A function declared inside a module specialises its
                 // return type the same way a top-level one does. Doing
                 // it only for the unqualified path meant

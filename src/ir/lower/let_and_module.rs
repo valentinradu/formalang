@@ -10,6 +10,7 @@ use crate::ast::{
     PrimitiveType,
 };
 use crate::ir::{IrExpr, IrFunction, IrFunctionParam, IrFunctionSig, IrLet, ResolvedType};
+use crate::semantic::helpers::collect_bindings_from_pattern;
 use std::collections::HashMap;
 
 impl IrLowerer<'_> {
@@ -17,16 +18,94 @@ impl IrLowerer<'_> {
     pub(super) fn lower_let_binding(&mut self, let_binding: &LetBinding) {
         match &let_binding.pattern {
             BindingPattern::Simple(ident) => self.lower_simple_let(let_binding, &ident.name),
-            BindingPattern::Array { elements, .. } => {
-                self.lower_array_destructuring_let(let_binding, elements);
-            }
-            BindingPattern::Struct { fields, .. } => {
-                self.lower_struct_destructuring_let(let_binding, fields);
-            }
-            BindingPattern::Tuple { elements, .. } => {
-                self.lower_tuple_destructuring_let(let_binding, elements);
+            BindingPattern::Array { .. }
+            | BindingPattern::Struct { .. }
+            | BindingPattern::Tuple { .. } => self.lower_destructuring_let(let_binding),
+        }
+    }
+
+    /// Record the type of each name that a module-level `let` binds.
+    ///
+    /// A simple binding with an annotation takes the annotated type.
+    /// Each other name takes the type that semantic analysis inferred.
+    /// A name whose inferred type is indeterminate is not recorded.
+    pub(super) fn record_module_let_types(&mut self, let_binding: &LetBinding) {
+        if let (BindingPattern::Simple(ident), Some(annotation)) =
+            (&let_binding.pattern, &let_binding.type_annotation)
+        {
+            let ty = self.lower_type(annotation);
+            self.module_let_types.insert(ident.name.clone(), ty);
+            return;
+        }
+        for binding in collect_bindings_from_pattern(&let_binding.pattern) {
+            if !self.record_inferred_let_type(&binding.name, binding.span) {
+                self.deferred_module_lets
+                    .insert(binding.name, let_binding.clone());
             }
         }
+    }
+
+    /// Record the type that semantic analysis inferred for the
+    /// module-level `let` `name`. False when the type is indeterminate.
+    fn record_inferred_let_type(&mut self, name: &str, span: crate::location::Span) -> bool {
+        let ast_type = self.symbols.get_let_type(name).and_then(|t| t.to_ast(span));
+        let Some(ast_type) = ast_type else {
+            return false;
+        };
+        let ty = self.lower_type(&ast_type);
+        self.module_let_types.insert(name.to_string(), ty);
+        true
+    }
+
+    /// The type of a deferred module-level `let`, from its value.
+    ///
+    /// The value lowers in the module context, with no local binding,
+    /// generic scope or expected type of the definition that asked. The
+    /// IR and the errors of this lowering are dropped: the third pass
+    /// lowers the `let` again, in source order, and reports them there.
+    pub(super) fn deferred_module_let_type(&mut self, name: &str) -> Option<ResolvedType> {
+        let binding = self.deferred_module_lets.remove(name)?;
+        let errors_before = self.errors.len();
+        let saved_scopes = std::mem::take(&mut self.local_binding_scopes);
+        let saved_generics = std::mem::take(&mut self.generic_scopes);
+        let saved_return = self.current_function_return_type.take();
+        let saved_impl = self.current_impl_struct.take();
+        let saved_impl_returns = self.current_impl_method_returns.take();
+        let saved_prefix = std::mem::take(&mut self.current_module_prefix);
+        let saved_value = self.expected_value_type.take();
+        let saved_closure = self.expected_closure_type.take();
+        let saved_span = self.current_span;
+
+        let annotation = binding.type_annotation.as_ref().map(|t| self.lower_type(t));
+        let value = self.lower_with_expected_value(&binding.value, annotation.as_ref());
+        let types: Vec<(String, ResolvedType)> = match &binding.pattern {
+            BindingPattern::Simple(ident) => vec![(ident.name.clone(), value.ty().clone())],
+            BindingPattern::Array { .. }
+            | BindingPattern::Struct { .. }
+            | BindingPattern::Tuple { .. } => self
+                .destructure(&binding.pattern, value)
+                .into_iter()
+                .map(|(n, t, _)| (n, t))
+                .collect(),
+        };
+
+        self.local_binding_scopes = saved_scopes;
+        self.generic_scopes = saved_generics;
+        self.current_function_return_type = saved_return;
+        self.current_impl_struct = saved_impl;
+        self.current_impl_method_returns = saved_impl_returns;
+        self.current_module_prefix = saved_prefix;
+        self.expected_value_type = saved_value;
+        self.expected_closure_type = saved_closure;
+        self.current_span = saved_span;
+        self.errors.truncate(errors_before);
+
+        // One lowering of the value settles every name of the pattern.
+        for (bound, ty) in types {
+            self.deferred_module_lets.remove(&bound);
+            self.module_let_types.entry(bound).or_insert(ty);
+        }
+        self.module_let_types.get(name).cloned()
     }
 
     /// Lower a simple `let name = value` binding.
@@ -43,22 +122,14 @@ impl IrLowerer<'_> {
             .map(|t| self.lower_type(t));
         let mut value =
             self.lower_with_expected_value(&let_binding.value, lowered_annotation.as_ref());
-        let ty = if let Some(type_ann) = &let_binding.type_annotation {
-            self.lower_type(type_ann)
-        } else {
-            // Skip an indeterminate inference result (`Unknown`,
-            // `InferredEnum`). Its `display()` is a marker word, not a
-            // type name, and round-tripping it through
-            // `string_to_resolved_type` would report it as an undefined
-            // type. The value's own lowered type is the better answer,
-            // and the real diagnostic is raised where the gap is.
-            self.symbols
-                .get_let_type(ident_name)
-                .filter(|t| !t.is_indeterminate())
-                .map(crate::semantic::sem_type::SemType::display)
-                .and_then(|s| self.string_to_resolved_type(&s))
-                .unwrap_or_else(|| value.ty().clone())
-        };
+        // The pre-pass recorded the type from the annotation or from
+        // semantic inference. Without a record, inference did not
+        // settle the type, and the value's own type is the answer.
+        let ty = self
+            .module_let_types
+            .get(ident_name)
+            .cloned()
+            .unwrap_or_else(|| value.ty().clone());
         // An empty array literal lowers to `Array<Never>`. When the
         // binding is annotated `[T]`, retype the value's array generic
         // to `Array<T>` so backends and downstream IR passes see a
@@ -108,13 +179,26 @@ impl IrLowerer<'_> {
         // and `lower_function` while the node sits on top of the
         // stack. On exit the node is attached to the parent node, or
         // to `module.modules` for top-level modules.
-        self.module_node_stack.push(crate::ir::IrModuleNode {
-            name: module_name.to_string(),
-            ..Default::default()
-        });
+        // The declare pass records no module node: the full lowering
+        // does that.
+        if !self.signatures_only {
+            self.module_node_stack.push(crate::ir::IrModuleNode {
+                name: module_name.to_string(),
+                ..Default::default()
+            });
+        }
 
-        // Lower all definitions in the module
+        // Lower all definitions in the module. The declare pass lowers
+        // only the signatures of the functions and the impls.
         for def in definitions {
+            if self.signatures_only
+                && matches!(
+                    def,
+                    Definition::Trait(_) | Definition::Struct(_) | Definition::Enum(_)
+                )
+            {
+                continue;
+            }
             match def {
                 Definition::Trait(t) => {
                     // Traits in modules use qualified names
@@ -145,6 +229,10 @@ impl IrLowerer<'_> {
 
         // Pop the node we pushed at entry; attach to parent or to
         // module.modules if this was a top-level mod block.
+        if self.signatures_only {
+            self.current_module_prefix = saved_prefix;
+            return;
+        }
         if let Some(node) = self.module_node_stack.pop() {
             if let Some(parent) = self.module_node_stack.last_mut() {
                 parent.modules.push(node);
@@ -178,7 +266,10 @@ impl IrLowerer<'_> {
             .iter()
             .map(|p| {
                 let ty = p.ty.as_ref().map(|t| self.lower_type(t));
-                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                let default = p
+                    .default
+                    .as_ref()
+                    .map(|e| self.lower_with_expected_value(e, ty.as_ref()));
                 if let Some(t) = &ty {
                     if let Some(scope) = self.local_binding_scopes.last_mut() {
                         scope.insert(p.name.name.clone(), (p.convention, t.clone()));
@@ -214,7 +305,14 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(frame);
 
-        let body = f.body.as_ref().map(|b| self.lower_expr(b));
+        // The declared return type is the expected type of the body,
+        // so a closure in the result takes its parameter types. The
+        // declare pass lowers no body.
+        let body = f
+            .body
+            .as_ref()
+            .filter(|_| !self.signatures_only)
+            .map(|b| self.lower_with_expected_value(b, return_type.as_ref()));
         // trust the AST's explicit
         // `extern_abi` rather than re-deriving from `body.is_none()`.
         // Under parser error recovery the two can diverge; the
@@ -229,21 +327,23 @@ impl IrLowerer<'_> {
 
         self.generic_scopes.pop();
 
-        if let Err(e) = self.module.add_function(
-            registered_name.clone(),
-            IrFunction {
-                name: registered_name.clone(),
-                visibility: f.visibility,
-                generic_params,
-                params,
-                return_type,
-                body,
-                extern_abi,
-                attributes: f.attributes.iter().map(|a| a.kind).collect(),
-                doc: f.doc.clone(),
-                span: self.current_ir_span(),
-            },
-        ) {
+        let function = IrFunction {
+            name: registered_name.clone(),
+            visibility: f.visibility,
+            generic_params,
+            params,
+            return_type,
+            body,
+            extern_abi,
+            attributes: f.attributes.iter().map(|a| a.kind).collect(),
+            doc: f.doc.clone(),
+            span: self.current_ir_span(),
+        };
+        if self.signatures_only {
+            self.declared_functions.push(function);
+            return;
+        }
+        if let Err(e) = self.module.add_function(registered_name.clone(), function) {
             self.errors.push(e);
         } else if let Some(node) = self.module_node_stack.last_mut() {
             // Tier-1 item G: associate the just-registered function
@@ -272,7 +372,10 @@ impl IrLowerer<'_> {
             .iter()
             .map(|p| {
                 let ty = p.ty.as_ref().map(|t| self.lower_type(t));
-                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                let default = p
+                    .default
+                    .as_ref()
+                    .map(|e| self.lower_with_expected_value(e, ty.as_ref()));
                 if let Some(t) = &ty {
                     frame.insert(p.name.name.clone(), (p.convention, t.clone()));
                     if let Some(scope) = self.local_binding_scopes.last_mut() {
@@ -325,7 +428,14 @@ impl IrLowerer<'_> {
         }
         self.local_binding_scopes.push(frame);
 
-        let body = f.body.as_ref().map(|b| self.lower_expr(b));
+        // The declared return type is the expected type of the body,
+        // so a closure in the result takes its parameter types. The
+        // declare pass lowers no body.
+        let body = f
+            .body
+            .as_ref()
+            .filter(|_| !self.signatures_only)
+            .map(|b| self.lower_with_expected_value(b, return_type.as_ref()));
         // source the extern ABI from the
         // enclosing `ImplDef` rather than re-deriving from
         // `body.is_none()`. The semantic layer enforces body/extern
@@ -366,7 +476,10 @@ impl IrLowerer<'_> {
             .iter()
             .map(|p| {
                 let ty = p.ty.as_ref().map(|t| self.lower_type(t));
-                let default = p.default.as_ref().map(|e| self.lower_expr(e));
+                let default = p
+                    .default
+                    .as_ref()
+                    .map(|e| self.lower_with_expected_value(e, ty.as_ref()));
                 if let Some(t) = &ty {
                     if let Some(scope) = self.local_binding_scopes.last_mut() {
                         scope.insert(p.name.name.clone(), (p.convention, t.clone()));

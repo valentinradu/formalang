@@ -1,0 +1,11 @@
+// expect: run
+// A value can have an uppercase name. `G.slice(start: 1, end: 3)` is
+// then a method call, not an enum instantiation: no enum has the
+// name `G`.
+let G: String = "hello"
+
+pub fn run_checks() {
+    assert(condition: G.slice(start: 1, end: 3) == "el")
+    let L = "world"
+    assert(condition: L.slice(start: 0, end: 2) == "wo")
+}

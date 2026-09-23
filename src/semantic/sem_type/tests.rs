@@ -64,7 +64,7 @@ fn dictionary_display() {
 #[test]
 fn closure_display() {
     let c = SemType::closure(
-        vec![SemType::Primitive(PrimitiveType::I32)],
+        vec![(ParamConvention::Let, SemType::Primitive(PrimitiveType::I32))],
         SemType::Primitive(PrimitiveType::Boolean),
     );
     assert_eq!(c.display(), "(I32) -> Boolean");
@@ -129,7 +129,7 @@ fn substitute_named_skips_substring_collisions() {
 #[test]
 fn substitute_named_recurses_through_closure() {
     let t = SemType::closure(
-        vec![SemType::Named("T".into())],
+        vec![(ParamConvention::Let, SemType::Named("T".into()))],
         SemType::array_of(SemType::Named("T".into())),
     );
     let result = t.substitute_named("T", &SemType::Primitive(PrimitiveType::Boolean));

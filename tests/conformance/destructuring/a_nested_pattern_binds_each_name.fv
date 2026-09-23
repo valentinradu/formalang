@@ -1,0 +1,11 @@
+// expect: run
+// A pattern inside a pattern binds its names too, at module level and
+// in a function.
+let [[x, y], z] = [[1, 2], [3]]
+
+pub fn run_checks() {
+    assert(condition: x + y == 3)
+    assert(condition: z.len() == 1)
+    let [[p], [q]] = [[4], [5]]
+    assert(condition: p + q == 9)
+}
