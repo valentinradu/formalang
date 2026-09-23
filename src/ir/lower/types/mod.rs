@@ -80,67 +80,72 @@ impl IrLowerer<'_> {
         }
     }
 
+    /// Lower a type written as a bare or path-qualified name.
+    fn lower_ident_type(&mut self, ident: &crate::ast::Ident) -> ResolvedType {
+        // A short name in an inline `mod` means that module's type.
+        let name = &self.scoped_type_name(&ident.name);
+
+        // For path-qualified names like `geom::Point`, the IR's
+        // symbol table registers the type under the fully
+        // qualified name. Try the full name first; fall back to
+        // the last segment so single-name references and primitive-
+        // name lookups still work.
+        let lookup_name = simple_type_name(name);
+
+        // A type parameter in scope shadows every type of its name.
+        if self.is_generic_param_in_scope(&ident.name) {
+            return ResolvedType::TypeParam(ident.name.clone());
+        }
+        // Check if this is an external type
+        if let Some(external) = self.try_external_type(lookup_name, vec![]) {
+            return external;
+        }
+        // Otherwise try local types; qualified name first, then
+        // the simple name.
+        if let Some(id) = self.module.struct_id(name) {
+            ResolvedType::Struct(id)
+        } else if let Some(id) = self.module.trait_id(name) {
+            ResolvedType::Trait(id)
+        } else if let Some(id) = self.module.enum_id(name) {
+            ResolvedType::Enum(id)
+        } else if let Some(id) = self.module.struct_id(lookup_name) {
+            ResolvedType::Struct(id)
+        } else if let Some(id) = self.module.trait_id(lookup_name) {
+            ResolvedType::Trait(id)
+        } else if let Some(id) = self.module.enum_id(lookup_name) {
+            ResolvedType::Enum(id)
+        } else if let Some(path) = self.imported_source_context.clone() {
+            // CM gap: when register_imported_types is lowering an
+            // imported struct/enum's field types, an unresolved
+            // identifier most likely names a sibling type from the
+            // same source module that the entry didn't import.
+            // Default to External(<source>, name) so the
+            // MonomorphisePass can pull it in via Phase 1a.
+            ResolvedType::External {
+                module_path: path,
+                name: name.clone(),
+                kind: crate::ir::ImportedKind::Struct,
+                type_args: Vec::new(),
+            }
+        } else {
+            // surface unresolved type names loudly
+            // instead of silently lowering to `TypeParam(name)`.
+            // Semantic should normally catch this; reaching here
+            // means a typo, an unimported type, or an out-of-
+            // scope generic param.
+            self.errors.push(CompilerError::UndefinedType {
+                name: name.clone(),
+                span: ident.span,
+            });
+            ResolvedType::Error
+        }
+    }
+
     pub(in crate::ir::lower) fn lower_type(&mut self, ty: &Type) -> ResolvedType {
         match ty {
             Type::Primitive(p) => ResolvedType::Primitive(*p),
 
-            Type::Ident(ident) => {
-                // A short name in an inline `mod` means that module's type.
-                let name = &self.scoped_type_name(&ident.name);
-
-                // For path-qualified names like `geom::Point`, the IR's
-                // symbol table registers the type under the fully
-                // qualified name. Try the full name first; fall back to
-                // the last segment so single-name references and primitive-
-                // name lookups still work.
-                let lookup_name = simple_type_name(name);
-
-                // Check if this is an external type
-                if let Some(external) = self.try_external_type(lookup_name, vec![]) {
-                    return external;
-                }
-                // Otherwise try local types; qualified name first, then
-                // the simple name.
-                if let Some(id) = self.module.struct_id(name) {
-                    ResolvedType::Struct(id)
-                } else if let Some(id) = self.module.trait_id(name) {
-                    ResolvedType::Trait(id)
-                } else if let Some(id) = self.module.enum_id(name) {
-                    ResolvedType::Enum(id)
-                } else if let Some(id) = self.module.struct_id(lookup_name) {
-                    ResolvedType::Struct(id)
-                } else if let Some(id) = self.module.trait_id(lookup_name) {
-                    ResolvedType::Trait(id)
-                } else if let Some(id) = self.module.enum_id(lookup_name) {
-                    ResolvedType::Enum(id)
-                } else if self.is_generic_param_in_scope(name) {
-                    ResolvedType::TypeParam(name.clone())
-                } else if let Some(path) = self.imported_source_context.clone() {
-                    // CM gap: when register_imported_types is lowering an
-                    // imported struct/enum's field types, an unresolved
-                    // identifier most likely names a sibling type from the
-                    // same source module that the entry didn't import.
-                    // Default to External(<source>, name) so the
-                    // MonomorphisePass can pull it in via Phase 1a.
-                    ResolvedType::External {
-                        module_path: path,
-                        name: name.clone(),
-                        kind: crate::ir::ImportedKind::Struct,
-                        type_args: Vec::new(),
-                    }
-                } else {
-                    // surface unresolved type names loudly
-                    // instead of silently lowering to `TypeParam(name)`.
-                    // Semantic should normally catch this; reaching here
-                    // means a typo, an unimported type, or an out-of-
-                    // scope generic param.
-                    self.errors.push(CompilerError::UndefinedType {
-                        name: name.clone(),
-                        span: ident.span,
-                    });
-                    ResolvedType::Error
-                }
-            }
+            Type::Ident(ident) => self.lower_ident_type(ident),
 
             Type::Generic { name, args, .. } => {
                 let type_args: Vec<ResolvedType> =

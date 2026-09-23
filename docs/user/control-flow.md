@@ -47,6 +47,34 @@ let big: I32 = for x in xs { x * 2 }
   .count()
 ```
 
+`map` can change the element type: its closure gives the new one.
+
+```formalang
+let flags: [Boolean] = for x in xs { x }.map(f: (v) -> v > 10).collect()
+```
+
+`collect` has two forms. With no arguments, it makes an array. With
+`key` and `value`, it makes a dictionary: the two closures give the
+entry of each element.
+
+```formalang
+let ids: [I32] = for u in users { u.id }.collect()
+let names: [I32: String] = for u in users { u }
+  .collect(key: (u) -> u.id, value: (u) -> u.name)
+```
+
+When two elements give the same key, the value of the later element
+replaces the earlier one. The entry keeps its place, and the
+dictionary holds one entry for the key.
+
+The accumulator of `fold` takes the type of `initial`. This type can
+be different from the element type:
+
+```formalang
+let any_big: Boolean = for x in xs { x }
+  .fold(initial: false, f: (seen, x) -> seen || x > 10)
+```
+
 ### A sequence is consumed exactly once
 
 **At most once.** Reading a sequence twice is an error (E136). A

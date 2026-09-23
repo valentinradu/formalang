@@ -8,8 +8,11 @@
 //!   expression's direct child expressions so callers can recurse without
 //!   spinning up a full visitor. Used by dispatch rewriting, call-path
 //!   rewriting, devirtualisation, and impl-index remapping.
+//! - [`for_each_module_expr_mut`] visits every expression in a module,
+//!   children before parents. Each phase that rewrites a kind of node
+//!   uses it, so every phase reaches the same places.
 
-use crate::ir::{IrBlockStatement, IrExpr};
+use crate::ir::{IrBlockStatement, IrExpr, IrModule};
 
 /// Read-only walk over an expression and all its children. Visits each
 /// node before recursing.
@@ -214,4 +217,55 @@ pub(super) fn iter_expr_children_mut(expr: &mut IrExpr) -> Vec<&mut IrExpr> {
         IrExpr::ClosureRef { env_struct, .. } => out.push(env_struct.as_mut()),
     }
     out
+}
+
+/// Visit every expression in the module, children before parents: the
+/// bodies and parameter defaults of the functions and of the impl
+/// methods, the field defaults of the structs and of the enum variants,
+/// and the module-level lets.
+///
+/// Each phase that rewrites one kind of node held its own copy of this
+/// walk, and the copies differed: one skipped the parameter defaults
+/// and the enum field defaults. A place that holds expressions is added
+/// here once.
+pub(super) fn for_each_module_expr_mut(module: &mut IrModule, visit: &mut impl FnMut(&mut IrExpr)) {
+    fn walk(expr: &mut IrExpr, visit: &mut impl FnMut(&mut IrExpr)) {
+        for child in iter_expr_children_mut(expr) {
+            walk(child, visit);
+        }
+        visit(expr);
+    }
+    let functions = module.functions.iter_mut().chain(
+        module
+            .impls
+            .iter_mut()
+            .flat_map(|imp| imp.functions.iter_mut()),
+    );
+    for f in functions {
+        if let Some(body) = &mut f.body {
+            walk(body, visit);
+        }
+        for param in &mut f.params {
+            if let Some(default) = &mut param.default {
+                walk(default, visit);
+            }
+        }
+    }
+    for s in &mut module.structs {
+        for field in &mut s.fields {
+            if let Some(default) = &mut field.default {
+                walk(default, visit);
+            }
+        }
+    }
+    for e in &mut module.enums {
+        for field in e.variants.iter_mut().flat_map(|v| v.fields.iter_mut()) {
+            if let Some(default) = &mut field.default {
+                walk(default, visit);
+            }
+        }
+    }
+    for l in &mut module.lets {
+        walk(&mut l.value, visit);
+    }
 }

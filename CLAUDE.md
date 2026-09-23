@@ -229,4 +229,3 @@ Before any PR:
 - `typos` passes (install with `cargo install typos-cli --locked`)
 - `mdbook-linkcheck -s` passes (install with
   `cargo install mdbook-linkcheck --locked`)
-- VSCode shows zero errors

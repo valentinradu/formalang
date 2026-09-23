@@ -13,7 +13,6 @@ use crate::ir::{
     ResolvedType, TraitId,
 };
 use crate::semantic::SymbolTable;
-use std::collections::HashMap;
 
 /// Map a bare type-name identifier to its primitive variant, if any.
 /// Used by impl lowering to recognise `extern impl String`,
@@ -445,19 +444,6 @@ impl IrLowerer<'_> {
         }
         self.generic_scopes.push(scope);
 
-        // Pre-compute method return types so lowering a body can resolve
-        // forward references like `self.other_method()` without needing
-        // the impl to already be in `module.impls`. Must run *after* the
-        // generic-scope push so a method returning `T` resolves the type
-        // param against the impl/target scope instead of failing
-        // `UndefinedType` lookup.
-        let saved_impl_returns = self.current_impl_method_returns.take();
-        let mut impl_returns: HashMap<String, Option<ResolvedType>> = HashMap::new();
-        for f in &i.functions {
-            let ret = f.return_type.as_ref().map(|t| self.lower_type(t));
-            impl_returns.insert(f.name.name.clone(), ret);
-        }
-        self.current_impl_method_returns = Some(impl_returns);
         // Tier-1 item E: extern impl methods inherit the C ABI by
         // default. Until the parser accepts `extern "system" impl ...`,
         // there's only one possible value to propagate.
@@ -479,7 +465,6 @@ impl IrLowerer<'_> {
 
         // Clear the context
         self.current_impl_struct = None;
-        self.current_impl_method_returns = saved_impl_returns;
 
         let block = IrImpl {
             target,

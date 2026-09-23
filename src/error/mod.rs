@@ -301,6 +301,21 @@ pub enum CompilerError {
     #[error("Duplicate generic parameter '{param}'")]
     DuplicateGenericParam { param: String, span: Span },
 
+    /// A trait method that declares its own type parameters. Only a
+    /// method in an impl block may declare them.
+    #[error("Trait method '{method}' cannot declare its own type parameters")]
+    GenericTraitMethod { method: String, span: Span },
+
+    /// A type parameter of a method that no parameter without a
+    /// default mentions. A method call takes no `<...>`, so the
+    /// arguments that every call gives must give its type.
+    #[error("Type parameter '{param}' of method '{method}' appears in no required parameter")]
+    UninferableMethodTypeParameter {
+        param: String,
+        method: String,
+        span: Span,
+    },
+
     // Extern validation errors
     /// An `extern fn` declaration includes a body, which is not allowed.
     #[error("Extern function '{function}' must not have a body")]

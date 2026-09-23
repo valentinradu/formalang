@@ -78,3 +78,36 @@ pub(in crate::reporting) fn duplicate_generic_param<'a>(
             param.fg(Color::Red)
         )))
 }
+
+pub(in crate::reporting) fn generic_trait_method<'a>(
+    filename: &'a str,
+    span: Span,
+    method: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E146")
+        .with_message(format!(
+            "Trait method '{method}' cannot declare its own type parameters"
+        ))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' declares type parameters",
+            method.fg(Color::Red)
+        )))
+        .with_help("Declare the type parameters on the trait, or move the method to an impl block")
+}
+
+pub(in crate::reporting) fn uninferable_method_type_parameter<'a>(
+    filename: &'a str,
+    span: Span,
+    param: &'a str,
+    method: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E147")
+        .with_message(format!(
+            "Type parameter '{param}' of method '{method}' appears in no required parameter"
+        ))
+        .with_label(label(filename, span).with_message(format!(
+            "no argument can give '{}' a type",
+            param.fg(Color::Red)
+        )))
+        .with_help("A method call takes no <...>. Use the type parameter in the type of a parameter with no default, or remove it")
+}

@@ -9,15 +9,25 @@ use super::super::SemanticAnalyzer;
 use crate::ast::{Expr, File};
 use crate::error::CompilerError;
 use crate::location::Span;
+use crate::semantic::inference::substitute_all;
+
+/// A method call: its receiver, its method name, and its arguments.
+pub(super) type MethodCallParts<'a> = (
+    &'a Expr,
+    &'a crate::ast::Ident,
+    &'a [(Option<crate::ast::Ident>, Expr)],
+);
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Validate a method call expression
+    ///
+    /// `key_reported` is true when the expected type of the call holds
+    /// a float dictionary key that its annotation reports already.
     pub(super) fn validate_expr_method_call(
         &mut self,
-        receiver: &Expr,
-        method: &crate::ast::Ident,
-        args: &[(Option<crate::ast::Ident>, Expr)],
+        (receiver, method, args): MethodCallParts<'_>,
         span: Span,
+        key_reported: bool,
         file: &File,
     ) {
         self.validate_expr(receiver, file);
@@ -41,21 +51,26 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let overloads = receiver_type.as_ref().map_or_else(Vec::new, |name| {
             Self::find_method_overloads(name, &method.name, file)
         });
-        let chosen = overloads
-            .iter()
-            .find(|(fn_def, _)| Self::method_arity_mismatch(&fn_def.params, args).is_none())
-            .or_else(|| overloads.first())
-            .copied();
-        let expected = Self::method_argument_types(&receiver_sem, chosen, args);
+        let chosen = Self::choose_method_overload(&overloads, args);
+        let expected = self.method_argument_types(&receiver_sem, chosen, args, file);
         for ((_, arg), arg_expected) in args.iter().zip(expected) {
             self.validate_expr_expecting(arg, arg_expected, file);
         }
         let Some(receiver_type) = receiver_type else {
             return;
         };
+        if let (Some(chosen), false) = (chosen, key_reported) {
+            self.check_method_float_key(&receiver_sem, chosen, args, span, file);
+        }
         if let Some((fn_def, impl_generics)) = chosen {
             let params = fn_def.params.clone();
-            let generics = impl_generics.to_vec();
+            // A parameter type that names a type parameter of the impl
+            // or of the method itself has no concrete type to compare.
+            let generics: Vec<_> = impl_generics
+                .iter()
+                .chain(&fn_def.generics)
+                .cloned()
+                .collect();
             self.validate_fn_param_conventions_receiver(receiver, &params, span, file);
             let mut accesses = self.validate_fn_param_conventions_args(&params, args, span, file);
             // The receiver is an argument too, with the convention of
@@ -106,7 +121,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// generic structs and enum. A generic receiver is named by its
     /// base, because the impl blocks are declared against the bare
     /// name, not against `Seq<I32>`.
-    fn method_receiver_name(receiver_sem: &crate::semantic::sem_type::SemType) -> String {
+    pub(in crate::semantic::validation) fn method_receiver_name(
+        receiver_sem: &crate::semantic::sem_type::SemType,
+    ) -> String {
         match receiver_sem {
             crate::semantic::sem_type::SemType::Optional(_) => "Optional".to_string(),
             crate::semantic::sem_type::SemType::Array(_) => "Array".to_string(),
@@ -131,7 +148,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// The type arguments of a receiver, in the order its type declares
     /// its parameters: `[I32]` for `Seq<I32>` and for `[I32]`, and the
     /// key and value types for a dictionary.
-    fn receiver_type_arguments(
+    pub(in crate::semantic::validation) fn receiver_type_arguments(
         receiver_sem: &crate::semantic::sem_type::SemType,
     ) -> Vec<crate::semantic::sem_type::SemType> {
         use crate::semantic::sem_type::SemType;
@@ -153,10 +170,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// declared type of the parameter it fills, in `chosen`, the
     /// overload that the call fits. `Some(SemType::Unknown)` for each
     /// argument when the method is not known here.
+    ///
+    /// A type parameter of the method itself takes the type that the
+    /// other arguments give it: `initial: 0` makes `A` in
+    /// `fold<A>(initial: A, f: (A, T) -> A)` an `I32`, so the closure's
+    /// parameters are `I32` too.
     fn method_argument_types(
+        &self,
         receiver_sem: &crate::semantic::sem_type::SemType,
         chosen: Option<(&crate::ast::FnDef, &[crate::ast::GenericParam])>,
         args: &[(Option<crate::ast::Ident>, Expr)],
+        file: &File,
     ) -> Vec<Option<crate::semantic::sem_type::SemType>> {
         let Some((fn_def, impl_generics)) = chosen else {
             return vec![Some(crate::semantic::sem_type::SemType::Unknown); args.len()];
@@ -166,23 +190,58 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .iter()
             .map(crate::semantic::validation::invocation::overloads::ParamView::of_fn_param)
             .collect();
-        // The impl names the receiver's type parameters: `T` in
-        // `impl Seq<T>`. Replace each with the receiver's own type
-        // argument, so `(T, T) -> T` on a `Seq<I32>` is `(I32, I32) -> I32`.
+        // The receiver's type arguments replace its type parameters,
+        // so `(T, T) -> T` on a `Seq<I32>` is `(I32, I32) -> I32`. A bare
+        // `impl Box { ... }` gets the names from the type's declaration.
         let receiver_args = Self::receiver_type_arguments(receiver_sem);
+        let (view, fresh) = self.method_view(
+            &Self::method_receiver_name(receiver_sem),
+            impl_generics,
+            &receiver_args,
+            &fn_def.generics,
+        );
+        // A name that no argument binds stays: the closure check reports
+        // an untyped parameter that it types.
+        let outer = |ty| substitute_all(&ty, &view);
+        let bindings = self.bind_call_generics(&fresh, &views, &outer, args, file);
         args.iter()
             .enumerate()
             .map(|(i, (label, _))| {
                 let declared = Self::expected_argument(&views, i, label.as_ref());
-                let substituted = impl_generics
-                    .iter()
-                    .zip(&receiver_args)
-                    .fold(declared, |ty, (generic, arg)| {
-                        ty.substitute_named(&generic.name.name, arg)
-                    });
-                Some(substituted)
+                Some(substitute_all(&substitute_all(&declared, &view), &bindings))
             })
             .collect()
+    }
+
+    /// The overload of a method that a call means.
+    ///
+    /// The rule is `crate::ir::overload::choose`, the one IR lowering
+    /// uses: of the overloads whose parameters take the call's labels
+    /// and count, the one that leaves the fewest parameters to their
+    /// defaults. When none fits, the first that takes the count, then
+    /// the first, so a diagnostic names the likeliest one.
+    pub(in crate::semantic) fn choose_method_overload<'f>(
+        overloads: &[(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])],
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> Option<(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])> {
+        let labels: Vec<Option<String>> = args
+            .iter()
+            .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
+            .collect();
+        crate::ir::overload::choose(
+            overloads.iter().enumerate(),
+            |(fn_def, _)| fn_def.params.as_slice(),
+            &labels,
+            args.len(),
+        )
+        .and_then(|index| overloads.get(index))
+        .or_else(|| {
+            overloads
+                .iter()
+                .find(|(fn_def, _)| Self::method_arity_mismatch(&fn_def.params, args).is_none())
+        })
+        .or_else(|| overloads.first())
+        .copied()
     }
 
     /// Whether a method call gives the wrong number of arguments.
@@ -224,7 +283,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// many arguments they take, the way a free function may. Taking
     /// the first match and checking the call against it rejected a
     /// call that meant the second.
-    fn find_method_overloads<'f>(
+    pub(in crate::semantic) fn find_method_overloads<'f>(
         type_name: &str,
         method_name: &str,
         file: &'f File,

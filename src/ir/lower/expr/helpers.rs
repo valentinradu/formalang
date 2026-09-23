@@ -175,22 +175,15 @@ impl IrLowerer<'_> {
         method_name: &str,
         call_args: &[(Option<String>, IrExpr)],
     ) -> ResolvedType {
-        // If we are mid-lowering an impl block, its method set is recorded
-        // in `current_impl_method_returns`. Forward references like
-        // `self.other()` resolve against that map before the impl is
-        // installed into `module.impls`.
-        if let Some(returns) = &self.current_impl_method_returns {
-            if let Some(entry) = returns.get(method_name) {
-                return entry
-                    .clone()
-                    .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
-            }
-        }
-
+        // A method of the impl that is being lowered, and a method of
+        // an impl later in the file, resolve through `declared_impls`:
+        // the declare pass lowered every signature first.
+        let labels: Vec<Option<String>> =
+            call_args.iter().map(|(label, _)| label.clone()).collect();
         if let ResolvedType::Struct(struct_id) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.struct_id() == Some(*struct_id) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
                         {
                             return func
                                 .return_type
@@ -214,68 +207,39 @@ impl IrLowerer<'_> {
         // Generic receiver (`Box<I32>`): look up the impl on the
         // generic base, then substitute the impl method's TypeParams
         // with the concrete type arguments.
-        if let ResolvedType::Generic { base, args } = receiver_ty {
-            let (target_struct_id, target_enum_id) = match base {
-                crate::ir::GenericBase::Struct(id) => (Some(*id), None),
-                crate::ir::GenericBase::Enum(id) => (None, Some(*id)),
+        if let ResolvedType::Generic { base, .. } = receiver_ty {
+            let target = match base {
+                crate::ir::GenericBase::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
+                crate::ir::GenericBase::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
                 // A trait base wouldn't appear here as a method-call
                 // receiver post item E2. Skip and fall through.
-                crate::ir::GenericBase::Trait(_) => (None, None),
+                crate::ir::GenericBase::Trait(_) => None,
             };
-            let generic_params: Vec<String> = if let Some(sid) = target_struct_id {
-                self.module
-                    .get_struct(sid)
-                    .map(|s| s.generic_params.iter().map(|p| p.name.clone()).collect())
-                    .unwrap_or_default()
-            } else if let Some(eid) = target_enum_id {
-                self.module
-                    .get_enum(eid)
-                    .map(|e| e.generic_params.iter().map(|p| p.name.clone()).collect())
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
-                let matches_target = match impl_block.target {
-                    crate::ir::ImplTarget::Struct(id) => Some(id) == target_struct_id,
-                    crate::ir::ImplTarget::Enum(id) => Some(id) == target_enum_id,
-                    crate::ir::ImplTarget::Primitive(_) => false,
-                };
-                if !matches_target {
-                    continue;
-                }
-                if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
-                    {
-                        let mut ret = func
-                            .return_type
-                            .clone()
-                            .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
-                            .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
-                        // A target that is not lowered yet has no
-                        // generic parameters in the module. The impl
-                        // declares the same names, in the same order.
-                        let names: Vec<String> = if generic_params.is_empty() {
-                            impl_block
-                                .generic_params
-                                .iter()
-                                .map(|p| p.name.clone())
-                                .collect()
-                        } else {
-                            generic_params
-                        };
-                        let subs: HashMap<String, ResolvedType> =
-                            names.into_iter().zip(args.iter().cloned()).collect();
-                        substitute_typeparam_in_resolved(&mut ret, &subs);
-                        return ret;
-                    }
-                }
+            let found = self
+                .module
+                .impls
+                .iter()
+                .chain(&self.declared_impls)
+                .filter(|b| Some(b.target) == target)
+                .find_map(|b| Self::method_for_call(b, method_name, &labels).map(|f| (b, f)));
+            if let Some((impl_block, func)) = found {
+                let mut ret = func
+                    .return_type
+                    .clone()
+                    .or_else(|| func.body.as_ref().map(|b| b.ty().clone()))
+                    .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
+                substitute_typeparam_in_resolved(
+                    &mut ret,
+                    &self.receiver_subs(receiver_ty, impl_block),
+                );
+                return ret;
             }
         }
 
         if let ResolvedType::Primitive(prim) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if matches!(impl_block.target, crate::ir::ImplTarget::Primitive(p) if p == *prim) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
                         {
                             return func
                                 .return_type
@@ -293,7 +257,7 @@ impl IrLowerer<'_> {
         if let ResolvedType::Enum(enum_id) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.enum_id() == Some(*enum_id) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, call_args) {
+                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
                         {
                             return func
                                 .return_type

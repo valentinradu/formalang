@@ -22,15 +22,19 @@ where
         .ignore_then(fn_attributes_parser())
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
-        .map_with(|(((attributes, name), params), return_type), e| FnSig {
-            name,
-            params,
-            return_type,
-            attributes,
-            span: span_from_simple(e.span()),
-        })
+        .map_with(
+            |((((attributes, name), generics), params), return_type), e| FnSig {
+                name,
+                generics,
+                params,
+                return_type,
+                attributes,
+                span: span_from_simple(e.span()),
+            },
+        )
 }
 
 /// Parse a function body as a brace-delimited block of statements with a
@@ -112,7 +116,7 @@ where
         .map_with(|statements, e| block_statements_to_expr(statements, span_from_simple(e.span())))
 }
 
-/// Parse a function definition: `fn name(params) -> Type { body }`
+/// Parse a method definition: `fn name<generics>(params) -> Type { body }`
 pub(super) fn fn_def_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, FnDef, extra::Err<Rich<'tokens, Token>>> + Clone
 where
@@ -122,14 +126,16 @@ where
         .then(fn_attributes_parser())
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
+        .then(generic_params_parser())
         .then(fn_params_parser())
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .then(fn_body_parser())
         .map_with(
-            |(((((doc, attributes), name), params), return_type), body), e| {
+            |((((((doc, attributes), name), generics), params), return_type), body), e| {
                 let span = span_from_simple(e.span());
                 FnDef {
                     name,
+                    generics,
                     params,
                     return_type,
                     body: Some(body),

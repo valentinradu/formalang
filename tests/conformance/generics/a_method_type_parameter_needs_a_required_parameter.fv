@@ -1,0 +1,12 @@
+// expect: reject UninferableMethodTypeParameter
+// A call may leave out `fallback`, and then nothing gives `U` a type.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box {
+    fn find<U>(self, fallback: U? = nil) -> U? {
+        fallback
+    }
+}

@@ -29,7 +29,7 @@ typos
 mdbook-linkcheck -s
 ```
 
-**All checks must pass. VSCode must show zero errors.**
+**All checks must pass.**
 
 ### Perf Agent: Benchmarks (if applicable)
 

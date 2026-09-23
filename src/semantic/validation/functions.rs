@@ -18,6 +18,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         func: &crate::ast::FnDef,
         file: &File,
     ) {
+        // The method's own type parameters, inside those of its impl.
+        self.push_generic_scope(&func.generics);
         // Clear local let bindings and sink-consumed bindings for this function
         self.local_let_bindings.clear();
         self.consumed_bindings.clear();
@@ -114,6 +116,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         self.closure_binding_captures = saved_closure_captures;
         self.fn_scope_closure_captures = saved_fn_scope_captures;
         self.current_fn_param_conventions = saved_param_conventions;
+        self.pop_generic_scope();
     }
 
     /// Validate a standalone function definition (outside of impl blocks)

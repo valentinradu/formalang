@@ -1,0 +1,6 @@
+// expect: reject FunctionReturnTypeMismatch
+// The closure answers a String, so `map` gives a sequence of String.
+
+pub fn f(xs: [I32]) -> [I32] {
+    for x in xs { x }.map(f: (v) -> "s").collect()
+}

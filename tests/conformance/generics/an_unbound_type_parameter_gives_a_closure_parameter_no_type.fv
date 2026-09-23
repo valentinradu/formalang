@@ -1,0 +1,17 @@
+// expect: reject ClosureParameterNeedsType
+// Only the closure's parameter mentions `U`, and the closure does not
+// write its type, so nothing says what `U` is.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box {
+    fn apply<U>(self, f: (U) -> I32) -> I32 {
+        1
+    }
+}
+
+pub fn run() -> I32 {
+    Box(value: 1).apply(f: (x) -> 1)
+}

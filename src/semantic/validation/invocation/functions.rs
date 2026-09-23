@@ -27,16 +27,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         // Validate generic type arguments against the function's generic parameters
         if !type_args.is_empty() {
-            let simple_name_for_lookup = name.rsplit("::").next().unwrap_or(name);
-            let overloads_for_generics = {
-                let direct = self.symbols.get_function_overloads(name);
-                if direct.is_empty() {
-                    self.symbols.get_function_overloads(simple_name_for_lookup)
-                } else {
-                    direct
-                }
-            };
-            let func_generics = overloads_for_generics
+            let func_generics = self
+                .function_overloads(name)
                 .first()
                 .map(|f| f.generics.clone())
                 .unwrap_or_default();
@@ -75,14 +67,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         let simple_name = name.rsplit("::").next().unwrap_or(name);
-        let overloads: &[_] = {
-            let direct = self.symbols.get_function_overloads(name);
-            if direct.is_empty() {
-                self.symbols.get_function_overloads(simple_name)
-            } else {
-                direct
-            }
-        };
+        let overloads = self.function_overloads(name);
 
         match overloads.len() {
             0 => {
@@ -131,7 +116,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             _ => {
                 // Multiple overloads: resolve by argument labels or first-arg type
-                let most_specific = self.most_specific_overloads(overloads, args, file);
+                let most_specific = self.most_specific_overloads(&overloads, args, file);
 
                 match most_specific.len() {
                     0 => {

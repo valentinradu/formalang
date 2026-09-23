@@ -1,0 +1,23 @@
+// expect: run
+// A closure parameter with a written type binds `U`, and so does a
+// type argument written at the call.
+
+fn apply<U>(f: (U) -> I32) -> I32 {
+    7
+}
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box {
+    fn apply<U>(self, f: (U) -> I32) -> I32 {
+        8
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: apply(f: (x: String) -> 1) == 7)
+    assert(condition: apply<Boolean>(f: (x) -> 2) == 7)
+    assert(condition: Box(value: 1).apply(f: (x: String) -> 1) == 8)
+}

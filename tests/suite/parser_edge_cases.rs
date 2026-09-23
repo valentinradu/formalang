@@ -812,7 +812,7 @@ fn test_function_call_qualified_path() -> Result<(), Box<dyn std::error::Error>>
         mod math {
             pub fn compute(angle: I32) -> I32 { angle }
         }
-        fn call_compute() -> I32 { math::compute(angle: 1.0) }
+        fn call_compute() -> I32 { math::compute(angle: 1) }
     ";
     compile(source).map_err(|e| format!("Function call qualified path: {e:?}"))?;
     Ok(())

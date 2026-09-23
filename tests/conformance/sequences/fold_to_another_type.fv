@@ -1,0 +1,10 @@
+// expect: run
+// The accumulator of `fold` takes the type of `initial`, which need not
+// be the element type.
+
+pub fn run_checks() {
+    let seen = for i in 0..5 { i }.fold(initial: false, f: (acc, i) -> acc || i == 3)
+    assert(condition: seen)
+    let total = for i in 0..5 { i }.fold(initial: 0, f: (acc, i) -> acc + i)
+    assert(condition: total == 10)
+}

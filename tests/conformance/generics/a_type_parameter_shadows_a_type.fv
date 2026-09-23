@@ -1,0 +1,17 @@
+// expect: run
+// A type parameter in scope means itself, and not a type of the same
+// name. The prelude's `fold<A>` works beside a struct `A`.
+
+pub struct A {
+    n: I32
+}
+
+fn same<A>(x: A) -> A {
+    x
+}
+
+pub fn run_checks() {
+    assert(condition: same(x: 4) == 4)
+    assert(condition: for i in 0..3 { i }.fold(initial: 0, f: (a, b) -> a + b) == 3)
+    assert(condition: A(n: 1).n == 1)
+}

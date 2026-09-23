@@ -1,0 +1,20 @@
+// expect: run
+// A method may declare type parameters of its own. The arguments of each
+// call give their types.
+
+pub struct Holder {
+    value: I32
+}
+
+impl Holder {
+    fn pair<U>(self, other: U) -> (first: I32, second: U) {
+        (first: self.value, second: other)
+    }
+}
+
+pub fn run_checks() {
+    let a = Holder(value: 1).pair(other: "a")
+    let b = Holder(value: 2).pair(other: true)
+    assert(condition: a.first == 1 && a.second == "a")
+    assert(condition: b.first == 2 && b.second)
+}

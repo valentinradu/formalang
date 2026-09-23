@@ -1,0 +1,4 @@
+// expect: reject GenericTraitMethod
+pub trait Shape {
+    fn scaled<U>(self, by: U) -> I32
+}

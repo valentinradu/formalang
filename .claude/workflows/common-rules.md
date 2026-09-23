@@ -63,7 +63,6 @@ Before any PR:
 - `cargo clippy` passes
 - `typos` passes (zero findings)
 - `mdbook-linkcheck -s` passes (zero broken links)
-- VSCode shows zero errors
 
 ## Collaboration
 

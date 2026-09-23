@@ -1,0 +1,10 @@
+// expect: reject GenericArityMismatch
+pub mod m {
+    pub fn id<K>(k: K) -> K {
+        k
+    }
+}
+
+pub fn run() -> I32 {
+    m::id<I32, I32>(k: 2)
+}

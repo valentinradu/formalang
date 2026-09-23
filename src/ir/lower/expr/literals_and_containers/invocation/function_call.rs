@@ -51,41 +51,22 @@ impl IrLowerer<'_> {
             || self.lookup_function_param_types(fn_name),
             |f| f.params.iter().map(ArgSlot::of_param).collect(),
         );
-        // A closure argument lowers last. For a generic callee, the
-        // other arguments fix its type parameters first, so a closure
-        // for `f: (T) -> T` next to `v: 2` takes `(I32) -> I32`, not
-        // `(T) -> T`. The arguments keep their order in the call.
         let generic = callee
             .as_ref()
             .is_some_and(|f| !f.generic_params.is_empty());
-        let is_closure = |e: &Expr| matches!(e, Expr::ClosureExpr { .. });
-        let mut subs: HashMap<String, ResolvedType> = HashMap::new();
-        let mut slots: Vec<Option<(Option<String>, IrExpr)>> = Vec::with_capacity(args.len());
-        for (i, (name_opt, expr)) in args.iter().enumerate() {
-            if generic && is_closure(expr) {
-                slots.push(None);
-                continue;
-            }
-            let expected = Self::expected_arg_ty(&expected_param_tys, i, name_opt.as_ref());
-            let lowered = self.lower_with_expected_value(expr, expected.as_ref());
-            if let Some(declared) = &expected {
-                unify_typeparam_in_resolved(declared, lowered.ty(), &mut subs);
-            }
-            slots.push(Some((name_opt.as_ref().map(|n| n.name.clone()), lowered)));
-        }
-        let mut lowered_args: Vec<(Option<String>, IrExpr)> = Vec::with_capacity(args.len());
-        for (i, ((name_opt, expr), slot)) in args.iter().zip(slots).enumerate() {
-            let arg = slot.unwrap_or_else(|| {
-                let expected = Self::expected_arg_ty(&expected_param_tys, i, name_opt.as_ref())
-                    .map(|mut ty| {
-                        substitute_typeparam_in_resolved(&mut ty, &subs);
-                        ty
-                    });
-                let lowered = self.lower_with_expected_value(expr, expected.as_ref());
-                (name_opt.as_ref().map(|n| n.name.clone()), lowered)
-            });
-            lowered_args.push(arg);
-        }
+        let written: HashMap<String, ResolvedType> = callee
+            .as_ref()
+            .filter(|f| f.generic_params.len() == type_args_resolved.len())
+            .map(|f| {
+                f.generic_params
+                    .iter()
+                    .zip(type_args_resolved)
+                    .map(|(p, a)| (p.name.clone(), a.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (mut lowered_args, _) =
+            self.lower_call_args(args, &expected_param_tys, generic, written);
         let substitution = self.substitute_defaults(function_id, &mut lowered_args);
         // Return type lookup uses the same id when available; the
         // bare-name lookup is the fallback for forward refs.

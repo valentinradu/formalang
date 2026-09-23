@@ -1,0 +1,19 @@
+// expect: run
+// `m::id` is the function of the module, not the top-level `id` of the
+// same name.
+
+fn id(k: I32) -> I32 {
+    k + 100
+}
+
+pub mod m {
+    pub fn id<K>(k: K) -> K {
+        k
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: m::id<I32>(k: 2) == 2)
+    assert(condition: m::id(k: "s") == "s")
+    assert(condition: id(k: 1) == 101)
+}

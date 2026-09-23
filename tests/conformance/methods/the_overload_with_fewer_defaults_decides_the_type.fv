@@ -1,0 +1,22 @@
+// expect: run
+// Both methods take `get()`. The one that leaves fewer parameters to
+// their defaults is the one the call means, in the type check as in the
+// lowering.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn get(self, s: String = "x") -> String {
+        s
+    }
+    fn get(self) -> I32 {
+        self.x
+    }
+}
+
+pub fn run_checks() {
+    let n: I32 = P(x: 1).get()
+    assert(condition: n == 1)
+}

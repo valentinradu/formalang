@@ -1,0 +1,13 @@
+// expect: reject DuplicateGenericParam
+// `impl Box` names no type parameter, so the struct's `T` is the one in
+// scope, and the method cannot declare another `T`.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box {
+    fn with<T>(self, other: T) -> T {
+        other
+    }
+}

@@ -1,0 +1,6 @@
+// expect: reject UndefinedTrait
+pub mod m {
+    pub struct S<T: Missing> {
+        v: T
+    }
+}

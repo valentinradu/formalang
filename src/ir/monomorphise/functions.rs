@@ -7,6 +7,9 @@
 //! types. The clones have empty `generic_params` and survive Phase 3
 //! compaction; the originals are dropped along with any unspecialised
 //! generic structs/enums/traits.
+//!
+//! A generic method with a body is copied in the same worklist; see
+//! `methods.rs`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,7 +17,8 @@ use crate::error::CompilerError;
 use crate::ir::{IrExpr, IrFunction, IrModule, ResolvedType};
 use crate::location::Span;
 
-use super::expr_walk::{iter_expr_children_mut, walk_expr};
+use super::expr_walk::{for_each_module_expr_mut, walk_expr};
+use super::methods::{self, MethodSpec};
 use super::specialise::{substitute_expr_types, substitute_type, type_suffix};
 
 /// `(function_name, type_arg_tuple)` — the unique key for a generic
@@ -25,9 +29,19 @@ use super::specialise::{substitute_expr_types, substitute_type, type_suffix};
 /// specialisation).
 type FunctionSpec = (String, Vec<ResolvedType>);
 
-/// Phase 2e entry point: specialise every generic function for which a
-/// concrete call site exists, rewrite those call sites, and recurse
-/// until the worklist is empty.
+/// One copy that the worklist makes: of a generic function, or of a
+/// generic method with a body.
+enum Spec {
+    Function(FunctionSpec),
+    Method(MethodSpec),
+}
+
+/// Phase 2e entry point: specialise every generic function and every
+/// generic method for which a concrete call site exists, rewrite those
+/// call sites, and recurse until the worklist is empty.
+///
+/// The two kinds share one worklist, because each may call the other:
+/// a copy of either can hold the first concrete call of both.
 pub(super) fn specialise_generic_functions(
     module: &mut IrModule,
 ) -> Result<(), Vec<CompilerError>> {
@@ -35,6 +49,7 @@ pub(super) fn specialise_generic_functions(
     // function's name. Used both as the "already specialised" set and
     // as the rewrite table for call sites.
     let mut fn_mapping: HashMap<FunctionSpec, String> = HashMap::new();
+    let mut method_mapping: HashMap<MethodSpec, u32> = HashMap::new();
     let mut errors: Vec<CompilerError> = Vec::new();
 
     // Snapshot the set of currently-generic function names so the
@@ -47,34 +62,62 @@ pub(super) fn specialise_generic_functions(
         .filter(|f| !f.generic_params.is_empty())
         .map(|f| f.name.clone())
         .collect();
-    if generic_fn_names.is_empty() {
+    if generic_fn_names.is_empty() && !methods::any_template(module) {
         return Ok(());
     }
 
-    // Worklist of `(original_name, args)` pairs to specialise. Each
-    // newly-cloned body may discover further specialisations.
-    let mut worklist: Vec<FunctionSpec> = Vec::new();
+    // Worklist of copies to make. Each newly-cloned body may discover
+    // further specialisations.
+    let mut worklist: Vec<Spec> = Vec::new();
     collect_generic_fn_call_specs(module, &generic_fn_names, &mut worklist);
 
     while let Some(spec) = worklist.pop() {
-        if fn_mapping.contains_key(&spec) {
-            continue;
-        }
-        match specialise_function(module, &spec.0, &spec.1) {
-            Ok((mangled_name, discovered)) => {
-                fn_mapping.insert(spec, mangled_name);
-                for d in discovered {
-                    if !fn_mapping.contains_key(&d) {
-                        worklist.push(d);
+        match spec {
+            Spec::Function(spec) => {
+                if fn_mapping.contains_key(&spec) {
+                    continue;
+                }
+                match specialise_function(module, &spec.0, &spec.1) {
+                    Ok(mangled_name) => {
+                        let body = module
+                            .function_id(&mangled_name)
+                            .and_then(|id| module.functions.get(id.0 as usize))
+                            .and_then(|f| f.body.as_ref());
+                        if let Some(body) = body {
+                            discover(module, &generic_fn_names, body, &mut worklist);
+                        }
+                        fn_mapping.insert(spec, mangled_name);
                     }
+                    Err(e) => errors.push(e),
                 }
             }
-            Err(e) => errors.push(e),
+            Spec::Method(spec) => {
+                if method_mapping.contains_key(&spec) {
+                    continue;
+                }
+                match methods::specialise_method(module, &spec) {
+                    Ok(index) => {
+                        let body = module
+                            .impls
+                            .get(spec.0 as usize)
+                            .and_then(|imp| imp.functions.get(index as usize))
+                            .and_then(|f| f.body.as_ref());
+                        if let Some(body) = body {
+                            discover(module, &generic_fn_names, body, &mut worklist);
+                        }
+                        method_mapping.insert(spec, index);
+                    }
+                    Err(e) => errors.push(e),
+                }
+            }
         }
     }
 
     // Rewrite every call site that resolved to a generic-fn name.
     rewrite_function_call_paths(module, &fn_mapping, &generic_fn_names);
+    if let Err(mut e) = methods::rewrite_method_calls(module, &method_mapping) {
+        errors.append(&mut e);
+    }
 
     if errors.is_empty() {
         Ok(())
@@ -83,13 +126,30 @@ pub(super) fn specialise_generic_functions(
     }
 }
 
-/// Walk every expression in the module looking for `FunctionCall`
-/// sites whose path resolves to a generic function. For each, infer
-/// the type-arg tuple from arg types and append `(name, args)` to the
-/// worklist. Call sites whose inferred args still contain `TypeParam`
-/// (i.e. the call lives inside a generic function body that hasn't
-/// been specialised yet) are skipped — those will surface again in a
-/// later worklist iteration after their containing function is cloned.
+/// Push a copy for each concrete call in `expr` of a generic function
+/// or of a generic method with a body.
+fn discover(
+    module: &IrModule,
+    generic_fn_names: &HashSet<String>,
+    expr: &IrExpr,
+    out: &mut Vec<Spec>,
+) {
+    walk_expr(expr, &mut |e| {
+        if let IrExpr::FunctionCall { path, args, .. } = e {
+            if let Some(name) = matching_generic_name(path, generic_fn_names) {
+                if let Some(func) = module.functions.iter().find(|f| f.name == name) {
+                    if let Some(type_args) = infer_call_type_args(func, args) {
+                        out.push(Spec::Function((name, type_args)));
+                    }
+                }
+            }
+        }
+        if let Some(spec) = methods::method_call_spec(&module.impls, e) {
+            out.push(Spec::Method(spec));
+        }
+    });
+}
+
 /// Which generic function, if any, a call's path names.
 ///
 /// A function declared inside a module is registered under its
@@ -109,36 +169,29 @@ fn matching_generic_name(path: &[String], generic_fn_names: &HashSet<String>) ->
         .cloned()
 }
 
+/// Walk every expression in the module looking for calls of a generic
+/// function or of a generic method with a body. For each, infer the
+/// type-arg tuple from arg types and append it to the worklist. Call
+/// sites whose inferred args still contain `TypeParam` (i.e. the call
+/// lives inside a generic body that hasn't been specialised yet) are
+/// skipped — those will surface again in a later worklist iteration
+/// after their containing definition is cloned.
 fn collect_generic_fn_call_specs(
     module: &IrModule,
     generic_fn_names: &HashSet<String>,
-    out: &mut Vec<FunctionSpec>,
+    out: &mut Vec<Spec>,
 ) {
-    let mut visit = |expr: &IrExpr| {
-        if let IrExpr::FunctionCall { path, args, .. } = expr {
-            if let Some(name) = matching_generic_name(path, generic_fn_names) {
-                if let Some(func) = module.functions.iter().find(|f| f.name == name) {
-                    if let Some(type_args) = infer_call_type_args(func, args) {
-                        out.push((name, type_args));
-                    }
-                }
-            }
-        }
-    };
-    for f in &module.functions {
+    let functions = module
+        .functions
+        .iter()
+        .chain(module.impls.iter().flat_map(|imp| &imp.functions));
+    for f in functions {
         if let Some(body) = &f.body {
-            walk_expr(body, &mut visit);
-        }
-    }
-    for imp in &module.impls {
-        for f in &imp.functions {
-            if let Some(body) = &f.body {
-                walk_expr(body, &mut visit);
-            }
+            discover(module, generic_fn_names, body, out);
         }
     }
     for l in &module.lets {
-        walk_expr(&l.value, &mut visit);
+        discover(module, generic_fn_names, &l.value, out);
     }
 }
 
@@ -180,7 +233,11 @@ fn infer_call_type_args(
 /// (P bound to two different concrete types) are silently dropped —
 /// semantic should have caught those, and the resulting partial map
 /// merely fails the `infer_call_type_args` post-check.
-fn unify_types(param: &ResolvedType, arg: &ResolvedType, subs: &mut HashMap<String, ResolvedType>) {
+pub(super) fn unify_types(
+    param: &ResolvedType,
+    arg: &ResolvedType,
+    subs: &mut HashMap<String, ResolvedType>,
+) {
     match (param, arg) {
         (ResolvedType::TypeParam(name), concrete) => {
             subs.entry(name.clone()).or_insert_with(|| concrete.clone());
@@ -218,7 +275,7 @@ fn unify_types(param: &ResolvedType, arg: &ResolvedType, subs: &mut HashMap<Stri
     }
 }
 
-fn contains_type_param(ty: &ResolvedType) -> bool {
+pub(super) fn contains_type_param(ty: &ResolvedType) -> bool {
     match ty {
         ResolvedType::TypeParam(_) => true,
         ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| contains_type_param(t)),
@@ -239,9 +296,8 @@ fn contains_type_param(ty: &ResolvedType) -> bool {
 }
 
 /// Clone a generic function for one concrete arg-tuple. Returns the
-/// new specialised name plus any further generic-fn instantiations
-/// discovered inside the cloned body (so the caller can extend the
-/// worklist).
+/// new specialised name; the caller scans the clone's body for further
+/// copies to make.
 #[expect(
     clippy::result_large_err,
     reason = "CompilerError is large by design; errors are bounded to a Vec<CompilerError> at the pass boundary"
@@ -250,8 +306,7 @@ fn specialise_function(
     module: &mut IrModule,
     name: &str,
     args: &[ResolvedType],
-) -> Result<(String, Vec<FunctionSpec>), CompilerError> {
-    // (mangled_name, discovered)
+) -> Result<String, CompilerError> {
     let Some(source) = module.functions.iter().find(|f| f.name == name).cloned() else {
         return Err(CompilerError::InternalError {
             detail: format!("monomorphise: missing generic function `{name}`"),
@@ -293,35 +348,8 @@ fn specialise_function(
         substitute_expr_types(body, &subs);
     }
 
-    // After substitution, scan the new body for further generic-fn
-    // calls that became concrete in the process.
-    let generic_fn_names: HashSet<String> = module
-        .functions
-        .iter()
-        .filter(|f| !f.generic_params.is_empty())
-        .map(|f| f.name.clone())
-        .collect();
-    let mut discovered: Vec<FunctionSpec> = Vec::new();
-    if let Some(body) = &spec.body {
-        let mut visit = |expr: &IrExpr| {
-            if let IrExpr::FunctionCall { path, args: a, .. } = expr {
-                if let Some(callee) = path.last() {
-                    if generic_fn_names.contains(callee) {
-                        if let Some(callee_fn) = module.functions.iter().find(|f| f.name == *callee)
-                        {
-                            if let Some(type_args) = infer_call_type_args(callee_fn, a) {
-                                discovered.push((callee.clone(), type_args));
-                            }
-                        }
-                    }
-                }
-            }
-        };
-        walk_expr(body, &mut visit);
-    }
-
     module.add_function(mangled.clone(), spec)?;
-    Ok((mangled, discovered))
+    Ok(mangled)
 }
 
 /// Mangle a function name with its concrete type args. Mirrors
@@ -363,58 +391,17 @@ fn rewrite_function_call_paths(
     // Snapshot the function map so we can read declared param types
     // while mutating expressions inside the same function vector.
     let snapshot: Vec<IrFunction> = module.functions.clone();
-    for f in &mut module.functions {
-        if let Some(body) = &mut f.body {
-            rewrite_call_paths_expr(body, fn_mapping, generic_fn_names, &snapshot);
-        }
-        for param in &mut f.params {
-            if let Some(default) = &mut param.default {
-                rewrite_call_paths_expr(default, fn_mapping, generic_fn_names, &snapshot);
-            }
-        }
-    }
-    for imp in &mut module.impls {
-        for f in &mut imp.functions {
-            if let Some(body) = &mut f.body {
-                rewrite_call_paths_expr(body, fn_mapping, generic_fn_names, &snapshot);
-            }
-            for param in &mut f.params {
-                if let Some(default) = &mut param.default {
-                    rewrite_call_paths_expr(default, fn_mapping, generic_fn_names, &snapshot);
-                }
-            }
-        }
-    }
-    for s in &mut module.structs {
-        for field in &mut s.fields {
-            if let Some(default) = &mut field.default {
-                rewrite_call_paths_expr(default, fn_mapping, generic_fn_names, &snapshot);
-            }
-        }
-    }
-    for e in &mut module.enums {
-        for variant in &mut e.variants {
-            for field in &mut variant.fields {
-                if let Some(default) = &mut field.default {
-                    rewrite_call_paths_expr(default, fn_mapping, generic_fn_names, &snapshot);
-                }
-            }
-        }
-    }
-    for l in &mut module.lets {
-        rewrite_call_paths_expr(&mut l.value, fn_mapping, generic_fn_names, &snapshot);
-    }
+    for_each_module_expr_mut(module, &mut |expr| {
+        rewrite_call_path_node(expr, fn_mapping, generic_fn_names, &snapshot);
+    });
 }
 
-fn rewrite_call_paths_expr(
+fn rewrite_call_path_node(
     expr: &mut IrExpr,
     fn_mapping: &HashMap<FunctionSpec, String>,
     generic_fn_names: &HashSet<String>,
     snapshot: &[IrFunction],
 ) {
-    for child in iter_expr_children_mut(expr) {
-        rewrite_call_paths_expr(child, fn_mapping, generic_fn_names, snapshot);
-    }
     if let IrExpr::FunctionCall {
         path,
         function_id: _,

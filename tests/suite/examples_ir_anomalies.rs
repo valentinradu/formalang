@@ -76,6 +76,10 @@ struct Anomalies<'m> {
     /// `IrExpr::LetRef` and `ReferenceTarget::{Local, Param}`.
     defined_bindings: HashSet<u32>,
     current_fn: Option<String>,
+    /// The type parameters of the extern method whose signature the
+    /// visitor is inside. An extern method has no body to specialise,
+    /// so it keeps them; each call carries the concrete types.
+    own_type_params: Vec<String>,
 }
 
 impl<'m> Anomalies<'m> {
@@ -86,6 +90,7 @@ impl<'m> Anomalies<'m> {
             in_prelude_builtin: false,
             defined_bindings: HashSet::new(),
             current_fn: None,
+            own_type_params: Vec::new(),
         }
     }
 
@@ -152,6 +157,7 @@ impl<'m> Anomalies<'m> {
         }
         match ty {
             ResolvedType::Error => self.note(where_, "ResolvedType::Error"),
+            ResolvedType::TypeParam(name) if self.own_type_params.contains(name) => {}
             ResolvedType::TypeParam(name) => {
                 self.note(where_, format!("unresolved TypeParam(`{name}`)"));
             }
@@ -481,6 +487,12 @@ impl IrVisitor for Anomalies<'_> {
         let saved_fn = self.current_fn.replace(f.name.clone());
         let saved_bindings = std::mem::take(&mut self.defined_bindings);
         Anomalies::collect_defined_bindings(f, &mut self.defined_bindings);
+        let own: Vec<String> = if f.body.is_none() {
+            f.generic_params.iter().map(|p| p.name.clone()).collect()
+        } else {
+            Vec::new()
+        };
+        let saved_own = std::mem::replace(&mut self.own_type_params, own);
 
         for p in &f.params {
             self.check_name(&format!("fn `{}` param `{}`", f.name, p.name), &p.name);
@@ -494,6 +506,7 @@ impl IrVisitor for Anomalies<'_> {
         if let Some(ret) = &f.return_type {
             self.check_type(&format!("fn `{}` return", f.name), ret);
         }
+        self.own_type_params = saved_own;
         if !self.in_prelude_builtin && f.body.is_none() && f.extern_abi.is_none() {
             self.note(
                 &format!("fn `{}`", f.name),

@@ -413,6 +413,7 @@ where
         fn_def_parser(),
         fn_sig_parser().map(|sig| FnDef {
             name: sig.name,
+            generics: sig.generics,
             params: sig.params,
             return_type: sig.return_type,
             body: None,

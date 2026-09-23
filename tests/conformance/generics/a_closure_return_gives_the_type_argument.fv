@@ -1,0 +1,11 @@
+// expect: reject FunctionReturnTypeMismatch
+// `U` takes the type that the closure answers, I32, and not the
+// declared return type of the caller.
+
+fn apply<U>(x: I32, f: (I32) -> U) -> U {
+    f(x)
+}
+
+pub fn t() -> String {
+    apply(x: 1, f: (v) -> v + 1)
+}

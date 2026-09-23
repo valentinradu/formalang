@@ -70,7 +70,6 @@ impl IrLowerer<'_> {
         let saved_generics = std::mem::take(&mut self.generic_scopes);
         let saved_return = self.current_function_return_type.take();
         let saved_impl = self.current_impl_struct.take();
-        let saved_impl_returns = self.current_impl_method_returns.take();
         let saved_prefix = std::mem::take(&mut self.current_module_prefix);
         let saved_value = self.expected_value_type.take();
         let saved_closure = self.expected_closure_type.take();
@@ -93,7 +92,6 @@ impl IrLowerer<'_> {
         self.generic_scopes = saved_generics;
         self.current_function_return_type = saved_return;
         self.current_impl_struct = saved_impl;
-        self.current_impl_method_returns = saved_impl_returns;
         self.current_module_prefix = saved_prefix;
         self.expected_value_type = saved_value;
         self.expected_closure_type = saved_closure;
@@ -361,6 +359,8 @@ impl IrLowerer<'_> {
         f: &FnDef,
         enclosing_extern: Option<ExternAbi>,
     ) -> IrFunction {
+        let generic_params = self.lower_generic_params(&f.generics);
+        self.generic_scopes.push(generic_params.clone());
         // DP-4 support: lower params in two stages so each param's
         // default expression sees its preceding params in the local
         // binding scope. Without the frame, `fn f(x: I32, y: I32 = x)`
@@ -449,6 +449,7 @@ impl IrLowerer<'_> {
 
         // Restore previous return type context
         self.current_function_return_type = saved_return_type;
+        self.generic_scopes.pop();
 
         IrFunction {
             name: f.name.name.clone(),
@@ -456,9 +457,8 @@ impl IrLowerer<'_> {
             // type it is written for, so a method carries no `pub` of
             // its own. Only a top-level `fn` can be an export.
             visibility: crate::ast::Visibility::Private,
-            // Method-level generics aren't yet supported; enclosing type
-            // generics live on the containing IrImpl.
-            generic_params: Vec::new(),
+            // Its own type parameters; the impl's live on the IrImpl.
+            generic_params,
             params,
             return_type,
             body,

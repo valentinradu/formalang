@@ -1,0 +1,18 @@
+// expect: reject InvalidBinaryOp
+// `impl Box` names no type parameter; the struct names `T`. The closure
+// parameter still takes the receiver's type argument, I32, so adding a
+// string to it is an error.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box {
+    fn apply(self, f: (T) -> T) -> T {
+        f(self.value)
+    }
+}
+
+pub fn run() -> I32 {
+    Box(value: 3).apply(f: (v) -> v + "a")
+}

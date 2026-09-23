@@ -1,0 +1,10 @@
+// expect: reject FloatDictionaryKey
+// `K` takes the type F64 at the call, so the result is [F64: I32].
+
+fn one<K>(k: K) -> [K: I32] {
+    [k: 1]
+}
+
+pub fn size() -> I32 {
+    one(k: 1.5).len()
+}

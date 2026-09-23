@@ -1,0 +1,6 @@
+// expect: reject FloatDictionaryKey
+// No type is written here: the key type comes from the keys.
+
+pub fn size(x: F64) -> I32 {
+    [x: 1].len()
+}

@@ -1,0 +1,9 @@
+// expect: run
+// `map` can change the element type: its closure gives the new one.
+
+pub fn run_checks() {
+    let big = for i in 0..5 { i }.map(f: (i) -> i > 2).filter(f: (b) -> b).count()
+    assert(condition: big == 2)
+    let words: [String] = for i in 0..2 { i }.map(f: (i) -> "w").collect()
+    assert(condition: words.len() == 2)
+}

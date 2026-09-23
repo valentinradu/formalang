@@ -50,10 +50,13 @@ impl LeftoverScanner {
         // against a zero span, which says some pass left work undone
         // but not which definition to look at.
         let mut found: Vec<String> = Vec::new();
-        let note_at = |found: &mut Vec<String>, ty: &ResolvedType, place: &str| {
-            if let Some(sample) = first_leftover(ty, module) {
+        let note_own = |found: &mut Vec<String>, ty: &ResolvedType, place: &str, own: &[String]| {
+            if let Some(sample) = first_leftover(ty, module, own) {
                 found.push(format!("{sample} in {place}"));
             }
+        };
+        let note_at = |found: &mut Vec<String>, ty: &ResolvedType, place: &str| {
+            note_own(found, ty, place, &[]);
         };
 
         // Walk every type slot in the module *except* the bodies of the
@@ -126,7 +129,8 @@ impl LeftoverScanner {
             }
             for f in &imp.functions {
                 let place = format!("method `{}` of an impl block", f.name);
-                walk_function_types(f, &mut |ty| note_at(&mut found, ty, &place));
+                let own = extern_type_params(f);
+                walk_function_types(f, &mut |ty| note_own(&mut found, ty, &place, &own));
             }
         }
         for f in &module.functions {
@@ -199,7 +203,21 @@ fn scan_dispatch_leftovers(module: &IrModule, scanner: &mut LeftoverScanner) {
     }
 }
 
-fn first_leftover(ty: &ResolvedType, module: &IrModule) -> Option<String> {
+/// The type parameters that an extern method keeps. It has no body to
+/// specialise, so each call carries the concrete types instead. A method
+/// with a body was specialised per call and its generic original dropped.
+fn extern_type_params(f: &crate::ir::IrFunction) -> Vec<String> {
+    if f.body.is_none() {
+        f.generic_params.iter().map(|p| p.name.clone()).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// The first leftover in `ty`. A `TypeParam` named in `own` is not one:
+/// it is a type parameter of the extern method whose signature holds
+/// `ty`.
+fn first_leftover(ty: &ResolvedType, module: &IrModule, own: &[String]) -> Option<String> {
     // Lowering never emits `TypeParam` as a placeholder, so a survivor here
     // is a real monomorphisation gap — report it. Generic instantiations
     // of the prelude-shipped built-in carriers (`Optional`, `Array`,
@@ -214,10 +232,14 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule) -> Option<String> {
     let is_prelude_builtin =
         |base: &GenericBase| prelude_ids.iter().any(|p| p.as_ref() == Some(base));
     match ty {
+        ResolvedType::TypeParam(name) if own.contains(name) => None,
         ResolvedType::TypeParam(name) => Some(format!("unresolved TypeParam(`{name}`)")),
         ResolvedType::Generic { base, args } => {
-            if is_prelude_builtin(base) {
-                return args.iter().find_map(|a| first_leftover(a, module));
+            // `Seq<U>` in the signature of an extern `map<U>` cannot be
+            // specialised: `U` is the method's own, and each call
+            // carries the concrete type.
+            if is_prelude_builtin(base) || args.iter().any(|a| mentions_any(a, own)) {
+                return args.iter().find_map(|a| first_leftover(a, module, own));
             }
             let (kind, id) = match base {
                 GenericBase::Struct(s) => ("struct", s.0),
@@ -229,17 +251,19 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule) -> Option<String> {
                 args.len()
             ))
         }
-        ResolvedType::Tuple(fields) => fields.iter().find_map(|(_, t)| first_leftover(t, module)),
+        ResolvedType::Tuple(fields) => fields
+            .iter()
+            .find_map(|(_, t)| first_leftover(t, module, own)),
         ResolvedType::Closure {
             param_tys,
             return_ty,
         } => param_tys
             .iter()
-            .find_map(|(_, t)| first_leftover(t, module))
-            .or_else(|| first_leftover(return_ty, module)),
-        ResolvedType::External { type_args, .. } => {
-            type_args.iter().find_map(|a| first_leftover(a, module))
-        }
+            .find_map(|(_, t)| first_leftover(t, module, own))
+            .or_else(|| first_leftover(return_ty, module, own)),
+        ResolvedType::External { type_args, .. } => type_args
+            .iter()
+            .find_map(|a| first_leftover(a, module, own)),
         // `Error` shouldn't reach monomorphisation under normal compilation
         // (upstream `CompilerError`s would have aborted before passes run);
         // surface it explicitly when an externally-loaded IR contains one.
@@ -248,5 +272,28 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule) -> Option<String> {
         | ResolvedType::Struct(_)
         | ResolvedType::Trait(_)
         | ResolvedType::Enum(_) => None,
+    }
+}
+
+/// Whether `ty` mentions a type parameter named in `names`.
+fn mentions_any(ty: &ResolvedType, names: &[String]) -> bool {
+    match ty {
+        ResolvedType::TypeParam(name) => names.contains(name),
+        ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| mentions_any(t, names)),
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => {
+            param_tys.iter().any(|(_, t)| mentions_any(t, names)) || mentions_any(return_ty, names)
+        }
+        ResolvedType::Generic { args, .. }
+        | ResolvedType::External {
+            type_args: args, ..
+        } => args.iter().any(|a| mentions_any(a, names)),
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_)
+        | ResolvedType::Error => false,
     }
 }

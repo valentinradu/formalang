@@ -398,9 +398,10 @@ impl<'m> Interpreter<'m> {
             }
 
             IrExpr::DictLiteral { entries, .. } => {
-                let mut out = Vec::with_capacity(entries.len());
+                let mut out: Vec<(Value, Value)> = Vec::with_capacity(entries.len());
                 for (k, v) in entries {
-                    out.push((self.eval(k)?, self.eval(v)?));
+                    let (k, v) = (self.eval(k)?, self.eval(v)?);
+                    insert_entry(&mut out, k, v);
                 }
                 Ok(Value::Dict(out))
             }
@@ -1058,14 +1059,31 @@ impl<'m> Interpreter<'m> {
             (_, "is_none") => Value::Bool(false),
 
             // --- Seq combinators ---
-            (value, "collect") => Value::Array(value.as_elements()?),
-            (value, "count") => Value::Int(value.as_elements()?.len() as i128),
-            (value, "run") => {
+            // Only a sequence has them: a user type may declare a
+            // method of the same name.
+            // `collect(key:value:)` makes a dictionary. A repeated key
+            // keeps its place and takes the later value.
+            (value @ Value::Seq(_), "collect") if named("key").is_some() => {
+                let key = named("key").unwrap_or(Value::Nil);
+                let make_value = named("value").unwrap_or(Value::Nil);
+                let mut entries: Vec<(Value, Value)> = Vec::new();
+                for item in value.as_elements()? {
+                    let k = self.call_closure(&key, vec![(String::new(), item.clone())])?;
+                    let v = self.call_closure(&make_value, vec![(String::new(), item)])?;
+                    insert_entry(&mut entries, k, v);
+                }
+                Value::Dict(entries)
+            }
+            (value @ Value::Seq(_), "collect") => Value::Array(value.as_elements()?),
+            (value @ Value::Seq(_), "count") => Value::Int(value.as_elements()?.len() as i128),
+            (value @ Value::Seq(_), "run") => {
                 let _ = value.as_elements()?;
                 Value::Unit
             }
-            (value, "first") => value.as_elements()?.first().cloned().unwrap_or(Value::Nil),
-            (value, "take") => {
+            (value @ Value::Seq(_), "first") => {
+                value.as_elements()?.first().cloned().unwrap_or(Value::Nil)
+            }
+            (value @ Value::Seq(_), "take") => {
                 let n = named("count")
                     .or_else(|| arg(0))
                     .unwrap_or(Value::Int(0))
@@ -1074,7 +1092,7 @@ impl<'m> Interpreter<'m> {
                 let n = usize::try_from(n.max(0)).unwrap_or(0);
                 Value::Seq(items.into_iter().take(n).collect())
             }
-            (value, "skip") => {
+            (value @ Value::Seq(_), "skip") => {
                 let n = named("count")
                     .or_else(|| arg(0))
                     .unwrap_or(Value::Int(0))
@@ -1083,7 +1101,7 @@ impl<'m> Interpreter<'m> {
                 let n = usize::try_from(n.max(0)).unwrap_or(0);
                 Value::Seq(items.into_iter().skip(n).collect())
             }
-            (value, "map") => {
+            (value @ Value::Seq(_), "map") => {
                 let f = named("f").or_else(|| arg(0)).unwrap_or(Value::Nil);
                 let mut out = Vec::new();
                 for item in value.as_elements()? {
@@ -1091,7 +1109,7 @@ impl<'m> Interpreter<'m> {
                 }
                 Value::Seq(out)
             }
-            (value, "filter") => {
+            (value @ Value::Seq(_), "filter") => {
                 let f = named("f").or_else(|| arg(0)).unwrap_or(Value::Nil);
                 let mut out = Vec::new();
                 for item in value.as_elements()? {
@@ -1104,7 +1122,7 @@ impl<'m> Interpreter<'m> {
                 }
                 Value::Seq(out)
             }
-            (value, "fold") => {
+            (value @ Value::Seq(_), "fold") => {
                 let initial = named("initial").or_else(|| arg(0)).unwrap_or(Value::Int(0));
                 let f = named("f").or_else(|| arg(1)).unwrap_or(Value::Nil);
                 let mut acc = initial;
@@ -1114,7 +1132,7 @@ impl<'m> Interpreter<'m> {
                 }
                 acc
             }
-            (value, "any") => {
+            (value @ Value::Seq(_), "any") => {
                 let f = named("f").or_else(|| arg(0)).unwrap_or(Value::Nil);
                 let mut found = false;
                 for item in value.as_elements()? {
@@ -1128,7 +1146,7 @@ impl<'m> Interpreter<'m> {
                 }
                 Value::Bool(found)
             }
-            (value, "all") => {
+            (value @ Value::Seq(_), "all") => {
                 let f = named("f").or_else(|| arg(0)).unwrap_or(Value::Nil);
                 let mut holds = true;
                 for item in value.as_elements()? {
@@ -1286,6 +1304,20 @@ fn field_of(fields: &[(String, Value)], name: &str) -> Result<Value, Fault> {
         .find(|(n, _)| n == name)
         .map(|(_, v)| v.clone())
         .map_or_else(|| Err(Fault::Unresolved(format!("field `{name}`"))), Ok)
+}
+
+/// Put an entry into a dictionary. A key already there keeps its place
+/// and takes the new value, so the length does not grow. The literal
+/// and `collect(key:value:)` both obey this rule.
+fn insert_entry(entries: &mut Vec<(Value, Value)>, key: Value, value: Value) {
+    if let Some(entry) = entries
+        .iter_mut()
+        .find(|(existing, _)| existing.equals(&key))
+    {
+        entry.1 = value;
+    } else {
+        entries.push((key, value));
+    }
 }
 
 /// Index a container. Out of range is `nil`, which is what the

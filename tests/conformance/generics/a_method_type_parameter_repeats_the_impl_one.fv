@@ -1,0 +1,12 @@
+// expect: reject DuplicateGenericParam
+// The method could not name the impl's `T` any more.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box<T> {
+    fn with<T>(self, other: T) -> T {
+        other
+    }
+}

@@ -1,0 +1,9 @@
+// expect: compile
+pub mod m {
+    pub trait Named {
+        name: String
+    }
+    pub struct S<T: Named> {
+        v: T
+    }
+}

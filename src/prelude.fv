@@ -53,18 +53,23 @@ pub struct Seq<T> {}
 
 extern impl Seq<T> {
     // Adapters: Seq -> Seq.
-    fn map(sink self, f: (T) -> T) -> Seq<T>
+    // The element type can change: `f` gives the new one.
+    fn map<U>(sink self, f: (T) -> U) -> Seq<U>
     fn filter(sink self, f: (T) -> Boolean) -> Seq<T>
     fn take(sink self, count: I32) -> Seq<T>
     fn skip(sink self, count: I32) -> Seq<T>
 
     // Terminals: each consumes the sequence and ends the pipeline.
     fn collect(sink self) -> [T]
+    // Makes a dictionary: `key` and `value` give the entry of each
+    // element. When two elements give the same key, the value of the
+    // later element replaces the earlier one, and the entry keeps its
+    // place. A dictionary literal with a repeated key obeys the same
+    // rule.
+    fn collect<K, V>(sink self, key: (T) -> K, value: (T) -> V) -> [K: V]
     fn count(sink self) -> I32
-    // The accumulator shares the element type. A fold to a different
-    // type needs a second type parameter on the method, and
-    // method-level generics do not exist yet.
-    fn fold(sink self, initial: T, f: (T, T) -> T) -> T
+    // The accumulator can have a type other than the element type.
+    fn fold<A>(sink self, initial: A, f: (A, T) -> A) -> A
     fn first(sink self) -> T?
     fn any(sink self, f: (T) -> Boolean) -> Boolean
     fn all(sink self, f: (T) -> Boolean) -> Boolean

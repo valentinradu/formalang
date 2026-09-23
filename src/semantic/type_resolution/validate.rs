@@ -3,6 +3,7 @@
 //! violations. Also exposes graph-building helpers used by the cycle pass.
 
 use super::super::module_resolver::ModuleResolver;
+use super::super::sem_type::SemType;
 use super::super::type_graph::TypeGraph;
 use super::super::SemanticAnalyzer;
 use crate::ast::Type;
@@ -87,6 +88,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     span: ident.span,
                 });
             }
+        } else if self.is_type_parameter(&ident.name) {
+            // A type parameter in scope shadows every type of the same
+            // name: `fold<A>` in the prelude means its own `A` in a
+            // program that declares a trait `A`.
         } else if self.symbols.is_trait(&ident.name) {
             // A trait cannot be the type of a value (`let s: Shape`,
             // `[Shape]`, a trait-typed field or parameter). Every one
@@ -102,8 +107,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 trait_name: ident.name.clone(),
                 span: ident.span,
             });
-        } else if self.symbols.is_type(&ident.name) || self.is_type_parameter(&ident.name) {
-            // Valid struct/enum type or generic type parameter — OK.
+        } else if self.symbols.is_type(&ident.name) {
+            // Valid struct/enum type — OK.
         } else if ident.name.len() == 1 && ident.name.chars().next().is_some_and(char::is_uppercase)
         {
             self.errors.push(CompilerError::OutOfScopeTypeParameter {
@@ -269,5 +274,38 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Self::add_type_dependencies(graph, from, ret);
             }
         }
+    }
+}
+
+/// The float key type of a dictionary in `ty`, if it has one. `deep`
+/// looks inside arrays, optionals, tuples, generic arguments and the
+/// values of dictionaries too; otherwise only a dictionary at the top.
+pub(in crate::semantic) fn float_key_in(ty: &SemType, deep: bool) -> Option<&'static str> {
+    use crate::ast::PrimitiveType;
+    match ty {
+        SemType::Dictionary { key, value } => {
+            if matches!(**key, SemType::Primitive(PrimitiveType::F32)) {
+                Some("F32")
+            } else if matches!(**key, SemType::Primitive(PrimitiveType::F64)) {
+                Some("F64")
+            } else if deep {
+                float_key_in(key, deep).or_else(|| float_key_in(value, deep))
+            } else {
+                None
+            }
+        }
+        SemType::Array(inner) | SemType::Optional(inner) if deep => float_key_in(inner, deep),
+        SemType::Tuple(fields) if deep => fields.iter().find_map(|(_, t)| float_key_in(t, deep)),
+        SemType::Generic { args, .. } if deep => args.iter().find_map(|t| float_key_in(t, deep)),
+        SemType::Array(_)
+        | SemType::Optional(_)
+        | SemType::Tuple(_)
+        | SemType::Generic { .. }
+        | SemType::Primitive(_)
+        | SemType::Named(_)
+        | SemType::Closure { .. }
+        | SemType::Unknown
+        | SemType::InferredEnum
+        | SemType::Nil => None,
     }
 }

@@ -18,6 +18,7 @@
 //! All submodules add methods to a single `impl IrLowerer<'_>` block; cross-file
 //! callers therefore use `pub(super)` visibility (super = `lower::expr`).
 
+mod call_args;
 mod closures;
 mod control_flow;
 mod destructure;

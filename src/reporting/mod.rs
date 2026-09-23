@@ -252,6 +252,12 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::MissingGenericArguments { name, .. } => {
             errors_advanced::missing_generic_arguments(filename, span, name)
         }
+        CompilerError::GenericTraitMethod { method, .. } => {
+            errors_advanced::generic_trait_method(filename, span, method)
+        }
+        CompilerError::UninferableMethodTypeParameter { param, method, .. } => {
+            errors_advanced::uninferable_method_type_parameter(filename, span, param, method)
+        }
         CompilerError::DuplicateGenericParam { param, .. } => {
             errors_advanced::duplicate_generic_param(filename, span, param)
         }

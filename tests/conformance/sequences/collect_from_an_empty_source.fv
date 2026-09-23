@@ -1,0 +1,6 @@
+// expect: run
+pub fn run_checks() {
+    let xs: [I32] = []
+    let d = for x in xs { x }.collect(key: (x) -> x, value: (x) -> x * 2)
+    assert(condition: d.is_empty())
+}

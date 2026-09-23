@@ -1,0 +1,8 @@
+// expect: reject FunctionReturnTypeMismatch
+extern impl String {
+    fn pick<U>(self, u: U) -> U
+}
+
+pub fn run() -> String {
+    "a".pick(u: 1)
+}

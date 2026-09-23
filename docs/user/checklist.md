@@ -36,7 +36,7 @@
   defaulted params as optional
 - Codegen attribute prefixes (`inline`, `no_inline`, `cold`)
 - Let bindings (file-level, with `pub`, `mut`)
-- Generic parameters on structs, traits, enums
+- Generic parameters on structs, traits, enums, functions and methods
 
 **Expressions**:
 
@@ -59,6 +59,8 @@
 
 - Generic type parameters with constraints
 - Generic structs, traits, enums
+- Generic methods: a method's own type parameters, inferred from its
+  arguments
 - Generic instantiation with type arguments and inference
 - Nested generics, generic arity validation
 - Monomorphisation pass (`MonomorphisePass`) clones definitions per
@@ -103,5 +105,4 @@
 - Incremental compilation (salsa)
 - Code formatter
 - REPL mode
-- VSCode extension (full integration)
 - Evaluation/expansion stage (runtime)

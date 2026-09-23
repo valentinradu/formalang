@@ -44,7 +44,6 @@ Git workflow and version control management. **You start every feature workflow*
 - Link related issues if applicable
 - **All tests must pass** before merge consideration
 - **All quality checks must pass**
-- **VSCode shows zero errors**
 
 ## Committer
 

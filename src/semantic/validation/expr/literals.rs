@@ -1,5 +1,6 @@
-//! Array- and dict-literal homogeneity checks: every entry must be
-//! type-compatible with the first; mixes like `[1, "two"]` are rejected.
+//! Dictionary literals, and the array- and dict-literal homogeneity
+//! checks: every entry must be type-compatible with the first; mixes
+//! like `[1, "two"]` are rejected.
 
 use super::super::super::module_resolver::ModuleResolver;
 use super::super::super::SemanticAnalyzer;
@@ -8,6 +9,38 @@ use crate::error::CompilerError;
 use crate::location::Span;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// Validate a dictionary literal in a position that expects
+    /// `expected`. `key_reported` is true when the expected type holds a
+    /// float key that its annotation reports already.
+    pub(super) fn validate_dict_literal(
+        &mut self,
+        entries: &[(Expr, Expr)],
+        span: Span,
+        expected: Option<&crate::semantic::sem_type::SemType>,
+        key_reported: bool,
+        file: &File,
+    ) {
+        let (key_expected, value_expected) = Self::expected_entry(expected);
+        for (key, value) in entries {
+            self.validate_expr_expecting(key, key_expected.clone(), file);
+            self.validate_expr_expecting(value, value_expected.clone(), file);
+        }
+        // Escape analysis: closure values stored as dict keys/values escape.
+        for (key, value) in entries {
+            self.escape_closure_value(key);
+            self.escape_closure_value(value);
+        }
+        // unify key types and value types across
+        // entries so a heterogeneous dict literal
+        // (`["a": 1, "b": "two"]`) surfaces as a real
+        // TypeMismatch instead of silently using the first
+        // entry's type.
+        self.validate_dict_homogeneity(entries, span, file);
+        if !key_reported {
+            self.check_literal_float_key(entries, span, file);
+        }
+    }
+
     /// Validate that every key (and value) in a dict literal is compatible
     /// with the first entry. A mix like `["a": 1, "b": "two"]` is rejected.
     pub(super) fn validate_dict_homogeneity(

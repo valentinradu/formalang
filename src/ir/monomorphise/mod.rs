@@ -56,6 +56,7 @@ mod expr_walk;
 mod external;
 mod functions;
 mod leftover;
+mod methods;
 mod rewrite;
 pub(in crate::ir) mod specialise;
 pub(super) mod walkers;

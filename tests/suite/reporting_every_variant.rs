@@ -268,6 +268,15 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             name: s("Pair"),
             span,
         },
+        CompilerError::GenericTraitMethod {
+            method: s("map"),
+            span,
+        },
+        CompilerError::UninferableMethodTypeParameter {
+            param: s("U"),
+            method: s("make"),
+            span,
+        },
         CompilerError::DuplicateGenericParam {
             param: s("T"),
             span,
@@ -436,6 +445,8 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::OutOfScopeTypeParameter { .. } => "OutOfScopeTypeParameter",
         CompilerError::MissingGenericArguments { .. } => "MissingGenericArguments",
         CompilerError::DuplicateGenericParam { .. } => "DuplicateGenericParam",
+        CompilerError::GenericTraitMethod { .. } => "GenericTraitMethod",
+        CompilerError::UninferableMethodTypeParameter { .. } => "UninferableMethodTypeParameter",
         CompilerError::ExternFnWithBody { .. } => "ExternFnWithBody",
         CompilerError::RegularFnWithoutBody { .. } => "RegularFnWithoutBody",
         CompilerError::ExternImplWithBody { .. } => "ExternImplWithBody",

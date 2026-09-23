@@ -32,7 +32,8 @@ pub(in crate::reporting) use functions::{
 };
 pub(in crate::reporting) use generics::{
     duplicate_generic_param, generic_arity_mismatch, generic_constraint_violation,
-    missing_generic_arguments, out_of_scope_type_parameter,
+    generic_trait_method, missing_generic_arguments, out_of_scope_type_parameter,
+    uninferable_method_type_parameter,
 };
 pub(in crate::reporting) use misc::{
     closure_capture_escapes_local_binding, expression_depth_exceeded, float_dictionary_key,

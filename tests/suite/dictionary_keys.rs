@@ -114,3 +114,39 @@ fn accepts_a_float_value() {
         "a float value must still work"
     );
 }
+
+/// How many `FloatDictionaryKey` errors `source` reports.
+fn float_key_errors(source: &str) -> usize {
+    compile_to_ir(source)
+        .expect_err("a float key must be rejected")
+        .iter()
+        .filter(|e| matches!(e, CompilerError::FloatDictionaryKey { .. }))
+        .count()
+}
+
+/// One mistake gets one error. The signature of `make` writes the float
+/// key; a call of `make` only uses that type, so it reports nothing.
+#[test]
+fn a_call_of_a_function_with_a_written_float_key_reports_nothing_more() {
+    let source = "
+        fn make() -> [F64: I32] { [:] }
+        pub fn a() -> I32 { make().len() }
+        pub fn b() -> I32 { make().len() }
+    ";
+    assert_eq!(float_key_errors(source), 1);
+}
+
+/// The literal is where the float key enters. A struct that holds the
+/// dictionary only carries the type on.
+#[test]
+fn a_float_keyed_literal_inside_a_struct_is_reported_once() {
+    let source = "
+        pub struct W<T> { value: T }
+        pub fn a() -> I32 {
+            let m = [1.5: 1]
+            let w = W(value: m)
+            w.value.len()
+        }
+    ";
+    assert_eq!(float_key_errors(source), 1);
+}

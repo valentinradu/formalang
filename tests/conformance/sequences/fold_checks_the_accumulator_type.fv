@@ -1,0 +1,7 @@
+// expect: reject FunctionReturnTypeMismatch
+// `initial: false` makes the accumulator a Boolean, so the fold answers
+// a Boolean.
+
+pub fn f(xs: [I32]) -> I32 {
+    for x in xs { x }.fold(initial: false, f: (acc, x) -> acc || x > 1)
+}

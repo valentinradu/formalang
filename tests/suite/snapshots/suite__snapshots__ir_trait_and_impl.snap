@@ -1,5 +1,5 @@
 ---
-source: tests/snapshots.rs
+source: tests/suite/snapshots.rs
 expression: debug_with_sorted_string_maps(&module)
 ---
 IrModule {
@@ -712,7 +712,12 @@ IrModule {
                 IrFunction {
                     name: "map",
                     visibility: Private,
-                    generic_params: [],
+                    generic_params: [
+                        IrGenericParam {
+                            name: "U",
+                            constraints: [],
+                        },
+                    ],
                     params: [
                         IrFunctionParam {
                             binding_id: BindingId(
@@ -758,7 +763,7 @@ IrModule {
                                         ),
                                     ],
                                     return_ty: TypeParam(
-                                        "T",
+                                        "U",
                                     ),
                                 },
                             ),
@@ -792,7 +797,7 @@ IrModule {
                             ),
                             args: [
                                 TypeParam(
-                                    "T",
+                                    "U",
                                 ),
                             ],
                         },
@@ -1209,6 +1214,171 @@ IrModule {
                     },
                 },
                 IrFunction {
+                    name: "collect",
+                    visibility: Private,
+                    generic_params: [
+                        IrGenericParam {
+                            name: "K",
+                            constraints: [],
+                        },
+                        IrGenericParam {
+                            name: "V",
+                            constraints: [],
+                        },
+                    ],
+                    params: [
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "self",
+                            external_label: None,
+                            ty: None,
+                            default: None,
+                            convention: Sink,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "key",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: TypeParam(
+                                        "K",
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                        IrFunctionParam {
+                            binding_id: BindingId(
+                                0,
+                            ),
+                            name: "value",
+                            external_label: None,
+                            ty: Some(
+                                Closure {
+                                    param_tys: [
+                                        (
+                                            Let,
+                                            TypeParam(
+                                                "T",
+                                            ),
+                                        ),
+                                    ],
+                                    return_ty: TypeParam(
+                                        "V",
+                                    ),
+                                },
+                            ),
+                            default: None,
+                            convention: Let,
+                            span: IrSpan {
+                                span: Span {
+                                    start: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Location {
+                                        offset: 0,
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                },
+                                file: FileId(
+                                    0,
+                                ),
+                            },
+                        },
+                    ],
+                    return_type: Some(
+                        Generic {
+                            base: Struct(
+                                StructId(
+                                    2,
+                                ),
+                            ),
+                            args: [
+                                TypeParam(
+                                    "K",
+                                ),
+                                TypeParam(
+                                    "V",
+                                ),
+                            ],
+                        },
+                    ),
+                    body: None,
+                    extern_abi: Some(
+                        C,
+                    ),
+                    attributes: [],
+                    doc: None,
+                    span: IrSpan {
+                        span: Span {
+                            start: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Location {
+                                offset: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        },
+                        file: FileId(
+                            0,
+                        ),
+                    },
+                },
+                IrFunction {
                     name: "count",
                     visibility: Private,
                     generic_params: [],
@@ -1273,7 +1443,12 @@ IrModule {
                 IrFunction {
                     name: "fold",
                     visibility: Private,
-                    generic_params: [],
+                    generic_params: [
+                        IrGenericParam {
+                            name: "A",
+                            constraints: [],
+                        },
+                    ],
                     params: [
                         IrFunctionParam {
                             binding_id: BindingId(
@@ -1310,7 +1485,7 @@ IrModule {
                             external_label: None,
                             ty: Some(
                                 TypeParam(
-                                    "T",
+                                    "A",
                                 ),
                             ),
                             default: None,
@@ -1345,7 +1520,7 @@ IrModule {
                                         (
                                             Let,
                                             TypeParam(
-                                                "T",
+                                                "A",
                                             ),
                                         ),
                                         (
@@ -1356,7 +1531,7 @@ IrModule {
                                         ),
                                     ],
                                     return_ty: TypeParam(
-                                        "T",
+                                        "A",
                                     ),
                                 },
                             ),
@@ -1383,7 +1558,7 @@ IrModule {
                     ],
                     return_type: Some(
                         TypeParam(
-                            "T",
+                            "A",
                         ),
                     ),
                     body: None,

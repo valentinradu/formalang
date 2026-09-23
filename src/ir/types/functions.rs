@@ -37,10 +37,15 @@ pub struct IrFunction {
     #[serde(default)]
     pub visibility: Visibility,
 
-    /// Generic type parameters declared on the function itself
-    /// (e.g. `fn identity<T>(value: T) -> T`).
-    /// Empty for methods; method-level generics aren't yet supported;
-    /// enclosing-type generics live on the containing `IrImpl` / `IrStruct`.
+    /// Generic type parameters declared on the function or method
+    /// itself (e.g. `fn identity<T>(value: T) -> T`,
+    /// `fn map<U>(self, f: (T) -> U) -> Box<U>`). Enclosing-type
+    /// generics live on the containing `IrImpl` / `IrStruct`.
+    ///
+    /// After `MonomorphisePass`, only an extern method keeps its own
+    /// type parameters: it has no body to specialise, and each call
+    /// carries the concrete types. The prelude's
+    /// `Seq.collect<K, V>(key:value:)` is one.
     pub generic_params: Vec<IrGenericParam>,
 
     /// Parameters (first is typically `self`)

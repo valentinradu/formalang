@@ -1,0 +1,20 @@
+// expect: run
+// `wrap<U>` calls `map<U>` on a `Box<U>` of its own `U`. The two `U`s
+// are different: `map` gives a `Box<I32>` here.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box<T> {
+    fn map<U>(self, f: (T) -> U) -> Box<U> {
+        Box(value: f(self.value))
+    }
+    fn wrap<U>(self, other: U) -> I32 {
+        Box(value: other).map(f: (o) -> 7).value
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: Box(value: 1).wrap(other: "s") == 7)
+}

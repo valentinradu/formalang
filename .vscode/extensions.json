@@ -1,6 +1,5 @@
 {
   "recommendations": [
-    "rust-analyzer.rust-analyzer",
-    "tekumara.typos-vscode"
+    "rust-analyzer.rust-analyzer"
   ]
 }

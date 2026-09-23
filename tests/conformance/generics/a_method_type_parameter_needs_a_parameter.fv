@@ -1,0 +1,13 @@
+// expect: reject UninferableMethodTypeParameter
+// A method call takes no `<...>`, so a type parameter that no parameter
+// mentions can get no type.
+
+pub struct Holder {
+    value: I32
+}
+
+impl Holder {
+    fn make<U>(self) -> I32 {
+        self.value
+    }
+}

@@ -60,6 +60,8 @@ impl CompilerError {
             | Self::OutOfScopeTypeParameter { span, .. }
             | Self::MissingGenericArguments { span, .. }
             | Self::DuplicateGenericParam { span, .. }
+            | Self::GenericTraitMethod { span, .. }
+            | Self::UninferableMethodTypeParameter { span, .. }
             | Self::ExternFnWithBody { span, .. }
             | Self::RegularFnWithoutBody { span, .. }
             | Self::ExternImplWithBody { span, .. }

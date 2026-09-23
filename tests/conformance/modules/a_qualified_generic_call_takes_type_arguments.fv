@@ -1,0 +1,13 @@
+// expect: run
+// A type argument written on a call of a module's generic function
+// binds the function's type parameter, as it does at the top level.
+
+pub mod m {
+    pub fn id<K>(k: K) -> K {
+        k
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: m::id<I32>(k: 2) == 2)
+}

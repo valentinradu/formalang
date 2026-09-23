@@ -1,0 +1,10 @@
+// expect: run
+// Two elements that give the same key make one entry. The value of the
+// later element replaces the earlier one.
+
+pub fn run_checks() {
+    let parity = for i in 0..5 { i }.collect(key: (i) -> i % 2, value: (i) -> i)
+    assert(condition: parity.len() == 2)
+    assert(condition: if let v = parity[0] { v == 4 } else { false })
+    assert(condition: if let v = parity[1] { v == 3 } else { false })
+}

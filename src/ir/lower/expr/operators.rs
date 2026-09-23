@@ -5,7 +5,9 @@
 use crate::ast::{BinaryOperator, Expr, PrimitiveType, UnaryOperator};
 use crate::error::CompilerError;
 use crate::ir::lower::IrLowerer;
+use crate::ir::monomorphise::specialise::substitute_type;
 use crate::ir::{IrExpr, ResolvedType};
+use std::collections::HashMap;
 
 /// One parameter that a call argument can fill.
 ///
@@ -286,17 +288,65 @@ impl IrLowerer<'_> {
         // same idea as the function-call path — pull the
         // method's expected param types so closure-literal arguments
         // get their `x` typed against what the method expects.
-        let expected_param_tys = self.lookup_method_param_types(receiver_ir.ty(), method_name);
-        let lowered_args: Vec<(Option<String>, IrExpr)> = args
+        let labels: Vec<Option<String>> = args
             .iter()
-            .enumerate()
-            .map(|(i, (label, expr))| {
-                let expected = Self::expected_arg_ty(&expected_param_tys, i, label.as_ref());
-                let lowered = self.lower_with_expected_value(expr, expected.as_ref());
-                (label.as_ref().map(|l| l.name.clone()), lowered)
-            })
+            .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
             .collect();
-        let ty = self.resolve_method_return_type(receiver_ir.ty(), method_name, &lowered_args);
+        let callee = self.method_callee(receiver_ir.ty(), method_name, &labels);
+        // How the callee's declared types read at this call: the
+        // receiver's type parameters take its type arguments, and the
+        // method's own take fresh names. A receiver argument may name a
+        // type parameter of the caller, and the caller's `U` must never
+        // meet the method's `U`.
+        let (view, fresh): (HashMap<String, ResolvedType>, Vec<String>) = callee
+            .as_ref()
+            .map_or_else(Default::default, |(f, receiver_subs)| {
+                let mut view = receiver_subs.clone();
+                let fresh: Vec<String> = f
+                    .generic_params
+                    .iter()
+                    .map(|p| format!("{}'", p.name))
+                    .collect();
+                for (p, name) in f.generic_params.iter().zip(&fresh) {
+                    view.insert(p.name.clone(), ResolvedType::TypeParam(name.clone()));
+                }
+                (view, fresh)
+            });
+        let expected_param_tys: Vec<ArgSlot> = callee.as_ref().map_or_else(Vec::new, |(f, _)| {
+            f.params
+                .iter()
+                .filter(|p| p.name != "self")
+                .map(|p| {
+                    let mut slot = ArgSlot::of_param(p);
+                    if let Some(ty) = &mut slot.ty {
+                        substitute_type(ty, &view);
+                    }
+                    slot
+                })
+                .collect()
+        });
+        // A method with type parameters of its own takes their types
+        // from the arguments, as a generic function does. The other
+        // arguments lower first, so a closure argument for
+        // `key: (T) -> K` gets `(I32) -> K`, and `K` binds to the type
+        // that the closure body answers.
+        let (lowered_args, mut method_subs) =
+            self.lower_call_args(args, &expected_param_tys, !fresh.is_empty(), HashMap::new());
+        method_subs.retain(|name, _| fresh.contains(name));
+        let ty = match &callee {
+            Some((f, _)) if !fresh.is_empty() => {
+                let mut ty = f
+                    .return_type
+                    .clone()
+                    .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
+                substitute_type(&mut ty, &view);
+                substitute_type(&mut ty, &method_subs);
+                ty
+            }
+            Some(_) | None => {
+                self.resolve_method_return_type(receiver_ir.ty(), method_name, &lowered_args)
+            }
+        };
         let dispatch = self.resolve_dispatch_kind(receiver_ir.ty(), method_name);
         // Lowering knows which method the call means, so it says so
         // here rather than leaving a zero for `ResolveReferencesPass`
@@ -431,114 +481,5 @@ impl IrLowerer<'_> {
             },
         );
         slot.and_then(|s| s.ty.clone())
-    }
-
-    /// locate the impl method matching
-    /// `(receiver_ty, method_name)` and return its non-self parameter
-    /// list as `(name, type)` pairs. The caller uses these to seed
-    /// `expected_closure_type` for closure-literal arguments. Returns
-    /// an empty vec when the method can't be resolved (forward
-    /// reference, generic dispatch via trait, etc.) — in that case the
-    /// arg-lowering falls back to `Unknown` for closure-literal params.
-    pub(super) fn lookup_method_param_types(
-        &self,
-        receiver_ty: &ResolvedType,
-        method_name: &str,
-    ) -> Vec<ArgSlot> {
-        let target = match receiver_ty {
-            ResolvedType::Generic { base, .. } => match base {
-                crate::ir::GenericBase::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
-                crate::ir::GenericBase::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
-                // A generic trait base can't be a method-call
-                // receiver (FormaLang has no dynamic dispatch). Phase
-                // E2 rejects trait values; this branch is here only
-                // to keep the match exhaustive.
-                crate::ir::GenericBase::Trait(_) => None,
-            },
-            ResolvedType::Struct(id) => Some(crate::ir::ImplTarget::Struct(*id)),
-            ResolvedType::Enum(id) => Some(crate::ir::ImplTarget::Enum(*id)),
-            ResolvedType::Primitive(_)
-            | ResolvedType::Trait(_)
-            | ResolvedType::Tuple(_)
-            | ResolvedType::TypeParam(_)
-            | ResolvedType::External { .. }
-            | ResolvedType::Closure { .. }
-            | ResolvedType::Error => None,
-        };
-        let Some(target) = target else {
-            return Vec::new();
-        };
-        // A method on a generic type declares its parameters against
-        // the type's parameters. Bind those to the receiver's actual
-        // arguments, so `Seq<I32>::filter` reports `(I32) -> Boolean`
-        // rather than `(T) -> Boolean`. Without this an un-annotated
-        // closure argument has nothing concrete to take its parameter
-        // types from, and `T` survives into monomorphisation.
-        let subs = self.receiver_type_substitution(receiver_ty, target);
-        for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
-            if impl_block.target != target {
-                continue;
-            }
-            if let Some(func) = impl_block.functions.iter().find(|f| f.name == method_name) {
-                // A target that is not lowered yet has no generic
-                // parameters in the module. The impl declares the same
-                // names, in the same order.
-                let subs = if let (ResolvedType::Generic { args, .. }, true) =
-                    (receiver_ty, subs.is_empty())
-                {
-                    impl_block
-                        .generic_params
-                        .iter()
-                        .zip(args)
-                        .map(|(p, a)| (p.name.clone(), a.clone()))
-                        .collect()
-                } else {
-                    subs
-                };
-                return func
-                    .params
-                    .iter()
-                    .filter(|p| p.name != "self")
-                    .map(|p| {
-                        let mut slot = ArgSlot::of_param(p);
-                        if let Some(ty) = &mut slot.ty {
-                            crate::ir::monomorphise::specialise::substitute_type(ty, &subs);
-                        }
-                        slot
-                    })
-                    .collect();
-            }
-        }
-        Vec::new()
-    }
-
-    /// Map the target definition's generic parameter names to the
-    /// receiver's concrete type arguments.
-    ///
-    /// Empty when the receiver carries no arguments, in which case
-    /// substitution is a no-op and the declared types pass through.
-    fn receiver_type_substitution(
-        &self,
-        receiver_ty: &ResolvedType,
-        target: crate::ir::ImplTarget,
-    ) -> std::collections::HashMap<String, ResolvedType> {
-        let ResolvedType::Generic { args, .. } = receiver_ty else {
-            return std::collections::HashMap::new();
-        };
-        let params = match target {
-            crate::ir::ImplTarget::Struct(id) => {
-                self.module.get_struct(id).map(|s| s.generic_params.clone())
-            }
-            crate::ir::ImplTarget::Enum(id) => {
-                self.module.get_enum(id).map(|e| e.generic_params.clone())
-            }
-            crate::ir::ImplTarget::Primitive(_) => None,
-        };
-        params
-            .unwrap_or_default()
-            .iter()
-            .zip(args.iter())
-            .map(|(p, a)| (p.name.clone(), a.clone()))
-            .collect()
     }
 }

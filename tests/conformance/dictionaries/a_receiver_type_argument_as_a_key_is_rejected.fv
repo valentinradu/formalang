@@ -1,0 +1,17 @@
+// expect: reject FloatDictionaryKey
+// `keyed` makes the receiver's `K` a key, and the receiver is a
+// `Box<F64>`.
+
+pub struct Box<K> {
+    k: K
+}
+
+impl Box<K> {
+    fn keyed(self) -> [K: I32] {
+        [self.k: 1]
+    }
+}
+
+pub fn size() -> I32 {
+    Box(k: 1.5).keyed().len()
+}

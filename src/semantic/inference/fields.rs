@@ -1,7 +1,8 @@
 use super::super::module_resolver::ModuleResolver;
 use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
-use crate::ast::{Definition, File, Statement};
+use super::generic_args::substitute_all;
+use crate::ast::File;
 // HashMap unused after split
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -160,6 +161,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self,
         receiver_type: &SemType,
         method_name: &str,
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
         file: &File,
     ) -> SemType {
         if receiver_type.is_indeterminate() {
@@ -239,8 +241,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             out
         };
-        let wrap_if_optional = |ret: SemType| -> SemType {
-            let ret = substitute(ret);
+        let wrap = |ret: SemType| -> SemType {
             // Don't double-wrap optional or wrap Nil — preserves prior behaviour.
             if is_optional && !ret.is_optional() && !matches!(ret, SemType::Nil) {
                 SemType::optional_of(ret)
@@ -248,18 +249,45 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 ret
             }
         };
+        let wrap_if_optional = |ret: SemType| -> SemType { wrap(substitute(ret)) };
 
-        // Current file impl blocks
-        if let Some(ret) = Self::find_method_return_in_file(lookup_name, method_name, file) {
-            return wrap_if_optional(ret);
-        }
-        // Module cache impl blocks
-        for (cached_file, _) in self.module_cache.values() {
-            if let Some(ret) =
-                Self::find_method_return_in_file(lookup_name, method_name, cached_file)
-            {
-                return wrap_if_optional(ret);
-            }
+        // Impl blocks: the current file, then the cached modules. A
+        // type may declare several methods of one name, and the call's
+        // labels and count say which one it means.
+        let overloads = std::iter::once(file)
+            .chain(
+                self.module_cache
+                    .values()
+                    .map(|(cached_file, _)| cached_file),
+            )
+            .map(|f| Self::find_method_overloads(lookup_name, method_name, f))
+            .find(|found| !found.is_empty());
+        if let Some((fn_def, impl_generics)) = overloads
+            .as_deref()
+            .and_then(|found| Self::choose_method_overload(found, args))
+        {
+            // The receiver's type arguments and the method's own type
+            // parameters: `K` and `V` in
+            // `fn collect<K, V>(sink self, key: (T) -> K, value: (T) -> V) -> [K: V]`
+            // take the types that the call's arguments give.
+            let (view, fresh) = self.method_view(
+                lookup_name,
+                impl_generics,
+                &receiver_type_args,
+                &fn_def.generics,
+            );
+            let views: Vec<_> = fn_def
+                .params
+                .iter()
+                .map(crate::semantic::validation::invocation::overloads::ParamView::of_fn_param)
+                .collect();
+            let bindings = self.bind_method_generics(&view, &fresh, &views, args, file);
+            let declared = fn_def
+                .return_type
+                .as_ref()
+                .map_or(SemType::Nil, SemType::from_ast);
+            let ret = substitute_all(&substitute_all(&declared, &view), &bindings);
+            return wrap(ret);
         }
         // Trait method signatures
         if let Some(ret) = self.find_trait_method_return(lookup_name, method_name) {
@@ -304,32 +332,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for f in &info.fields {
                     if f.name == field_name {
                         return Some(f.ty.clone());
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Search impl blocks in a file for `method_name` on `type_name`.
-    fn find_method_return_in_file(
-        type_name: &str,
-        method_name: &str,
-        file: &File,
-    ) -> Option<SemType> {
-        for stmt in &file.statements {
-            if let Statement::Definition(def) = stmt {
-                if let Definition::Impl(impl_def) = &**def {
-                    if impl_def.name.name == type_name {
-                        for func in &impl_def.functions {
-                            if func.name.name == method_name {
-                                return Some(
-                                    func.return_type
-                                        .as_ref()
-                                        .map_or(SemType::Nil, SemType::from_ast),
-                                );
-                            }
-                        }
                     }
                 }
             }

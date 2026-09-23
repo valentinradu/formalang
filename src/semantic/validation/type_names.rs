@@ -41,6 +41,43 @@ pub(in crate::semantic) fn for_each_named_type(ty: &Type, visit: &mut impl FnMut
     }
 }
 
+/// Visit each name that stands as the key of a dictionary type inside
+/// `ty`: `K` in `[K: V]` and in `Dictionary<K, V>`.
+pub(in crate::semantic) fn for_each_key_name(ty: &Type, visit: &mut impl FnMut(&str)) {
+    match ty {
+        Type::Dictionary { key, value } => {
+            if let Type::Ident(ident) = &**key {
+                visit(&ident.name);
+            }
+            for_each_key_name(key, visit);
+            for_each_key_name(value, visit);
+        }
+        Type::Generic { name, args, .. } => {
+            if name.name == "Dictionary" {
+                if let Some(Type::Ident(ident)) = args.first() {
+                    visit(&ident.name);
+                }
+            }
+            for arg in args {
+                for_each_key_name(arg, visit);
+            }
+        }
+        Type::Array(inner) | Type::Optional(inner) => for_each_key_name(inner, visit),
+        Type::Tuple(fields) => {
+            for field in fields {
+                for_each_key_name(&field.ty, visit);
+            }
+        }
+        Type::Closure { params, ret } => {
+            for (_, param) in params {
+                for_each_key_name(param, visit);
+            }
+            for_each_key_name(ret, visit);
+        }
+        Type::Ident(_) | Type::Primitive(_) => {}
+    }
+}
+
 /// Whether `ty` names any of `names`, as a whole name rather than as a
 /// substring of a longer one.
 pub(in crate::semantic) fn type_mentions_any(ty: &Type, names: &[String]) -> bool {

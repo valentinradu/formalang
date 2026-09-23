@@ -1,0 +1,8 @@
+// expect: run
+// A literal that repeats a key makes one entry, with the later value.
+
+pub fn run_checks() {
+    let d: [String: I32] = ["a": 1, "b": 2, "a": 3]
+    assert(condition: d.len() == 2)
+    assert(condition: if let v = d["a"] { v == 3 } else { false })
+}

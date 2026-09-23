@@ -11,6 +11,13 @@ devirtualises `Virtual` dispatch on concrete receivers. The frontend has
 no dynamic dispatch, so this pass is the bridge from generic source to
 fully-resolved IR.
 
+A method that declares its own type parameters and has a body is
+copied per call-site arg-tuple too. The copy is appended to its impl
+block under a name that holds the types (`pair__I32`), and each call
+gets that name and index. An extern method has no body to copy, so it
+keeps its type parameters; each call carries the concrete types in its
+arguments and its `ty`.
+
 ## `DeadCodeEliminationPass`
 
 Removes unreachable definitions.

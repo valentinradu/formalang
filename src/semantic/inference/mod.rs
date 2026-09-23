@@ -1,12 +1,17 @@
 mod calls;
 mod fields;
+mod generic_args;
 mod match_scope;
 mod mutability;
+
+pub(in crate::semantic) use generic_args::{
+    function_view, holds_an_unbound_type_param, substitute_all,
+};
 
 use super::module_resolver::ModuleResolver;
 use super::sem_type::SemType;
 use super::SemanticAnalyzer;
-use crate::ast::{BinaryOperator, Expr, File, Literal, ParamConvention, UnaryOperator};
+use crate::ast::{BinaryOperator, Expr, File, Literal, UnaryOperator};
 use std::collections::HashMap;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
@@ -278,43 +283,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.infer_field_type(&obj_type, &field.name)
             }
             Expr::MethodCall {
-                receiver, method, ..
+                receiver,
+                method,
+                args,
+                ..
             } => {
                 let receiver_type = self.infer_type_sem(receiver, file);
-                self.infer_method_return_type(&receiver_type, &method.name, file)
+                self.infer_method_return_type(&receiver_type, &method.name, args, file)
             }
             Expr::ClosureExpr {
                 params,
                 return_type,
                 body,
                 ..
-            } => {
-                // Push closure params into the inference-scope stack so
-                // references inside the body resolve to their declared
-                // types instead of "Unknown".
-                let mut frame: HashMap<String, SemType> = HashMap::new();
-                for p in params {
-                    if let Some(ty) = &p.ty {
-                        frame.insert(p.name.name.clone(), SemType::from_ast(ty));
-                    }
-                }
-                self.inference_scope_stack.borrow_mut().push(frame);
-                let inferred_body_type = self.infer_type_sem(body, file);
-                self.inference_scope_stack.borrow_mut().pop();
-                // prefer the explicit return type when present;
-                // fall back to body inference otherwise.
-                let return_ty = return_type
-                    .as_ref()
-                    .map_or(inferred_body_type, SemType::from_ast);
-                let param_tys: Vec<(ParamConvention, SemType)> = params
-                    .iter()
-                    .map(|p| {
-                        let ty = p.ty.as_ref().map_or(SemType::Unknown, SemType::from_ast);
-                        (p.convention, ty)
-                    })
-                    .collect();
-                SemType::closure(param_tys, return_ty)
-            }
+            } => self.infer_closure_sem(params, return_type.as_ref(), body, None, file),
             Expr::LetExpr { body, .. } => self.infer_type_sem(body, file),
             Expr::Block {
                 statements, result, ..

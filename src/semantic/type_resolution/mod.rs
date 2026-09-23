@@ -3,6 +3,8 @@
 
 mod validate;
 
+pub(in crate::semantic) use validate::float_key_in;
+
 use super::module_resolver::ModuleResolver;
 use super::symbol_table::{self, SymbolTable};
 use super::SemanticAnalyzer;

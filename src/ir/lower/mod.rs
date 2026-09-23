@@ -110,11 +110,6 @@ struct IrLowerer<'a> {
     /// type instead of a `TypeParam(name)` placeholder, and so that closure
     /// captures inherit the outer binding's convention.
     pub(super) local_binding_scopes: Vec<HashMap<String, (ParamConvention, ResolvedType)>>,
-    /// When lowering the body of an impl method, maps the current impl's
-    /// methods to their declared return types so that forward references
-    /// within the same impl block (`self.other_method()`) resolve without
-    /// needing the impl to already be installed in `module.impls`.
-    pub(super) current_impl_method_returns: Option<HashMap<String, Option<ResolvedType>>>,
     /// Stack of generic-parameter scopes active during lowering. Each frame
     /// records the param names in scope together with their trait
     /// constraints; used by `find_trait_for_method` to resolve which trait
@@ -247,7 +242,6 @@ impl<'a> IrLowerer<'a> {
             current_module_prefix: String::new(),
             current_function_return_type: None,
             local_binding_scopes: Vec::new(),
-            current_impl_method_returns: None,
             generic_scopes: Vec::new(),
             current_span: crate::location::Span::default(),
             current_file: crate::ir::FileId::SYNTHETIC,

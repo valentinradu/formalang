@@ -157,6 +157,56 @@ const PROGRAMS: &[Program] = &[
         what: "a nested generic",
         source: "struct Box<T> {\n    value: T\n}\n\n\
                  pub fn probe() -> I32 {\n    Box(value: Box(value: 14)).value.value\n}\n",
+    },    Program {
+        what: "a generic method used at two types",
+        source: "struct Holder {\n    value: I32\n}\n\n\
+                 impl Holder {\n    fn pair<U>(self, other: U) -> (first: I32, second: U) {\n        \
+                 (first: self.value, second: other)\n    }\n}\n\n\
+                 pub fn probe() -> I32 {\n    let a = Holder(value: 3).pair(other: \"x\")\n    \
+                 let b = Holder(value: 4).pair(other: 5)\n    \
+                 if a.second == \"x\" { a.first + b.second } else { 0 }\n}\n",
+    },
+    Program {
+        what: "a generic method on a generic struct",
+        source: "struct Box<T> {\n    value: T\n}\n\n\
+                 impl Box<T> {\n    fn map<U>(self, f: (T) -> U) -> Box<U> {\n        \
+                 Box(value: f(self.value))\n    }\n}\n\n\
+                 pub fn probe() -> I32 {\n    \
+                 if Box(value: 3).map(f: (v) -> v > 2).value { 1 } else { 0 }\n}\n",
+    },
+    Program {
+        what: "a generic method that calls a generic method and a generic function",
+        source: "fn identity<X>(x: X) -> X {\n    x\n}\n\n\
+                 struct Holder {\n    value: I32\n}\n\n\
+                 impl Holder {\n    fn pass<U>(self, other: U) -> U { identity(x: other) }\n    \
+                 fn again<U>(self, other: U) -> U { self.pass(other: other) }\n}\n\n\
+                 pub fn probe() -> I32 {\n    Holder(value: 0).again(other: 12)\n}\n",
+    },
+    Program {
+        what: "a sequence collected into a dictionary",
+        source: "pub fn probe() -> I32 {\n    \
+                 let d = for i in 0..4 { i }.collect(key: (i) -> i * 10, value: (i) -> i + 1)\n    \
+                 if let v = d[20] { v * 100 + d.len() } else { 0 }\n}\n",
+    },
+    Program {
+        what: "a map to another type than the element",
+        source: "pub fn probe() -> I32 {\n    \
+                 for i in 0..5 { i }.map(f: (i) -> i > 2).filter(f: (b) -> b).count()\n}\n",
+    },
+    Program {
+        what: "a generic method inside a generic method with a parameter of the same name",
+        source: "struct Box<T> {\n    value: T\n}\n\n\
+                 impl Box<T> {\n    \
+                 fn map<U>(self, f: (T) -> U) -> Box<U> { Box(value: f(self.value)) }\n    \
+                 fn wrap<U>(self, other: U) -> I32 {\n        \
+                 Box(value: other).map(f: (o) -> 7).value\n    }\n}\n\n\
+                 pub fn probe() -> I32 {\n    Box(value: 1).wrap(other: \"s\")\n}\n",
+    },
+    Program {
+        what: "a fold to another type than the element",
+        source: "pub fn probe() -> I32 {\n    \
+                 let seen = for i in 0..5 { i }.fold(initial: false, f: (acc, i) -> acc || i == 3)\n    \
+                 if seen { 1 } else { 0 }\n}\n",
     },
 ];
 

@@ -1,0 +1,11 @@
+// expect: compile
+// A method of an `extern impl` on a primitive may declare type
+// parameters of its own, and the call gives their types.
+
+extern impl String {
+    fn pick<U>(self, u: U) -> U
+}
+
+pub fn run() -> I32 {
+    "a".pick(u: 1)
+}

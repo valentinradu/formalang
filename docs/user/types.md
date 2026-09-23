@@ -113,6 +113,11 @@ pub struct AppConfig {
 pub let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
 pub let scores: [I32: String] = [100: "perfect", 95: "excellent"]
 pub let empty: [String: Boolean] = [:]
+
+// A dictionary made from data: see `collect` in Control Flow
+pub fn by_id(users: [User]) -> [I32: User] {
+  for u in users { u }.collect(key: (u) -> u.id, value: (u) -> u)
+}
 ```
 
 **Rules**:
@@ -120,7 +125,12 @@ pub let empty: [String: Boolean] = [:]
 - Keys can be `String`, `I32`, `I64`, `Boolean`, a struct, or an enum
 - `F32` and `F64` cannot be keys (E134). A float has no usable
   equality: `NaN` is not equal to itself, so a key can never be found
-  again, and `0.0` equals `-0.0`, so two distinct-looking keys collide
+  again, and `0.0` equals `-0.0`, so two distinct-looking keys collide.
+  The rule also applies to a key type that the compiler infers: the
+  keys of a literal, the `key` closure of `collect`, and a generic
+  call
+- A repeated key makes one entry. The later value replaces the earlier
+  one: `["a": 1, "a": 2]` holds one entry, `"a": 2`
 - String keys must be quoted in literals: `["key": value]`
 - Numeric keys are unquoted: `[42: value]`
 - Empty dict: `[:]`

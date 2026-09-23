@@ -1,0 +1,16 @@
+// expect: run
+// `collect(key:value:)` makes a dictionary. The two closures give the
+// key and the value of each element's entry.
+
+pub struct User {
+    id: I32,
+    name: String
+}
+
+pub fn run_checks() {
+    let users = [User(id: 1, name: "ada"), User(id: 2, name: "bob")]
+    let names: [I32: String] = for u in users { u }.collect(key: (u) -> u.id, value: (u) -> u.name)
+    assert(condition: names.len() == 2)
+    assert(condition: if let n = names[2] { n == "bob" } else { false })
+    assert(condition: names[3].is_none())
+}

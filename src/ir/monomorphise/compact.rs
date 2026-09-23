@@ -6,7 +6,7 @@ use crate::error::CompilerError;
 use crate::ir::{EnumId, GenericBase, IrExpr, IrModule, ResolvedType, StructId, TraitId};
 use crate::location::Span;
 
-use super::expr_walk::iter_expr_children_mut;
+use super::expr_walk::{for_each_module_expr_mut, iter_expr_children_mut};
 use super::walkers::walk_module_types_mut;
 
 /// True for the prelude-shipped generic carriers (`Array`, `Seq`,
@@ -128,11 +128,8 @@ pub(super) fn drop_specialised_generic_impls(
 
 /// Rewrite every `DispatchKind::Static { impl_id }` so it points at the
 /// compacted impl index. Called after `drop_specialised_generic_impls`.
-fn impl_index_rewrite_expr(expr: &mut IrExpr, remap: &[Option<usize>]) {
+fn impl_index_rewrite_node(expr: &mut IrExpr, remap: &[Option<usize>]) {
     use crate::ir::{DispatchKind, ImplId};
-    for child in iter_expr_children_mut(expr) {
-        impl_index_rewrite_expr(child, remap);
-    }
     if let IrExpr::MethodCall {
         dispatch: DispatchKind::Static { impl_id },
         ..
@@ -152,28 +149,7 @@ pub(super) fn apply_impl_index_remap(module: &mut IrModule, remap: &[Option<usiz
     if identity {
         return;
     }
-    for func in &mut module.functions {
-        if let Some(body) = &mut func.body {
-            impl_index_rewrite_expr(body, remap);
-        }
-    }
-    for imp in &mut module.impls {
-        for func in &mut imp.functions {
-            if let Some(body) = &mut func.body {
-                impl_index_rewrite_expr(body, remap);
-            }
-        }
-    }
-    for s in &mut module.structs {
-        for field in &mut s.fields {
-            if let Some(default) = &mut field.default {
-                impl_index_rewrite_expr(default, remap);
-            }
-        }
-    }
-    for l in &mut module.lets {
-        impl_index_rewrite_expr(&mut l.value, remap);
-    }
+    for_each_module_expr_mut(module, &mut |expr| impl_index_rewrite_node(expr, remap));
 }
 
 /// Remap struct/enum IDs across the module after compaction.

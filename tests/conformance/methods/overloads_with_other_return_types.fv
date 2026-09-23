@@ -1,0 +1,22 @@
+// expect: run
+// Two methods of one name may answer different types. The call's labels
+// say which one it means, and so which type it has.
+
+pub struct P {
+    x: I32
+}
+
+impl P {
+    fn get(self) -> I32 {
+        self.x
+    }
+    fn get(self, s: String) -> String {
+        s
+    }
+}
+
+pub fn run_checks() {
+    let s: String = P(x: 1).get(s: "a")
+    let n: I32 = P(x: 1).get()
+    assert(condition: s == "a" && n == 1)
+}

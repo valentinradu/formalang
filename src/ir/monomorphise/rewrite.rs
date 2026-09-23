@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use crate::ir::{GenericBase, IrExpr, IrGenericParam, IrImpl, IrModule, IrTraitRef, ResolvedType};
 
-use super::expr_walk::iter_expr_children_mut;
+use super::expr_walk::for_each_module_expr_mut;
 use super::specialise::{substitute_expr_types, substitute_type, Instantiation};
 use super::walkers::{walk_function_types_mut, walk_module_types_mut};
 
@@ -256,12 +256,8 @@ pub(super) const fn receiver_to_base(ty: &ResolvedType) -> Option<GenericBase> {
 /// Rewrite `DispatchKind::Static { impl_id }` at every method-call
 /// site so the id points at the per-specialisation clone created in
 /// Phase 2b. Walks every expression in the module.
-fn dispatch_rewrite_expr(expr: &mut IrExpr, impl_remap: &ImplRemap) {
+fn dispatch_rewrite_node(expr: &mut IrExpr, impl_remap: &ImplRemap) {
     use crate::ir::{DispatchKind, ImplId};
-    // Recurse first so nested method calls are rewritten too.
-    for child in iter_expr_children_mut(expr) {
-        dispatch_rewrite_expr(child, impl_remap);
-    }
     if let IrExpr::MethodCall {
         receiver,
         dispatch: DispatchKind::Static { impl_id },
@@ -281,48 +277,7 @@ pub(super) fn rewrite_dispatch_impl_ids(module: &mut IrModule, impl_remap: &Impl
     if impl_remap.is_empty() {
         return;
     }
-    // Walk every expression in the module.
-    for func in &mut module.functions {
-        if let Some(body) = &mut func.body {
-            dispatch_rewrite_expr(body, impl_remap);
-        }
-        for param in &mut func.params {
-            if let Some(default) = &mut param.default {
-                dispatch_rewrite_expr(default, impl_remap);
-            }
-        }
-    }
-    for imp in &mut module.impls {
-        for func in &mut imp.functions {
-            if let Some(body) = &mut func.body {
-                dispatch_rewrite_expr(body, impl_remap);
-            }
-            for param in &mut func.params {
-                if let Some(default) = &mut param.default {
-                    dispatch_rewrite_expr(default, impl_remap);
-                }
-            }
-        }
-    }
-    for s in &mut module.structs {
-        for field in &mut s.fields {
-            if let Some(default) = &mut field.default {
-                dispatch_rewrite_expr(default, impl_remap);
-            }
-        }
-    }
-    for e in &mut module.enums {
-        for variant in &mut e.variants {
-            for field in &mut variant.fields {
-                if let Some(default) = &mut field.default {
-                    dispatch_rewrite_expr(default, impl_remap);
-                }
-            }
-        }
-    }
-    for l in &mut module.lets {
-        dispatch_rewrite_expr(&mut l.value, impl_remap);
-    }
+    for_each_module_expr_mut(module, &mut |expr| dispatch_rewrite_node(expr, impl_remap));
 }
 
 /// Phase 2e devirtualisation: walk every method call and rewrite
@@ -339,54 +294,11 @@ pub(super) fn devirtualise_concrete_receivers(module: &mut IrModule) {
     // bodies. impls don't change shape during devirt; we only consult
     // them for `(target, trait_id, method_name)` lookup.
     let impls_snapshot = module.impls.clone();
-    for func in &mut module.functions {
-        if let Some(body) = &mut func.body {
-            devirtualise_expr(body, &impls_snapshot);
-        }
-        for param in &mut func.params {
-            if let Some(default) = &mut param.default {
-                devirtualise_expr(default, &impls_snapshot);
-            }
-        }
-    }
-    for imp in &mut module.impls {
-        for func in &mut imp.functions {
-            if let Some(body) = &mut func.body {
-                devirtualise_expr(body, &impls_snapshot);
-            }
-            for param in &mut func.params {
-                if let Some(default) = &mut param.default {
-                    devirtualise_expr(default, &impls_snapshot);
-                }
-            }
-        }
-    }
-    for s in &mut module.structs {
-        for field in &mut s.fields {
-            if let Some(default) = &mut field.default {
-                devirtualise_expr(default, &impls_snapshot);
-            }
-        }
-    }
-    for e in &mut module.enums {
-        for variant in &mut e.variants {
-            for field in &mut variant.fields {
-                if let Some(default) = &mut field.default {
-                    devirtualise_expr(default, &impls_snapshot);
-                }
-            }
-        }
-    }
-    for l in &mut module.lets {
-        devirtualise_expr(&mut l.value, &impls_snapshot);
-    }
+    for_each_module_expr_mut(module, &mut |expr| devirtualise_node(expr, &impls_snapshot));
 }
 
-fn devirtualise_expr(expr: &mut IrExpr, impls: &[IrImpl]) {
+fn devirtualise_node(expr: &mut IrExpr, impls: &[IrImpl]) {
     use crate::ir::{DispatchKind, ImplId};
-    for child in iter_expr_children_mut(expr) {
-        devirtualise_expr(child, impls);
-    }
     let IrExpr::MethodCall {
         receiver,
         method,

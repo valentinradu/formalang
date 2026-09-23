@@ -3,7 +3,8 @@
 //!
 //! Owns:
 //! - Pass 1.5 (`validate_generic_parameters`) — duplicate-parameter and
-//!   constraint-trait-existence checks.
+//!   constraint-trait-existence checks, and the checks on the type
+//!   parameters of a method.
 //! - Pass 1.6 (`infer_let_types`) — folds the inferred or annotated value
 //!   type into each binding produced by a let pattern.
 //! - The generic-scope stack (`push_generic_scope` / `pop_generic_scope`
@@ -28,42 +29,130 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Pass 1.5: Validate generic parameters
     /// Check for duplicate parameters and validate constraints
     pub(super) fn validate_generic_parameters(&mut self, file: &File) {
+        let definitions = file
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Statement::Definition(def) => Some(&**def),
+                Statement::Use(_) | Statement::Let(_) => None,
+            });
+        self.validate_generics_of(definitions);
+    }
+
+    /// Check the generic parameters of each definition in
+    /// `definitions`, and of each definition in an inline module. The
+    /// module's own names are in scope inside it, so a constraint there
+    /// may name a trait of the module.
+    fn validate_generics_of<'d>(&mut self, definitions: impl Iterator<Item = &'d Definition>) {
+        for def in definitions {
+            match def {
+                Definition::Trait(trait_def) => {
+                    self.validate_generic_list(&trait_def.generics, &[]);
+                    for method in &trait_def.methods {
+                        if let Some(first) = method.generics.first() {
+                            self.errors.push(CompilerError::GenericTraitMethod {
+                                method: method.name.name.clone(),
+                                span: first.span,
+                            });
+                        }
+                    }
+                }
+                Definition::Struct(struct_def) => {
+                    self.validate_generic_list(&struct_def.generics, &[]);
+                }
+                Definition::Impl(impl_def) => {
+                    self.validate_generic_list(&impl_def.generics, &[]);
+                    // `impl Box { ... }` may leave the type's parameters
+                    // out; the type's own declaration names them then.
+                    let outer = if impl_def.generics.is_empty() {
+                        let name = &impl_def.name.name;
+                        self.symbols
+                            .structs
+                            .get(name)
+                            .map(|s| s.generics.clone())
+                            .or_else(|| self.symbols.enums.get(name).map(|e| e.generics.clone()))
+                            .unwrap_or_default()
+                    } else {
+                        impl_def.generics.clone()
+                    };
+                    for method in &impl_def.functions {
+                        self.validate_method_generics(method, &outer);
+                    }
+                }
+                Definition::Enum(enum_def) => {
+                    self.validate_generic_list(&enum_def.generics, &[]);
+                }
+                Definition::Function(func_def) => {
+                    self.validate_generic_list(&func_def.generics, &[]);
+                }
+                Definition::Module(module_def) => {
+                    let shadowed = self.enter_module_scope(module_def);
+                    self.validate_generics_of(module_def.definitions.iter());
+                    self.leave_module_scope(shadowed);
+                }
+            }
+        }
+    }
+
+    /// Check the type parameters that a method declares.
+    ///
+    /// A method call takes no `<...>`, so each type parameter must
+    /// appear in the type of a parameter with no default: the arguments
+    /// that every call gives must give it its type. A name that the impl block or its type declares already is
+    /// a duplicate, because the method could not name the outer one.
+    fn validate_method_generics(
+        &mut self,
+        method: &crate::ast::FnDef,
+        impl_generics: &[crate::ast::GenericParam],
+    ) {
+        self.validate_generic_list(&method.generics, impl_generics);
+        for generic in &method.generics {
+            let name = std::slice::from_ref(&generic.name.name);
+            // A parameter with a default may be left out, and then it
+            // gives no type.
+            let mentioned = method.params.iter().any(|p| {
+                p.default.is_none()
+                    && p.ty.as_ref().is_some_and(|ty| {
+                        super::validation::type_names::type_mentions_any(ty, name)
+                    })
+            });
+            if !mentioned {
+                self.errors
+                    .push(CompilerError::UninferableMethodTypeParameter {
+                        param: generic.name.name.clone(),
+                        method: method.name.name.clone(),
+                        span: generic.span,
+                    });
+            }
+        }
+    }
+
+    /// Report a parameter of `generics` that repeats a name of
+    /// `generics` or of `outer`, and a constraint that names no trait.
+    fn validate_generic_list(
+        &mut self,
+        generics: &[crate::ast::GenericParam],
+        outer: &[crate::ast::GenericParam],
+    ) {
         use crate::ast::GenericConstraint;
 
-        for statement in &file.statements {
-            if let Statement::Definition(def) = statement {
-                let generics = match &**def {
-                    Definition::Trait(trait_def) => &trait_def.generics,
-                    Definition::Struct(struct_def) => &struct_def.generics,
-                    Definition::Impl(impl_def) => &impl_def.generics,
-                    Definition::Enum(enum_def) => &enum_def.generics,
-                    Definition::Function(func_def) => &func_def.generics,
-                    // Module definitions don't carry generics themselves;
-                    // nested definitions are validated via their own arms.
-                    Definition::Module(_) => continue,
-                };
+        let mut seen_params: HashSet<&String> = outer.iter().map(|p| &p.name.name).collect();
+        for param in generics {
+            if !seen_params.insert(&param.name.name) {
+                self.errors.push(CompilerError::DuplicateGenericParam {
+                    param: param.name.name.clone(),
+                    span: param.span,
+                });
+            }
 
-                // Check for duplicate generic parameters
-                let mut seen_params = HashSet::new();
-                for param in generics {
-                    if !seen_params.insert(&param.name.name) {
-                        self.errors.push(CompilerError::DuplicateGenericParam {
-                            param: param.name.name.clone(),
-                            span: param.span,
-                        });
-                    }
-
-                    // Validate constraints reference valid traits
-                    for constraint in &param.constraints {
-                        match constraint {
-                            GenericConstraint::Trait { name, .. } => {
-                                if !self.symbols.is_trait(&name.name) {
-                                    self.errors.push(CompilerError::UndefinedTrait {
-                                        name: name.name.clone(),
-                                        span: name.span,
-                                    });
-                                }
-                            }
+            for constraint in &param.constraints {
+                match constraint {
+                    GenericConstraint::Trait { name, .. } => {
+                        if !self.symbols.is_trait(&name.name) {
+                            self.errors.push(CompilerError::UndefinedTrait {
+                                name: name.name.clone(),
+                                span: name.span,
+                            });
                         }
                     }
                 }

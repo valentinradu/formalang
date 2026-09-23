@@ -4609,3 +4609,71 @@ impl Signal {
     }
     Ok(())
 }
+
+/// A call inside an impl to a method of another type takes that
+/// method's return type, even when the impl declares a method with the
+/// same name. The lowering looked up a map of the impl's own methods by
+/// name first, so `for x in xs { x }.count()` inside an impl with a
+/// `count` that answers `String` was typed `String`.
+#[test]
+fn a_same_named_method_of_another_type_keeps_its_return_type(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = r"
+        pub struct Row { name: String }
+        impl Row {
+            fn count(self) -> String { self.name }
+            fn total(self, xs: [I32]) -> I32 { for x in xs { x }.count() }
+        }
+    ";
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let total = module
+        .impls
+        .iter()
+        .flat_map(|imp| &imp.functions)
+        .find(|f| f.name == "total")
+        .ok_or("no method `total`")?;
+    let body_ty = total.body.as_ref().ok_or("`total` has no body")?.ty();
+    if *body_ty != formalang::ir::ResolvedType::Primitive(formalang::ast::PrimitiveType::I32) {
+        return Err(format!("expected I32, got {body_ty:?}").into());
+    }
+    Ok(())
+}
+
+/// A generic method called inside another generic method with a type
+/// parameter of the same name keeps its own. In `wrap<U>`, the receiver
+/// `Box(value: other)` is a `Box<U>` of the caller's `U`, and `map<U>`
+/// has a `U` too. The lowering met the two names in one type and bound
+/// `map`'s `U` to the caller's, so the copy of `wrap` for `String` typed
+/// `.value` as `String` where the program gives an `I32`.
+#[test]
+fn a_method_type_parameter_is_not_captured_by_the_caller() -> Result<(), Box<dyn std::error::Error>>
+{
+    use formalang::ir::MonomorphisePass;
+    use formalang::Pipeline;
+    let source = r#"
+        pub struct Box<T> { value: T }
+        impl Box<T> {
+            fn map<U>(self, f: (T) -> U) -> Box<U> { Box(value: f(self.value)) }
+            fn wrap<U>(self, other: U) -> I32 {
+                Box(value: other).map(f: (o) -> 7).value
+            }
+        }
+        pub fn probe() -> I32 { Box(value: 1).wrap(other: "s") }
+    "#;
+    let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
+    let module = Pipeline::new()
+        .pass(MonomorphisePass::default())
+        .run(module)
+        .map_err(|e| format!("{e:?}"))?;
+    let wrap = module
+        .impls
+        .iter()
+        .flat_map(|imp| &imp.functions)
+        .find(|f| f.name.starts_with("wrap__"))
+        .ok_or("no copy of `wrap`")?;
+    let body_ty = wrap.body.as_ref().ok_or("`wrap` has no body")?.ty();
+    if *body_ty != formalang::ir::ResolvedType::Primitive(formalang::ast::PrimitiveType::I32) {
+        return Err(format!("expected I32, got {body_ty:?}").into());
+    }
+    Ok(())
+}

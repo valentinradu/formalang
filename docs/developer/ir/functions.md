@@ -12,10 +12,12 @@ pub struct IrFunction {
     /// Function name
     pub name: String,
 
-    /// Generic type parameters declared on the function itself
-    /// (e.g. `fn identity<T>(x: T) -> T`). Empty for impl methods;
-    /// method-level generics aren't yet supported; enclosing-type
-    /// generics live on the containing `IrImpl` / `IrStruct`.
+    /// Generic type parameters declared on the function or method
+    /// itself (e.g. `fn identity<T>(x: T) -> T`,
+    /// `fn map<U>(self, f: (T) -> U) -> Box<U>`). Enclosing-type
+    /// generics live on the containing `IrImpl` / `IrStruct`. After
+    /// `MonomorphisePass`, only an extern method keeps its own: it has
+    /// no body to specialise, and each call carries the concrete types.
     pub generic_params: Vec<IrGenericParam>,
 
     /// Parameters (first is `self` for methods; no `self` for standalone functions)

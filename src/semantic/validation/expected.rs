@@ -56,6 +56,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         if let Some(SemType::Closure { params: slots, .. }) = expected {
             if slots.len() == params.len() {
+                // A slot that holds a type parameter of the callee that
+                // no argument binds gives the parameter no type: in
+                // `apply<U>(f: (U) -> I32)`, nothing says what `U` is.
+                for (param, (_, slot)) in params.iter().zip(slots) {
+                    if param.ty.is_none()
+                        && crate::semantic::inference::holds_an_unbound_type_param(slot)
+                    {
+                        self.errors.push(CompilerError::ClosureParameterNeedsType {
+                            param: param.name.name.clone(),
+                            span: param.name.span,
+                        });
+                    }
+                }
                 return;
             }
             // A closure with the wrong number of parameters. Its shape
@@ -159,7 +172,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// `SemType::Unknown` when no parameter fits the argument, or when
     /// the parameter has no type: the call check reports that.
-    pub(in crate::semantic::validation) fn expected_argument(
+    pub(in crate::semantic) fn expected_argument(
         params: &[ParamView<'_>],
         index: usize,
         label: Option<&Ident>,
@@ -190,6 +203,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(in crate::semantic::validation) fn invocation_argument_types(
         &self,
         name: &str,
+        type_args: &[crate::ast::Type],
         args: &[(Option<Ident>, Expr)],
         file: &File,
     ) -> Vec<Option<SemType>> {
@@ -215,33 +229,53 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
 
         let simple_name = name.rsplit("::").next().unwrap_or(name);
-        let overloads = {
-            let direct = self.symbols.get_function_overloads(name);
-            if direct.is_empty() {
-                self.symbols.get_function_overloads(simple_name)
-            } else {
-                direct
-            }
-        };
-        match overloads {
+        let overloads = self.function_overloads(name);
+        match &*overloads {
             [] => match self.lookup_closure_type(simple_name) {
                 Some(SemType::Closure { params, .. }) => (0..args.len())
                     .map(|i| Some(params.get(i).map_or(SemType::Unknown, |(_, ty)| ty.clone())))
                     .collect(),
                 _ => unknown(),
             },
-            [only] => {
-                let views: Vec<_> = only.params.iter().map(ParamView::of_param_info).collect();
-                for_views(&views)
-            }
+            [only] => self.function_argument_types(only, type_args, args, file),
             several => match self.most_specific_overloads(several, args, file).as_slice() {
-                [fits] => {
-                    let views: Vec<_> = fits.params.iter().map(ParamView::of_param_info).collect();
-                    for_views(&views)
-                }
+                [fits] => self.function_argument_types(fits, type_args, args, file),
                 _ => unknown(),
             },
         }
+    }
+
+    /// The expected type of each argument of a call to `function`.
+    ///
+    /// Its type parameters read as the call gives them: a written type
+    /// argument, or the type that the other arguments bind. A name that
+    /// nothing binds stays, and the closure check reports an untyped
+    /// parameter that it types.
+    fn function_argument_types(
+        &self,
+        function: &crate::semantic::symbol_table::FunctionInfo,
+        type_args: &[crate::ast::Type],
+        args: &[(Option<Ident>, Expr)],
+        file: &File,
+    ) -> Vec<Option<SemType>> {
+        let views: Vec<_> = function
+            .params
+            .iter()
+            .map(ParamView::of_param_info)
+            .collect();
+        let (view, fresh) =
+            crate::semantic::inference::function_view(&function.generics, type_args);
+        let outer = |ty| crate::semantic::inference::substitute_all(&ty, &view);
+        let bindings = self.bind_call_generics(&fresh, &views, &outer, args, file);
+        args.iter()
+            .enumerate()
+            .map(|(i, (label, _))| {
+                let declared = outer(Self::expected_argument(&views, i, label.as_ref()));
+                Some(crate::semantic::inference::substitute_all(
+                    &declared, &bindings,
+                ))
+            })
+            .collect()
     }
 
     /// Whether `name` names a type in scope: a struct, an enum, a

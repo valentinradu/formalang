@@ -1,0 +1,16 @@
+// expect: reject FunctionReturnTypeMismatch
+// The closure answers a Boolean, so `map` answers a Box<Boolean>.
+
+pub struct Box<T> {
+    value: T
+}
+
+impl Box<T> {
+    fn map<U>(self, f: (T) -> U) -> Box<U> {
+        Box(value: f(self.value))
+    }
+}
+
+pub fn f() -> Box<I32> {
+    Box(value: 3).map(f: (v) -> v > 2)
+}

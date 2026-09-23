@@ -15,24 +15,61 @@
 
 use crate::ir::IrFunctionParam;
 
+/// A parameter, as the overload rule reads it. The IR's parameters and
+/// the AST's both have one, so semantic analysis and lowering choose
+/// an overload with the same code. Each held its own rule before, and
+/// the two could choose different methods for one call.
+pub(crate) trait OverloadParam {
+    /// The parameter's name.
+    fn param_name(&self) -> &str;
+    /// The label a call may give it instead of its name.
+    fn call_label(&self) -> Option<&str>;
+    /// Whether a call may leave it out.
+    fn has_default(&self) -> bool;
+}
+
+impl OverloadParam for IrFunctionParam {
+    fn param_name(&self) -> &str {
+        &self.name
+    }
+    fn call_label(&self) -> Option<&str> {
+        self.external_label.as_deref()
+    }
+    fn has_default(&self) -> bool {
+        self.default.is_some()
+    }
+}
+
+impl OverloadParam for crate::ast::FnParam {
+    fn param_name(&self) -> &str {
+        &self.name.name
+    }
+    fn call_label(&self) -> Option<&str> {
+        self.external_label.as_ref().map(|l| l.name.as_str())
+    }
+    fn has_default(&self) -> bool {
+        self.default.is_some()
+    }
+}
+
 /// Whether a call with these labels and this many arguments fits a
 /// definition with these parameters.
 ///
 /// `self` is not counted: a method call supplies its receiver
 /// separately.
 #[must_use]
-pub(crate) fn call_fits(
-    params: &[IrFunctionParam],
+pub(crate) fn call_fits<P: OverloadParam>(
+    params: &[P],
     arg_labels: &[Option<String>],
     arg_count: usize,
 ) -> bool {
-    let params: Vec<&IrFunctionParam> = params.iter().filter(|p| p.name != "self").collect();
+    let params: Vec<&P> = params.iter().filter(|p| p.param_name() != "self").collect();
 
     // Every label the call gives has to name a parameter.
     let labels_fit = arg_labels.iter().flatten().all(|label| {
         params
             .iter()
-            .any(|p| p.name == *label || p.external_label.as_ref() == Some(label))
+            .any(|p| p.param_name() == label || p.call_label() == Some(label.as_str()))
     });
     if !labels_fit {
         return false;
@@ -40,7 +77,7 @@ pub(crate) fn call_fits(
 
     // A parameter with a default may be left out, so the count has to
     // land between what is required and what is declared.
-    let required = params.iter().filter(|p| p.default.is_none()).count();
+    let required = params.iter().filter(|p| !p.has_default()).count();
     arg_count >= required && arg_count <= params.len()
 }
 
@@ -51,8 +88,8 @@ pub(crate) fn call_fits(
 /// means. `fn add(n: I32)` and `fn add(n: I32, m: I32 = 0)` both fit
 /// `add(n: 1)`, and the first is meant.
 #[must_use]
-fn defaults_fired(params: &[IrFunctionParam], arg_count: usize) -> usize {
-    let declared = params.iter().filter(|p| p.name != "self").count();
+fn defaults_fired<P: OverloadParam>(params: &[P], arg_count: usize) -> usize {
+    let declared = params.iter().filter(|p| p.param_name() != "self").count();
     declared.saturating_sub(arg_count)
 }
 
@@ -61,14 +98,15 @@ fn defaults_fired(params: &[IrFunctionParam], arg_count: usize) -> usize {
 /// Returns the index into `candidates`. `None` when nothing fits,
 /// which leaves the caller to report the call rather than guess.
 #[must_use]
-pub(crate) fn choose<'a, T>(
+pub(crate) fn choose<'a, T, P>(
     candidates: impl Iterator<Item = (usize, &'a T)>,
-    params_of: impl Fn(&'a T) -> &'a [IrFunctionParam],
+    params_of: impl Fn(&'a T) -> &'a [P],
     arg_labels: &[Option<String>],
     arg_count: usize,
 ) -> Option<usize>
 where
     T: 'a,
+    P: OverloadParam + 'a,
 {
     let mut best: Option<(usize, usize)> = None;
     for (index, candidate) in candidates {
@@ -100,10 +138,10 @@ where
 /// rule: lowering writes it, and `ResolveReferencesPass` writes it
 /// again over a module it did not lower. One copy is enough.
 #[must_use]
-pub(crate) fn method_index<'a, T>(
+pub(crate) fn method_index<'a, T, P: OverloadParam + 'a>(
     methods: &'a [T],
     name_of: impl Fn(&'a T) -> &'a str,
-    params_of: impl Fn(&'a T) -> &'a [IrFunctionParam],
+    params_of: impl Fn(&'a T) -> &'a [P],
     method_name: &str,
     arg_labels: &[Option<String>],
     arg_count: usize,

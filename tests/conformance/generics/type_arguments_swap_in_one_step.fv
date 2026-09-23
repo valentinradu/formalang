@@ -1,0 +1,16 @@
+// expect: run
+// `A` takes the caller's `B` and `B` the caller's `A`, both at once.
+// Replacing one name after the other made both `A`.
+
+fn swap<A, B>(a: A, b: B) -> (x: B, y: A) {
+    (x: b, y: a)
+}
+
+fn flip<A, B>(p: B, q: A) -> (x: A, y: B) {
+    swap(a: p, b: q)
+}
+
+pub fn run_checks() {
+    let r = flip(p: "s", q: 1)
+    assert(condition: r.x == 1 && r.y == "s")
+}

@@ -80,6 +80,42 @@ pub let maybe: Option<I32> = .some(value: 42)
 pub let nothing: Option<I32> = .none
 ```
 
+## Generic Methods
+
+A method can declare its own type parameters, after its name. They
+sit beside the type parameters of the impl block:
+
+```formalang
+pub struct Box<T> {
+  value: T
+}
+
+impl Box<T> {
+  fn map<U>(self, f: (T) -> U) -> Box<U> {
+    Box(value: f(self.value))
+  }
+}
+
+pub let flag = Box(value: 3).map(f: (v) -> v > 2)   // Box<Boolean>
+```
+
+**Rules**:
+
+- A method call takes no `<...>`. The arguments give each type
+  parameter its type, so each one must appear in the type of a
+  parameter with no default (E147). A call may leave out a parameter
+  with a default, and then that parameter gives no type
+- A closure argument can give a type parameter its type through its
+  return type: `U` above takes the type that `f` answers. A closure
+  parameter with no type cannot: in `fn apply<U>(self, f: (U) -> I32)`,
+  the call `b.apply(f: (x) -> 1)` gives `x` no type (E145). Write it:
+  `(x: String) -> 1`
+- A method type parameter cannot repeat a name of its impl block, or of
+  the type when the impl block names none (E084)
+- A trait method cannot declare type parameters (E146)
+- A type parameter hides a type with the same name inside its
+  definition
+
 ## Type Constraints
 
 ```formalang

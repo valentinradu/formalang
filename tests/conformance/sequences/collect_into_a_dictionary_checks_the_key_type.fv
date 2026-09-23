@@ -1,0 +1,11 @@
+// expect: reject FunctionReturnTypeMismatch
+// The key closure answers I32, so the dictionary is [I32: String].
+
+pub struct User {
+    id: I32,
+    name: String
+}
+
+pub fn names(users: [User]) -> [String: String] {
+    for u in users { u }.collect(key: (u) -> u.id, value: (u) -> u.name)
+}

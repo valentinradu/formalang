@@ -233,6 +233,12 @@ pub struct ImplDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnDef {
     pub name: Ident,
+    /// The type parameters of the method itself: `U` in
+    /// `fn map<U>(self, f: (T) -> U) -> [U]`. Empty for a method that
+    /// has none. The type parameters of the impl block are on
+    /// [`ImplDef::generics`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     /// `None` in `extern impl`; `Some(_)` in regular impl.
@@ -259,6 +265,11 @@ pub struct FnDef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnSig {
     pub name: Ident,
+    /// The type parameters of the method itself. A trait method may
+    /// not declare any: semantic analysis reports
+    /// [`crate::error::CompilerError::GenericTraitMethod`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     /// Codegen attributes on the trait method declaration. Each entry

@@ -6,13 +6,55 @@ mod functions;
 pub(in crate::semantic) mod overloads;
 mod structs;
 
+use std::borrow::Cow;
+
 use super::super::module_resolver::ModuleResolver;
+use super::super::symbol_table::{FunctionInfo, SymbolTable};
 use super::super::SemanticAnalyzer;
-use crate::ast::{Expr, File};
+use crate::ast::{Expr, File, Ident, Type};
 use crate::error::CompilerError;
 use crate::location::Span;
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// The overloads of the function that a call names.
+    ///
+    /// The name as written first. A qualified name such as `m::id`
+    /// then names `id` in the module `m`, in this file or in an
+    /// imported module. The last segment alone was the fallback
+    /// before, so `m::id<I32>(...)` found no function (or a top-level
+    /// `id` that is another function): the call reported the wrong
+    /// number of type arguments, and its arguments had no type check.
+    ///
+    /// A function of a module names the module's types without the
+    /// prefix. The copy returned for one reads them as the caller does,
+    /// `m::E`, so its parameter types compare with the caller's.
+    pub(in crate::semantic::validation) fn function_overloads(
+        &self,
+        name: &str,
+    ) -> Cow<'_, [FunctionInfo]> {
+        let direct = self.symbols.get_function_overloads(name);
+        if !direct.is_empty() {
+            return Cow::Borrowed(direct);
+        }
+        let Some((module, last)) = name.rsplit_once("::") else {
+            return Cow::Borrowed(direct);
+        };
+        let segments: Vec<&str> = module.split("::").collect();
+        let found = overloads_in(&self.symbols, &segments, last).or_else(|| {
+            self.module_cache
+                .values()
+                .find_map(|(_, symbols)| overloads_in(symbols, &segments, last))
+        });
+        found.map_or(Cow::Borrowed(direct), |(symbols, overloads)| {
+            Cow::Owned(
+                overloads
+                    .iter()
+                    .map(|info| qualify_function(info, symbols, module))
+                    .collect(),
+            )
+        })
+    }
+
     /// Check module visibility for a multi-segment path (`mod::item`,
     /// `outer::inner::item`, etc.).
     ///
@@ -100,7 +142,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .collect::<Vec<_>>()
             .join("::");
 
-        let expected = self.invocation_argument_types(&name, args, file);
+        let expected = self.invocation_argument_types(&name, type_args, args, file);
         for ((_, arg_expr), arg_expected) in args.iter().zip(expected) {
             self.validate_expr_expecting(arg_expr, arg_expected, file);
         }
@@ -119,5 +161,84 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         } else {
             self.validate_expr_invocation_function(&name, type_args, args, span, file);
         }
+    }
+}
+
+/// The overloads of `last` in the module that `segments` names, inside
+/// `symbols`, with the symbol table of that module. `None` when the
+/// module or the function is not there.
+fn overloads_in<'s>(
+    symbols: &'s SymbolTable,
+    segments: &[&str],
+    last: &str,
+) -> Option<(&'s SymbolTable, &'s [FunctionInfo])> {
+    let mut current = symbols;
+    for part in segments {
+        current = &current.modules.get(*part)?.symbols;
+    }
+    let found = current.get_function_overloads(last);
+    (!found.is_empty()).then_some((current, found))
+}
+
+/// `info` with each type that the module `module` declares written with
+/// the module's prefix, as code outside the module names it.
+fn qualify_function(info: &FunctionInfo, module: &SymbolTable, prefix: &str) -> FunctionInfo {
+    let mut out = info.clone();
+    for param in &mut out.params {
+        if let Some(ty) = &mut param.ty {
+            *ty = qualify_type(ty, module, prefix);
+        }
+    }
+    if let Some(ty) = &mut out.return_type {
+        *ty = qualify_type(ty, module, prefix);
+    }
+    out
+}
+
+/// `ty` with each name that `module` declares as a type or a trait
+/// written as `prefix::name`.
+fn qualify_type(ty: &Type, module: &SymbolTable, prefix: &str) -> Type {
+    let qualify = |ident: &Ident| {
+        if module.is_type(&ident.name) || module.is_trait(&ident.name) {
+            Ident::new(format!("{prefix}::{}", ident.name), ident.span)
+        } else {
+            ident.clone()
+        }
+    };
+    let inner = |t: &Type| Box::new(qualify_type(t, module, prefix));
+    match ty {
+        Type::Ident(ident) => Type::Ident(qualify(ident)),
+        Type::Generic { name, args, span } => Type::Generic {
+            name: qualify(name),
+            args: args
+                .iter()
+                .map(|a| qualify_type(a, module, prefix))
+                .collect(),
+            span: *span,
+        },
+        Type::Array(t) => Type::Array(inner(t)),
+        Type::Optional(t) => Type::Optional(inner(t)),
+        Type::Tuple(fields) => Type::Tuple(
+            fields
+                .iter()
+                .map(|f| {
+                    let mut field = f.clone();
+                    field.ty = qualify_type(&f.ty, module, prefix);
+                    field
+                })
+                .collect(),
+        ),
+        Type::Dictionary { key, value } => Type::Dictionary {
+            key: inner(key),
+            value: inner(value),
+        },
+        Type::Closure { params, ret } => Type::Closure {
+            params: params
+                .iter()
+                .map(|(c, t)| (*c, qualify_type(t, module, prefix)))
+                .collect(),
+            ret: inner(ret),
+        },
+        Type::Primitive(_) => ty.clone(),
     }
 }

@@ -14,6 +14,7 @@ mod reference;
 
 use super::super::module_resolver::ModuleResolver;
 use super::super::sem_type::SemType;
+use super::super::type_resolution::float_key_in;
 use super::super::SemanticAnalyzer;
 use crate::ast::{Expr, File};
 use crate::error::CompilerError;
@@ -31,6 +32,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // The expected type is for this expression only. Each child
         // gets its own through `validate_expr_expecting`.
         let expected = self.expected_type.take();
+        // A float key in the expected type is reported where the type
+        // is written; the value does not report it again.
+        let key_reported = expected
+            .as_ref()
+            .is_some_and(|t| float_key_in(t, true).is_some());
         self.validate_expr_depth = self.validate_expr_depth.saturating_add(1);
         if self.validate_expr_depth > MAX_EXPR_DEPTH {
             self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
@@ -79,6 +85,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             } => {
                 self.validate_expr_invocation(path, type_args, args, *span, file);
+                if !key_reported {
+                    self.check_function_float_key(path, type_args, args, *span, file);
+                }
             }
             Expr::EnumInstantiation {
                 enum_name,
@@ -259,22 +268,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
             Expr::Group { expr, .. } => self.validate_expr_expecting(expr, expected, file),
             Expr::DictLiteral { entries, span, .. } => {
-                let (key_expected, value_expected) = Self::expected_entry(expected.as_ref());
-                for (key, value) in entries {
-                    self.validate_expr_expecting(key, key_expected.clone(), file);
-                    self.validate_expr_expecting(value, value_expected.clone(), file);
-                }
-                // Escape analysis: closure values stored as dict keys/values escape.
-                for (key, value) in entries {
-                    self.escape_closure_value(key);
-                    self.escape_closure_value(value);
-                }
-                // unify key types and value types across
-                // entries so a heterogeneous dict literal
-                // (`["a": 1, "b": "two"]`) surfaces as a real
-                // TypeMismatch instead of silently using the first
-                // entry's type.
-                self.validate_dict_homogeneity(entries, *span, file);
+                self.validate_dict_literal(entries, *span, expected.as_ref(), key_reported, file);
             }
             Expr::DictAccess { dict, key, span } => {
                 self.validate_expr(dict, file);
@@ -400,7 +394,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 args,
                 span,
             } => {
-                self.validate_expr_method_call(receiver, method, args.as_slice(), *span, file);
+                let call = (receiver.as_ref(), method, args.as_slice());
+                self.validate_expr_method_call(call, *span, key_reported, file);
             }
             Expr::Block {
                 statements, result, ..
@@ -408,7 +403,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_expr_block(statements, result, expected, file);
             }
         }
-
         self.validate_expr_depth = self.validate_expr_depth.saturating_sub(1);
     }
 

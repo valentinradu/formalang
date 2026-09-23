@@ -5,26 +5,6 @@ use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
 use crate::ast::{Expr, File};
 
-/// Apply a `param -> concrete` substitution map structurally to a
-/// `SemType`, but only for names that appear in `param_names` (the
-/// active generic-parameter set). Used by `specialise_generic_return`
-/// so `fn f<T>(xs: [T]) -> T?` returns the substituted `I32?` instead
-/// of `T?`.
-fn substitute_named_in_sem(
-    ty: &SemType,
-    bindings: &HashMap<String, SemType>,
-    param_names: &std::collections::HashSet<String>,
-) -> SemType {
-    let mut out = ty.clone();
-    for (name, concrete) in bindings {
-        if !param_names.contains(name) {
-            continue;
-        }
-        out = out.substitute_named(name, concrete);
-    }
-    out
-}
-
 /// Walk `pattern` (a struct field's declared `SemType` mentioning
 /// `Named(T)` placeholders for type parameters) alongside `concrete`
 /// (the inferred argument type) and record each `T -> concrete` binding
@@ -36,7 +16,7 @@ fn substitute_named_in_sem(
 /// purposes of type-arg inference we treat any `Named` whose name is
 /// among the struct's generic parameters as a placeholder. Callers
 /// filter the resulting bindings to the parameter set.
-fn unify_sem(pattern: &SemType, concrete: &SemType, out: &mut HashMap<String, SemType>) {
+pub(super) fn unify_sem(pattern: &SemType, concrete: &SemType, out: &mut HashMap<String, SemType>) {
     match (pattern, concrete) {
         (SemType::Named(name), other) => {
             out.entry(name.clone()).or_insert_with(|| other.clone());
@@ -236,7 +216,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // keep the original generic-param string — extending
             // this to compound shapes lives with the broader generic-
             // function inference work.
-            self.specialise_generic_return(func_info, raw, args, file)
+            self.specialise_generic_return(func_info, &raw, type_args, args, file)
         } else if path.len() >= 2 {
             // resolve impl-block static method calls
             // (`Type::method(...)`), enum variant constructors
@@ -257,7 +237,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 return SemType::Named(receiver.clone());
             }
             // Module-qualified function: walk through module symbol tables.
-            if let Some(ret) = self.lookup_qualified_function_return(path, args, file) {
+            if let Some(ret) = self.lookup_qualified_function_return(path, type_args, args, file) {
                 return ret;
             }
             SemType::Unknown
@@ -389,37 +369,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn specialise_generic_return(
         &self,
         func_info: &super::super::symbol_table::FunctionInfo,
-        raw_ret: SemType,
+        raw_ret: &SemType,
+        type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
         file: &File,
     ) -> SemType {
-        if func_info.generics.is_empty() {
-            return raw_ret;
-        }
-        let param_names: std::collections::HashSet<String> = func_info
-            .generics
+        let views: Vec<_> = func_info
+            .params
             .iter()
-            .map(|g| g.name.name.clone())
+            .map(crate::semantic::validation::invocation::overloads::ParamView::of_param_info)
             .collect();
-        let mut bindings: HashMap<String, SemType> = HashMap::new();
-        for (i, param) in func_info.params.iter().enumerate() {
-            let Some(declared_ast) = &param.ty else {
-                continue;
-            };
-            let arg_expr = args
-                .iter()
-                .find_map(|(n, e)| {
-                    n.as_ref()
-                        .filter(|name| name.name == param.name.name)
-                        .map(|_| e)
-                })
-                .or_else(|| args.get(i).map(|(_, e)| e));
-            let Some(arg) = arg_expr else { continue };
-            let declared_sem = SemType::from_ast(declared_ast);
-            let arg_sem = self.infer_type_sem(arg, file);
-            unify_sem(&declared_sem, &arg_sem, &mut bindings);
+        let (view, fresh) = super::generic_args::function_view(&func_info.generics, type_args);
+        let outer = |ty: SemType| super::generic_args::substitute_all(&ty, &view);
+        let mut bindings = self.bind_call_generics(&fresh, &views, &outer, args, file);
+        // A parameter that no argument binds is not known here.
+        for name in &fresh {
+            bindings.entry(name.clone()).or_insert(SemType::Unknown);
         }
-        substitute_named_in_sem(&raw_ret, &bindings, &param_names)
+        super::generic_args::substitute_all(&outer(raw_ret.clone()), &bindings)
     }
 
     /// Resolve a qualified function path (`a::b::compute`) by walking
@@ -429,6 +396,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     fn lookup_qualified_function_return(
         &self,
         path: &[crate::ast::Ident],
+        type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, Expr)],
         file: &File,
     ) -> Option<SemType> {
@@ -458,7 +426,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 // `m::identity(item: 7)` came back as the bare `T`,
                 // and every use of the result was a type mismatch
                 // against a parameter the call had already fixed.
-                self.specialise_generic_return(f, raw, args, file)
+                self.specialise_generic_return(f, &raw, type_args, args, file)
             })
         };
         if let Some(ty) = look(&self.symbols) {
