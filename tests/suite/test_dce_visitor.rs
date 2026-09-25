@@ -811,7 +811,7 @@ fn test_visitor_walk_full_module() -> Result<(), Box<dyn std::error::Error>> {
         }
         pub enum Color { red, green, blue }
         impl Circle {
-            fn scale(factor: I32) -> I32 { self.radius }
+            fn scale(self, factor: I32) -> I32 { self.radius }
         }
         pub let pi: I32 = 3
     ";
@@ -1047,8 +1047,8 @@ fn test_visitor_walk_method_call() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Rect { width: I32, height: I32 }
         impl Rect {
-            fn area() -> I32 { self.width }
-            fn compute() -> I32 { self.area() }
+            fn area(self) -> I32 { self.width }
+            fn compute(self) -> I32 { self.area() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1204,7 +1204,7 @@ fn test_visitor_walk_field_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> I32 { self.x }
+            fn get_x(self) -> I32 { self.x }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;

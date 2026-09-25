@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/functions.md: Mode B, with no labels the type of the first
+// positional argument picks the overload.
+fn process(v: I32) -> String { "number" }
+fn process(v: String) -> String { "string" }
+
+pub fn run_checks() {
+    assert(condition: process(1) == "number")
+    assert(condition: process("a") == "string")
+}

@@ -1,0 +1,3 @@
+// expect: compile
+// A closure type names types only, so two `I32` parameters are fine.
+struct S { f: (I32, I32) -> I32 }

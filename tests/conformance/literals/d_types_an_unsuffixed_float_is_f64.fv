@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: F64 is the default for unsuffixed float literals,
+// so an unsuffixed float does not fit an F32 binding with no context.
+pub fn run_checks() {
+    let c = 3.14
+    let d: F32 = c
+    assert(condition: d > 0.0F32)
+}

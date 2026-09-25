@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: the parameters of a function may not repeat a
+// name.
+extern fn f(a: I32, a: I32) -> I32

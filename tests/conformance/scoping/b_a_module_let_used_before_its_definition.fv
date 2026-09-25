@@ -1,0 +1,10 @@
+// expect: run
+// Module-level definitions are order-free. A function may read a module
+// `let` that comes later in the file.
+pub fn f() -> I32 { LATER + 1 }
+
+let LATER: I32 = 41
+
+pub fn run_checks() {
+    assert(condition: f() == 42)
+}

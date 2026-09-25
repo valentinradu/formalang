@@ -1,0 +1,6 @@
+// expect: reject ParseError
+// docs/user/expressions.md has no optional chaining. `u?.name` is not a
+// form of the language.
+pub struct U { name: String }
+
+pub fn f(u: U?) -> String? { u?.name }

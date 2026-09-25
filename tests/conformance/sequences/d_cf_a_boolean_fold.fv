@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/control-flow.md: the accumulator of `fold` takes the type of
+// `initial`.
+pub fn run_checks() {
+    let xs = [1, 20]
+    let any_big: Boolean = for x in xs { x }.fold(initial: false, f: (seen, x) -> seen || x > 10)
+    assert(condition: any_big)
+}

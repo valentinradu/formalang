@@ -1,0 +1,11 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts the associated
+// data in parameter order. `y` is a String, so `x + y` adds an I32 and
+// a String.
+pub enum Point { at(x: I32, y: String) }
+pub fn sum(p: Point) -> I32 {
+    let (x, y) = p
+    x + y
+}

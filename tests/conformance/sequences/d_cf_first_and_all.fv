@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/control-flow.md: `first` and `all` are terminals.
+pub fn run_checks() {
+    let f: I32 = if let n = for x in [4, 5] { x }.first() { n } else { 0 }
+    assert(condition: f == 4)
+    let e = for x in [4, 5] { x }.filter(f: (v) -> v > 9).first()
+    assert(condition: e == nil)
+    assert(condition: for x in [4, 5] { x }.all(f: (v) -> v > 3))
+}

@@ -1,0 +1,31 @@
+// expect: run
+// PLAN.md phase 13 item 4: one type may implement two instances of one
+// generic trait. `Container<I32>` and `Container<String>` are two
+// different impls, not a duplicate.
+pub trait Container<T> {
+    fn get(self) -> T
+}
+
+pub struct Box { n: I32, s: String }
+
+impl Container<I32> for Box {
+    fn get(self) -> I32 { self.n }
+}
+
+impl Container<String> for Box {
+    fn get(self) -> String { self.s }
+}
+
+fn number<T: Container<I32>>(b: T) -> I32 {
+    b.get()
+}
+
+fn text<T: Container<String>>(b: T) -> String {
+    b.get()
+}
+
+pub fn run_checks() {
+    let b = Box(n: 7, s: "seven")
+    assert(condition: number(b: b) == 7)
+    assert(condition: text(b: b) == "seven")
+}

@@ -4,7 +4,7 @@
 mod defs;
 mod exprs;
 
-use defs::fill_definition_span;
+use defs::{fill_definition_span, fill_type_span};
 use exprs::{fill_binding_pattern_span, fill_expr_span};
 
 use crate::ast::{File, Statement, UseItems};
@@ -50,6 +50,9 @@ fn fill_statement_span(stmt: &mut Statement, index: &LineIndex<'_>) {
         }
         Statement::Let(let_stmt) => {
             fill_binding_pattern_span(&mut let_stmt.pattern, index);
+            if let Some(type_ann) = &mut let_stmt.type_annotation {
+                fill_type_span(type_ann, index);
+            }
             fill_expr_span(&mut let_stmt.value, index);
             fill_span(&mut let_stmt.span, index);
         }

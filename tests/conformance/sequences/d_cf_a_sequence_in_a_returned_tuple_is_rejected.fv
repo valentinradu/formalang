@@ -1,0 +1,4 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a function return type
+// (E137), and a tuple does not hide it.
+fn make() -> (s: Seq<I32>, n: I32) { (s: for x in [1] { x }, n: 1) }

@@ -1,0 +1,12 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts associated data
+// in parameter order, here in a function body.
+pub enum Shape { rect(w: I32, h: I32) }
+
+pub fn run_checks() {
+    let s: Shape = .rect(w: 2, h: 3)
+    let (w, h) = s
+    assert(condition: w * h == 6)
+}

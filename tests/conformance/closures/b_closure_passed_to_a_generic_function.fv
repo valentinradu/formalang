@@ -1,0 +1,8 @@
+// expect: run
+// A closure argument to a generic function.
+fn apply<T>(x: T, f: (T) -> T) -> T { f(x) }
+
+pub fn run_checks() {
+    assert(condition: apply(x: 2, f: (v) -> v * 5) == 10)
+    assert(condition: apply(x: "a", f: (s) -> s + "b") == "ab")
+}

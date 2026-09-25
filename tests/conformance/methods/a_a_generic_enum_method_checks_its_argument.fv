@@ -1,0 +1,12 @@
+// expect: reject TypeMismatch
+// The receiver is an Opt<I32>, so `d` is an I32, not a String.
+pub enum Opt<T> { some(value: T), none }
+impl Opt<T> {
+    fn or(self, d: T) -> T {
+        match self {
+            .some(value): value,
+            .none: d
+        }
+    }
+}
+pub let x = Opt.some(value: 4).or(d: "zero")

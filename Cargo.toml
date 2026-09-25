@@ -1,6 +1,6 @@
 [package]
 name = "formalang"
-version = "0.0.8-beta"
+version = "0.0.9-beta"
 edition = "2021"
 # pin a minimum supported Rust version so downstream
 # users can detect toolchain incompatibility before a noisy build
@@ -52,16 +52,23 @@ ariadne = "0.4"
 # ariadne's pinned version to avoid double-rcs.
 yansi = "1.0"
 
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
+# Serialization of the IR. Only the `serde` feature turns it on.
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 # SIGINT handling for `fvc watch` — lets the watch loop break cleanly on
 # Ctrl+C and propagate the last check's exit code.
 ctrlc = "3"
 
+[features]
+default = []
+# Derive `serde::Serialize` and `serde::Deserialize` on the IR types
+# (`IrModule` and every type in it). The JSON form is not a stable format.
+serde = ["dep:serde"]
+
 [dev-dependencies]
-# serde_json is only used by serde-stability integration tests; keep it
-# out of the library's runtime dependency surface.
+# The crate itself, with the `serde` feature. A test build then has the
+# IR serde, so `cargo test` runs the tests that use the IR JSON.
+formalang = { path = ".", features = ["serde"] }
 serde_json = "1.0"
 rstest = "0.26"
 pretty_assertions = "1.4"

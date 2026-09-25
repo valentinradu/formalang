@@ -1,0 +1,9 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a call to a closure binding follows the same
+// rule.
+pub fn run_checks() {
+    let put: (mut I32, I32) -> I32 = (mut a, b) -> b
+    let mut x: I32 = 1
+    let r = put(x, x)
+    assert(condition: r == 1)
+}

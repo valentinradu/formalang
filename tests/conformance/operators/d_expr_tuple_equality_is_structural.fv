@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/expressions.md: equality is structural.
+pub fn run_checks() {
+    assert(condition: (a: 1, b: "x") == (a: 1, b: "x"))
+    assert(condition: (a: 1, b: "x") != (a: 1, b: "y"))
+}

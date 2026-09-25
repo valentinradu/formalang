@@ -26,6 +26,16 @@ pub enum CompilerError {
     #[error("Invalid unicode escape '\\u{value}'")]
     InvalidUnicodeEscape { value: String, span: Span },
 
+    /// A backslash in a string literal that starts no escape, for
+    /// example `\q`.
+    #[error("Invalid escape '{sequence}'")]
+    InvalidEscape { sequence: String, span: Span },
+
+    /// A bidirectional control character in a comment or a string
+    /// literal (CVE-2021-42574, "Trojan Source").
+    #[error("Bidirectional control character U+{:04X} in a comment or a string", u32::from(*character))]
+    BidirectionalControl { character: char, span: Span },
+
     #[error("Invalid number format: {value}")]
     InvalidNumber { value: String, span: Span },
 
@@ -57,6 +67,11 @@ pub enum CompilerError {
     // Module resolution errors
     #[error("Module not found: '{name}'")]
     ModuleNotFound { name: String, span: Span },
+
+    /// A `use` path starts with a name that is both an inline `mod` of
+    /// the file and a module file. The path can mean either one.
+    #[error("Module path '{name}' names an inline module and a module file")]
+    AmbiguousModulePath { name: String, span: Span },
 
     #[error("Failed to read module '{path}': {error}")]
     ModuleReadError {
@@ -90,12 +105,13 @@ pub enum CompilerError {
     #[error("Cannot redefine primitive type '{name}'")]
     PrimitiveRedefinition { name: String, span: Span },
 
-    /// A trait name appeared in a type position that produces a value
-    /// (parameter, return, let annotation, struct/enum field, closure
-    /// param/return). `FormaLang` has no dynamic dispatch — trait values
-    /// must be passed via a generic-bounded parameter
-    /// (`fn foo<T: SomeTrait>(x: T)`) so the concrete type is known
-    /// after monomorphisation.
+    /// A non-`extern` impl on a primitive. Only an `extern impl` adds methods to one.
+    #[error("An impl on the primitive type '{name}' must be an extern impl")]
+    ImplOnPrimitive { name: String, span: Span },
+
+    /// A trait name in a value type position. `FormaLang` has no dynamic
+    /// dispatch, so a trait value must pass through a generic bound
+    /// (`fn foo<T: SomeTrait>(x: T)`) and have a concrete type after monomorphisation.
     #[error(
         "trait '{trait_name}' cannot be used as a value type — use a generic bound \
          like `<T: {trait_name}>` instead"
@@ -308,8 +324,9 @@ pub enum CompilerError {
 
     /// A type parameter of a method that no parameter without a
     /// default mentions. A method call takes no `<...>`, so the
-    /// arguments that every call gives must give its type.
-    #[error("Type parameter '{param}' of method '{method}' appears in no required parameter")]
+    /// arguments that every call gives must give its type. A call of
+    /// a free function with no `<...>` has the same rule.
+    #[error("Type parameter '{param}' of '{method}' gets no type from the arguments")]
     UninferableMethodTypeParameter {
         param: String,
         method: String,
@@ -329,10 +346,8 @@ pub enum CompilerError {
     #[error("Extern impl block for '{name}' must not contain function bodies")]
     ExternImplWithBody { name: String, span: Span },
 
-    /// A parameter without a default value appears after one with a
-    /// default value. Default values must be positional from the
-    /// right (no required parameter may follow a defaulted one,
-    /// excluding `self`).
+    /// A parameter with no default after one with a default. Defaults
+    /// must be positional from the right, not counting `self`.
     #[error(
         "Parameter '{param}' on '{function}' has no default value but follows a parameter that does — defaults must be positional from the right"
     )]
@@ -393,9 +408,9 @@ pub enum CompilerError {
     #[error("Closure parameter '{param}' needs a type")]
     ClosureParameterNeedsType { param: String, span: Span },
 
-    /// A dictionary key typed `F32` or `F64`.
+    /// A dictionary key of a type with no exact equality, such as a float.
     #[error("'{key_type}' cannot be a dictionary key")]
-    FloatDictionaryKey { key_type: String, span: Span },
+    InvalidDictionaryKey { key_type: String, span: Span },
 
     /// A sequence that nothing consumes. It never runs.
     #[error("This sequence is never consumed")]
@@ -422,6 +437,17 @@ pub enum CompilerError {
     #[error("Expression nesting exceeded the compiler recursion limit")]
     ExpressionDepthExceeded { span: Span },
 
+    /// Type arguments of a generic nest deeper than the pass allows.
+    /// `written` is true for a type that the program writes, `Box<Box<...>>`;
+    /// false for a generic that calls itself with a larger type, `grow(x: Box(value: x))`.
+    #[error("The type arguments of '{name}' nest deeper than the limit of {limit}")]
+    InstantiationDepthExceeded {
+        name: String,
+        limit: usize,
+        written: bool,
+        span: Span,
+    },
+
     /// Module contains more definitions than the ID space allows (> `u32::MAX`).
     #[error("Module contains too many {kind} definitions")]
     TooManyDefinitions { kind: &'static str, span: Span },
@@ -429,12 +455,6 @@ pub enum CompilerError {
     /// Attempted to access a private item from outside its defining module.
     #[error("'{name}' is private and cannot be accessed from outside its module")]
     VisibilityViolation { name: String, span: Span },
-
-    /// A closure returned from a function captures a binding that does not
-    /// outlive the function. Only `sink` parameters and outer-scope bindings
-    /// may be captured by an escaping closure.
-    #[error("Returned closure captures '{binding}' which does not outlive the function")]
-    ClosureCaptureEscapesLocalBinding { binding: String, span: Span },
 
     /// A compiler invariant was violated during lowering or analysis. This is
     /// always a bug in the compiler itself — the `detail` field documents
@@ -452,10 +472,7 @@ pub enum CompilerError {
         span: Span,
     },
 
-    /// A `pub` struct or `pub` enum variant declares a field whose type is
-    /// a closure. Closures are an internal abstraction; they cannot be part
-    /// of a publicly exposed type because they have no stable representation
-    /// across the module / backend boundary.
+    /// A closure-typed field in a `pub` struct or a `pub` enum variant.
     #[error("'{owner}' is public and cannot have closure-typed field '{field}'")]
     PublicClosureField {
         /// Human-readable identity of the offending item, e.g.
@@ -465,6 +482,18 @@ pub enum CompilerError {
         field: String,
         span: Span,
     },
+
+    /// A call on a type, `Counter.get()`, of a method that takes `self`.
+    #[error("Method '{method}' of '{type_name}' takes 'self', so a call needs a value")]
+    NotAStaticMethod {
+        method: String,
+        type_name: String,
+        span: Span,
+    },
+
+    /// A closure call with an argument label. A closure type has no labels.
+    #[error("A closure call takes no argument labels, but it has the label '{label}'")]
+    LabelledClosureArgument { label: String, span: Span },
 }
 
 /// Result type for compiler operations

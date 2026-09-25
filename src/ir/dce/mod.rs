@@ -3,18 +3,21 @@
 //! This module removes code that doesn't affect program output:
 //! - Unreachable branches (constant false conditions)
 //! - Unused struct definitions
-//! - Unused let bindings
+//! - Unused let bindings, when their value can have no effect and no
+//!   fault
 //!
 //! # Example
 //!
 //! ```formalang
-//! struct Used { value: I32 }
-//! struct Unused { data: String }  // Removed if never referenced
-//! impl Used { value: 1 }
+//! pub struct Used { value: I32 }
+//! struct Unused { data: String }  // removed: nothing refers to it
+//! let unused_value: I32 = 5       // removed: private, and nothing reads it
+//! pub fn make() -> Used { Used(value: 1) }
 //! ```
 
 mod expr;
 mod filtering;
+mod lets;
 mod reachability;
 mod remap;
 
@@ -171,7 +174,39 @@ impl<'a> DeadCodeEliminator<'a> {
             }
         }
 
+        // A default can build a struct or name an enum. See the method.
+        self.mark_used_in_defaults();
+
         // Enum variant fields can also reference types.
+        self.mark_used_in_enums();
+
+        // The trait of a live impl stays alive, so the impl never names
+        // a removed trait. It is the only reference to a trait instance
+        // such as `Container<I32>` after devirtualisation.
+        self.mark_used_in_impl_traits();
+    }
+
+    /// Mark the trait, and the types in its arguments, of each impl
+    /// whose target is live.
+    fn mark_used_in_impl_traits(&mut self) {
+        for imp in &self.module.impls {
+            let live = match imp.target {
+                crate::ir::ImplTarget::Struct(id) => self.used_structs.contains(&id),
+                crate::ir::ImplTarget::Enum(id) => self.used_enums.contains(&id),
+                crate::ir::ImplTarget::Primitive(_) => true,
+            };
+            if let (true, Some(trait_ref)) = (live, &imp.trait_ref) {
+                self.used_traits.insert(trait_ref.trait_id);
+                for arg in &trait_ref.args {
+                    self.mark_used_in_type(arg);
+                }
+            }
+        }
+    }
+
+    /// Mark the types in each enum variant field, and the traits in
+    /// each constraint on an enum's type parameters.
+    fn mark_used_in_enums(&mut self) {
         for e in &self.module.enums {
             for variant in &e.variants {
                 for field in &variant.fields {
@@ -186,6 +221,36 @@ impl<'a> DeadCodeEliminator<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Mark what every parameter default and field default uses. A
+    /// default is an expression like any other, and what it builds or
+    /// names stays alive. Without this, a private struct that only a
+    /// parameter default built was removed, and the default kept its
+    /// stale id.
+    fn mark_used_in_defaults(&mut self) {
+        let module = self.module;
+        let params = module
+            .functions
+            .iter()
+            .chain(module.impls.iter().flat_map(|i| i.functions.iter()))
+            .flat_map(|f| f.params.iter())
+            .filter_map(|p| p.default.as_ref());
+        let fields = module
+            .structs
+            .iter()
+            .flat_map(|s| s.fields.iter())
+            .chain(
+                module
+                    .enums
+                    .iter()
+                    .flat_map(|e| e.variants.iter().flat_map(|v| v.fields.iter())),
+            )
+            .chain(module.traits.iter().flat_map(|t| t.fields.iter()))
+            .filter_map(|f| f.default.as_ref());
+        for default in params.chain(fields) {
+            self.mark_used_in_expr(default);
         }
     }
 
@@ -261,7 +326,10 @@ impl<'a> DeadCodeEliminator<'a> {
 ///
 /// This removes:
 /// - Unreachable branches in expressions
-/// - Unused struct definitions (when `remove_unused_structs` is true)
+/// - Unused local `let` bindings whose value has no effect
+/// - Unused struct, trait and enum definitions, and unused private
+///   module `let` bindings whose value has no effect (when
+///   `remove_unused_structs` is true)
 #[must_use]
 pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> IrModule {
     let mut result = module.clone();
@@ -291,6 +359,11 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
             }
         }
     }
+
+    // Remove the bindings that nothing reads. This runs before the
+    // definitions go, so a struct that only an unused binding named goes
+    // too.
+    lets::remove_unused_lets(&mut result, remove_unused_structs);
 
     // Physically remove unused structs/traits/enums, then rewrite every ID
     // reference so the module stays internally consistent.
@@ -355,7 +428,9 @@ pub fn eliminate_dead_code(module: &IrModule, remove_unused_structs: bool) -> Ir
     reason = "IR types are constructed directly by consumer code"
 )]
 pub struct DeadCodeEliminationPass {
-    /// When `true`, structs that are never referenced are removed.
+    /// When `true`, the definitions that nothing references are removed:
+    /// structs, traits, enums, and private module `let` bindings whose
+    /// value has no effect.
     pub remove_unused_structs: bool,
 }
 

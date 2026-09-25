@@ -1,0 +1,6 @@
+// expect: reject MutabilityMismatch
+// from: swift test/decl/func/ (cannot provide a default for an inout
+// parameter). docs/user/functions.md: the argument of a `mut` parameter must be a
+// `let mut` binding, and the caller sees the change. A default value is
+// not the caller's binding.
+fn f(mut x: I32 = 0) -> I32 { x }

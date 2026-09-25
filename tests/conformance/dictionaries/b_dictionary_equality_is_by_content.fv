@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: equality is structural. It compares each
+// element of a container. Two dictionaries with the same entries are
+// equal.
+pub fn run_checks() {
+    let a: [String: I32] = ["x": 1, "y": 2]
+    let b: [String: I32] = ["y": 2, "x": 1]
+    assert(condition: a == b)
+}

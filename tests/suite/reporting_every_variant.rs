@@ -57,6 +57,14 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             value: s("ZZZZ"),
             span,
         },
+        CompilerError::InvalidEscape {
+            sequence: s("\\q"),
+            span,
+        },
+        CompilerError::BidirectionalControl {
+            character: '\u{202e}',
+            span,
+        },
         CompilerError::InvalidNumber {
             value: s("1e400"),
             span,
@@ -82,6 +90,10 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
         },
         CompilerError::ModuleNotFound {
             name: s("other"),
+            span,
+        },
+        CompilerError::AmbiguousModulePath {
+            name: s("lib"),
             span,
         },
         CompilerError::ModuleReadError {
@@ -112,6 +124,10 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             span,
         },
         CompilerError::PrimitiveRedefinition {
+            name: s("I32"),
+            span,
+        },
+        CompilerError::ImplOnPrimitive {
             name: s("I32"),
             span,
         },
@@ -335,7 +351,7 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             param: s("x"),
             span,
         },
-        CompilerError::FloatDictionaryKey {
+        CompilerError::InvalidDictionaryKey {
             key_type: s("F64"),
             span,
         },
@@ -355,6 +371,12 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             span,
         },
         CompilerError::ExpressionDepthExceeded { span },
+        CompilerError::InstantiationDepthExceeded {
+            name: s("grow"),
+            limit: 32,
+            written: false,
+            span,
+        },
         CompilerError::TooManyDefinitions {
             kind: "struct",
             span,
@@ -363,8 +385,13 @@ fn every_variant(span: Span) -> Vec<CompilerError> {
             name: s("Hidden"),
             span,
         },
-        CompilerError::ClosureCaptureEscapesLocalBinding {
-            binding: s("total"),
+        CompilerError::LabelledClosureArgument {
+            label: s("x"),
+            span,
+        },
+        CompilerError::NotAStaticMethod {
+            method: s("get"),
+            type_name: s("Counter"),
             span,
         },
         CompilerError::InternalError {
@@ -395,6 +422,8 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::UnterminatedString { .. } => "UnterminatedString",
         CompilerError::UnterminatedBlockComment { .. } => "UnterminatedBlockComment",
         CompilerError::InvalidUnicodeEscape { .. } => "InvalidUnicodeEscape",
+        CompilerError::InvalidEscape { .. } => "InvalidEscape",
+        CompilerError::BidirectionalControl { .. } => "BidirectionalControl",
         CompilerError::InvalidNumber { .. } => "InvalidNumber",
         CompilerError::UnexpectedToken { .. } => "UnexpectedToken",
         CompilerError::UnexpectedEof { .. } => "UnexpectedEof",
@@ -402,6 +431,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::TypeMismatch { .. } => "TypeMismatch",
         CompilerError::DuplicateDefinition { .. } => "DuplicateDefinition",
         CompilerError::ModuleNotFound { .. } => "ModuleNotFound",
+        CompilerError::AmbiguousModulePath { .. } => "AmbiguousModulePath",
         CompilerError::ModuleReadError { .. } => "ModuleReadError",
         CompilerError::CircularImport { .. } => "CircularImport",
         CompilerError::PrivateImport { .. } => "PrivateImport",
@@ -409,6 +439,7 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::ParseError { .. } => "ParseError",
         CompilerError::UndefinedType { .. } => "UndefinedType",
         CompilerError::PrimitiveRedefinition { .. } => "PrimitiveRedefinition",
+        CompilerError::ImplOnPrimitive { .. } => "ImplOnPrimitive",
         CompilerError::TraitUsedAsValueType { .. } => "TraitUsedAsValueType",
         CompilerError::UndefinedTrait { .. } => "UndefinedTrait",
         CompilerError::NotATrait { .. } => "NotATrait",
@@ -459,17 +490,17 @@ const fn variant_name(error: &CompilerError) -> &'static str {
         CompilerError::NoMatchingOverload { .. } => "NoMatchingOverload",
         CompilerError::CannotInferEnumType { .. } => "CannotInferEnumType",
         CompilerError::ClosureParameterNeedsType { .. } => "ClosureParameterNeedsType",
-        CompilerError::FloatDictionaryKey { .. } => "FloatDictionaryKey",
+        CompilerError::InvalidDictionaryKey { .. } => "InvalidDictionaryKey",
         CompilerError::SeqNotConsumed { .. } => "SeqNotConsumed",
         CompilerError::SeqUsedTwice { .. } => "SeqUsedTwice",
         CompilerError::SeqInvalidPosition { .. } => "SeqInvalidPosition",
         CompilerError::FunctionReturnTypeMismatch { .. } => "FunctionReturnTypeMismatch",
         CompilerError::ExpressionDepthExceeded { .. } => "ExpressionDepthExceeded",
+        CompilerError::InstantiationDepthExceeded { .. } => "InstantiationDepthExceeded",
         CompilerError::TooManyDefinitions { .. } => "TooManyDefinitions",
         CompilerError::VisibilityViolation { .. } => "VisibilityViolation",
-        CompilerError::ClosureCaptureEscapesLocalBinding { .. } => {
-            "ClosureCaptureEscapesLocalBinding"
-        }
+        CompilerError::LabelledClosureArgument { .. } => "LabelledClosureArgument",
+        CompilerError::NotAStaticMethod { .. } => "NotAStaticMethod",
         CompilerError::InternalError { .. } => "InternalError",
         CompilerError::NumericOverflow { .. } => "NumericOverflow",
         CompilerError::PublicClosureField { .. } => "PublicClosureField",

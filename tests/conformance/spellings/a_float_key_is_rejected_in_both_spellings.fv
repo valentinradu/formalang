@@ -1,4 +1,4 @@
-// expect: reject FloatDictionaryKey
+// expect: reject InvalidDictionaryKey
 pub fn f() -> I32 {
     let d: Dictionary<F64, I32> = [:]
     0

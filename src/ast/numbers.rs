@@ -5,7 +5,6 @@
 //! ceiling. Re-exported from [`crate::ast`].
 
 use crate::ast::PrimitiveType;
-use serde::{Deserialize, Serialize};
 
 /// Whether a numeric literal was written with integer or float syntax.
 ///
@@ -14,7 +13,8 @@ use serde::{Deserialize, Serialize};
 /// inference default for unsuffixed literals (`I32` for integer, `F64`
 /// for float).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NumberSourceKind {
     Integer,
     Float,
@@ -37,7 +37,8 @@ impl NumberSourceKind {
 /// `3.14F64`). The suffix is preserved through the AST so later passes can
 /// type the literal without re-running inference defaults.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NumericSuffix {
     I32,
     I64,
@@ -70,7 +71,8 @@ impl NumericSuffix {
 /// checks happen at semantic-analysis time, so by the time codegen runs the
 /// payload fits the target primitive.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NumberValue {
     /// Lexed from integer syntax. Preserves the exact digits.
     Integer(i128),
@@ -162,7 +164,8 @@ impl From<i128> for NumberValue {
 /// `lexer::Token::Number` and `Literal::Number` wrap — single-field because
 /// logos (used by the lexer) only supports single-field token variants.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NumberLiteral {
     pub value: NumberValue,
     pub suffix: Option<NumericSuffix>,

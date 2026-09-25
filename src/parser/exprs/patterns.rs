@@ -4,7 +4,7 @@
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
-use crate::ast::{Expr, MatchArm, Pattern};
+use crate::ast::{Expr, Ident, MatchArm, Pattern};
 use crate::lexer::Token;
 
 use super::super::{ident_parser, span_from_simple};
@@ -28,13 +28,22 @@ where
 }
 
 /// Parse a pattern: `variant`, `variant(b1, b2)`, `.variant`,
-/// `.variant(b1, b2)`, or `_`.
+/// `.variant(b1, b2)`, or `_`. A binding in the list can be `_`, for
+/// example `.image(_, size)`.
 pub(in crate::parser) fn pattern_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Pattern, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
     let wildcard = just(Token::Underscore).to(Pattern::Wildcard);
+
+    // A field binding is a name, or `_` to ignore the field. The `_`
+    // binds nothing: the checks and the lowering skip the name `_`, as
+    // they do for `let _ = ...`.
+    let field_binding = choice((
+        ident_parser(),
+        just(Token::Underscore).map_with(|_, e| Ident::new("_", span_from_simple(e.span()))),
+    ));
 
     let variant = choice((
         // Short form: .variant or .variant(bindings)
@@ -43,7 +52,7 @@ where
         ident_parser(),
     ))
     .then(
-        ident_parser()
+        field_binding
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()

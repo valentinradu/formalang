@@ -1,0 +1,3 @@
+// expect: reject ParseError
+// docs/user/core.md: `self` is a keyword and not an identifier.
+fn f(self: I32) -> I32 { 1 }

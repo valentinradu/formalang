@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `impl` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let impl = 1
+    assert(condition: impl == 1)
+}

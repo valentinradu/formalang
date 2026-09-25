@@ -1,0 +1,6 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: a struct is a key only when each of its fields is
+// a key type too. An optional is not a key type.
+pub struct K { a: String? }
+
+pub let d: [K: I32] = [:]

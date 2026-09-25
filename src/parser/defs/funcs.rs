@@ -7,6 +7,7 @@ use chumsky::prelude::*;
 use crate::ast::{BlockStatement, FnDef, FnParam, FnSig, FunctionDef, Ident, ParamConvention};
 use crate::lexer::Token;
 
+use super::super::recovery::{skip_failed_statement, statement_end};
 use super::super::{
     block_statements_to_expr, doc_comments_parser, exprs::expr_parser, ident_parser,
     span_from_simple, types::type_parser, visibility_parser,
@@ -65,7 +66,14 @@ where
     // expression twice for every statement that is not an assignment.
     // `block_item` in `src/parser/exprs/mod.rs` had the same shape and
     // the same cost.
-    let fn_assign_or_expr = expr_parser()
+    //
+    // A statement that starts with `let` is only ever `fn_let`. When
+    // that fails, the `let ... in` expression fails on the same tokens,
+    // so it is not tried: the second attempt doubled the time for each
+    // level of nesting.
+    let fn_assign_or_expr = just(Token::Let)
+        .not()
+        .ignore_then(expr_parser())
         .then(just(Token::Equals).ignore_then(expr_parser()).or_not())
         .map_with(|(target, value), e| match value {
             Some(value) => BlockStatement::Assign {
@@ -79,17 +87,9 @@ where
     // Wrap each item in `recover_with(via_parser(...))` so a malformed
     // item (broken expression) is recovered by skipping to the next
     // `let` or `}`. Without this, one bad function body suppresses
-    // diagnostics for the rest of the file. The first
-    // token is consumed unconditionally on `Let` (so an item starting
-    // with `let` whose value is broken can be recovered), but never on
-    // `RBrace` (so the body's closing brace stays for `delimited_by`).
-    let recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
-    let recovery_tail = any()
-        .and_is(just(Token::Let).not())
-        .and_is(just(Token::RBrace).not())
-        .ignored()
-        .repeated();
-    let recovery = recovery_head.then(recovery_tail).map_with(|((), ()), e| {
+    // diagnostics for the rest of the file. See `skip_failed_statement`
+    // for what the recovery skips.
+    let recovery = skip_failed_statement().map_with(|(), e| {
         BlockStatement::Expr(crate::ast::Expr::Group {
             expr: Box::new(crate::ast::Expr::Literal {
                 value: crate::ast::Literal::Nil,
@@ -105,6 +105,7 @@ where
     let fn_item = breaks
         .clone()
         .ignore_then(choice((fn_let, fn_assign_or_expr)))
+        .then_ignore(statement_end())
         .then_ignore(breaks.clone())
         .recover_with(via_parser(recovery));
 
@@ -147,9 +148,9 @@ where
         )
 }
 
-/// Parse function parameters: `(self, mut self, x: Type, mut x: Type, sink x: Type, label name: Type)`
+/// Parse method parameters: `(self, mut self, x: Type, mut x: Type, sink x: Type, label name: Type)`
 ///
-/// Parameters support an optional convention prefix (`mut` or `sink`) and
+/// A `self` parameter may come only first. Parameters support an optional convention prefix (`mut` or `sink`) and
 /// an optional external label: `fn foo(en name: String)` where `en` is
 /// the call-site label and `name` is the internal parameter name.
 pub(super) fn fn_params_parser<'tokens, I>(
@@ -157,16 +158,8 @@ pub(super) fn fn_params_parser<'tokens, I>(
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
 {
-    let convention = choice((
-        just(Token::Mut).to(ParamConvention::Mut),
-        just(Token::Sink).to(ParamConvention::Sink),
-    ))
-    .or_not()
-    .map(|c| c.unwrap_or(ParamConvention::Let));
-
     let self_param =
-        convention
-            .clone()
+        convention_parser()
             .then(just(Token::SelfKeyword))
             .map_with(|(convention, _), e| FnParam {
                 convention,
@@ -176,6 +169,48 @@ where
                 default: None,
                 span: span_from_simple(e.span()),
             });
+    let rest = plain_params_parser();
+    let with_self = self_param
+        .then(just(Token::Comma).ignore_then(rest.clone()).or_not())
+        .map(|(receiver, rest)| {
+            let mut params = vec![receiver];
+            params.extend(rest.unwrap_or_default());
+            params
+        });
+    choice((with_self, rest)).delimited_by(just(Token::LParen), just(Token::RParen))
+}
+
+/// Parse the parameters of a free function: `(x: Type, label name: Type)`.
+///
+/// A free function has no receiver, so `self` is not a parameter here.
+pub(super) fn free_fn_params_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    plain_params_parser().delimited_by(just(Token::LParen), just(Token::RParen))
+}
+
+fn convention_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, ParamConvention, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    choice((
+        just(Token::Mut).to(ParamConvention::Mut),
+        just(Token::Sink).to(ParamConvention::Sink),
+    ))
+    .or_not()
+    .map(|c| c.unwrap_or(ParamConvention::Let))
+}
+
+/// Parse a comma-separated list of parameters that are not `self`.
+fn plain_params_parser<'tokens, I>(
+) -> impl Parser<'tokens, I, Vec<FnParam>, extra::Err<Rich<'tokens, Token>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
+{
+    let convention = convention_parser();
 
     let labeled_param = convention
         .clone()
@@ -228,15 +263,13 @@ where
             }
         });
 
-    // Order matters: longer matches first. `self_param` precedes the rest;
-    // `labeled_param` (ident ident :) before `typed_param` (ident :) before
+    // Order matters: longer matches first. `labeled_param` (ident ident :) before `typed_param` (ident :) before
     // `type_only_param` (Type with no name) so a single `Foo: Bar` still
     // parses as a typed param, not as type `Foo::Bar` followed by junk.
-    choice((self_param, labeled_param, typed_param, type_only_param))
+    choice((labeled_param, typed_param, type_only_param))
         .separated_by(just(Token::Comma))
         .allow_trailing()
         .collect()
-        .delimited_by(just(Token::LParen), just(Token::RParen))
 }
 
 /// Parse a standalone function definition: `pub fn name(params) -> Type { body }`
@@ -250,7 +283,7 @@ where
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
         .then(generic_params_parser())
-        .then(fn_params_parser())
+        .then(free_fn_params_parser())
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .then(fn_body_parser())
         .map_with(

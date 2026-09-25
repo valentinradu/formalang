@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `self` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let self = 1
+    assert(condition: self == 1)
+}

@@ -1,0 +1,6 @@
+// expect: reject EnumVariantRequiresData
+// docs/user/enums.md: a variant with data needs its data, also in the
+// dot form.
+pub enum Message { text(content: String), empty }
+
+pub let m: Message = .text

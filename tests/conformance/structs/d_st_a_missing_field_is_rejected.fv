@@ -1,0 +1,5 @@
+// expect: reject MissingField
+// docs/user/structs.md: an instantiation gives each field.
+pub struct Point { x: I32, y: I32 }
+
+pub let p = Point(x: 1)

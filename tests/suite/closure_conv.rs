@@ -319,8 +319,10 @@ fn nested_closure_outer_capture_propagates_to_inner_env_construction() {
 #[test]
 fn mc10_closure_rich_fixture_survives_pipeline() {
     let source = r"
-        // No-capture closure.
-        let trivial: (I32) -> I32 = (x: I32) -> x
+        // No-capture closure. The bindings are public: dead-code
+        // elimination removes a private binding that nothing reads, and
+        // this test checks the closures that survive it.
+        pub let trivial: (I32) -> I32 = (x: I32) -> x
 
         // Sink-capture closure (returns a closure capturing the param).
         pub fn make_adder(sink n: I32) -> (I32) -> I32 {
@@ -328,9 +330,9 @@ fn mc10_closure_rich_fixture_survives_pipeline() {
         }
 
         // Module-level Let + Mut captures.
-        let base: I32 = 10
-        let mut counter: I32 = 0
-        let bump: () -> I32 = () -> base + counter
+        pub let base: I32 = 10
+        pub let mut counter: I32 = 0
+        pub let bump: () -> I32 = () -> base + counter
     ";
     let module = compile_to_ir(source).expect("fixture should compile to IR");
 

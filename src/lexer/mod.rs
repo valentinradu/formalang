@@ -2,6 +2,8 @@ mod token;
 
 pub use token::Token;
 
+use token::BadEscape;
+
 use crate::error::CompilerError;
 use crate::location::Span;
 use logos::Logos;
@@ -146,13 +148,22 @@ impl<'source> Lexer<'source> {
             });
         }
 
-        // drain bad `\uXXXX` escape ranges and surface them as
-        // `InvalidUnicodeEscape` diagnostics. The decoded string still
-        // contains a U+FFFD replacement so downstream parsing can
-        // continue, but the user is told what went wrong.
-        for (start, end, hex) in std::mem::take(&mut lexer.inner.extras.invalid_unicode_escapes) {
-            lexer.errors.push(CompilerError::InvalidUnicodeEscape {
-                value: hex,
+        // Drain the wrong escapes. The decoded string still holds a
+        // U+FFFD in place of each one, so parsing can continue, but the
+        // user is told what went wrong.
+        for (start, end, escape) in std::mem::take(&mut lexer.inner.extras.bad_escapes) {
+            let span = Span::from_range(start, end);
+            lexer.errors.push(match escape {
+                BadEscape::Unicode(value) => CompilerError::InvalidUnicodeEscape { value, span },
+                BadEscape::Unknown(sequence) => CompilerError::InvalidEscape { sequence, span },
+            });
+        }
+
+        // Drain the bidirectional control characters in comments and
+        // strings. See `CompilerError::BidirectionalControl`.
+        for (start, end, character) in std::mem::take(&mut lexer.inner.extras.bidi_controls) {
+            lexer.errors.push(CompilerError::BidirectionalControl {
+                character,
                 span: Span::from_range(start, end),
             });
         }
@@ -200,13 +211,47 @@ const fn only_continues(token: &Token) -> bool {
     matches!(token, Token::Dot | Token::Else | Token::LBrace)
 }
 
+/// Whether a token can only start a definition or a statement, and
+/// never continues an expression.
+const fn only_starts_a_definition(token: &Token) -> bool {
+    matches!(
+        token,
+        Token::Pub
+            | Token::Use
+            | Token::Let
+            | Token::Struct
+            | Token::Enum
+            | Token::Trait
+            | Token::Impl
+            | Token::Fn
+            | Token::Extern
+            | Token::Module
+            | Token::Inline
+            | Token::NoInline
+            | Token::Cold
+            | Token::DocComment(_)
+            | Token::InnerDocComment(_)
+    )
+}
+
+/// Whether a token can end a definition, but also continues an
+/// expression as an operator.
+///
+/// A type such as `Box<I32>` ends with `>`, and `use a::*` ends with
+/// `*`. A newline after one of them ends the definition only when the
+/// next line starts a new definition.
+const fn ends_a_definition_or_continues(token: &Token) -> bool {
+    matches!(token, Token::Gt | Token::Star)
+}
+
 /// Drop every newline that continues a statement rather than ending
 /// one, leaving the parser a stream where a `Newline` is always a
 /// statement boundary.
 ///
 /// A newline is kept when three things hold: no bracket is open, the
 /// token before it can end a statement, and the token after it is not
-/// one that can only continue. Anything inside `(` or `[` is part of
+/// one that can only continue. A newline after `>` or `*` is also kept
+/// when no bracket is open and the next token starts a definition. Anything inside `(` or `[` is part of
 /// one expression however many lines it spans, which is what lets
 /// `assert(\n    condition: x\n        == 40\n)` keep working.
 fn drop_continuation_newlines(tokens: &[(Token, Span)]) -> Vec<(Token, Span)> {
@@ -227,8 +272,10 @@ fn drop_continuation_newlines(tokens: &[(Token, Span)]) -> Vec<(Token, Span)> {
                 .map(|(t, _)| t);
 
             let ends_a_statement = depth == 0
-                && previous.is_some_and(can_end_a_statement)
-                && next.is_some_and(|t| !only_continues(t));
+                && ((previous.is_some_and(can_end_a_statement)
+                    && next.is_some_and(|t| !only_continues(t)))
+                    || (previous.is_some_and(ends_a_definition_or_continues)
+                        && next.is_some_and(only_starts_a_definition)));
 
             if ends_a_statement {
                 out.push((token.clone(), *span));
@@ -265,7 +312,9 @@ fn drop_continuation_newlines(tokens: &[(Token, Span)]) -> Vec<(Token, Span)> {
 ///
 /// Only lexer-produced variants ([`CompilerError::InvalidCharacter`],
 /// [`CompilerError::UnterminatedString`], [`CompilerError::InvalidNumber`],
-/// [`CompilerError::UnterminatedBlockComment`]) are produced by
+/// [`CompilerError::UnterminatedBlockComment`],
+/// [`CompilerError::InvalidUnicodeEscape`], [`CompilerError::InvalidEscape`],
+/// [`CompilerError::BidirectionalControl`]) are produced by
 /// [`Lexer::classify_error`] / [`tokenize_all_with_errors`]; any other variant
 /// would indicate a bug in the lexer's error-classification logic and is
 /// returned unchanged.
@@ -288,6 +337,12 @@ fn fill_error_span_positions(
         }
         CompilerError::InvalidUnicodeEscape { value, .. } => {
             CompilerError::InvalidUnicodeEscape { value, span }
+        }
+        CompilerError::InvalidEscape { sequence, .. } => {
+            CompilerError::InvalidEscape { sequence, span }
+        }
+        CompilerError::BidirectionalControl { character, .. } => {
+            CompilerError::BidirectionalControl { character, span }
         }
         CompilerError::InvalidNumber { value, .. } => CompilerError::InvalidNumber { value, span },
         other => other,

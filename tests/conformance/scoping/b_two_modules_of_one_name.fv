@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/resolve/ (E0428).
+mod m { pub fn a() -> I32 { 1 } }
+mod m { pub fn b() -> I32 { 2 } }

@@ -1,0 +1,9 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a field is part of its value. A tuple field is
+// part of its tuple.
+fn put(mut a: I32, b: (x: I32, y: I32)) -> I32 { a }
+
+pub fn f() -> I32 {
+    let mut t = (x: 1, y: 2)
+    put(a: t.x, b: t)
+}

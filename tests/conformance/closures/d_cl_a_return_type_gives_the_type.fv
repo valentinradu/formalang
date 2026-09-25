@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/closures.md: the declared return type gives the type.
+fn inc() -> (I32) -> I32 { (x) -> x + 1 }
+
+pub fn run_checks() {
+    let f = inc()
+    assert(condition: f(1) == 2)
+}

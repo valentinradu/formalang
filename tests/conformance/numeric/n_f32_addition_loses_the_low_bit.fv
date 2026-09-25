@@ -1,0 +1,8 @@
+// expect: run
+// An F32 has a 24-bit significand. 16777216 + 1 rounds back to
+// 16777216 in F32 arithmetic.
+
+pub fn run_checks() {
+    let big: F32 = 16777216.0F32
+    assert(condition: big + 1.0F32 == big)
+}

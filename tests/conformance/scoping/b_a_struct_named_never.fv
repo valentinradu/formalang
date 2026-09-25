@@ -1,0 +1,3 @@
+// expect: reject PrimitiveRedefinition
+// docs/user/types.md: `Never` is a primitive type.
+struct Never { x: I32 }

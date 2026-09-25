@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+// docs/user/core.md: there is no `break` in the language.
+pub fn f() -> I32 {
+    for x in [1] { break }.run()
+    0
+}

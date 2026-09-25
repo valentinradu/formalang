@@ -1,0 +1,12 @@
+// expect: reject TraitMethodSignatureMismatch
+// docs/user/traits.md: method signatures must match exactly. With
+// `Container<I32>`, `get` returns I32.
+pub trait Container<T> {
+    fn get(self) -> T
+}
+
+pub struct Box { value: I32 }
+
+impl Container<I32> for Box {
+    fn get(self) -> String { "x" }
+}

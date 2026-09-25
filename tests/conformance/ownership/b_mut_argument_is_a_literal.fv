@@ -1,0 +1,8 @@
+// expect: reject MutabilityMismatch
+// from: swift test/Sema/diag_invalid_inout (a literal passed inout).
+// A `mut` parameter needs a place. A literal is not a place.
+fn bump(mut n: I32) -> I32 { n }
+
+pub fn f() -> I32 {
+    bump(n: 1)
+}

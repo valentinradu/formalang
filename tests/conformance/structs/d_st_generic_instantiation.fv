@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/structs.md: `Pair<I32, Boolean>(first: 42, second: true)`.
+pub struct Pair<A, B> { first: A, second: B }
+
+pub fn run_checks() {
+    let pair = Pair<I32, Boolean>(first: 42, second: true)
+    assert(condition: pair.first == 42 && pair.second)
+}

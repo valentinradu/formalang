@@ -1,0 +1,13 @@
+// expect: compile
+// docs/user/functions.md: `let y: I32 = x` then `put(a: x, b: y)` is ok.
+fn put(mut a: I32, b: I32) {
+    a = b + 1
+}
+
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let y: I32 = x
+    put(a: x, b: y)
+    assert(condition: x == 2)
+    assert(condition: y == 1)
+}

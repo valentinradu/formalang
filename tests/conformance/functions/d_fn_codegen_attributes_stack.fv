@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/functions.md: multiple prefixes can stack, and combine with
+// `pub` and `extern`.
+inline cold fn fast_add(a: I32, b: I32) -> I32 { a + b }
+no_inline fn dont_inline_me() -> I32 { 42 }
+pub cold extern fn abort() -> Never
+
+pub fn run_checks() {
+    assert(condition: fast_add(a: 1, b: 2) == 3)
+    assert(condition: dont_inline_me() == 42)
+}

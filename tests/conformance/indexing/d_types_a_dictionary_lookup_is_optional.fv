@@ -1,0 +1,7 @@
+// expect: reject OptionalUsedAsNonOptional
+// docs/user/types.md: a dictionary lookup gives `I32?`, not `I32`.
+pub fn run_checks() {
+    let d: [String: I32] = ["k": 5]
+    let v: I32 = d["k"]
+    assert(condition: v == 5)
+}

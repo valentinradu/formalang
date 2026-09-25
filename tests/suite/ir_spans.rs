@@ -66,20 +66,47 @@ fn function_carries_non_default_span() -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// SP-2: IrStruct.span populated.
+/// SP-2: each definition in the output of `compile_to_ir` has the span
+/// of its own AST node: a struct, its fields, an enum, its variants, a
+/// function and its parameters.
 #[test]
-fn struct_carries_non_default_span() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "pub struct Point { x: I32, y: I32 }";
+fn definitions_carry_their_own_span() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "pub struct Point {\n    x: I32,\n    y: I32\n}\n\npub enum Mode {\n    on,\n    off\n}\n\npub fn add(a: I32, b: I32) -> I32 {\n    a + b\n}\n";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
     let point = module
         .structs
         .iter()
         .find(|s| s.name == "Point")
         .ok_or("Point missing")?;
-    // Span population in lower_struct_with_prefix uses self.current_ir_span()
-    // which reflects the AST's struct span. (Field spans may still default if
-    // the lowerer doesn't update current_span when entering each field.)
-    let _ = point.span; // smoke: field exists, accessible.
+    let y = point.fields.get(1).ok_or("field y missing")?;
+    let mode = module
+        .enums
+        .iter()
+        .find(|e| e.name == "Mode")
+        .ok_or("Mode missing")?;
+    let off = mode.variants.get(1).ok_or("variant off missing")?;
+    let add = module
+        .functions
+        .iter()
+        .find(|f| f.name == "add")
+        .ok_or("add missing")?;
+    let b = add.params.get(1).ok_or("param b missing")?;
+    let lines = [
+        ("struct Point", point.span, 1),
+        ("field y", y.span, 3),
+        ("enum Mode", mode.span, 6),
+        ("variant off", off.span, 8),
+        ("fn add", add.span, 11),
+        ("parameter b", b.span, 11),
+    ];
+    for (what, span, line) in lines {
+        if span.span.start.line != line || span.span.end.offset <= span.span.start.offset {
+            return Err(format!("{what} must start on line {line}: {span:?}").into());
+        }
+    }
+    if b.span.span.start.column <= add.span.span.start.column {
+        return Err(format!("parameter b must have its own span: {:?}", b.span).into());
+    }
     Ok(())
 }
 

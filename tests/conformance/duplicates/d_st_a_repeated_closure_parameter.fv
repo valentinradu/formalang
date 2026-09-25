@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: two names that are the same leave no answer to
+// what the name means.
+pub let f = (a: I32, a: I32) -> a

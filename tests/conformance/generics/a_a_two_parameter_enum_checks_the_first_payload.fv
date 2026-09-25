@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// The annotation makes the payload of `ok` a String, and the value is
+// an I32. The payload gives T, and nothing gives E, so the check must
+// still compare T. With one type parameter the check works: see
+// enums/generic_payload_checked_against_the_annotation.fv.
+
+pub enum Result<T, E> { ok(value: T), error(err: E) }
+pub let r: Result<String, I32> = Result.ok(value: 1)

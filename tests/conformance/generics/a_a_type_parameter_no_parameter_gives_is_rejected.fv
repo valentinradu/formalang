@@ -1,0 +1,9 @@
+// expect: reject UninferableMethodTypeParameter
+// from: rust tests/ui/inference/ (E0282, type annotations needed), and
+// docs/user/generics.md, Generic Methods (E147): each type parameter
+// must appear in the type of a parameter, or a call cannot give it a
+// type. The same holds for a free function.
+fn make<T>() -> I32 {
+    0
+}
+pub let x: I32 = make()

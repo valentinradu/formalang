@@ -8,11 +8,10 @@
 
 use crate::ast::{Ident, ParamConvention, PrimitiveType};
 use crate::location::Span;
-use serde::{Deserialize, Serialize};
 
 /// Generic type parameter (e.g., T in `Box<T>`)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenericParam {
     pub name: Ident,
     pub constraints: Vec<GenericConstraint>,
@@ -27,7 +26,7 @@ pub struct GenericParam {
 /// monomorphisation: `<T: Container<I32>>` instantiates Container
 /// for `I32` and constrains T against that specialised trait.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GenericConstraint {
     Trait { name: Ident, args: Vec<Type> },
 }
@@ -39,7 +38,8 @@ pub enum GenericConstraint {
 /// inlining or branch-likelihood heuristics. The frontend does *not*
 /// act on these — they are pass-through metadata.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FunctionAttribute {
     /// Hint: inline this function at every call site when possible.
     Inline,
@@ -60,7 +60,7 @@ pub enum FunctionAttribute {
 /// the offending `inline` / `cold` keyword (e.g. duplicate or
 /// contradictory annotations).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AttributeAnnotation {
     pub kind: FunctionAttribute,
     pub span: Span,
@@ -73,7 +73,8 @@ pub struct AttributeAnnotation {
 /// the right call sequence and symbol mangling. The default — produced
 /// by a bare `extern fn foo()` — is `C`.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExternAbi {
     /// Plain C ABI. Default for `extern fn foo()` and `extern "C" fn foo()`.
     C,
@@ -84,7 +85,7 @@ pub enum ExternAbi {
 
 /// Type expression
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Primitive(PrimitiveType),
     Ident(Ident),
@@ -112,7 +113,7 @@ pub enum Type {
 
 /// Named tuple field
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TupleField {
     pub name: Ident,
     pub ty: Type,

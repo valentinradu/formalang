@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: `"abc"[0]` is the byte at that offset. The first
+// byte of `é` is 0xC3.
+pub fn run_checks() {
+    assert(condition: "é"[0] == 195)
+    assert(condition: "é"[1] == 169)
+}

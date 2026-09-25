@@ -1,0 +1,6 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence holds nothing to store.
+pub fn f() -> I32 {
+    let d = ["a": for x in [1] { x }]
+    d.len()
+}

@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/closures.md: a closure captures by value. A returned closure
+// holds a copy of a plain parameter, so it can capture one.
+fn adder(x: I32) -> (I32) -> I32 {
+    (y) -> x + y
+}
+
+pub fn run_checks() {
+    let add2 = adder(x: 2)
+    assert(condition: add2(3) == 5)
+}

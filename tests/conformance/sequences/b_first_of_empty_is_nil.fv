@@ -1,0 +1,6 @@
+// expect: run
+// `first` gives `T?`. An empty source has no first element.
+pub fn run_checks() {
+    let xs: [I32] = []
+    assert(condition: for x in xs { x }.first() == nil)
+}

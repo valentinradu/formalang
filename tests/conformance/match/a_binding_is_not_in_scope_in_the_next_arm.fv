@@ -1,0 +1,10 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/match/. A name that one arm binds is not in scope
+// in the next arm.
+pub enum E { a(v: I32), b }
+pub fn f(e: E) -> I32 {
+    match e {
+        .a(v): v,
+        .b: v
+    }
+}

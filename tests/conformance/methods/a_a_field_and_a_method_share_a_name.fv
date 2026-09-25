@@ -1,0 +1,12 @@
+// expect: run
+// from: rust tests/ui/methods/ (a field and a method may share a name).
+// `s.size` reads the field, and `s.size()` calls the method.
+pub struct S { size: I32 }
+impl S {
+    fn size(self) -> I32 { self.size * 10 }
+}
+pub fn run_checks() {
+    let s = S(size: 2)
+    assert(condition: s.size == 2)
+    assert(condition: s.size() == 20)
+}

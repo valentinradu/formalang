@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `+` joins two strings or adds two numbers.
+// Arrays are neither.
+pub fn f() -> [I32] { [1] + [2] }

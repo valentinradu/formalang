@@ -1,0 +1,5 @@
+// expect: compile
+// docs/user/types.md: `(mut I32, sink String) -> V`.
+struct Handlers {
+    both: (mut I32, sink String) -> I32
+}

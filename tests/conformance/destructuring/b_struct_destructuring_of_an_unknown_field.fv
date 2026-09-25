@@ -1,0 +1,8 @@
+// expect: reject UnknownField
+// docs/user/expressions.md: struct destructuring is by field name.
+pub struct User { name: String, age: I32 }
+
+pub fn f() -> I32 {
+    let {nope} = User(name: "a", age: 1)
+    0
+}

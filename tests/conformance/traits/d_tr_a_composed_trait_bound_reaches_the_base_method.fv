@@ -1,0 +1,19 @@
+// expect: run
+// docs/user/traits.md: trait composition combines requirements.
+pub trait Base { fn id(self) -> I32 }
+pub trait Extended: Base { fn name(self) -> String }
+pub struct Item { value: I32 }
+
+impl Base for Item {
+    fn id(self) -> I32 { self.value }
+}
+
+impl Extended for Item {
+    fn name(self) -> String { "item" }
+}
+
+fn both<T: Extended>(t: T) -> I32 { t.id() + t.name().len() }
+
+pub fn run_checks() {
+    assert(condition: both(t: Item(value: 3)) == 7)
+}

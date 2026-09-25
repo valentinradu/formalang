@@ -1,0 +1,3 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `+` takes two numbers or two strings.
+pub let s = true + false

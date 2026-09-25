@@ -1,5 +1,6 @@
 // Definition parsers: struct, trait, impl, enum, function, module definitions
 
+mod bodies;
 mod enums;
 mod extern_decls;
 mod funcs;
@@ -8,15 +9,16 @@ use chumsky::input::ValueInput;
 use chumsky::prelude::*;
 
 use crate::ast::{
-    ArrayPatternElement, AttributeAnnotation, BindingPattern, Definition, FieldDef, FnDef, FnSig,
-    FunctionAttribute, GenericConstraint, GenericParam, Ident, ImplDef, ModuleDef, StructDef,
-    StructField, StructPatternField, TraitDef, Type,
+    ArrayPatternElement, AttributeAnnotation, BindingPattern, Definition, FieldDef, FnSig,
+    FunctionAttribute, GenericConstraint, GenericParam, Ident, StructDef, StructField,
+    StructPatternField, TraitDef, Type,
 };
 use crate::lexer::Token;
 
+use bodies::{impl_def_parser, module_def_parser};
 use enums::enum_def_parser;
 use extern_decls::{extern_fn_parser, extern_impl_parser};
-use funcs::{fn_def_parser, fn_params_parser, fn_sig_parser, function_def_parser};
+use funcs::{fn_def_parser, fn_sig_parser, free_fn_params_parser, function_def_parser};
 
 use super::exprs::expr_parser;
 use super::ident_parser;
@@ -51,11 +53,26 @@ where
             pattern.clone().map(ArrayPatternElement::Binding),
         ));
 
+        // An array pattern holds at most one rest pattern: with two, the
+        // split of the elements between them is not defined.
         let array_pattern = array_element
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .validate(|elements: Vec<ArrayPatternElement>, e, emitter| {
+                let rests = elements
+                    .iter()
+                    .filter(|element| matches!(element, ArrayPatternElement::Rest(_)))
+                    .count();
+                if rests > 1 {
+                    emitter.emit(Rich::custom(
+                        e.span(),
+                        "an array pattern holds at most one rest pattern `...`",
+                    ));
+                }
+                elements
+            })
             .map_with(|elements, e| BindingPattern::Array {
                 elements,
                 span: span_from_simple(e.span()),
@@ -350,112 +367,6 @@ where
                 doc,
                 span: span_from_simple(e.span()),
             }
-        })
-}
-
-/// Parse an impl block definition
-/// Impl blocks contain only functions:
-/// - `impl Struct { fn method(self) -> Type { body } }` - inherent impl
-/// - `impl Trait for Struct { fn method(self) -> Type { body } }` - trait impl
-pub(super) fn impl_def_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, ImplDef, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    // Parse optional "Trait[<X, Y, ...>] for" prefix.
-    // Phase B: trait_args lets `impl Foo<X> for Y { ... }` parse with
-    // the inner generic-trait instantiation preserved.
-    let trait_for = ident_parser()
-        .then(
-            type_parser()
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::Lt), just(Token::Gt))
-                .or_not(),
-        )
-        .then_ignore(just(Token::For))
-        .or_not();
-
-    just(Token::Impl)
-        .ignore_then(trait_for)
-        .then(ident_parser())
-        .then(generic_params_parser())
-        .then(impl_body_parser())
-        .map_with(|(((trait_for_pair, name), generics), functions), e| {
-            let (trait_name, trait_args) = match trait_for_pair {
-                Some((tname, args)) => (Some(tname), args.unwrap_or_default()),
-                None => (None, Vec::new()),
-            };
-            ImplDef {
-                trait_name,
-                trait_args,
-                name,
-                generics,
-                functions,
-                is_extern: false,
-                doc: None,
-                span: span_from_simple(e.span()),
-            }
-        })
-}
-
-/// Parse the optional ABI string that may follow `extern`. Recognised
-/// values are `"C"` (default if the string is omitted) and
-/// `"system"`. Tier-1 item E.
-pub(super) fn impl_body_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Vec<FnDef>, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    // Full definition (with body) takes priority; fall back to bare signature.
-    let impl_item = choice((
-        fn_def_parser(),
-        fn_sig_parser().map(|sig| FnDef {
-            name: sig.name,
-            generics: sig.generics,
-            params: sig.params,
-            return_type: sig.return_type,
-            body: None,
-            attributes: sig.attributes,
-            doc: None,
-            span: sig.span,
-        }),
-    ));
-    impl_item
-        .padded_by(newlines())
-        .repeated()
-        .collect::<Vec<_>>()
-        .padded_by(newlines())
-        .delimited_by(just(Token::LBrace), just(Token::RBrace))
-}
-
-/// Parse a function body: `{ statements... result_expr }` or `{ }` for empty
-///
-/// The function body is parsed as a block with multiple statements followed by a result.
-pub(super) fn module_def_parser<'tokens, I>(
-    def_parser: impl Parser<'tokens, I, Definition, extra::Err<Rich<'tokens, Token>>> + Clone,
-) -> impl Parser<'tokens, I, ModuleDef, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    visibility_parser()
-        .then_ignore(just(Token::Module))
-        .then(ident_parser())
-        .then(
-            def_parser
-                .padded_by(newlines())
-                .repeated()
-                .collect()
-                .padded_by(newlines())
-                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-        )
-        .map_with(|((visibility, name), definitions), e| ModuleDef {
-            visibility,
-            name,
-            definitions,
-            doc: None,
-            span: span_from_simple(e.span()),
         })
 }
 

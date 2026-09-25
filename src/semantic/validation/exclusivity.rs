@@ -121,6 +121,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::ClosureExpr { .. }
             | Expr::LetExpr { .. }
             | Expr::MethodCall { .. }
+            | Expr::Call { .. }
             | Expr::Block { .. } => None,
         }
     }

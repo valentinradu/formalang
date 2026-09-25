@@ -47,9 +47,20 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         param: param.name.name.clone(),
                         span,
                     });
+                } else if param.convention == ParamConvention::Mut
+                    && Self::root_binding(arg_expr)
+                        .is_some_and(|root| self.is_closure_capture(&root))
+                {
+                    // A closure is pure: it does not change a binding
+                    // that it captures.
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: param.name.name.clone(),
+                        span,
+                    });
                 }
                 if param.convention == ParamConvention::Sink {
                     if let Some(root) = Self::root_binding(arg_expr) {
+                        self.check_sink_owner(&root, span);
                         self.consumed_bindings.insert(root);
                     }
                     // Escape analysis: a closure value passed to a sink param
@@ -59,6 +70,54 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
         self.validate_exclusive_access(&accesses, span);
+    }
+
+    /// Check that the code under check owns `root`, the binding that a
+    /// `sink` argument gives away.
+    ///
+    /// A plain or `mut` parameter, and a field of a plain or `mut`
+    /// `self`, belong to the caller. A module `let` belongs to every
+    /// function. A binding from outside a loop body or a closure body
+    /// would be given away once per pass.
+    fn check_sink_owner(&mut self, root: &str, span: Span) {
+        use crate::ast::ParamConvention;
+        if let Some(convention) = self.current_fn_param_conventions.get(root) {
+            if *convention != ParamConvention::Sink {
+                self.errors.push(CompilerError::MutabilityMismatch {
+                    param: root.to_string(),
+                    span,
+                });
+                return;
+            }
+        } else if !self.in_module_let
+            && !self.local_let_bindings.contains_key(root)
+            && !self.names_a_local_binding(root)
+            && self.symbols.is_let(root)
+        {
+            self.errors.push(CompilerError::UseAfterSink {
+                name: root.to_string(),
+                span,
+            });
+            return;
+        }
+        if self.sink_repeats(root) {
+            self.errors.push(CompilerError::UseAfterSink {
+                name: root.to_string(),
+                span,
+            });
+        }
+    }
+
+    /// True when `name` is a loop variable, a closure parameter or a
+    /// pattern binding in scope.
+    fn names_a_local_binding(&self, name: &str) -> bool {
+        self.loop_var_scopes.iter().any(|s| s.contains_key(name))
+            || self.closure_param_scopes.iter().any(|s| s.contains(name))
+            || self
+                .inference_scope_stack
+                .borrow()
+                .iter()
+                .any(|s| s.contains_key(name))
     }
 
     /// Check each call argument against the type its parameter
@@ -86,6 +145,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         params: &[ParamView<'_>],
         generics: &[crate::ast::GenericParam],
         args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        substituted: &[Option<SemType>],
         file: &File,
     ) {
         let generic_names: Vec<String> = generics.iter().map(|g| g.name.name.clone()).collect();
@@ -105,6 +165,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 },
             );
             let Some(param) = param else { continue };
+            // The type of the parameter with the type arguments of the
+            // call put in: a written `<I32>`, or the type that another
+            // argument gives. `id<I32>(x: "s")` and `same(a: 1, b: "x")`
+            // compare against `I32`.
+            let concrete = substituted.get(i).cloned().flatten().filter(|t| {
+                !t.is_indeterminate() && !crate::semantic::inference::holds_an_unbound_type_param(t)
+            });
             let Some(declared_ty) = param.ty else {
                 continue;
             };
@@ -134,17 +201,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         found: inferred_sem.display(),
                         span: arg_expr.span(),
                     });
+                } else if let Some(concrete) = concrete {
+                    if !inferred_sem.is_indeterminate()
+                        && inferred_sem != concrete
+                        && !self.value_satisfies_declared(&concrete.display(), &inferred_sem)
+                    {
+                        self.errors.push(CompilerError::TypeMismatch {
+                            expected: concrete.display(),
+                            found: inferred_sem.display(),
+                            span: arg_expr.span(),
+                        });
+                    }
                 }
                 continue;
             }
 
             let inferred_sem = self.infer_type_sem(arg_expr, file);
             if !self.value_satisfies_declared(&declared, &inferred_sem) {
-                self.errors.push(CompilerError::TypeMismatch {
-                    expected: declared,
-                    found: inferred_sem.display(),
-                    span: arg_expr.span(),
-                });
+                let error = self.value_mismatch(declared, &inferred_sem, arg_expr.span());
+                self.errors.push(error);
             }
         }
     }
@@ -191,7 +266,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// `total(item: Plain(n: 1))` against `fn total<T: Shape>(item: T)`
     /// compiled, and the lowered IR carried a method call with a
     /// vtable slot index for a trait `Plain` does not implement.
-    fn check_generic_bounds(
+    pub(in crate::semantic::validation) fn check_generic_bounds(
         &mut self,
         generic: &crate::ast::GenericParam,
         arg_expr: &crate::ast::Expr,
@@ -208,9 +283,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         for constraint in &generic.constraints {
             let crate::ast::GenericConstraint::Trait {
-                name: trait_ref, ..
+                name: trait_ref,
+                args: trait_args,
             } = constraint;
-            if !self.sem_type_satisfies_trait(&inferred, &trait_ref.name) {
+            if !self.sem_type_satisfies_trait(&inferred, &trait_ref.name, trait_args) {
                 self.errors.push(CompilerError::GenericConstraintViolation {
                     arg: inferred.display(),
                     constraint: trait_ref.name.clone(),
@@ -228,192 +304,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// parameter in scope satisfies the bound when its own
     /// constraints list the trait, which is what lets one bounded
     /// function call another.
-    fn sem_type_satisfies_trait(&self, ty: &SemType, trait_name: &str) -> bool {
+    fn sem_type_satisfies_trait(
+        &self,
+        ty: &SemType,
+        trait_name: &str,
+        trait_args: &[crate::ast::Type],
+    ) -> bool {
         let name = match ty {
-            SemType::Named(name) => name,
-            SemType::Generic { base, .. } => base,
+            SemType::Named(name) => name.clone(),
+            SemType::Generic { base, .. } => base.clone(),
+            SemType::Primitive(p) => format!("{p:?}"),
             SemType::Unknown | SemType::InferredEnum | SemType::Nil => return true,
-            SemType::Primitive(_)
-            | SemType::Array(_)
+            SemType::Array(_)
             | SemType::Optional(_)
             | SemType::Tuple(_)
             | SemType::Dictionary { .. }
             | SemType::Closure { .. } => return false,
         };
-
-        // A generic parameter that is still in scope carries its own
-        // bounds, so `fn outer<U: Shape>(x: U)` may pass `x` on to
-        // `fn inner<T: Shape>(item: T)`.
-        if self
-            .generic_scopes
-            .iter()
-            .filter_map(|scope| scope.params.get(name.as_str()))
-            .any(|constraints| constraints.iter().any(|c| c == trait_name))
-        {
-            return true;
-        }
-
-        let wanted = trait_name.to_string();
-        self.symbols
-            .get_all_traits_for_struct(name)
-            .contains(&wanted)
-            || self.symbols.get_all_traits_for_enum(name).contains(&wanted)
-    }
-
-    /// The overloads that fit the call best.
-    ///
-    /// An overload fits when [`Self::overload_matches`] accepts the
-    /// call. Among the ones that fit, the most specific wins: the one
-    /// that fills its parameters with the fewest defaults (DP-3). More
-    /// than one result is an ambiguous call, and none is a call that
-    /// fits no overload.
-    pub(in crate::semantic::validation) fn most_specific_overloads<'o>(
-        &self,
-        overloads: &'o [crate::semantic::symbol_table::FunctionInfo],
-        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
-        file: &File,
-    ) -> Vec<&'o crate::semantic::symbol_table::FunctionInfo> {
-        let call_labels: Vec<Option<String>> = args
-            .iter()
-            .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
-            .collect();
-
-        let matching: Vec<_> = overloads
-            .iter()
-            .filter(|overload| self.overload_matches(overload, &call_labels, args, file))
-            .collect();
-
-        // DP-3: most-specific wins under defaults. When several
-        // overloads pass the broadened arity check, prefer the
-        // one whose `non_self_count - args.len()` is smallest
-        // (i.e., fewest default values fired). Ties at the same
-        // gap fall through to the existing ambiguous-call path.
-        let min_gap: Option<usize> = matching
-            .iter()
-            .map(|overload| {
-                let non_self = overload
-                    .params
-                    .iter()
-                    .filter(|p| p.name.name != "self")
-                    .count();
-                non_self.saturating_sub(args.len())
-            })
-            .min();
-        min_gap.map_or_else(
-            || matching.clone(),
-            |g| {
-                matching
-                    .iter()
-                    .copied()
-                    .filter(|overload| {
-                        let non_self = overload
-                            .params
-                            .iter()
-                            .filter(|p| p.name.name != "self")
-                            .count();
-                        non_self.saturating_sub(args.len()) == g
-                    })
-                    .collect()
-            },
-        )
-    }
-
-    /// Check whether a single overload matches the given call arguments.
-    ///
-    /// Resolution order:
-    /// 1. If all call arguments have labels, match by label set.
-    /// 2. If no call arguments have labels, try to match by first-argument type.
-    pub(super) fn overload_matches(
-        &self,
-        overload: &crate::semantic::symbol_table::FunctionInfo,
-        call_labels: &[Option<String>],
-        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
-        file: &File,
-    ) -> bool {
-        let params = &overload.params;
-        // Collect overload parameter labels (external_label if set, else param name)
-        let param_labels: Vec<String> = params
-            .iter()
-            .filter(|p| p.name.name != "self")
-            .map(|p| {
-                p.external_label
-                    .as_ref()
-                    .map_or_else(|| p.name.name.clone(), |l| l.name.clone())
-            })
-            .collect();
-
-        let all_labeled = call_labels.iter().all(Option::is_some);
-        let none_labeled = call_labels.iter().all(Option::is_none);
-
-        if all_labeled && !call_labels.is_empty() {
-            // Mode A: match by label set, accepting omitted parameters
-            // when they have defaults. Required = labels without defaults.
-            // The call's labels must be a subset of param_labels covering
-            // every required label.
-            let call_label_set: std::collections::HashSet<&str> =
-                call_labels.iter().filter_map(|l| l.as_deref()).collect();
-            let required_labels: std::collections::HashSet<&str> = params
-                .iter()
-                .filter(|p| p.name.name != "self" && p.default.is_none())
-                .map(|p| {
-                    p.external_label
-                        .as_ref()
-                        .map_or(p.name.name.as_str(), |l| l.name.as_str())
-                })
-                .collect();
-            let param_label_set: std::collections::HashSet<&str> =
-                param_labels.iter().map(String::as_str).collect();
-            // Every call label must exist on the param; every required
-            // label must be present in the call.
-            call_label_set.iter().all(|l| param_label_set.contains(l))
-                && required_labels.iter().all(|l| call_label_set.contains(l))
-        } else if none_labeled && args.is_empty() {
-            // Zero-arg call: matches a zero-required-arg overload. With
-            // default values, an overload with all defaults (e.g.
-            // `fn f(x: I32 = 0)`) also matches a zero-arg call.
-            // Without context-type disambiguation (e.g., from a let
-            // annotation), multiple zero-required-arg overloads will be
-            // reported as AmbiguousCall by the caller.
-            let required = params
-                .iter()
-                .filter(|p| p.name.name != "self" && p.default.is_none())
-                .count();
-            required == 0
-        } else if none_labeled && !args.is_empty() {
-            // Mode B: arity range check first, then match by first-argument type.
-            // Defaults broaden the acceptable arity to [required, total].
-            let non_self_count = params.iter().filter(|p| p.name.name != "self").count();
-            let required = params
-                .iter()
-                .filter(|p| p.name.name != "self" && p.default.is_none())
-                .count();
-            if args.len() < required || args.len() > non_self_count {
-                return false;
-            }
-
-            let first_arg_sem = args.first().map_or(SemType::Unknown, |(_, expr)| {
-                self.infer_type_sem(expr, file)
-            });
-
-            let first_param_sem = params
-                .iter()
-                .find(|p| p.name.name != "self")
-                .and_then(|p| p.ty.as_ref())
-                .map_or(SemType::Unknown, SemType::from_ast);
-
-            // Indeterminate either side means we can't tell — accept it
-            // (conservative). `is_unknown` returns true only for the bare
-            // `SemType::Unknown` variant; deeper compound types
-            // containing `Unknown` are caught by `is_indeterminate`.
-            first_arg_sem.is_indeterminate()
-                || first_param_sem.is_indeterminate()
-                || self
-                    .type_strings_compatible(&first_param_sem.display(), &first_arg_sem.display())
-        } else {
-            // Mixed labeled/unlabeled args have no defined match — overload
-            // resolution is all-labeled (mode A) or all-unlabeled (mode B).
-            false
-        }
+        self.implements_trait(&name, trait_name, trait_args)
     }
 
     /// Resolve a qualified function path like `math::compute` by traversing module symbol tables.
@@ -455,6 +363,8 @@ pub(in crate::semantic) struct ParamView<'a> {
     pub name: &'a str,
     pub external_label: Option<&'a str>,
     pub ty: Option<&'a crate::ast::Type>,
+    /// True when the parameter declares a default value.
+    pub has_default: bool,
 }
 
 impl<'a> ParamView<'a> {
@@ -466,6 +376,7 @@ impl<'a> ParamView<'a> {
             name: p.name.name.as_str(),
             external_label: p.external_label.as_ref().map(|l| l.name.as_str()),
             ty: p.ty.as_ref(),
+            has_default: p.default.is_some(),
         }
     }
 
@@ -475,6 +386,7 @@ impl<'a> ParamView<'a> {
             name: p.name.name.as_str(),
             external_label: p.external_label.as_ref().map(|l| l.name.as_str()),
             ty: p.ty.as_ref(),
+            has_default: p.default.is_some(),
         }
     }
 }

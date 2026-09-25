@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: there is no implicit conversion, so the two
+// operands must have the same type.
+pub let x = 1I32 + 1I64

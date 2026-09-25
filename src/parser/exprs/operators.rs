@@ -147,7 +147,7 @@ where
             11,
             just(Token::Dot)
                 .ignore_then(ident_parser())
-                .then(invocation_args),
+                .then(invocation_args.clone()),
             |receiver, (method, args): (Ident, MethodCallArgs), e| Expr::MethodCall {
                 receiver: Box::new(receiver),
                 method,
@@ -155,6 +155,14 @@ where
                 span: span_from_simple(e.span()),
             },
         ),
+        // Call of a value: `make()(4)` (precedence: 11). A name with
+        // arguments is an invocation atom, so this reaches only a
+        // callee that is not a plain name.
+        postfix(11, invocation_args, |callee, args, e| Expr::Call {
+            callee: Box::new(callee),
+            args,
+            span: span_from_simple(e.span()),
+        }),
         // Field access: `expr.field` (precedence: 10). Reference paths
         // get the field appended; other shapes wrap in `FieldAccess`.
         // Enum instantiation `Type.variant(args)` is parsed as an atom
@@ -172,6 +180,7 @@ where
                 }
                 Expr::Literal { .. }
                 | Expr::Invocation { .. }
+                | Expr::Call { .. }
                 | Expr::EnumInstantiation { .. }
                 | Expr::InferredEnumInstantiation { .. }
                 | Expr::Array { .. }

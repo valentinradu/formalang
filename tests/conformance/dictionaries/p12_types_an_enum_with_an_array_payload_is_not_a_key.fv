@@ -1,0 +1,6 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: an enum is a key only when each of its fields is
+// a key type too. An array is not a key type.
+pub enum K { a(x: [I32]), b }
+
+pub let d: [K: I32] = [:]

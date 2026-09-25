@@ -425,10 +425,15 @@ fn test_boolean_literals() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_nil_literal() -> Result<(), Box<dyn std::error::Error>> {
+    // `nil` takes its type from a declared optional type.
     let source = r"
-        let nothing = nil
+        let nothing: I32? = nil
     ";
     compile(source).map_err(|e| fmt_errs(&e))?;
+    // Alone, `nil` names no type, so the binding needs one.
+    if compile("let nothing = nil").is_ok() {
+        return Err("an unannotated `let` of `nil` must be refused".into());
+    }
     Ok(())
 }
 
@@ -560,7 +565,7 @@ fn test_match_expression() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         impl Display {
-            fn text() -> String {
+            fn text(self) -> String {
                 match self.status {
                     active: "Active",
                     inactive: "Inactive"
@@ -1052,7 +1057,7 @@ fn test_field_reference() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         impl User {
-            fn displayName() -> String {
+            fn displayName(self) -> String {
                 self.name
             }
         }

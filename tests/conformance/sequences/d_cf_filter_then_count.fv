@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/control-flow.md: `for x in xs { x * 2 }.filter(...).count()`.
+pub fn run_checks() {
+    let xs = [3, 6, 9]
+    let big: I32 = for x in xs { x * 2 }.filter(f: (v) -> v > 10).count()
+    assert(condition: big == 2)
+}

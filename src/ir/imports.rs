@@ -7,36 +7,39 @@
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImportedKind {
     Struct,
     Trait,
     Enum,
     /// A standalone function imported via `use other::compute`. The
-    /// item's qualified-name clone lives in `IrModule.functions`
-    /// after the cross-module inline pass.
+    /// linker puts the function in `IrModule.functions` under its
+    /// qualified name, such as `other::compute`.
     Function,
     /// A module-level `pub let` imported via `use other::CONST`.
-    /// The qualified-name clone lives in `IrModule.lets`.
+    /// The linker puts it in `IrModule.lets` under its qualified name.
     ModuleLet,
 }
 
-/// An import from another module. Tracks which types were imported from
-/// external modules so codegen can emit proper import statements.
+/// An import from another module.
+///
+/// Records the names that a `use` imports, so codegen can emit import
+/// statements. The items themselves are in the module: the linker
+/// copies each imported module into the module that imports it.
 #[expect(
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrImport {
     /// Logical module path (e.g., `["utils", "helpers"]`)
     pub module_path: Vec<String>,
     /// Items imported from this module
     pub items: Vec<IrImportItem>,
-    /// Filesystem path to the source module file. Used by codegen to look
-    /// up the cached `IrModule` for generating impl blocks from imported
-    /// types. Populated from the symbol table's `module_origins` during
-    /// IR lowering.
+    /// Filesystem path to the source module file. Populated from the
+    /// symbol table's `module_origins` during IR lowering.
     pub source_file: std::path::PathBuf,
 }
 
@@ -45,10 +48,11 @@ pub struct IrImport {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrImportItem {
-    /// Name of the imported type
+    /// Name of the imported item, as the `use` wrote it
     pub name: String,
-    /// Kind of type (struct, trait, or enum)
+    /// Kind of the item
     pub kind: ImportedKind,
 }

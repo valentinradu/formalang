@@ -1,0 +1,7 @@
+// expect: reject PointlessOptionalElement
+// docs/user/types.md: the E142 rule for `[I32?] = [3]` holds for a
+// dictionary's values.
+pub fn run_checks() {
+    let d: [String: I32?] = ["a": 1]
+    assert(condition: d.len() == 1)
+}

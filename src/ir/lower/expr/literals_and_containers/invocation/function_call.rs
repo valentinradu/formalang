@@ -10,8 +10,11 @@ use std::collections::{HashMap, HashSet};
 
 struct DefaultSubstitution {
     needs_let_wrapper: bool,
+    /// The parameter name of each argument, in order.
     wrapper_param_names: Vec<String>,
     wrapper_param_types: Vec<Option<ResolvedType>>,
+    /// True for an argument that the call wrote, false for a default.
+    explicit: Vec<bool>,
 }
 
 impl IrLowerer<'_> {
@@ -111,8 +114,7 @@ impl IrLowerer<'_> {
                 function_id,
                 lowered_args,
                 ty,
-                &substitution.wrapper_param_names,
-                &substitution.wrapper_param_types,
+                &substitution,
             )
         } else {
             IrExpr::FunctionCall {
@@ -125,146 +127,124 @@ impl IrLowerer<'_> {
         }
     }
 
-    /// DP-2 / DP-4 / DP-7: substitute defaults for missing args.
-    /// For all-positional calls, append trailing defaults. For
-    /// labeled calls (mode A), walk callee params in order and
-    /// fill any whose label is missing from the call. If any
-    /// substituted default references a preceding non-defaulted
-    /// param by name, the caller wraps the entire `FunctionCall`
-    /// in a `Block` whose `Let` statements bind those param names
-    /// to the explicit args (so the default's `Reference` resolves
-    /// via path lookup to the new binding, not to the callee's
-    /// stale binding-id, and side-effects don't duplicate).
+    /// Substitute the defaults of the arguments that a call leaves out.
+    ///
+    /// A positional call appends the trailing defaults. A labelled call
+    /// walks the parameters in order and fills each missing label. A
+    /// default can read any earlier parameter, and that parameter can
+    /// have a default too. When a default reads a parameter name, the
+    /// caller wraps the call in a block that binds each parameter in
+    /// order (see [`Self::wrap_call_with_let_bindings`]).
     fn substitute_defaults(
         &self,
         function_id: Option<crate::ir::FunctionId>,
         lowered_args: &mut Vec<(Option<String>, IrExpr)>,
     ) -> DefaultSubstitution {
-        let mut needs_let_wrapper = false;
-        let mut wrapper_param_names: Vec<String> = Vec::new();
-        let mut wrapper_param_types: Vec<Option<ResolvedType>> = Vec::new();
-        if let Some(func_id) = function_id {
-            if let Some(func) = self.module.functions.get(func_id.0 as usize) {
-                let non_self_params: Vec<IrFunctionParam> = func
-                    .params
+        let mut out = DefaultSubstitution {
+            needs_let_wrapper: false,
+            wrapper_param_names: Vec::new(),
+            wrapper_param_types: Vec::new(),
+            explicit: Vec::new(),
+        };
+        let Some(func) = function_id.and_then(|id| self.module.functions.get(id.0 as usize)) else {
+            return out;
+        };
+        let params: Vec<IrFunctionParam> = func
+            .params
+            .iter()
+            .filter(|p| p.name != "self")
+            .cloned()
+            .collect();
+        if lowered_args.len() >= params.len() {
+            return out;
+        }
+        let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
+        let any_labeled = lowered_args.iter().any(|(l, _)| l.is_some());
+        let mut new_args: Vec<(Option<String>, IrExpr)> = Vec::with_capacity(params.len());
+        for (index, param) in params.iter().enumerate() {
+            let written = if any_labeled {
+                lowered_args
                     .iter()
-                    .filter(|p| p.name != "self")
-                    .cloned()
-                    .collect();
-                let want = non_self_params.len();
-                if lowered_args.len() < want {
-                    let any_labeled = lowered_args.iter().any(|(l, _)| l.is_some());
-                    // Names of params that already have a value in
-                    // the call (used to detect earlier-param refs
-                    // that need the let-wrapper).
-                    let already_provided_names: HashSet<String> = if any_labeled {
-                        lowered_args.iter().filter_map(|(l, _)| l.clone()).collect()
-                    } else {
-                        non_self_params
-                            .iter()
-                            .take(lowered_args.len())
-                            .map(|p| p.name.clone())
-                            .collect()
-                    };
-                    if any_labeled {
-                        // Mode A; labeled call. Build a new
-                        // ordered args list that walks callee
-                        // params in order, picking up the
-                        // explicit-call value when its label is
-                        // present and substituting the default
-                        // otherwise. Mid-list omissions get
-                        // filled at the right position.
-                        let mut new_args: Vec<(Option<String>, IrExpr)> = Vec::with_capacity(want);
-                        for param in &non_self_params {
-                            if let Some(pos) = lowered_args.iter().position(|(l, _)| {
-                                l.as_ref().is_some_and(|name| name == &param.name)
-                            }) {
-                                let (label, value) = lowered_args.remove(pos);
-                                new_args.push((label, value));
-                            } else if let Some(default) = &param.default {
-                                if expr_references_any_name(default, &already_provided_names) {
-                                    needs_let_wrapper = true;
-                                }
-                                new_args.push((Some(param.name.clone()), default.clone()));
-                            } else {
-                                // Required label missing: validator
-                                // should have rejected. Stop on the
-                                // first gap to preserve some signal.
-                                break;
-                            }
-                        }
-                        *lowered_args = new_args;
-                    } else {
-                        // Positional; append trailing defaults.
-                        for param in non_self_params.iter().skip(lowered_args.len()) {
-                            if let Some(default) = &param.default {
-                                if expr_references_any_name(default, &already_provided_names) {
-                                    needs_let_wrapper = true;
-                                }
-                                lowered_args.push((None, default.clone()));
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    if needs_let_wrapper {
-                        for param in non_self_params
-                            .iter()
-                            .filter(|p| already_provided_names.contains(&p.name))
-                        {
-                            wrapper_param_names.push(param.name.clone());
-                            wrapper_param_types.push(param.ty.clone());
-                        }
-                    }
+                    .position(|(l, _)| l.as_ref().is_some_and(|name| name == &param.name))
+                    .map(|pos| lowered_args.remove(pos))
+            } else if index < lowered_args.len() {
+                // Positional arguments keep their place, so take a
+                // copy and replace the list at the end.
+                lowered_args.get(index).cloned()
+            } else {
+                None
+            };
+            if let Some(arg) = written {
+                new_args.push(arg);
+                out.explicit.push(true);
+            } else if let Some(default) = &param.default {
+                if expr_references_any_name(default, &param_names) {
+                    out.needs_let_wrapper = true;
                 }
+                let label = any_labeled.then(|| param.name.clone());
+                new_args.push((label, default.clone()));
+                out.explicit.push(false);
+            } else {
+                // A required argument is missing. Semantic analysis
+                // reports it, so stop at the first gap.
+                break;
             }
+            out.wrapper_param_names.push(param.name.clone());
+            out.wrapper_param_types.push(param.ty.clone());
         }
-        DefaultSubstitution {
-            needs_let_wrapper,
-            wrapper_param_names,
-            wrapper_param_types,
-        }
+        *lowered_args = new_args;
+        out
     }
 
-    /// Build let bindings for each preceding non-defaulted
-    /// param. Move the explicit `lowered_args[i]` into the
-    /// let value; replace the call-site arg with a
-    /// `Reference` to the binding name. The default's
-    /// `Reference{path:[name]}` resolves to the let-binding
-    /// post-`ResolveReferencesPass`.
+    /// Wrap a call whose defaults read parameter names in a block that
+    /// binds each parameter in order:
+    /// `{ let arg#a = <written a>; let a = arg#a; let b = <default of b>; f(a: a, b: b) }`.
+    ///
+    /// The written arguments are bound first, under names that a
+    /// program cannot write. So a written argument that reads a caller
+    /// binding with a parameter's name reads the caller's binding, not
+    /// the parameter.
     fn wrap_call_with_let_bindings(
         &self,
         path_strs: Vec<String>,
         function_id: Option<crate::ir::FunctionId>,
         mut lowered_args: Vec<(Option<String>, IrExpr)>,
         ty: ResolvedType,
-        wrapper_param_names: &[String],
-        wrapper_param_types: &[Option<ResolvedType>],
+        substitution: &DefaultSubstitution,
     ) -> IrExpr {
-        let mut statements = Vec::with_capacity(wrapper_param_names.len());
-        for ((name, ty), arg) in wrapper_param_names
+        let reference = |name: &str, ty: &Option<ResolvedType>| IrExpr::Reference {
+            path: vec![name.to_string()],
+            target: crate::ir::ReferenceTarget::Unresolved,
+            ty: ty.clone().unwrap_or(ResolvedType::Error),
+            span: self.current_ir_span(),
+        };
+        let bind = |name: &str, ty: &Option<ResolvedType>, value: IrExpr| IrBlockStatement::Let {
+            binding_id: crate::ir::BindingId(0),
+            name: name.to_string(),
+            mutable: false,
+            ty: ty.clone(),
+            value,
+            span: self.current_ir_span(),
+        };
+        let mut written = Vec::new();
+        let mut params = Vec::new();
+        for (((name, ty), explicit), arg) in substitution
+            .wrapper_param_names
             .iter()
-            .zip(wrapper_param_types.iter())
+            .zip(substitution.wrapper_param_types.iter())
+            .zip(substitution.explicit.iter())
             .zip(lowered_args.iter_mut())
         {
-            let value = std::mem::replace(
-                &mut arg.1,
-                IrExpr::Reference {
-                    path: vec![name.clone()],
-                    target: crate::ir::ReferenceTarget::Unresolved,
-                    ty: ty.clone().unwrap_or(ResolvedType::Error),
-                    span: self.current_ir_span(),
-                },
-            );
-            statements.push(IrBlockStatement::Let {
-                binding_id: crate::ir::BindingId(0),
-                name: name.clone(),
-                mutable: false,
-                ty: ty.clone(),
-                value,
-                span: self.current_ir_span(),
-            });
+            let value = std::mem::replace(&mut arg.1, reference(name, ty));
+            if *explicit {
+                let hidden = format!("arg#{name}");
+                written.push(bind(&hidden, ty, value));
+                params.push(bind(name, ty, reference(&hidden, ty)));
+            } else {
+                params.push(bind(name, ty, value));
+            }
         }
+        written.extend(params);
         let call = IrExpr::FunctionCall {
             path: path_strs,
             function_id,
@@ -273,7 +253,7 @@ impl IrLowerer<'_> {
             span: self.current_ir_span(),
         };
         IrExpr::Block {
-            statements,
+            statements: written,
             result: Box::new(call),
             ty,
             span: self.current_ir_span(),

@@ -1,0 +1,6 @@
+// expect: reject InvalidCharacter
+// The grammar has no `;`.
+pub fn f() -> I32 {
+    let a = 1;
+    a
+}

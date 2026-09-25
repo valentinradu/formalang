@@ -1,0 +1,9 @@
+// expect: reject TraitMethodSignatureMismatch
+// from: swift test/decl/protocol/ (argument labels are part of a
+// requirement). docs/user/traits.md: method signatures must match. The
+// impl names
+// the parameter `other` where the trait names it `by`, so a call
+// through a bound, `x.scale(by: 2)`, names a label that the impl lacks.
+pub trait Scale { fn scale(self, by: I32) -> I32 }
+pub struct S { n: I32 }
+impl Scale for S { fn scale(self, other: I32) -> I32 { self.n * other } }

@@ -1,4 +1,4 @@
-use crate::ir::IrExpr;
+use crate::ir::{IrExpr, ReferenceTarget};
 
 use super::ty::remap_type;
 use super::IdRemap;
@@ -110,9 +110,17 @@ pub(super) fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             for (_, e) in args {
                 remap_expr(e, remap);
             }
-            if let crate::ir::DispatchKind::Virtual { trait_id, .. } = dispatch {
+            if let crate::ir::DispatchKind::Virtual {
+                trait_id,
+                trait_args,
+                ..
+            } = dispatch
+            {
                 if let Some(new) = remap.trait_of(*trait_id) {
                     *trait_id = new;
+                }
+                for t in trait_args {
+                    remap_type(t, remap);
                 }
             }
         }
@@ -152,10 +160,32 @@ pub(super) fn remap_expr(expr: &mut IrExpr, remap: &IdRemap) {
             }
             remap_expr(result, remap);
         }
-        IrExpr::Literal { .. }
-        | IrExpr::Reference { .. }
-        | IrExpr::SelfFieldRef { .. }
-        | IrExpr::LetRef { .. } => {}
+        // A reference can name a struct, an enum or a trait by id. The
+        // id moves with its definition like any other.
+        IrExpr::Reference { target, .. } => match target {
+            ReferenceTarget::Struct(id) => {
+                if let Some(new) = remap.struct_of(*id) {
+                    *id = new;
+                }
+            }
+            ReferenceTarget::Enum(id) => {
+                if let Some(new) = remap.enum_of(*id) {
+                    *id = new;
+                }
+            }
+            ReferenceTarget::Trait(id) => {
+                if let Some(new) = remap.trait_of(*id) {
+                    *id = new;
+                }
+            }
+            ReferenceTarget::Function(_)
+            | ReferenceTarget::ModuleLet(_)
+            | ReferenceTarget::Local(_)
+            | ReferenceTarget::Param(_)
+            | ReferenceTarget::External { .. }
+            | ReferenceTarget::Unresolved => {}
+        },
+        IrExpr::Literal { .. } | IrExpr::SelfFieldRef { .. } | IrExpr::LetRef { .. } => {}
     }
 }
 

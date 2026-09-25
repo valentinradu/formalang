@@ -151,7 +151,12 @@ impl<'ast> NodeFinder<'ast> {
                     self.visit_expr(body);
                 }
             }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall { receiver, args, .. }
+            | Expr::Call {
+                callee: receiver,
+                args,
+                ..
+            } => {
                 self.visit_expr(receiver);
                 if self.found_node.is_some() {
                     return;

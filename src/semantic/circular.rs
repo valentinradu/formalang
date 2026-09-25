@@ -113,6 +113,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn detect_circular_let_dependencies(&mut self, file: &File) {
         let mut let_graph = TypeGraph::new();
         let mut let_spans: HashMap<String, Span> = HashMap::new();
+        // With no module `let`, there is no cycle to find.
+        let has_lets = file
+            .statements
+            .iter()
+            .any(|s| matches!(s, Statement::Let(_)));
+        let reach = if has_lets {
+            self.function_references(file)
+        } else {
+            HashMap::new()
+        };
 
         // Build the let binding dependency graph
         for statement in &file.statements {
@@ -129,7 +139,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
 
                 // Extract all let binding references from the value expression
-                let references = self.extract_let_references(&let_binding.value);
+                let references =
+                    Self::expand_calls(self.extract_let_references(&let_binding.value), &reach);
 
                 // Add dependencies for each binding from the pattern
                 // All bindings from a single let share the same dependencies
@@ -165,6 +176,61 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// For each free function of the file, find the module `let` values
+    /// and the calls that its body holds.
+    ///
+    /// A `let` that calls a function which reads the `let` is a cycle:
+    /// `let A = f()` with `fn f() -> I32 { A + 1 }`.
+    fn function_references(&self, file: &File) -> HashMap<String, HashSet<String>> {
+        let mut direct: HashMap<String, HashSet<String>> = HashMap::new();
+        for statement in &file.statements {
+            let Statement::Definition(def) = statement else {
+                continue;
+            };
+            let Definition::Function(func) = &**def else {
+                continue;
+            };
+            let Some(body) = &func.body else { continue };
+            let mut refs = self.extract_let_references(body);
+            // A parameter hides a module `let` of the same name.
+            for param in &func.params {
+                refs.remove(&param.name.name);
+            }
+            direct
+                .entry(Self::call_node(&func.name.name))
+                .or_default()
+                .extend(refs);
+        }
+        direct
+    }
+
+    /// The graph node of a call to the free function `name`. A `let`
+    /// name cannot end in `()`, so the two kinds of node never clash.
+    fn call_node(name: &str) -> String {
+        format!("{name}()")
+    }
+
+    /// Replace each call node in `refs` with the `let` values that the
+    /// call reads, through every function that it calls in turn.
+    fn expand_calls(
+        refs: HashSet<String>,
+        reach: &HashMap<String, HashSet<String>>,
+    ) -> HashSet<String> {
+        let mut out = HashSet::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut stack: Vec<String> = refs.into_iter().collect();
+        while let Some(r) = stack.pop() {
+            if !r.ends_with("()") {
+                out.insert(r);
+            } else if visited.insert(r.clone()) {
+                if let Some(called) = reach.get(&r) {
+                    stack.extend(called.iter().cloned());
+                }
+            }
+        }
+        out
+    }
+
     /// Extract all let binding references from an expression
     /// Returns a set of let binding names that this expression depends on
     pub(super) fn extract_let_references(&self, expr: &Expr) -> HashSet<String> {
@@ -174,6 +240,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     }
 
     /// Recursive worker for `extract_let_references` — accumulates into an existing set
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm per expression shape; the walk reads best in one place"
+    )]
     fn collect_let_references(&self, expr: &Expr, refs: &mut HashSet<String>) {
         match expr {
             Expr::Literal { .. } => {}
@@ -194,7 +264,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                 }
             }
-            Expr::Invocation { args, .. } => {
+            Expr::Invocation { path, args, .. } => {
+                if let [name] = path.as_slice() {
+                    if self.symbols.get_function(&name.name).is_some() {
+                        refs.insert(Self::call_node(&name.name));
+                    }
+                }
                 for (_, arg_expr) in args {
                     self.collect_let_references(arg_expr, refs);
                 }
@@ -254,7 +329,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.collect_let_references(value, refs);
                 self.collect_let_references(body, refs);
             }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall { receiver, args, .. }
+            | Expr::Call {
+                callee: receiver,
+                args,
+                ..
+            } => {
                 self.collect_let_references(receiver, refs);
                 for (_, arg) in args {
                     self.collect_let_references(arg, refs);

@@ -22,6 +22,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         name: &str,
         type_args: &[crate::ast::Type],
         args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        expected: &[Option<SemType>],
         span: Span,
         file: &File,
     ) {
@@ -52,9 +53,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for (type_arg, generic_param) in type_args.iter().zip(func_generics.iter()) {
                     for constraint in &generic_param.constraints {
                         let crate::ast::GenericConstraint::Trait {
-                            name: trait_ref, ..
+                            name: trait_ref,
+                            args: trait_args,
                         } = constraint;
-                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                        if !self.type_satisfies_trait_constraint(
+                            type_arg,
+                            &trait_ref.name,
+                            trait_args,
+                        ) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(type_arg),
                                 constraint: trait_ref.name.clone(),
@@ -66,6 +72,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
 
+        // A label may appear once, whatever the callee is.
+        if !self.check_repeated_labels(args) {
+            return;
+        }
         let simple_name = name.rsplit("::").next().unwrap_or(name);
         let overloads = self.function_overloads(name);
 
@@ -93,6 +103,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     let conventions: Vec<_> = params.iter().map(|(c, _)| *c).collect();
                     self.validate_closure_call_conventions(&conventions, args, span, file);
                     self.validate_closure_call_shape(&params, args, span, file);
+                } else if let Some(SemType::Optional(inner)) = self
+                    .lookup_binding_type(simple_name)
+                    .filter(|ty| matches!(ty, SemType::Optional(inner) if matches!(**inner, SemType::Closure { .. })))
+                {
+                    // A closure that may be absent must be unwrapped
+                    // before the call.
+                    self.errors.push(CompilerError::OptionalUsedAsNonOptional {
+                        actual: SemType::Optional(inner.clone()).display(),
+                        expected: inner.display(),
+                        span,
+                    });
                 } else if !self.resolve_qualified_function(name) {
                     // a missing function is an undefined
                     // reference, not an undefined type — use the correct
@@ -105,13 +126,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             1 => {
-                // Single overload — check argument types and mut params.
+                // Single overload — check the shape of the call, then
+                // argument types and mut params.
                 if let Some(info) = overloads.first() {
                     let params = info.params.clone();
                     let generics = info.generics.clone();
-                    self.validate_mut_param_args(&params, args, span, file);
                     let views: Vec<_> = params.iter().map(ParamView::of_param_info).collect();
-                    self.validate_arg_types(&views, &generics, args, file);
+                    let callee = format!("Function '{simple_name}'");
+                    self.check_type_params_given(
+                        simple_name,
+                        &params,
+                        &generics,
+                        type_args,
+                        args,
+                        span,
+                    );
+                    if self.validate_call_shape(&callee, simple_name, &views, args, span) {
+                        self.validate_mut_param_args(&params, args, span, file);
+                        self.validate_arg_types(&views, &generics, args, expected, file);
+                    }
                 }
             }
             _ => {
@@ -129,12 +162,25 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         // Resolved to a unique overload — check argument
                         // types and mut params.
                         if let Some(info) = most_specific.first() {
+                            let index = overloads.iter().position(|o| std::ptr::eq(o, *info));
                             let params = info.params.clone();
                             let generics = info.generics.clone();
+                            if let Some(index) = index {
+                                self.symbols
+                                    .record_overload_choice(span, simple_name, index);
+                            }
+                            self.check_type_params_given(
+                                simple_name,
+                                &params,
+                                &generics,
+                                type_args,
+                                args,
+                                span,
+                            );
                             self.validate_mut_param_args(&params, args, span, file);
                             let views: Vec<_> =
                                 params.iter().map(ParamView::of_param_info).collect();
-                            self.validate_arg_types(&views, &generics, args, file);
+                            self.validate_arg_types(&views, &generics, args, expected, file);
                         }
                     }
                     _ => {
@@ -144,6 +190,51 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         });
                     }
                 }
+            }
+        }
+    }
+
+    /// Report a type parameter of a free function that the call gives
+    /// no type.
+    ///
+    /// A call gives a type parameter its type through `<...>`, or
+    /// through an argument whose parameter type mentions it. A
+    /// parameter with a default that the call leaves out gives no type.
+    fn check_type_params_given(
+        &mut self,
+        function: &str,
+        params: &[crate::semantic::symbol_table::ParamInfo],
+        generics: &[crate::ast::GenericParam],
+        type_args: &[crate::ast::Type],
+        args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
+        span: Span,
+    ) {
+        if !type_args.is_empty() {
+            return;
+        }
+        let given = |param: &crate::semantic::symbol_table::ParamInfo| {
+            param.default.is_none()
+                || args.iter().any(|(label, _)| {
+                    label.as_ref().is_some_and(|l| {
+                        param.external_label.as_ref().unwrap_or(&param.name).name == l.name
+                    })
+                })
+        };
+        for generic in generics {
+            let name = std::slice::from_ref(&generic.name.name);
+            let mentioned = params.iter().any(|p| {
+                given(p)
+                    && p.ty
+                        .as_ref()
+                        .is_some_and(|ty| super::super::type_names::type_mentions_any(ty, name))
+            });
+            if !mentioned {
+                self.errors
+                    .push(CompilerError::UninferableMethodTypeParameter {
+                        param: generic.name.name.clone(),
+                        method: function.to_string(),
+                        span,
+                    });
             }
         }
     }
@@ -161,13 +252,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// `f(1, 2)` against `f: (I32) -> I32` compiled, and the lowered
     /// call carried a second argument into a closure with one
     /// parameter.
-    fn validate_closure_call_shape(
+    pub(in crate::semantic::validation) fn validate_closure_call_shape(
         &mut self,
         params: &[(crate::ast::ParamConvention, SemType)],
         args: &[(Option<crate::ast::Ident>, crate::ast::Expr)],
         span: Span,
         file: &File,
     ) {
+        // A closure type has no parameter names, so an argument label
+        // names nothing.
+        for label in args.iter().filter_map(|(label, _)| label.as_ref()) {
+            self.errors.push(CompilerError::LabelledClosureArgument {
+                label: label.name.clone(),
+                span: label.span,
+            });
+        }
         if args.len() != params.len() {
             self.errors.push(CompilerError::ArgumentCountMismatch {
                 callee: "This closure".to_string(),

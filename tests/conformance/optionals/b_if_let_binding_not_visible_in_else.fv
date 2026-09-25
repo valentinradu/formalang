@@ -1,0 +1,5 @@
+// expect: reject UndefinedReference
+// docs/user/control-flow.md: the name is bound inside the truthy branch.
+pub fn f(a: I32?) -> I32 {
+    if let v = a { v } else { v }
+}

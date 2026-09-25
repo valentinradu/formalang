@@ -91,9 +91,10 @@ const OPERANDS: &[Operand] = &[
         name: "[String:I32]",
         value: "[\"k\": 1]",
     },
+    // A real `I32?`: an unannotated `let` of `nil` alone has no type.
     Operand {
         name: "I32?",
-        value: "nil",
+        value: "if true { 1 } else { nil }",
     },
     Operand {
         name: "tuple",

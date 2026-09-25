@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/types.md: a string is indexed by byte offset. A slice by byte
+// offsets is a byte range.
+pub fn run_checks() {
+    assert(condition: "aé".slice(start: 1, end: 3) == "é")
+}

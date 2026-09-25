@@ -1,0 +1,13 @@
+// expect: run
+// from: TypeScript typeArgumentInference. Each call infers its own T.
+fn id<T>(x: T) -> T {
+    x
+}
+pub fn run_checks() {
+    let a: I32 = id(x: 1)
+    let b: String = id(x: "s")
+    let c: Boolean = id(x: true)
+    assert(condition: a == 1)
+    assert(condition: b == "s")
+    assert(condition: c)
+}

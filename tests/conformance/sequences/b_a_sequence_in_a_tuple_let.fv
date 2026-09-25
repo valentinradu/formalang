@@ -1,0 +1,7 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence holds nothing to store. A tuple
+// field stores a value.
+pub fn f() -> I32 {
+    let t = (s: for x in [1] { x }, n: 1)
+    t.n
+}

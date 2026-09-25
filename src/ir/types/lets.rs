@@ -1,6 +1,8 @@
 //! Module-level let bindings.
 
 use crate::ast::Visibility;
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 use crate::ir::{IrExpr, IrSpan, ResolvedType};
 
 /// A module-level let binding in the IR.
@@ -11,6 +13,9 @@ use crate::ir::{IrExpr, IrSpan, ResolvedType};
 /// # Example
 ///
 /// ```formalang
+/// pub enum Color { hex(value: String) }
+/// pub struct Font { family: String, size: I32 }
+///
 /// let primaryColor: Color = .hex(value: "#2563EB")
 /// let headingFont: Font = Font(family: "Inter", size: 24)
 /// ```
@@ -18,7 +23,8 @@ use crate::ir::{IrExpr, IrSpan, ResolvedType};
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrLet {
     /// The binding name
     pub name: String,
@@ -36,11 +42,14 @@ pub struct IrLet {
     pub value: IrExpr,
 
     /// Joined `///` doc comments preceding this binding.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub doc: Option<String>,
 
     /// Source span for DWARF / source-map emission. Carries
     /// `IrSpan::default()` for synthetic / hand-built IR.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }

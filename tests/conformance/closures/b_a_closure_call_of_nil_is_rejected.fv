@@ -1,0 +1,6 @@
+// expect: reject OptionalUsedAsNonOptional
+// An optional closure must be unwrapped before a call.
+pub fn f() -> I32 {
+    let g: ((I32) -> I32)? = nil
+    g(1)
+}

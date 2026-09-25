@@ -1,0 +1,12 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/ (E0592, duplicate definitions with name).
+// Two impl blocks of one type that define one method twice.
+pub struct S { x: I32 }
+
+impl S {
+    fn m(self) -> I32 { 1 }
+}
+
+impl S {
+    fn m(self) -> I32 { 2 }
+}

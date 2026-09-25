@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/expressions.md: an index gives `T?`. An index past the end is
+// absent, so it is nil.
+pub fn run_checks() {
+    let a: [I32?] = [nil, 3]
+    let far = a[5]
+    assert(condition: far == nil)
+    let second = a[1]
+    assert(condition: second != nil)
+}

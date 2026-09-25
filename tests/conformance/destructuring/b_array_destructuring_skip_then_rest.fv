@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `[_, second, ...]` skips the first and gets
+// the second.
+pub fn run_checks() {
+    let items = [10, 20, 30]
+    let [_, second, ...] = items
+    assert(condition: second == 20)
+}

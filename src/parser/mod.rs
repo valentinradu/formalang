@@ -5,8 +5,11 @@
 
 mod defs;
 mod diagnostics;
+mod docs;
 mod exprs;
+mod nesting;
 mod newline;
+mod recovery;
 mod span;
 mod types;
 
@@ -14,14 +17,16 @@ use chumsky::input::{Stream, ValueInput};
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BlockStatement, Definition, Expr, File, Ident, LetBinding, Literal, Statement, UseItems,
-    UseStmt, Visibility,
+    BlockStatement, Expr, File, Ident, LetBinding, Literal, Statement, UseItems, UseStmt,
+    Visibility,
 };
 use crate::lexer::Token;
 use crate::location::Span as CustomSpan;
 
 use defs::{binding_pattern_parser, definition_parser};
 use diagnostics::format_parse_error;
+use docs::attach_doc_to_statement;
+use docs::{doc_comments_parser, inner_doc_comments_parser};
 use exprs::expr_parser;
 use newline::newlines;
 use span::fill_file_spans;
@@ -30,9 +35,14 @@ use types::type_parser;
 /// Main entry point for parsing
 /// Returns the parsed AST or a vector of (`error_message`, span) tuples
 ///
+/// The parse runs on a thread of its own, with a stack that grows with
+/// the nesting of the program. A program that nests deeper than the
+/// limit is refused before the parse starts.
+///
 /// # Errors
 ///
-/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors.
+/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors,
+/// or one pair if the program nests deeper than the limit.
 pub fn parse_file(tokens: &[(Token, CustomSpan)]) -> Result<File, Vec<(String, CustomSpan)>> {
     parse_file_internal(tokens, None)
 }
@@ -41,7 +51,8 @@ pub fn parse_file(tokens: &[(Token, CustomSpan)]) -> Result<File, Vec<(String, C
 ///
 /// # Errors
 ///
-/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors.
+/// Returns a vector of `(message, span)` pairs if the token stream contains parse errors,
+/// or one pair if the program nests deeper than the limit.
 pub fn parse_file_with_source(
     tokens: &[(Token, CustomSpan)],
     source: &str,
@@ -49,8 +60,36 @@ pub fn parse_file_with_source(
     parse_file_internal(tokens, Some(source))
 }
 
-/// Internal parsing implementation
+/// Internal parsing implementation.
+///
+/// A program that nests deeper than the limit is refused before the
+/// parser starts; see [`nesting`]. The parser then runs on its own
+/// thread, with a stack that grows with the nesting score of the
+/// program; see [`nesting::on_parser_stack`].
 fn parse_file_internal(
+    tokens: &[(Token, CustomSpan)],
+    source: Option<&str>,
+) -> Result<File, Vec<(String, CustomSpan)>> {
+    let score = match nesting::nesting_score(tokens) {
+        Ok(score) => score,
+        Err(span) => {
+            let span = source.map_or(span, |src| {
+                CustomSpan::from_range_with_source(span.start.offset, span.end.offset, src)
+            });
+            return Err(vec![(
+                format!(
+                    "the program nests too deeply here; the limit is {} levels",
+                    nesting::MAX_NESTING
+                ),
+                span,
+            )]);
+        }
+    };
+    nesting::on_parser_stack(score, || parse_tokens(tokens, source))
+}
+
+/// Parse the tokens. Runs on the parser thread.
+fn parse_tokens(
     tokens: &[(Token, CustomSpan)],
     source: Option<&str>,
 ) -> Result<File, Vec<(String, CustomSpan)>> {
@@ -143,10 +182,19 @@ where
     // boundary.
     let breaks = just(Token::Newline).repeated().ignored();
 
+    // One statement per line: a statement ends at a line break or at the
+    // end of the file.
+    let line_end = choice((just(Token::Newline).ignored(), end()))
+        .rewind()
+        .labelled("end of line");
+
     breaks
         .clone()
-        .ignore_then(
+        .ignore_then(inner_doc_comments_parser())
+        .then_ignore(breaks.clone())
+        .then(
             statement_parser()
+                .then_ignore(line_end)
                 .then_ignore(breaks.clone())
                 .recover_with(skip_then_retry_until(
                     any().ignored(),
@@ -155,8 +203,8 @@ where
                 .repeated()
                 .collect::<Vec<_>>(),
         )
-        .map_with(|statements, e| File {
-            format_version: crate::ast::FORMAT_VERSION,
+        .map_with(|(doc, statements), e| File {
+            doc,
             statements,
             span: span_from_simple(e.span()),
         })
@@ -178,75 +226,6 @@ where
         )))
         .map(|(doc, stmt)| attach_doc_to_statement(doc, stmt))
         .labelled("statement (use, let, or definition: struct, enum, trait, impl, fn, extern, mod)")
-}
-
-/// Consume zero or more leading `///` doc-comment lines and join them
-/// with newlines. Returns `None` when no doc comments precede the next
-/// item. Inner `//!` comments are skipped at this level — they belong
-/// to the enclosing scope and are handled by the file-level parser.
-pub(super) fn doc_comments_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Option<String>, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    select! { Token::DocComment(s) => s }
-        .repeated()
-        .collect::<Vec<_>>()
-        .map(|lines| {
-            if lines.is_empty() {
-                None
-            } else {
-                Some(lines.join("\n"))
-            }
-        })
-}
-
-/// Attach a captured doc-comment string to whichever AST node the
-/// statement carries. `Use` statements don't currently support docs and
-/// silently drop the captured text.
-fn attach_doc_to_statement(doc: Option<String>, stmt: Statement) -> Statement {
-    let Some(doc) = doc else {
-        return stmt;
-    };
-    match stmt {
-        Statement::Let(mut lb) => {
-            lb.doc = Some(doc);
-            Statement::Let(lb)
-        }
-        Statement::Definition(def) => {
-            Statement::Definition(Box::new(attach_doc_to_definition(doc, *def)))
-        }
-        Statement::Use(_) => stmt,
-    }
-}
-
-fn attach_doc_to_definition(doc: String, def: Definition) -> Definition {
-    match def {
-        Definition::Function(mut f) => {
-            f.doc = Some(doc);
-            Definition::Function(f)
-        }
-        Definition::Struct(mut s) => {
-            s.doc = Some(doc);
-            Definition::Struct(s)
-        }
-        Definition::Trait(mut t) => {
-            t.doc = Some(doc);
-            Definition::Trait(t)
-        }
-        Definition::Enum(mut e) => {
-            e.doc = Some(doc);
-            Definition::Enum(e)
-        }
-        Definition::Impl(mut i) => {
-            i.doc = Some(doc);
-            Definition::Impl(i)
-        }
-        Definition::Module(mut m) => {
-            m.doc = Some(doc);
-            Definition::Module(m)
-        }
-    }
 }
 
 /// Parse a use statement
@@ -365,22 +344,11 @@ where
     just(Token::Mut).or_not().map(|m| m.is_some())
 }
 
-/// Parse an identifier
+/// Parse an identifier.
+///
+/// `self` is a keyword, not an identifier. It is not a name for a
+/// binding, a field, a label or a definition.
 fn ident_parser<'tokens, I>(
-) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
-where
-    I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
-{
-    select! {
-        Token::Ident(name) = e => Ident::new(name, span_from_simple(e.span())),
-        Token::SelfKeyword = e => Ident::new("self".to_string(), span_from_simple(e.span()))
-    }
-    .labelled("identifier")
-}
-
-/// Parse an identifier (excluding 'self' keyword)
-/// Used in type and enum contexts where 'self' is not valid
-fn ident_no_self_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,
@@ -391,8 +359,9 @@ where
     .labelled("identifier")
 }
 
-/// Parse an invocation target: identifier or self
-fn invocation_target_parser<'tokens, I>(
+/// Parse an identifier or `self`. Only an expression that reads a
+/// value can name `self`.
+fn ident_or_self_parser<'tokens, I>(
 ) -> impl Parser<'tokens, I, Ident, extra::Err<Rich<'tokens, Token>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token, Span = SimpleSpan>,

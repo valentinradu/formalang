@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// from: rust tests/ui/pattern/ (E0527, pattern requires 2 elements but
+// array has 1). The literal has one element and the pattern names two.
+pub fn f() -> I32 {
+    let [a, b] = [1]
+    a + b
+}

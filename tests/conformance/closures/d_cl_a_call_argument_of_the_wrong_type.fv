@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/closures.md: `f("text")` for an I32 parameter is a type
+// mismatch.
+fn also_wrong(f: (I32) -> I32) -> I32 {
+    f("text")
+}

@@ -1,0 +1,27 @@
+// expect: reject ForLoopNotArray
+// A match arm binds each payload field with the type of that field.
+// `text` is a String, and a `for` needs an array, a range or a sequence. Today this is an internal error.
+// See PLAN.md, item 2.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    label(text: String),
+    flag(on: Boolean),
+    empty
+}
+
+pub fn take_string(s: String) -> I32 {
+    0
+}
+
+pub struct Box {
+    v: String
+}
+
+pub fn f(s: Shape) -> I32 {
+    for c in match s {
+        .label(text): text,
+        _: ""
+    } { c }.count()
+}

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `enum` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let enum = 1
+    assert(condition: enum == 1)
+}

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `trait` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let trait = 1
+    assert(condition: trait == 1)
+}

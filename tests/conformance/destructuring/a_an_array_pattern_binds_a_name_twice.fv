@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/pattern/ (E0416). One pattern binds `a` twice.
+pub fn f(xs: [I32]) -> I32 {
+    let [a, a] = xs
+    a
+}

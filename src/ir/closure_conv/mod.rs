@@ -51,24 +51,19 @@
 //!    outer-closure capture site correctly produces
 //!    `__env.<name>` rather than a raw `Reference`.
 //!
-//! # Closure-call sites — currently a no-op
+//! # Closure-call sites
 //!
-//! In a language with first-class closure invocation, the pass
-//! would also rewrite calls of the form `f(arg)` (where `f` is a
-//! closure-typed binding) into an indirect dispatch through the
-//! lifted-function pointer carried by the closure value. Today,
-//! `FormaLang`'s [`IrExpr::FunctionCall`] takes a path
-//! ([`Vec<String>`]) that resolves only to *named* top-level
-//! definitions — there is no surface syntax for applying a
-//! closure-typed local. As a result, the converted IR still routes
-//! every call through a top-level function, and the
-//! [`ClosureRef`](IrExpr::ClosureRef) values produced here are only
-//! consumed at points where the closure value itself is needed
-//! (returned, stored in a `let`, passed as an argument). When the
-//! language gains closure-application, the conversion will need a
-//! callsite-rewrite step that targets this pass.
-//!
-//! [`IrExpr::FunctionCall`]: crate::ir::IrExpr::FunctionCall
+//! A call of a closure value is an [`IrExpr::CallClosure`]. The
+//! lowering gives one for `f(x)` where `f` is a closure-typed binding,
+//! and for a call of the value of another expression, `make()(4)`.
+//! The pass does not rewrite the call itself: the call shape is
+//! already "closure value + arguments". It walks into the `closure`
+//! and the arguments like into any other sub-expression, so the
+//! closure value becomes a [`ClosureRef`](IrExpr::ClosureRef) or an
+//! expression that gives one. A backend reads the lifted function and
+//! the environment out of that value at the call site.
+//! [`DefunctionalisePass`](crate::ir::DefunctionalisePass) can then
+//! replace each `CallClosure` with a direct call.
 //!
 //! # Post-pass invariant
 //!

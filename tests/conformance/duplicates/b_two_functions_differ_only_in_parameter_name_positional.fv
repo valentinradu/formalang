@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// docs/user/functions.md: an unlabelled call is matched by the first
+// positional type. Two overloads with one first type make every
+// unlabelled call ambiguous.
+fn g(I32) -> I32 { 1 }
+fn g(I32) -> I32 { 2 }

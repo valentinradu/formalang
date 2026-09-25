@@ -25,6 +25,11 @@ pub struct IrStruct {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+    /// Joined `///` doc comments preceding this struct.
+    pub doc: Option<String>,
+
+    /// Source span. See [Source Spans](overview.md#source-spans-dwarf--source-map--line-table).
+    pub span: IrSpan,
 }
 ```
 
@@ -49,6 +54,11 @@ pub struct IrTrait {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+    /// Joined `///` doc comments preceding this trait.
+    pub doc: Option<String>,
+
+    /// Source span. See [Source Spans](overview.md#source-spans-dwarf--source-map--line-table).
+    pub span: IrSpan,
 }
 ```
 
@@ -67,6 +77,11 @@ pub struct IrEnum {
 
     /// Generic type parameters
     pub generic_params: Vec<IrGenericParam>,
+    /// Joined `///` doc comments preceding this enum.
+    pub doc: Option<String>,
+
+    /// Source span. See [Source Spans](overview.md#source-spans-dwarf--source-map--line-table).
+    pub span: IrSpan,
 }
 
 pub struct IrEnumVariant {
@@ -75,23 +90,31 @@ pub struct IrEnumVariant {
 
     /// Associated data fields (empty for unit variants)
     pub fields: Vec<IrField>,
+
+    /// Source span.
+    pub span: IrSpan,
 }
 ```
 
 ## ImplTarget
 
-Identifies what an impl block implements: a struct or an enum.
+Identifies what an impl block implements: a struct, an enum or a
+primitive.
 
 ```rust
 pub enum ImplTarget {
     Struct(StructId),
     Enum(EnumId),
+    /// Only in an `extern impl` block, such as the prelude's
+    /// `extern impl String`. The semantic pass rejects a non-extern
+    /// impl on a primitive with `ImplOnPrimitive` (E149).
+    Primitive(PrimitiveType),
 }
 ```
 
 ## IrImpl
 
-Impl blocks provide methods for a struct or enum.
+Impl blocks provide methods for a struct, an enum or a primitive.
 
 ```rust
 pub struct IrImpl {
@@ -114,6 +137,9 @@ pub struct IrImpl {
 
     /// Methods defined in this impl block
     pub functions: Vec<IrFunction>,
+
+    /// Source span.
+    pub span: IrSpan,
 }
 
 impl IrImpl {
@@ -126,6 +152,9 @@ impl IrImpl {
 
     /// Returns the enum ID if `target` is an enum, otherwise `None`.
     pub fn enum_id(&self) -> Option<EnumId>;
+
+    /// Returns the primitive if `target` is a primitive, otherwise `None`.
+    pub fn primitive(&self) -> Option<PrimitiveType>;
 }
 ```
 
@@ -152,6 +181,15 @@ pub struct IrField {
 
     /// Joined `///` doc comments preceding this field, if any.
     pub doc: Option<String>,
+
+    /// Passing convention. Always `Let` for a field in the source.
+    /// `ClosureConversionPass` sets it on the fields of the env structs
+    /// that it makes: a capture of a `mut` or `sink` binding keeps that
+    /// convention.
+    pub convention: ParamConvention,
+
+    /// Source span.
+    pub span: IrSpan,
 }
 ```
 
@@ -178,7 +216,9 @@ Used in two places: as the constraint shape on
 implements-relationship shape on [`IrImpl`](#irimpl) /
 [`IrStruct.traits`](#irstruct). An empty `args` slot means the
 trait isn't generic; a non-empty slot carries the instantiation so
-monomorphisation can specialise generic traits.
+monomorphisation can specialise generic traits. With the `serde`
+feature, serde leaves out an empty `args`, so a JSON trait reference
+can be `{ "trait_id": 0 }`.
 
 ```rust
 pub struct IrTraitRef {
@@ -213,5 +253,10 @@ pub struct IrLet {
 
     /// The bound expression
     pub value: IrExpr,
+    /// Joined `///` doc comments preceding this binding.
+    pub doc: Option<String>,
+
+    /// Source span. See [Source Spans](overview.md#source-spans-dwarf--source-map--line-table).
+    pub span: IrSpan,
 }
 ```

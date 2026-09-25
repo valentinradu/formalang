@@ -1,0 +1,11 @@
+// expect: reject VisibilityViolation
+// from: rust tests/ui/privacy/ (E0603, module is private).
+// An inner module without `pub` is private to its parent, so an item in
+// it is not reachable from outside the parent.
+mod outer {
+    mod inner {
+        pub fn f() -> I32 { 1 }
+    }
+}
+
+pub fn g() -> I32 { outer::inner::f() }

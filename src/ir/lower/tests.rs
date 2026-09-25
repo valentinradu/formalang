@@ -4,11 +4,7 @@ use crate::semantic::SymbolTable;
 
 #[test]
 fn test_lower_empty_file() -> Result<(), Box<dyn std::error::Error>> {
-    let ast = File {
-        statements: vec![],
-        span: crate::location::Span::default(),
-        format_version: 1,
-    };
+    let ast = File::new(vec![], crate::location::Span::default());
     let symbols = SymbolTable::new();
     let result = lower_to_ir(&ast, &symbols);
     if result.is_err() {

@@ -101,8 +101,8 @@ fn test_lower_field_access_on_struct() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> I32 { self.x }
-            fn get_y() -> I32 { self.y }
+            fn get_x(self) -> I32 { self.x }
+            fn get_y(self) -> I32 { self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -222,27 +222,22 @@ fn test_lower_enum_impl_targets_enum_id() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn test_lower_closure_inferred_enum_no_context() -> Result<(), Box<dyn std::error::Error>> {
-    // Inferred enum with no return type context
+    // A variant where the closure returns `String`. No enum gives
+    // `.done` a meaning, so the program is refused. It must not lower
+    // with a placeholder type.
     let source = r"
         struct Button {
             on_click: () -> String = () -> .done
         }
     ";
-    // Inferred enum with no return type context — the compiler lowers it with placeholder types
-    let module = compile_to_ir(source).map_err(|e| format!("should compile: {e:?}"))?;
-    // The on_click field should lower with an unknown/inferred return type
-    if module.structs.is_empty() {
-        return Err("Module should contain the Button struct".into());
-    }
-    let field = module
-        .user_structs()
-        .next()
-        .ok_or("no struct")?
-        .fields
-        .first()
-        .ok_or("no field")?;
-    if field.default.is_none() {
-        return Err("on_click field should have a default expression".into());
+    let Err(errors) = compile_to_ir(source) else {
+        return Err("a variant where a String is expected must be refused".into());
+    };
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {errors:?}").into());
     }
     Ok(())
 }
@@ -374,7 +369,7 @@ fn test_lower_get_field_type_from_resolved() -> Result<(), Box<dyn std::error::E
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn sum() -> I32 { self.x + self.y }
+            fn sum(self) -> I32 { self.x + self.y }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -874,8 +869,8 @@ fn test_dce_keeps_method_chain_with_self_call() -> Result<(), Box<dyn std::error
     let source = r"
         struct Calc { val: I32 = 0 }
         impl Calc {
-            fn square() -> I32 { self.val * self.val }
-            fn double() -> I32 { self.square() }
+            fn square(self) -> I32 { self.val * self.val }
+            fn double(self) -> I32 { self.square() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -908,7 +903,7 @@ fn test_dce_mark_used_in_field_access() -> Result<(), Box<dyn std::error::Error>
         struct Inner { val: I32 = 0 }
         struct Outer { inner: Inner }
         impl Outer {
-            fn get_val() -> I32 { self.inner.val }
+            fn get_val(self) -> I32 { self.inner.val }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;

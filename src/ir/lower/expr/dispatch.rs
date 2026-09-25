@@ -96,6 +96,7 @@ impl IrLowerer<'_> {
                 return DispatchKind::Virtual {
                     trait_id,
                     method_name: method_name.to_string(),
+                    trait_args: self.bound_trait_args(param_name, trait_id),
                 };
             }
         }
@@ -116,6 +117,7 @@ impl IrLowerer<'_> {
         DispatchKind::Virtual {
             trait_id: TraitId(u32::MAX),
             method_name: method_name.to_string(),
+            trait_args: Vec::new(),
         }
     }
 
@@ -171,6 +173,16 @@ impl IrLowerer<'_> {
             } else {
                 None
             }
+        });
+        // An impl later in the file is not lowered yet. The declare
+        // pass knows it, and the id that it will take.
+        let found_idx = found_idx.or_else(|| {
+            self.declared_impls
+                .iter()
+                .position(|b| {
+                    b.struct_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name)
+                })
+                .map(|k| self.declared_impl_base.saturating_add(k))
         })?;
         Some(self.impl_id_from_idx(found_idx))
     }
@@ -182,8 +194,40 @@ impl IrLowerer<'_> {
             } else {
                 None
             }
+        });
+        // An impl later in the file is not lowered yet. The declare
+        // pass knows it, and the id that it will take.
+        let found_idx = found_idx.or_else(|| {
+            self.declared_impls
+                .iter()
+                .position(|b| {
+                    b.enum_id() == Some(id) && b.functions.iter().any(|f| f.name == method_name)
+                })
+                .map(|k| self.declared_impl_base.saturating_add(k))
         })?;
         Some(self.impl_id_from_idx(found_idx))
+    }
+
+    /// The type arguments that the bound of the type parameter
+    /// `param_name` gives to the trait `trait_id`. Empty when no bound
+    /// names that trait with arguments.
+    pub(super) fn bound_trait_args(
+        &self,
+        param_name: &str,
+        trait_id: crate::ir::TraitId,
+    ) -> Vec<ResolvedType> {
+        self.generic_scopes
+            .iter()
+            .rev()
+            .find_map(|frame| frame.iter().find(|p| p.name == param_name))
+            .and_then(|param| {
+                param
+                    .constraints
+                    .iter()
+                    .find(|c| c.trait_id == trait_id)
+                    .map(|c| c.args.clone())
+            })
+            .unwrap_or_default()
     }
 
     /// Look up the trait that declares `method_name` among the constraints

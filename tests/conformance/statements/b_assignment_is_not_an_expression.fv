@@ -1,0 +1,8 @@
+// expect: reject ParseError
+// from: go test/ (assignment used as value). An assignment has no value
+// for a `let`.
+pub fn f() -> I32 {
+    let mut a = 1
+    let b = (a = 2)
+    a
+}

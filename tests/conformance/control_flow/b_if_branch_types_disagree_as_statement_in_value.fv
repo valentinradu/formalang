@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/control-flow.md: every form is an expression with one type.
+pub fn f(c: Boolean) -> I32 {
+    let x = if c { 1 } else { "one" }
+    0
+}

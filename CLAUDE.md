@@ -24,10 +24,11 @@ Concretely, when doing correctness work:
   that explicit; if it *is* reachable but produces nonsense, raise an error.
 - Update the test suite alongside the change — tests are not load-bearing
   contracts at this stage.
-- The only compat concerns that still apply are serialised `IrModule` /
-  `File` JSON on disk (external consumers) and the public API surface
-  advertised via `lib.rs` re-exports. Both can move, but warrant a note in
-  the commit message and a bumped version.
+- The only compat concerns that still apply are serialised `IrModule`
+  JSON on disk (external consumers), and only under the `serde` feature,
+  and the public API surface advertised via `lib.rs` re-exports. The
+  `File` AST has no JSON form. Both can move, but warrant a note in the
+  commit message and a bumped version.
 
 This guidance takes precedence over anything else in this file that reads as
 "don't break existing behaviour".

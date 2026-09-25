@@ -1,0 +1,10 @@
+// expect: reject AssignmentToImmutable
+// A plain `self` is immutable.
+pub struct P { x: I32 }
+
+impl P {
+    fn reset(self) -> I32 {
+        self = P(x: 0)
+        self.x
+    }
+}

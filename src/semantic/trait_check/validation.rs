@@ -1,4 +1,5 @@
 use super::super::module_resolver::ModuleResolver;
+use super::super::sem_type::SemType;
 use super::super::SemanticAnalyzer;
 use crate::ast::{Definition, File, FnDef, Statement, StructDef, Type};
 use crate::error::CompilerError;
@@ -16,6 +17,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     }
                     Definition::Impl(impl_def) => {
                         if let Some(trait_ident) = &impl_def.trait_name {
+                            if self.symbols.get_trait(&trait_ident.name).is_some() {
+                                self.check_trait_arity(
+                                    &trait_ident.name,
+                                    impl_def.trait_args.len(),
+                                    trait_ident.span,
+                                );
+                            }
                             self.validate_impl_trait_methods(
                                 &impl_def.functions,
                                 &trait_ident.name,
@@ -23,6 +31,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                                 &impl_def.name.name,
                                 impl_def.span,
                             );
+                            self.validate_impl_trait_scope(impl_def, &trait_ident.name);
                         }
                     }
                     Definition::Trait(_)
@@ -114,6 +123,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     // Previously only arity and conventions were checked, so
                     // an impl could return `fn foo(x: Int)` for a trait
                     // method declared `fn foo(x: String)` without error.
+                    // A label is part of the requirement: a call through
+                    // a bound names the trait's label.
+                    let label_mismatch = !param_count_mismatch
+                        && required_non_self
+                            .iter()
+                            .zip(impl_non_self.iter())
+                            .any(|(req, imp)| call_label(req) != call_label(imp));
+
                     let param_type_mismatch = !param_count_mismatch
                         && required_non_self
                             .iter()
@@ -145,14 +162,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         || self_convention_mismatch
                         || return_type_mismatch
                         || param_type_mismatch
+                        || label_mismatch
                     {
-                        let expected = required_return
-                            .as_ref()
-                            .map_or_else(|| "()".to_string(), Self::type_to_string);
-                        let actual = impl_fn
-                            .return_type
-                            .as_ref()
-                            .map_or_else(|| "()".to_string(), Self::type_to_string);
+                        // The whole signatures: the part that differs may
+                        // be a parameter, not the return type.
+                        let expected = signature(&required_params, required_return.as_ref());
+                        let actual = signature(&impl_fn.params, impl_fn.return_type.as_ref());
                         self.errors
                             .push(CompilerError::TraitMethodSignatureMismatch {
                                 method: method_name.clone(),
@@ -165,6 +180,86 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+    }
+
+    /// Check what an `impl Trait for T` block covers beyond the
+    /// trait's own methods.
+    ///
+    /// Each trait of a hierarchy has its own impl block. So a trait
+    /// that `trait_name` composes needs its own impl for the type, and
+    /// a method that only a composed trait declares does not belong in
+    /// this block. An enum has no fields, so it cannot meet a field
+    /// requirement.
+    fn validate_impl_trait_scope(&mut self, impl_def: &crate::ast::ImplDef, trait_name: &str) {
+        let type_name = &impl_def.name.name;
+        if self.symbols.get_enum_qualified(type_name).is_some() {
+            for (field, _) in self.symbols.get_all_trait_fields(trait_name) {
+                self.errors.push(CompilerError::MissingTraitField {
+                    field,
+                    trait_name: trait_name.to_string(),
+                    span: impl_def.span,
+                });
+            }
+        }
+        let own: Vec<String> = self
+            .symbols
+            .get_trait(trait_name)
+            .map(|t| t.methods.iter().map(|m| m.name.name.clone()).collect())
+            .unwrap_or_default();
+        let implemented: Vec<String> = self
+            .symbols
+            .trait_impls
+            .get(type_name)
+            .map(|impls| impls.iter().map(|i| i.trait_name.clone()).collect())
+            .unwrap_or_default();
+        for parent in self.composed_traits_of(trait_name) {
+            let parent_methods: Vec<String> = self
+                .symbols
+                .get_trait(&parent)
+                .map(|t| t.methods.iter().map(|m| m.name.name.clone()).collect())
+                .unwrap_or_default();
+            for func in &impl_def.functions {
+                if parent_methods.contains(&func.name.name) && !own.contains(&func.name.name) {
+                    self.errors.push(CompilerError::DuplicateDefinition {
+                        name: format!(
+                            "method '{}' of trait {parent} in the impl of {trait_name}",
+                            func.name.name
+                        ),
+                        span: func.name.span,
+                    });
+                }
+            }
+            if !implemented.contains(&parent) {
+                for method in parent_methods {
+                    self.errors.push(CompilerError::MissingTraitMethod {
+                        method,
+                        trait_name: parent.clone(),
+                        span: impl_def.span,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Every trait that `trait_name` composes, directly or through
+    /// another composed trait.
+    fn composed_traits_of(&self, trait_name: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut pending: Vec<String> = self
+            .symbols
+            .get_trait(trait_name)
+            .map(|t| t.composed_traits.clone())
+            .unwrap_or_default();
+        while let Some(next) = pending.pop() {
+            if next == trait_name || out.contains(&next) {
+                continue;
+            }
+            if let Some(info) = self.symbols.get_trait(&next) {
+                pending.extend(info.composed_traits.iter().cloned());
+            }
+            out.push(next);
+        }
+        out
     }
 
     /// Collect the methods declared directly in a trait (not inherited ones).
@@ -240,4 +335,30 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         }
     }
+}
+
+/// The label a call gives a parameter: its external label, or its name.
+fn call_label(param: &crate::ast::FnParam) -> &str {
+    param
+        .external_label
+        .as_ref()
+        .map_or(param.name.name.as_str(), |l| l.name.as_str())
+}
+
+/// A method signature as a message shows it: `(self, by: I32) -> I32`.
+fn signature(params: &[crate::ast::FnParam], ret: Option<&Type>) -> String {
+    let rendered: Vec<String> = params
+        .iter()
+        .map(|p| {
+            if p.name.name == "self" {
+                return "self".to_string();
+            }
+            let ty =
+                p.ty.as_ref()
+                    .map_or_else(String::new, |t| SemType::from_ast(t).display());
+            format!("{}: {ty}", call_label(p))
+        })
+        .collect();
+    let ret = ret.map_or_else(|| "()".to_string(), |t| SemType::from_ast(t).display());
+    format!("({}) -> {ret}", rendered.join(", "))
 }

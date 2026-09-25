@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+// Both operands of `&&` may run. The right one reads what the left one
+// sank.
+fn take(sink s: String) -> Boolean { s.len() > 0 }
+
+pub fn f() -> Boolean {
+    let s: String = "x"
+    take(s: s) && s.len() > 0
+}

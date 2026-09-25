@@ -1,0 +1,16 @@
+// expect: run
+// from: rust tests/ui/borrowck/ (reinitialization after move).
+// A `let mut` binding that was sunk can take a new value. After that the
+// binding is whole again.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let mut s: String = "ab"
+    let a = take(s: s)
+    s = "xyz"
+    a + s.len()
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 5)
+}

@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: each name appears once. The rule covers fields of
+// a struct, and a tuple has fields too.
+pub let t = (x: 1, x: 2)

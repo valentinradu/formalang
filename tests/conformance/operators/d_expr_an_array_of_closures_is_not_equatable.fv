@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: an array of closures is not equatable.
+pub fn run_checks() {
+    let fs: [(I32) -> I32] = [(x) -> x]
+    assert(condition: fs == fs)
+}

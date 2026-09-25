@@ -1,0 +1,10 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: two arguments of one call must not reach the
+// same value when one of them is `sink`.
+fn take(sink a: String, b: String) -> String { a + b }
+
+pub fn run_checks() {
+    let s: String = "x"
+    let r = take(a: s, b: s)
+    assert(condition: r == "xx")
+}

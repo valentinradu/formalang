@@ -12,7 +12,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(super) fn validate_struct_fields(
         &mut self,
         struct_name: &str,
-        args: &[(crate::ast::Ident, Expr)],
+        type_args: &[crate::ast::Type],
+        args: &[(&crate::ast::Ident, &Expr)],
         span: Span,
         file: &File,
     ) {
@@ -43,21 +44,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     .fields
                     .iter()
                     .filter(|f| {
-                        // Field is required if it has no inline default and is not optional
-                        f.default.is_none() && !f.optional
+                        // A field is required if it has no default and is
+                        // not optional. `Optional<T>` is `T?` too.
+                        let spelled_optional = matches!(
+                            &f.ty,
+                            crate::ast::Type::Generic { name, args, .. }
+                                if name.name == "Optional" && args.len() == 1
+                        );
+                        f.default.is_none() && !f.optional && !spelled_optional
                     })
                     .map(|f| f.name.name.clone())
                     .collect();
 
-                let generic_params: Vec<String> =
-                    def.generics.iter().map(|g| g.name.name.clone()).collect();
-
-                (field_names, field_types, required_fields, generic_params)
+                (
+                    field_names,
+                    field_types,
+                    required_fields,
+                    def.generics.clone(),
+                )
             } else {
                 return; // Struct not found, skip validation
             }
         };
 
+        let generic_names: Vec<String> =
+            generic_params.iter().map(|g| g.name.name.clone()).collect();
         // Check all provided regular fields exist and type-check each value.
         for (arg_name, arg_value) in args {
             if !field_names.contains(&arg_name.name) {
@@ -81,7 +92,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // The test is on whole names. Asking whether the rendered
             // type *contains* the parameter made `String` mention a
             // parameter called `S`, and the field went unchecked.
-            if super::type_names::type_mentions_any(declared_ty, &generic_params) {
+            if super::type_names::type_mentions_any(declared_ty, &generic_names) {
+                self.check_generic_field(&generic_params, type_args, declared_ty, arg_value, file);
                 continue;
             }
             let inferred_sem = self.infer_type_sem(arg_value, file);
@@ -192,10 +204,50 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Field-level mutability was removed; the previous mutability
     /// matching between the field and the caller's binding is gone.
+    /// Check a field whose type names a type parameter of the struct.
+    ///
+    /// A field typed by a bare type parameter takes the parameter's
+    /// bounds: `Wrapper(item: 1)` against `struct Wrapper<T: Named>` is
+    /// refused. Written type arguments give the field its type:
+    /// `Box<I32>(value: "x")` compares against `I32`.
+    fn check_generic_field(
+        &mut self,
+        generic_params: &[crate::ast::GenericParam],
+        type_args: &[crate::ast::Type],
+        declared_ty: &crate::ast::Type,
+        arg_value: &Expr,
+        file: &File,
+    ) {
+        if let crate::ast::Type::Ident(ident) = declared_ty {
+            if let Some(generic) = generic_params.iter().find(|g| g.name.name == ident.name) {
+                self.check_generic_bounds(generic, arg_value, file);
+            }
+        }
+        if type_args.len() != generic_params.len() || type_args.is_empty() {
+            return;
+        }
+        let substituted = generic_params
+            .iter()
+            .zip(type_args)
+            .fold(SemType::from_ast(declared_ty), |acc, (g, arg)| {
+                acc.substitute_named(&g.name.name, &SemType::from_ast(arg))
+            });
+        let inferred_sem = self.infer_type_sem(arg_value, file);
+        if !inferred_sem.is_indeterminate()
+            && !self.value_satisfies_declared(&substituted.display(), &inferred_sem)
+        {
+            self.errors.push(CompilerError::TypeMismatch {
+                expected: substituted.display(),
+                found: inferred_sem.display(),
+                span: arg_value.span(),
+            });
+        }
+    }
+
     pub(super) fn validate_struct_mutability(
         &mut self,
         struct_name: &str,
-        args: &[(crate::ast::Ident, Expr)],
+        args: &[(&crate::ast::Ident, &Expr)],
         file: &File,
         _span: Span,
     ) {

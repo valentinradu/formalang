@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+// Two fields of one tuple sink one binding twice.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    let t = (a: take(s: s), b: take(s: s))
+    t.a
+}

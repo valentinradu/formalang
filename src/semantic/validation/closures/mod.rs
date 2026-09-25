@@ -50,6 +50,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::FieldAccess { .. }
             | Expr::LetExpr { .. }
             | Expr::MethodCall { .. }
+            | Expr::Call { .. }
             | Expr::Block { .. } => None,
         }
     }
@@ -196,28 +197,28 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::ForExpr { .. }
             | Expr::DictAccess { .. }
             | Expr::FieldAccess { .. }
-            | Expr::MethodCall { .. } => {}
+            | Expr::MethodCall { .. }
+            | Expr::Call { .. } => {}
         }
     }
 
-    /// If `return_type` is a closure type, verify that every closure returned
-    /// by `body` only captures bindings that outlive the function: outer-scope
-    /// bindings (module-level or wider) and `sink` parameters. Local `let`
-    /// bindings and `let`/`mut` parameters would die with the function frame
-    /// and leave a dangling capture.
+    /// Mark the `sink` parameters that a returned closure captures as
+    /// consumed.
+    ///
+    /// A closure captures by value when it is made, so a capture never
+    /// outlives the value it copies. A returned closure can therefore
+    /// capture a plain parameter, a `mut` parameter, a local `let` and a
+    /// module `let`. A `sink` parameter moves into the closure, so the
+    /// function cannot use it again.
     pub(super) fn validate_function_return_escape(
         &mut self,
         return_type: Option<&Type>,
         body: &Expr,
     ) {
-        // Fast-path: function returns a closure type directly
-        // (`fn make() -> () -> I32`). The recursive walk handles every
-        // concrete return shape — closure literals, references to
-        // closure bindings, branches, blocks. Tier-1 escape extension
-        // also fires on aggregate returns (struct / enum / tuple /
-        // array / dict): walking those is harmless when no closure
-        // hides inside them, since `collect_returned_closure_captures`
-        // simply returns an empty list.
+        // The walk finds closure literals, references to closure
+        // bindings, branches and blocks, also inside an aggregate: a
+        // struct, a tuple, an array or a dictionary. When no closure
+        // hides inside the result, the walk finds nothing.
         let return_carries_aggregate = matches!(
             return_type,
             Some(
@@ -233,53 +234,37 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if !return_carries_aggregate {
             return;
         }
-        let escaping = self.collect_returned_closure_captures(body);
-        if escaping.is_empty() {
-            return;
-        }
-        for (captures, span) in escaping {
-            self.validate_escaping_captures(&captures, span);
+        for (captures, _) in self.collect_returned_closure_captures(body) {
+            self.validate_escaping_captures(&captures);
         }
     }
 
-    /// Shared rule for "this closure value escapes the function frame".
-    ///
-    /// Captures are valid only when they refer to:
-    ///
-    /// - a `sink` parameter (ownership transfers into the closure;
-    ///   binding is marked consumed),
-    /// - a module-level `let` (outlives the function).
-    ///
-    /// `let`/`mut` parameters and function-local `let` bindings die
-    /// with the frame and produce
-    /// [`CompilerError::ClosureCaptureEscapesLocalBinding`].
-    pub(super) fn validate_escaping_captures(&mut self, captures: &[String], span: Span) {
-        let param_convs = self.current_fn_param_conventions.clone();
+    /// Mark each `sink` parameter in `captures` as consumed: the
+    /// closure that holds the captures leaves the function, and the
+    /// parameter moves with it. Any other capture is a copy.
+    pub(super) fn validate_escaping_captures(&mut self, captures: &[String]) {
         for cap in captures {
-            if let Some(convention) = param_convs.get(cap) {
-                match convention {
-                    crate::ast::ParamConvention::Sink => {
-                        self.consumed_bindings.insert(cap.clone());
-                    }
-                    crate::ast::ParamConvention::Let | crate::ast::ParamConvention::Mut => {
-                        self.errors
-                            .push(CompilerError::ClosureCaptureEscapesLocalBinding {
-                                binding: cap.clone(),
-                                span,
-                            });
-                    }
-                }
-            } else if self.symbols.is_let(cap) {
-                // Module-level let — outlives the function. OK.
-            } else {
-                // Function-local `let` (or any other shorter-lifetime
-                // binding the block scope has popped by now). Dies
-                // with the frame.
-                self.errors
-                    .push(CompilerError::ClosureCaptureEscapesLocalBinding {
-                        binding: cap.clone(),
-                        span,
-                    });
+            if self.current_fn_param_conventions.get(cap)
+                == Some(&crate::ast::ParamConvention::Sink)
+            {
+                self.consumed_bindings.insert(cap.clone());
+            }
+        }
+    }
+
+    /// Check the declared type of each closure parameter, and that no
+    /// name appears twice.
+    fn check_closure_params(&mut self, params: &[crate::ast::ClosureParam]) {
+        let mut names = HashSet::new();
+        for param in params {
+            if let Some(ty) = &param.ty {
+                self.validate_type(ty, param.span);
+            }
+            if !names.insert(param.name.name.as_str()) {
+                self.errors.push(CompilerError::DuplicateDefinition {
+                    name: format!("closure parameter '{}'", param.name.name),
+                    span: param.name.span,
+                });
             }
         }
     }
@@ -302,11 +287,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         expected: Option<&crate::semantic::sem_type::SemType>,
         file: &File,
     ) {
-        for param in params {
-            if let Some(ty) = &param.ty {
-                self.validate_type(ty, param.span);
-            }
-        }
+        self.check_closure_params(params);
         self.check_closure_parameter_types(params, expected);
         let body_expected = Self::closure_body_expected(return_type, expected);
         if let Some(ty) = return_type {
@@ -358,11 +339,31 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 (p.name.name.clone(), ty)
             })
             .collect();
+        self.push_outer_frame(true);
         self.closure_param_scopes.push(param_scope);
         self.inference_scope_stack.borrow_mut().push(frame);
         self.validate_expr_expecting(body, body_expected, file);
+        // The body type while the parameters are in scope.
+        let body_sem = self.infer_type_sem(body, file);
         self.inference_scope_stack.borrow_mut().pop();
         self.closure_param_scopes.pop();
+        self.pop_outer_frame();
+        if let Some(crate::semantic::sem_type::SemType::Closure {
+            params: slots,
+            return_ty,
+        }) = expected.map(Self::closure_slot)
+        {
+            if slots.len() == params.len() {
+                self.check_closure_against_slot(
+                    params,
+                    return_type.is_some(),
+                    &body_sem,
+                    slots,
+                    return_ty,
+                    body.span(),
+                );
+            }
+        }
 
         // when a pipe closure declares a return type, verify the
         // body's inferred type is compatible. Mirrors the function-return
@@ -397,6 +398,68 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     span: body.span(),
                 });
             }
+        }
+    }
+
+    /// Check a closure literal against the closure type that its
+    /// position expects: each parameter convention, each declared
+    /// parameter type, and the body type when the literal declares no
+    /// return type. A slot whose type is not known here is skipped.
+    fn check_closure_against_slot(
+        &mut self,
+        params: &[crate::ast::ClosureParam],
+        declares_return: bool,
+        body_sem: &crate::semantic::sem_type::SemType,
+        slots: &[(
+            crate::ast::ParamConvention,
+            crate::semantic::sem_type::SemType,
+        )],
+        return_ty: &crate::semantic::sem_type::SemType,
+        span: crate::location::Span,
+    ) {
+        use crate::semantic::sem_type::SemType;
+        let expected = SemType::Closure {
+            params: slots.to_vec(),
+            return_ty: Box::new(return_ty.clone()),
+        };
+        let found = || {
+            let params = params
+                .iter()
+                .zip(slots)
+                .map(|(p, (_, slot))| {
+                    (
+                        p.convention,
+                        p.ty.as_ref()
+                            .map_or_else(|| slot.clone(), SemType::from_ast),
+                    )
+                })
+                .collect();
+            SemType::Closure {
+                params,
+                return_ty: Box::new(body_sem.clone()),
+            }
+        };
+        let known = |t: &SemType| {
+            !t.is_indeterminate() && !crate::semantic::inference::holds_an_unbound_type_param(t)
+        };
+        let param_wrong = params.iter().zip(slots).any(|(p, (convention, slot))| {
+            p.convention != *convention
+                || p.ty.as_ref().is_some_and(|ty| {
+                    let declared = SemType::from_ast(ty);
+                    known(slot) && known(&declared) && declared != *slot
+                })
+        });
+        let body_wrong = !declares_return
+            && known(return_ty)
+            && known(body_sem)
+            && body_sem != return_ty
+            && !self.value_satisfies_declared(&return_ty.display(), body_sem);
+        if param_wrong || body_wrong {
+            self.errors.push(CompilerError::TypeMismatch {
+                expected: expected.display(),
+                found: found().display(),
+                span,
+            });
         }
     }
 }

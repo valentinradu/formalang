@@ -1,0 +1,13 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts the associated
+// data. A variant with one field gives one name.
+pub enum Wrap { of(v: I32) }
+pub fn get(w: Wrap) -> I32 {
+    let (v) = w
+    v
+}
+pub fn run_checks() {
+    assert(condition: get(w: Wrap.of(v: 9)) == 9)
+}

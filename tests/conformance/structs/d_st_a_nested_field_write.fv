@@ -1,0 +1,11 @@
+// expect: compile
+// docs/user/types.md: a struct field is a legal write through a mut
+// binding, at any depth.
+pub struct Inner { v: I32 }
+pub struct Outer { i: Inner }
+
+pub fn run_checks() {
+    let mut o = Outer(i: Inner(v: 1))
+    o.i.v = 5
+    assert(condition: o.i.v == 5)
+}

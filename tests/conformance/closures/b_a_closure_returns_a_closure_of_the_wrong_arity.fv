@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// docs/user/closures.md: a closure with the wrong number of parameters
+// for its position is a type mismatch. The position here is the return
+// of an outer closure.
+pub fn f() -> I32 {
+    let add: (I32) -> (I32) -> I32 = (a) -> (b, c) -> a
+    0
+}

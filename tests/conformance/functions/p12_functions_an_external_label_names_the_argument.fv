@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/functions.md: a parameter can have an external label in
+// front of its name. The call writes the label.
+fn shift(by amount: I32, from start: I32) -> I32 { start + amount }
+
+pub fn run_checks() {
+    assert(condition: shift(by: 2, from: 10) == 12)
+}

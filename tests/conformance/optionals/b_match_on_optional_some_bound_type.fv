@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: `.some(T)` holds a `T`. The binding of an `I32?`
+// is an `I32`, so it is not a `String`.
+pub fn f(a: I32?) -> String {
+    match a { .some(v): v, .none: "" }
+}

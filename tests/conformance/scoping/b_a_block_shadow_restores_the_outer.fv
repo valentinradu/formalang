@@ -1,0 +1,12 @@
+// expect: run
+// from: go test/ (shadowing in an inner block).
+// After the block, the name means the outer binding again.
+pub fn run_checks() {
+    let x: I32 = 1
+    let y = {
+        let x: I32 = 10
+        x
+    }
+    assert(condition: x == 1)
+    assert(condition: y == 10)
+}

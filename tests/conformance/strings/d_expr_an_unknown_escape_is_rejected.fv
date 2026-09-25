@@ -1,0 +1,3 @@
+// expect: reject InvalidEscape
+// docs/user/expressions.md lists six escapes. `\q` is not one of them.
+pub let s = "a\qb"

@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: `Never` has no values and cannot be instantiated.
+pub fn f() -> I32 {
+    let x: Never = 1
+    0
+}

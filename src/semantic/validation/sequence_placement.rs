@@ -14,8 +14,11 @@
 //! | a function parameter | yes, `sink` only |
 //! | an `extern fn` return type | yes — this is the host cursor |
 //! | a struct field or enum variant field | no |
-//! | a module-level `let` | no |
+//! | a module-level `let`, with or without a type | no |
 //! | a `fn` return type | no, in v1 |
+//! | a closure return type | no, in v1 |
+//! | an array element, a tuple field, a dictionary key or value | no |
+//! | a type inside a local `let` type, for example `Seq<I32>?` | no |
 //!
 //! The `fn` return ban is a v1 restriction rather than a design limit.
 //! A function returning a sequence is a pipeline fragment, and it
@@ -27,7 +30,7 @@
 use super::super::module_resolver::ModuleResolver;
 use super::super::SemanticAnalyzer;
 use crate::ast::{
-    Definition, EnumDef, File, FnParam, FunctionDef, ImplDef, ParamConvention, Statement,
+    Definition, EnumDef, Expr, File, FnParam, FunctionDef, ImplDef, ParamConvention, Statement,
     StructDef, Type,
 };
 use crate::error::CompilerError;
@@ -41,6 +44,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Statement::Let(let_binding) => {
                     if let Some(ty) = &let_binding.type_annotation {
                         self.reject_sequence(ty, "a module-level let", let_binding.span);
+                    } else if let Some(ty) = self
+                        .infer_type_sem(&let_binding.value, file)
+                        .to_ast(let_binding.span)
+                    {
+                        // With no annotation, the inferred type counts:
+                        // `pub let s = for x in xs { x }` is a sequence.
+                        self.reject_sequence(&ty, "a module-level let", let_binding.span);
                     }
                 }
                 Statement::Use(_) => {}
@@ -131,6 +141,58 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             if let Some(ty) = return_type {
                 self.reject_sequence(ty, "a function return type", name_span);
             }
+        }
+    }
+
+    /// Report a value that a container would store, when it is a
+    /// sequence.
+    ///
+    /// A literal container never makes a sequence, so the check does
+    /// not infer its type. This keeps the walk linear for deep nests.
+    pub(super) fn reject_stored_sequence(&mut self, value: &Expr, position: &str, file: &File) {
+        if matches!(
+            value,
+            Expr::Literal { .. }
+                | Expr::Array { .. }
+                | Expr::Tuple { .. }
+                | Expr::DictLiteral { .. }
+                | Expr::ClosureExpr { .. }
+        ) {
+            return;
+        }
+        if Self::is_sequence(&self.infer_type_sem(value, file)) {
+            self.errors.push(CompilerError::SeqInvalidPosition {
+                position: position.to_string(),
+                span: value.span(),
+            });
+        }
+    }
+
+    /// Report a closure literal that returns a sequence. A closure
+    /// return type is a function return type too.
+    pub(super) fn reject_closure_sequence(
+        &mut self,
+        return_type: Option<&Type>,
+        body: &Expr,
+        file: &File,
+    ) {
+        if let Some(ty) = return_type {
+            self.reject_sequence(ty, "a closure return type", body.span());
+        } else {
+            self.reject_stored_sequence(body, "a closure return type", file);
+        }
+    }
+
+    /// Report the declared type of a local `let` when it holds a
+    /// sequence inside another type.
+    ///
+    /// A bare `Seq<T>` is a correct local `let`. A closure type may
+    /// take a sequence parameter, but it may not return a sequence.
+    pub(super) fn reject_nested_sequence(&mut self, ty: &Type, span: Span) {
+        if let Type::Closure { ret, .. } = ty {
+            self.reject_sequence(ret, "a closure return type", span);
+        } else if !matches!(ty, Type::Generic { name, .. } if name.name == "Seq") {
+            self.reject_sequence(ty, "a value inside another type", span);
         }
     }
 

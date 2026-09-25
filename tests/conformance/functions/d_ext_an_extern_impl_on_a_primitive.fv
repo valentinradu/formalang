@@ -1,0 +1,7 @@
+// expect: compile
+// docs/user/extern.md: host-provided methods on built-in types.
+extern impl I32 {
+    fn abs(self) -> I32
+}
+
+pub fn f(n: I32) -> I32 { n.abs() }

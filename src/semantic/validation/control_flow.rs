@@ -150,6 +150,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         variant_name: &crate::ast::Ident,
         data: &[(crate::ast::Ident, Expr)],
         span: Span,
+        type_args: Option<&[SemType]>,
         file: &File,
     ) {
         // Check if the enum exists. A qualified name, `m::E`, names the
@@ -241,7 +242,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     else {
                         continue;
                     };
+                    let inferred_sem = self.infer_type_sem(value, file);
                     if super::type_names::type_mentions_any(declared_ty, &generic_names) {
+                        self.check_generic_payload(
+                            &enum_name.name,
+                            declared_ty,
+                            type_args,
+                            &inferred_sem,
+                            value.span(),
+                        );
                         continue;
                     }
                     // The enum of an inline module declares its payload
@@ -253,7 +262,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     } else {
                         Self::type_to_string(declared_ty)
                     };
-                    let inferred_sem = self.infer_type_sem(value, file);
                     if !self.value_satisfies_declared(&declared, &inferred_sem) {
                         self.errors.push(CompilerError::TypeMismatch {
                             expected: declared,
@@ -271,6 +279,34 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     span: variant_name.span,
                 });
             }
+        }
+    }
+
+    /// Check a payload whose field type names a type parameter of the
+    /// enum. The expected type may give the enum's type arguments.
+    /// Without them, the monomorphisation pass puts the types in.
+    fn check_generic_payload(
+        &mut self,
+        enum_name: &str,
+        declared_ty: &crate::ast::Type,
+        type_args: Option<&[SemType]>,
+        inferred_sem: &SemType,
+        span: Span,
+    ) {
+        if type_args.is_none() {
+            return;
+        }
+        let substituted =
+            self.with_enum_type_args(enum_name, SemType::from_ast(declared_ty), type_args);
+        if !substituted.is_indeterminate()
+            && !inferred_sem.is_indeterminate()
+            && !self.value_satisfies_declared(&substituted.display(), inferred_sem)
+        {
+            self.errors.push(CompilerError::TypeMismatch {
+                expected: substituted.display(),
+                found: inferred_sem.display(),
+                span,
+            });
         }
     }
 

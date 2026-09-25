@@ -1,0 +1,5 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: the rule reaches inside containers.
+struct Hidden { x: I32 }
+
+pub let L = (h: Hidden(x: 1), n: 1)

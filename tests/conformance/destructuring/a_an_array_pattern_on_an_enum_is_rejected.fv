@@ -1,0 +1,8 @@
+// expect: reject ArrayDestructuringNotArray
+// An array pattern on an enum is an error the user can act on, not an
+// internal error.
+pub enum Point { at(x: I32, y: I32) }
+pub fn f(p: Point) -> I32 {
+    let [x, y] = p
+    x
+}

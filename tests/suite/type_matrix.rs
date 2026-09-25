@@ -160,6 +160,30 @@ const TYPES: &[Ty] = &[
     },
 ];
 
+/// Values that have a fixed type, used as extra columns.
+///
+/// An unsuffixed literal takes its type from the context, so the `I32`
+/// column (`1`) fits an `I64` row and the `F64` column (`1.5`) fits an
+/// `F32` row. These columns keep the check that a value of one numeric
+/// type does not fit a declaration of another.
+const TYPED_VALUES: &[Ty] = &[
+    Ty {
+        name: "I32 typed",
+        declaration: "I32",
+        value: "1I32",
+    },
+    Ty {
+        name: "F64 typed",
+        declaration: "F64",
+        value: "1.5F64",
+    },
+];
+
+/// The columns of the grid: every type, then the typed values.
+fn columns() -> impl Iterator<Item = &'static Ty> {
+    TYPES.iter().chain(TYPED_VALUES)
+}
+
 // ---------------------------------------------------------------------------
 // The contexts
 // ---------------------------------------------------------------------------
@@ -392,14 +416,14 @@ fn the_matrix() {
 
         // Column header, one letter column per value type.
         out.push_str(&format!("{:<14}", ""));
-        for value in TYPES {
+        for value in columns() {
             out.push_str(&format!("{:<14}", value.name));
         }
         out.push('\n');
 
         for declared in TYPES {
             out.push_str(&format!("{:<14}", declared.name));
-            for value in TYPES {
+            for value in columns() {
                 let mark = verdict(context, declared, value).mark();
                 out.push_str(&format!("{mark:<14}"));
                 checked.hit();
@@ -490,6 +514,15 @@ const NEVER_COMPATIBLE: &[(&str, &str)] = &[
     ("tuple", "Point"),
     ("closure", "I32"),
     ("closure", "String"),
+    ("I64", "I32 typed"),
+    ("F32", "I32 typed"),
+    ("F64", "I32 typed"),
+    ("I32", "F64 typed"),
+    ("I64", "F64 typed"),
+    ("F32", "F64 typed"),
+    ("I32", "I64"),
+    ("I32", "F32"),
+    ("F64", "F32"),
 ];
 
 /// Every pair above is rejected in every context.
@@ -506,8 +539,8 @@ fn the_obvious_mismatches_are_rejected() {
             let Some(declared) = TYPES.iter().find(|t| t.name == *declared_name) else {
                 panic!("the matrix has no type named {declared_name}");
             };
-            let Some(value) = TYPES.iter().find(|t| t.name == *value_name) else {
-                panic!("the matrix has no type named {value_name}");
+            let Some(value) = columns().find(|t| t.name == *value_name) else {
+                panic!("the matrix has no value named {value_name}");
             };
 
             if verdict(context, declared, value) == Verdict::Accepted {

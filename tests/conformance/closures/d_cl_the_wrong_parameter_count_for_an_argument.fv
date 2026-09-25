@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/closures.md: a closure with the wrong number of parameters for
+// its position is a type mismatch.
+fn apply(f: (I32, I32) -> I32) -> I32 { f(1, 2) }
+
+pub let r = apply(f: (a) -> a)

@@ -1,0 +1,3 @@
+// expect: reject PrimitiveRedefinition
+// An enum may not take the name of a primitive type.
+enum Boolean { yes, no }

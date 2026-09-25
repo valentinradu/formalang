@@ -1,0 +1,9 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: `Never` cannot be instantiated. A struct with a
+// `Never` field cannot be built.
+struct S { n: Never }
+
+pub fn f() -> I32 {
+    let s = S(n: 1)
+    0
+}

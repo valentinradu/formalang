@@ -1,0 +1,5 @@
+// expect: reject UnknownEnumVariant
+// A struct field default takes its enum from the field type. S has no
+// variant `nope`.
+pub enum S { a, b }
+pub struct H { s: S = .nope }

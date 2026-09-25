@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/ (E0428 on variants). docs/user/structs.md: each
+// name appears once.
+enum E { a, a }

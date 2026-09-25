@@ -5,16 +5,21 @@
 //! - Boolean: `true && false` → `false`
 //! - Comparison: `1 < 2` → `true`
 //!
+//! A numeric operation computes in the width of its operands: `I32`
+//! and `I64` with checked arithmetic, `F32` with binary32 arithmetic,
+//! `F64` with binary64 arithmetic. An operation that overflows its
+//! width, divides by zero, or gives a float that is not finite stays
+//! unfolded, so the backend decides what it gives.
+//!
 //! # Example
 //!
 //! ```formalang
-//! struct Config {
-//!     scale: f32
-//! }
-//! impl Config {
-//!     scale: 2.0 * 3.0  // Folded to 6.0
+//! pub struct Config {
+//!     scale: F64 = 2.0 * 3.0
 //! }
 //! ```
+//!
+//! The default `2.0 * 3.0` folds to `6.0`.
 
 mod ops;
 
@@ -32,6 +37,10 @@ use crate::ir::{IrExpr, IrModule, ResolvedType};
 ///   Backends decide whether to emit `IEEE 754` infinity / `NaN`, trap, or
 ///   reject, so the IR keeps the `BinaryOp` and exposes the literal
 ///   operands for the backend to inspect.
+/// - A numeric fold computes in the width of the operand type. An
+///   integer result that overflows that width, and a float result that
+///   is not finite, stay unfolded. The negation of the lowest integer
+///   of a width stays unfolded too.
 /// - Folding never crosses an effectful boundary (function call,
 ///   method call, field access on a non-literal receiver).
 #[derive(Debug, Default)]
@@ -39,11 +48,7 @@ use crate::ir::{IrExpr, IrModule, ResolvedType};
 pub struct ConstantFolder;
 
 impl ConstantFolder {
-    /// Create a new constant folder.
-    ///
-    /// previously held a `_module: &IrModule` field that was
-    /// never read. The folder is fully stateless; the constructor takes
-    /// no arguments now.
+    /// Create a new constant folder. The folder has no state.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -301,15 +306,26 @@ impl ConstantFolder {
         let right_folded = self.fold_expr(right);
         if let (
             IrExpr::Literal {
-                value: left_val, ..
+                value: left_val,
+                ty: operand_ty,
+                ..
             },
             IrExpr::Literal {
-                value: right_val, ..
+                value: right_val,
+                ty: right_ty,
+                ..
             },
         ) = (&left_folded, &right_folded)
         {
-            if let Some(result) = ops::fold_binary_op(left_val, op, right_val, &ty, span) {
-                return result;
+            // Two operands of different types have no one width to fold
+            // in. The semantic pass refuses such a pair, so leave it as
+            // it is.
+            if operand_ty == right_ty {
+                if let Some(result) =
+                    ops::fold_binary_op(left_val, op, right_val, operand_ty, &ty, span)
+                {
+                    return result;
+                }
             }
         }
         IrExpr::BinaryOp {

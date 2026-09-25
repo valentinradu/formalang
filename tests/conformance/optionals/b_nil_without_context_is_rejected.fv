@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// from: swift test/Constraints/optional.swift ('nil' requires a
+// contextual type).
+pub fn f() -> Boolean {
+    let x = nil
+    x == nil
+}

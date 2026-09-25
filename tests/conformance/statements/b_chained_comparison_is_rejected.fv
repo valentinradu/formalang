@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// from: rust tests/ui/parser/ (comparison operators cannot be chained).
+// `1 < 2 < 3` compares a Boolean with a number.
+pub fn f() -> Boolean { 1 < 2 < 3 }

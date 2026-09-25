@@ -1,0 +1,10 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: impl blocks add methods to a struct. A method
+// that no impl block declares is unknown.
+pub struct Sq { s: I32 }
+
+impl Sq {
+    fn area(self) -> I32 { self.s * self.s }
+}
+
+pub fn f(q: Sq) -> I32 { q.zz_area() }

@@ -1,0 +1,10 @@
+// expect: reject UseAfterSink
+// A field destructured into a binding and then sunk is gone.
+pub struct P { s: String }
+
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let {s} = P(s: "x")
+    take(s: s) + s.len()
+}

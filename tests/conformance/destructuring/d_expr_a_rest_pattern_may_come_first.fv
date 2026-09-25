@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `...` can appear anywhere in array
+// destructuring.
+pub fn run_checks() {
+    let [...init, last] = ["a", "b", "c"]
+    assert(condition: last == "c")
+    assert(condition: init.len() == 2)
+}

@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: an optional and a plain value are two types,
+// so they do not compare. Unwrap the optional with `if let` first.
+pub fn f(held: I32?) -> Boolean {
+    held == 5
+}

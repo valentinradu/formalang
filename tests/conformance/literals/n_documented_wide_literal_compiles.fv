@@ -1,0 +1,5 @@
+// expect: compile
+// This line comes from docs/user/types.md and docs/user/expressions.md.
+// The two pages show it as a valid program.
+
+pub let big: I64 = 9_223_372_036_854_775_807

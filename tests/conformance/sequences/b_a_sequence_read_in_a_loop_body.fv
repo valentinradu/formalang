@@ -1,0 +1,7 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: a sequence runs once. A read in a loop body
+// is one read per pass.
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    for i in [1, 2, 3] { s.count() }.fold(initial: 0, f: (a, b) -> a + b)
+}

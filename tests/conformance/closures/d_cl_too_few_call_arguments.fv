@@ -1,0 +1,6 @@
+// expect: reject ArgumentCountMismatch
+// docs/user/closures.md: a call gives one argument for each parameter the
+// closure type declares.
+fn wrong(f: (I32, I32) -> I32) -> I32 {
+    f(1)
+}

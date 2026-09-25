@@ -2,6 +2,8 @@
 //! types they aggregate.
 
 use crate::ast::{ParamConvention, Visibility};
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 use crate::ir::{IrExpr, IrSpan, ResolvedType, TraitId};
 
 /// A struct definition in the IR.
@@ -12,7 +14,8 @@ use crate::ir::{IrExpr, IrSpan, ResolvedType, TraitId};
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrStruct {
     /// The struct name
     pub name: String,
@@ -21,10 +24,9 @@ pub struct IrStruct {
     pub visibility: Visibility,
 
     /// Traits implemented by this struct, with optional generic-trait
-    /// args (`<T>`). Empty args means a non-generic trait. Generic-
-    /// traits PR: changed from `Vec<TraitId>` so generic-trait
-    /// instantiations (`impl Eq<I32> for Foo`) can be tracked
-    /// distinctly per arg-tuple.
+    /// args (`<T>`). Empty args means a non-generic trait. Each
+    /// instantiation of a generic trait (`impl Eq<I32> for Foo`) is a
+    /// separate entry.
     pub traits: Vec<IrTraitRef>,
 
     /// Regular fields
@@ -34,11 +36,14 @@ pub struct IrStruct {
     pub generic_params: Vec<IrGenericParam>,
 
     /// Joined `///` doc comments preceding this struct.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub doc: Option<String>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
 
@@ -49,7 +54,8 @@ pub struct IrStruct {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrField {
     /// Field name
     pub name: String,
@@ -82,11 +88,11 @@ pub struct IrField {
     /// `#[serde(default)]` keeps round-tripped IR documents
     /// produced before this field landed deserialisable as
     /// [`ParamConvention::Let`] (the existing implicit behaviour).
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub convention: ParamConvention,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
 
@@ -95,7 +101,8 @@ pub struct IrField {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrGenericParam {
     /// Parameter name (e.g., "T")
     pub name: String,
@@ -108,7 +115,7 @@ pub struct IrGenericParam {
 
 /// A reference to a trait, optionally with concrete type arguments.
 ///
-/// Used in two places after Phase C: as the constraint shape on
+/// Used in two places: as the constraint shape on
 /// [`IrGenericParam`] and as the trait-impl shape on
 /// [`crate::ir::IrImpl`]. An empty `args` slot means the trait isn't
 /// generic (`T: Container`, `impl Container for X`); a non-empty slot
@@ -119,10 +126,14 @@ pub struct IrGenericParam {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrTraitRef {
     pub trait_id: TraitId,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub args: Vec<ResolvedType>,
 }
 

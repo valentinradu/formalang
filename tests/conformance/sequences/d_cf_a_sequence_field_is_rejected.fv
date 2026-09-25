@@ -1,0 +1,3 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a struct field (E137).
+pub struct S { items: Seq<I32> }

@@ -1,0 +1,6 @@
+// expect: compile
+// docs/user/functions.md: `fn log_value(value: I32) { value }` returns
+// unit.
+fn log_value(value: I32) {
+    value
+}

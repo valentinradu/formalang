@@ -1,0 +1,5 @@
+// expect: reject DuplicateDefinition
+// from: swift test/Constraints/ (argument label repeated).
+fn f(a: I32) -> I32 { a }
+
+pub fn g() -> I32 { f(a: 1, a: 2) }

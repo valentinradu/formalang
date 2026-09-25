@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/structs.md: a comma separates two fields. A line break
+// alone does not.
+pub struct Point {
+  x: I32
+  y: I32
+}

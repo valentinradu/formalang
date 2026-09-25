@@ -1,0 +1,5 @@
+// expect: reject InvalidUnicodeEscape
+// from: rust tests/ui/parser/ (invalid unicode character escape).
+// U+D800 is a surrogate and not a Unicode scalar value, so no UTF-8
+// string can hold it.
+pub let s: String = "\uD800"

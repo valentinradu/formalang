@@ -1,0 +1,16 @@
+// expect: run
+// docs/user/extern.md: a struct can have both a regular `impl` block and
+// an `extern impl` block.
+struct Canvas { width: I32, height: I32 }
+
+extern impl Canvas {
+    fn clear(self)
+}
+
+impl Canvas {
+    fn area(self) -> I32 { self.width * self.height }
+}
+
+pub fn run_checks() {
+    assert(condition: Canvas(width: 2, height: 3).area() == 6)
+}

@@ -1,0 +1,11 @@
+// expect: reject NoMatchingOverload
+// The method `scale` has the label `by`. A call with the label `times`
+// names no parameter. With two overloads the same call is rejected: see
+// overloads/an_unmatched_label_is_rejected.fv.
+pub struct S { n: I32 }
+impl S {
+    fn scale(self, by: I32) -> I32 { self.n * by }
+    fn two(self, a: I32, b: I32) -> I32 { a - b }
+}
+
+pub let x: I32 = S(n: 1).scale(times: 2)

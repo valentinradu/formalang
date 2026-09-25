@@ -1,0 +1,4 @@
+// expect: compile
+// docs/user/extern.md: `extern "C"` and `extern "system"`.
+extern "C" fn read(fd: I32) -> I32
+extern "system" fn GetTickCount() -> I32

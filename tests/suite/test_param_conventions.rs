@@ -748,11 +748,11 @@ fn test_closure_typed_param_with_args_callable() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_fn_returns_closure_capturing_let_param_rejected() {
-    // Let param is a view — can't escape.
-    assert!(has_error(
-        "pub fn make(y: I32) -> () -> I32 { () -> y }",
-        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+fn test_fn_returns_closure_capturing_let_param_allowed() {
+    // A closure copies the value of a plain parameter.
+    assert!(runs_its_checks(
+        "fn make(y: I32) -> () -> I32 { () -> y }
+         pub fn run_checks() { assert(condition: make(y: 3)() == 3) }",
     ));
 }
 
@@ -764,13 +764,13 @@ fn test_fn_returns_closure_capturing_sink_param_allowed() {
 }
 
 #[test]
-fn test_fn_returns_closure_capturing_local_let_rejected() {
-    assert!(has_error(
-        "pub fn make() -> () -> I32 {
+fn test_fn_returns_closure_capturing_local_let_allowed() {
+    assert!(runs_its_checks(
+        "fn make() -> () -> I32 {
              let y: I32 = 5
              () -> y
-         }",
-        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+         }
+         pub fn run_checks() { assert(condition: make()() == 5) }",
     ));
 }
 
@@ -790,15 +790,15 @@ fn test_fn_returns_closure_no_capture_allowed() {
 }
 
 #[test]
-fn test_fn_returns_named_closure_capturing_local_let_rejected() {
-    // Named closure binding returned; its captures must still be checked.
-    assert!(has_error(
-        "pub fn make() -> () -> I32 {
+fn test_fn_returns_named_closure_capturing_local_let_allowed() {
+    // A named closure binding that the function returns holds a copy.
+    assert!(runs_its_checks(
+        "fn make() -> () -> I32 {
              let y: I32 = 5
              let c: () -> I32 = () -> y
              c
-         }",
-        |e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }),
+         }
+         pub fn run_checks() { assert(condition: make()() == 5) }",
     ));
 }
 
@@ -825,4 +825,14 @@ fn test_fn_returns_named_closure_capturing_sink_param_allowed() {
          }",
     )
     .expect("sink-param capture via named closure binding should be allowed");
+}
+
+/// Compile `source`, run its `run_checks()` in the reference
+/// interpreter, and return whether each assert passed.
+fn runs_its_checks(source: &str) -> bool {
+    let Ok(module) = compile_to_ir(source) else {
+        return false;
+    };
+    let mut interpreter = crate::common::interpreter::Interpreter::new(&module);
+    interpreter.run("run_checks").is_ok() && interpreter.asserts_passed > 0
 }

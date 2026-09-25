@@ -6,18 +6,35 @@
 //!
 //! ## Entry points
 //!
-//! - [`compile_to_ir`] — compile source to a resolved [`IrModule`].
-//! - [`compile_to_ir_with_resolver`] — same, with a custom [`semantic::module_resolver::ModuleResolver`].
-//! - [`compile_with_analyzer`] — returns the AST plus [`SemanticAnalyzer`] for LSP-style use.
-//! - [`parse_only`] — lex + parse without semantic analysis.
-//! - [`compile_and_report`] — convenience wrapper that formats errors as a
-//!   human-readable report.
+//! - [`compile_to_ir`]: compile source to a resolved [`IrModule`].
+//! - [`compile_to_ir_with_path`]: the same, with the source path in the
+//!   file table of the module.
+//! - [`compile_to_ir_with_resolver`]: compile a program of several
+//!   modules through a [`semantic::module_resolver::ModuleResolver`],
+//!   then run [`ir::MonomorphisePass`].
+//! - [`compile_to_ir_with_path_and_resolver`]: the same as
+//!   [`compile_to_ir_with_resolver`], with the source path. It also runs
+//!   [`ir::MonomorphisePass`].
+//! - [`compile_with_analyzer`] and [`compile_with_analyzer_and_resolver`]:
+//!   the AST and the [`SemanticAnalyzer`], for LSP-style use.
+//! - [`parse_only`]: lex and parse, with no semantic analysis.
+//! - [`compile_and_report`]: [`compile_to_ir`], with the errors as a
+//!   report that a person can read.
 //!
 //! ## Plugin system
 //!
 //! Embedders compose [`IrPass`] transforms and a [`Backend`] via [`Pipeline`].
-//! Built-in passes live in [`ir::DeadCodeEliminationPass`] and
+//! The built-in passes are in [`ir`]: [`ir::MonomorphisePass`],
+//! [`ir::ResolveReferencesPass`], [`ir::ClosureConversionPass`],
+//! [`ir::DefunctionalisePass`], [`ir::DeadCodeEliminationPass`] and
 //! [`ir::ConstantFoldingPass`].
+//!
+//! ## Cargo features
+//!
+//! - `serde` (off by default): derive `serde::Serialize` and
+//!   `serde::Deserialize` on [`IrModule`] and on every type in it. The
+//!   JSON form of the IR is not a stable format. The AST has no
+//!   serialized form.
 
 pub mod ast;
 pub mod error;
@@ -29,11 +46,12 @@ pub mod pipeline;
 pub mod reporting;
 pub mod semantic;
 
-/// Compiler-shipped prelude source. Contains `extern impl <Primitive>`
-/// declarations for the built-in method surface (e.g., `String::len`,
-/// `String::slice`). Prepended to every user source at the entry-point
-/// compile functions so its declarations are visible without an
-/// explicit `use`.
+/// Compiler-shipped prelude source. It declares the built-in generic
+/// types (`Optional`, `Array`, `Seq`, `Dictionary`, `Range`), their
+/// methods and the methods of `String` as `extern impl` blocks, and the
+/// `assert` function. The compiler puts its statements before the
+/// statements of each module, the entry module and each imported
+/// module, so its names need no `use`.
 pub(crate) const PRELUDE_SOURCE: &str = include_str!("prelude.fv");
 
 // Re-export commonly used types
@@ -80,26 +98,23 @@ pub fn compile_with_analyzer_and_resolver<R>(
 where
     R: semantic::module_resolver::ModuleResolver,
 {
-    // Parse the user source first — its spans stay 0-based on the
-    // user's bytes, so error messages and IDE tooling report the
-    // correct line/column.
-    let (tokens, lex_errors) = Lexer::tokenize_all_with_errors(source);
-    let parse_result = parse_file_with_source(&tokens, source).map_err(|errors| {
-        errors
-            .into_iter()
-            .map(|(msg, span)| CompilerError::ParseError { message: msg, span })
-            .collect::<Vec<_>>()
-    });
-    let mut file = match parse_result {
-        Ok(f) if lex_errors.is_empty() => f,
-        Ok(_) => return Err(lex_errors),
-        Err(mut parse_errors) => {
-            let mut all = lex_errors;
-            all.append(&mut parse_errors);
-            return Err(all);
-        }
-    };
+    // The parse and the analysis are two functions. In a debug build a
+    // frame holds every local of its function from the start, so an
+    // analyzer declared here would sit on the stack under the parser,
+    // which recurses once for each level of nesting. The user source
+    // keeps 0-based spans on its own bytes.
+    let file = parse_only(source)?;
+    analyze_with_prelude(file, resolver)
+}
 
+/// Prepend the prelude to `file` and run the semantic analysis.
+fn analyze_with_prelude<R>(
+    mut file: File,
+    resolver: R,
+) -> Result<(File, SemanticAnalyzer<R>), Vec<CompilerError>>
+where
+    R: semantic::module_resolver::ModuleResolver,
+{
     // Parse the compiler-shipped prelude separately, then prepend its
     // top-level statements to the user file. User-source spans are
     // preserved; only prelude statements carry prelude-relative spans
@@ -132,8 +147,67 @@ static PRELUDE_AST: std::sync::OnceLock<Result<File, Vec<CompilerError>>> =
 /// later call clones it. Cloning an AST costs far less than parsing
 /// one, and the caller needs its own copy: it appends the user's
 /// statements to the prelude's.
-fn parse_prelude_file() -> Result<File, Vec<CompilerError>> {
+pub(crate) fn parse_prelude_file() -> Result<File, Vec<CompilerError>> {
     PRELUDE_AST.get_or_init(parse_prelude_file_uncached).clone()
+}
+
+/// The number of statements in the prelude. The prelude's statements
+/// come first in the AST of each module.
+fn prelude_len() -> Result<usize, Vec<CompilerError>> {
+    PRELUDE_AST
+        .get_or_init(parse_prelude_file_uncached)
+        .as_ref()
+        .map(|file| file.statements.len())
+        .map_err(Clone::clone)
+}
+
+/// The names of the prelude's definitions, computed once per process.
+static PRELUDE_NAMES: std::sync::OnceLock<std::collections::HashSet<String>> =
+    std::sync::OnceLock::new();
+
+/// The names that the prelude defines. Each module has the prelude, so
+/// a module cannot import one of these names from another module.
+pub(crate) fn prelude_names() -> &'static std::collections::HashSet<String> {
+    PRELUDE_NAMES.get_or_init(|| {
+        let Ok(file) = PRELUDE_AST.get_or_init(parse_prelude_file_uncached) else {
+            return std::collections::HashSet::new();
+        };
+        file.statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Statement::Definition(def) => match &**def {
+                    Definition::Trait(t) => Some(t.name.name.clone()),
+                    Definition::Struct(s) => Some(s.name.name.clone()),
+                    Definition::Enum(e) => Some(e.name.name.clone()),
+                    Definition::Module(m) => Some(m.name.name.clone()),
+                    Definition::Function(f) => Some(f.name.name.clone()),
+                    Definition::Impl(_) => None,
+                },
+                Statement::Use(_) | Statement::Let(_) => None,
+            })
+            .collect()
+    })
+}
+
+/// The lowered prelude, computed once per process.
+static PRELUDE_IR: std::sync::OnceLock<Result<IrModule, Vec<CompilerError>>> =
+    std::sync::OnceLock::new();
+
+/// The prelude, analysed and lowered on its own. The lowering of each
+/// module starts from a copy of it; see [`ir::link`].
+pub(crate) fn prelude_ir() -> Result<&'static IrModule, Vec<CompilerError>> {
+    PRELUDE_IR
+        .get_or_init(|| {
+            let mut file = parse_prelude_file()?;
+            let mut analyzer = SemanticAnalyzer::new_with_file(
+                FileSystemResolver::new(".".into()),
+                "<prelude>".into(),
+            );
+            analyzer.analyze_and_classify(&mut file)?;
+            ir::lower_to_ir(&file, analyzer.symbols())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 /// Parse the prelude without consulting the cache.
@@ -238,7 +312,7 @@ pub fn parse_only(source: &str) -> Result<File, Vec<CompilerError>> {
 /// ```
 pub fn compile_to_ir(source: &str) -> Result<IrModule, Vec<CompilerError>> {
     let (ast, analyzer) = compile_with_analyzer(source)?;
-    ir::lower_to_ir(&ast, analyzer.symbols())
+    analyzer.lower_entry(&ast, prelude_len()?, None)
 }
 
 /// Compile `FormaLang` source to IR with a known source-file path.
@@ -256,28 +330,26 @@ pub fn compile_to_ir_with_path(
     path: std::path::PathBuf,
 ) -> Result<IrModule, Vec<CompilerError>> {
     let (ast, analyzer) = compile_with_analyzer(source)?;
-    ir::lower_to_ir_with_path(&ast, analyzer.symbols(), path)
+    analyzer.lower_entry(&ast, prelude_len()?, Some(path))
 }
 
 /// Compile `FormaLang` source code to IR with a custom module resolver.
 ///
-/// Runs [`ir::MonomorphisePass`] after lowering with an `imports_map` built
-/// from the analyzer's per-import IR cache, so generic `External` references
-/// to imported types are specialised into local clones before the IR is
-/// returned.
+/// Each imported module lowers on top of the modules that it imports,
+/// and the entry module lowers on top of all of them. The result is one
+/// self-contained module. Each item of an imported module is in it once
+/// under the path of its module, for example `geom::Point`: its public
+/// items and its private ones. A reference to an imported item names
+/// that item, so a private helper of a module is the one that the
+/// module's code calls, whatever the importer defines. An imported
+/// struct keeps its methods, and an imported trait keeps the impls that
+/// satisfy it, so an imported trait satisfies a local generic bound.
+/// `tests/suite/cross_module.rs` and `tests/suite/mined_modules.rs` hold
+/// the acceptance tests.
 ///
-/// An imported definition is cloned into the returned module under a
-/// qualified name, and every reference to it is rewritten to the
-/// clone. That covers a struct constructed locally, an imported type
-/// named in a signature, an imported function whose return type is
-/// also imported, a generic import specialised at the instantiation
-/// the caller asks for, and an imported trait, which arrives with the
-/// impl that records the conformance so a generic bound on it can
-/// still be satisfied. `tests/suite/cross_module.rs` holds the acceptance
-/// tests for each.
-///
-/// Single-file consumers should prefer [`compile_to_ir`] — that path skips
-/// the pipeline since there are no imports to inline.
+/// Then [`ir::MonomorphisePass`] runs. For a single file with no import,
+/// this gives the same program as [`compile_to_ir`] followed by that
+/// pass.
 ///
 /// # Errors
 ///
@@ -291,37 +363,24 @@ where
     R: semantic::module_resolver::ModuleResolver,
 {
     let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
-    let module = ir::lower_to_ir(&ast, analyzer.symbols())?;
-
-    // Build the imports map keyed by logical module path (matching
-    // `ResolvedType::External::module_path`). Each entry pairs a path with
-    // the cached IR of the module that path resolves to. Driven off the
-    // entry-point module's `imports[*]`: only modules that actually
-    // contributed at least one symbol are forwarded to the pass.
-    let imported_ir = analyzer.imported_ir_modules();
-    let mut imports_map: std::collections::HashMap<Vec<String>, IrModule> =
-        std::collections::HashMap::with_capacity(module.imports.len());
-    for imp in &module.imports {
-        if let Some(ir_mod) = imported_ir.get(&imp.source_file) {
-            imports_map.insert(imp.module_path.clone(), ir_mod.clone());
-        }
-    }
-
+    let module = analyzer.lower_entry(&ast, prelude_len()?, None)?;
     Pipeline::new()
-        .pass(ir::MonomorphisePass::default().with_imports(imports_map))
+        .pass(ir::MonomorphisePass::default())
         .run(module)
 }
 
 /// Compile `FormaLang` source to IR with both a custom resolver and a known
 /// source-file path.
 ///
-/// Combines the contracts of [`compile_to_ir_with_resolver`] (cross-module
-/// imports via the resolver) and [`compile_to_ir_with_path`] (`file_table`
-/// seeded with the entry-point path so spans carry a real `FileId`).
+/// The imported modules link into the result as in
+/// [`compile_to_ir_with_resolver`], and the `file_table` starts with
+/// `path` as in [`compile_to_ir_with_path`]. Then
+/// [`ir::MonomorphisePass`] runs, as in [`compile_to_ir_with_resolver`].
 ///
 /// # Errors
 ///
-/// Returns a vector of [`CompilerError`] if compilation or IR lowering fails.
+/// Returns a vector of [`CompilerError`] if compilation, IR lowering, or
+/// monomorphisation fails.
 pub fn compile_to_ir_with_path_and_resolver<R>(
     source: &str,
     path: std::path::PathBuf,
@@ -331,5 +390,8 @@ where
     R: semantic::module_resolver::ModuleResolver,
 {
     let (ast, analyzer) = compile_with_analyzer_and_resolver(source, resolver)?;
-    ir::lower_to_ir_with_path(&ast, analyzer.symbols(), path)
+    let module = analyzer.lower_entry(&ast, prelude_len()?, Some(path))?;
+    Pipeline::new()
+        .pass(ir::MonomorphisePass::default())
+        .run(module)
 }

@@ -165,6 +165,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         self.validate_type(type_ann, value.span());
                     }
                     self.validate_expr_expecting(value, ty.as_ref().map(SemType::from_ast), file);
+                    // The shape of the pattern against the value, the
+                    // same way the module-level path checks it.
+                    self.validate_destructuring_pattern(pattern, value, value.span(), file);
                     // Compare the value against the annotation, the
                     // same way the module-level path does.
                     if let Some(type_ann) = ty {
@@ -237,11 +240,35 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     value,
                     span,
                 } => {
+                    // An assignment to a whole binding writes it, and does
+                    // not read it: a sunk `let mut` may take a new value.
+                    let whole = if let Expr::Reference { path, .. } = target {
+                        match path.as_slice() {
+                            [seg] => Some(seg.name.clone()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let was_consumed = whole
+                        .as_ref()
+                        .is_some_and(|name| self.consumed_bindings.remove(name));
                     self.validate_expr(target, file);
+                    if let (true, Some(name)) = (was_consumed, &whole) {
+                        self.consumed_bindings.insert(name.clone());
+                    }
                     // The target's type is the expected type of the
                     // value, as IR lowering reads it.
                     let target_ty = self.infer_type_sem(target, file);
                     self.validate_expr_expecting(value, Some(target_ty), file);
+                    if let Some(name) = &whole {
+                        // The new value makes the binding whole again.
+                        self.consumed_bindings.remove(name);
+                    }
+                    // A closure is pure: it does not assign to a binding
+                    // that it captures.
+                    let captured = Self::root_binding(target)
+                        .is_some_and(|root| self.is_closure_capture(&root));
                     // An element target loses to the stronger rule, so it
                     // reports that rule and not the binding rule. `let mut`
                     // is no help here, and the binding is often already
@@ -249,7 +276,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     if Self::is_element_target(target) {
                         self.errors
                             .push(CompilerError::AssignmentToElement { span: *span });
-                    } else if !self.is_expr_mutable(target, file) {
+                    } else if captured || !self.is_expr_mutable(target, file) {
                         self.errors
                             .push(CompilerError::AssignmentToImmutable { span: *span });
                     }
@@ -272,14 +299,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                     }
                     // A closure assigned to an outer-scope `mut` binding
-                    // outlives this block; its captures must outlive the
-                    // function frame. `saved_let_bindings` holds only
-                    // pre-block bindings, so this filters out locals.
+                    // outlives this block, and a `sink` parameter that it
+                    // captures moves with it. `saved_let_bindings` holds
+                    // only pre-block bindings, so this filters out locals.
                     if let Expr::Reference { path, .. } = target {
                         if let [seg] = path.as_slice() {
                             if saved_let_bindings.contains_key(&seg.name) {
                                 if let Some(caps) = self.closure_captures_of_expr(value) {
-                                    self.validate_escaping_captures(&caps, *span);
+                                    self.validate_escaping_captures(&caps);
                                 }
                             }
                         }

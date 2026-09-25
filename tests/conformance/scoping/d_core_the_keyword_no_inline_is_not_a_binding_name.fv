@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `no_inline` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let no_inline = 1
+    assert(condition: no_inline == 1)
+}

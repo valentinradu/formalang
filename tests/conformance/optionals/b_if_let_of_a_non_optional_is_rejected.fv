@@ -1,0 +1,6 @@
+// expect: reject MatchNotEnum
+// from: swift test/Constraints/optional.swift (initializer for
+// conditional binding must have Optional type).
+pub fn f(a: I32) -> I32 {
+    if let v = a { v } else { 0 }
+}

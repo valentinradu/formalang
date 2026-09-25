@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: a Boolean may be a key.
+pub fn run_checks() {
+    let d: [Boolean: I32] = [true: 1, false: 0]
+    assert(condition: d.len() == 2)
+    if let v = d[false] { assert(condition: v == 0) } else { assert(condition: false) }
+}

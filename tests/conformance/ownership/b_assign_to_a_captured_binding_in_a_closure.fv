@@ -1,0 +1,11 @@
+// expect: reject AssignmentToImmutable
+// docs/user/closures.md: closures are pure, with no side effects. An
+// assignment to a captured binding is a side effect.
+pub fn f() -> I32 {
+    let mut x: I32 = 1
+    let g: () -> I32 = () -> {
+        x = 5
+        x
+    }
+    g() + x
+}

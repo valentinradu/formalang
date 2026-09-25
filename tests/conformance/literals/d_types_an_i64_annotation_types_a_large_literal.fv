@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: `let big: I64 = 9_223_372_036_854_775_807`.
+// The annotation gives the literal its type.
+pub fn run_checks() {
+    let big: I64 = 9_223_372_036_854_775_807
+    assert(condition: big > 0I64)
+}

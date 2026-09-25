@@ -1,0 +1,10 @@
+// expect: reject ClosureParameterNeedsType
+// docs/user/generics.md: in `fn apply<U>(self, f: (U) -> I32)`, the call
+// `b.apply(f: (x) -> 1)` gives `x` no type (E145).
+pub struct B { n: I32 }
+
+impl B {
+    fn apply<U>(self, f: (U) -> I32) -> I32 { self.n }
+}
+
+pub let r = B(n: 1).apply(f: (x) -> 1)

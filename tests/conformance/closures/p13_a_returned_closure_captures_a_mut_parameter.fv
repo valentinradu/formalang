@@ -1,0 +1,16 @@
+// expect: run
+// docs/user/closures.md: a closure captures by value. A returned closure
+// holds the value that a `mut` parameter has when the closure is made.
+fn counter(mut n: I32) -> () -> I32 {
+    n = n + 1
+    let f: () -> I32 = () -> n
+    n = n + 10
+    f
+}
+
+pub fn run_checks() {
+    let mut start: I32 = 1
+    let f = counter(n: start)
+    assert(condition: f() == 2)
+    assert(condition: start == 12)
+}

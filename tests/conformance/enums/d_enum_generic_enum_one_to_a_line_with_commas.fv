@@ -1,0 +1,7 @@
+// expect: compile
+// docs/user/enums.md and generics.md: a generic enum, one variant to a
+// line, with a comma after each variant but the last.
+pub enum Option<T> {
+  some(value: T),
+  none
+}

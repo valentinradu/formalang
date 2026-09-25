@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/expressions.md: `pub let [x, ...rest] = items` gives
+// rest=["second", "third", "fourth"].
+pub let items = ["first", "second", "third", "fourth"]
+pub let [x, ...rest] = items
+
+pub fn run_checks() {
+    assert(condition: x == "first")
+    assert(condition: rest.len() == 3)
+}

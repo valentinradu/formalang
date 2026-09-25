@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `10 + 20 * 3` is 70.
+pub fn run_checks() {
+    assert(condition: 10 + 20 * 3 == 70)
+    assert(condition: (10 + 20) * 3 == 90)
+    assert(condition: 20 - 6 / 3 == 18)
+    assert(condition: 7 + 17 % 5 == 9)
+}

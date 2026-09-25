@@ -1,0 +1,6 @@
+// expect: run
+// A literal with `nil` and values makes an array of optionals.
+pub fn run_checks() {
+    let xs = [nil, 1]
+    assert(condition: xs.len() == 2)
+}

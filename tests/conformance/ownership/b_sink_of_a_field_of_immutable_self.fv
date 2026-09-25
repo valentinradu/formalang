@@ -1,0 +1,10 @@
+// expect: reject MutabilityMismatch
+// from: rust tests/ui/moves/move-field-out-of-shared-self.rs
+// A plain `self` is borrowed. Its field cannot be given away with `sink`.
+pub struct C { s: String }
+
+fn take(sink s: String) -> I32 { s.len() }
+
+impl C {
+    fn f(self) -> I32 { take(s: self.s) }
+}

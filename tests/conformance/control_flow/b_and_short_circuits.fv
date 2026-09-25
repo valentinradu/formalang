@@ -1,0 +1,8 @@
+// expect: run
+// from: go test/ (the && operator does not evaluate its right side when
+// the left is false).
+pub fn run_checks() {
+    let xs: [I32] = []
+    let ok = xs.len() > 0 && xs[0] != nil
+    assert(condition: ok == false)
+}

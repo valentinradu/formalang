@@ -1,0 +1,7 @@
+// expect: reject ExternImplWithBody
+// docs/user/extern.md: extern impl methods have no body.
+struct Canvas { width: I32 }
+
+extern impl Canvas {
+    fn get_width(self) -> I32 { self.width }
+}

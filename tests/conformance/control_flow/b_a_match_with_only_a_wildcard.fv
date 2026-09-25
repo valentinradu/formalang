@@ -1,0 +1,9 @@
+// expect: run
+// A single `_` arm covers every variant.
+pub enum E { a, b }
+
+pub fn run_checks() {
+    let e: E = .b
+    let r = match e { _: 7 }
+    assert(condition: r == 7)
+}

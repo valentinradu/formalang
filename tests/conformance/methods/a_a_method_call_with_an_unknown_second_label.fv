@@ -1,0 +1,9 @@
+// expect: reject NoMatchingOverload
+// The method `two` has the labels `a` and `b`. The call names `c`.
+pub struct S { n: I32 }
+impl S {
+    fn scale(self, by: I32) -> I32 { self.n * by }
+    fn two(self, a: I32, b: I32) -> I32 { a - b }
+}
+
+pub let x: I32 = S(n: 1).two(a: 1, c: 2)

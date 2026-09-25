@@ -1,0 +1,5 @@
+// expect: reject TypeMismatch
+// The annotation makes the payload of `error` an I32, and the value is a
+// String.
+pub enum Result<T, E> { ok(value: T), error(err: E) }
+pub let r: Result<String, I32> = .error(err: "bad")

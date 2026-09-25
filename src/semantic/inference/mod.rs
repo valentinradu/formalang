@@ -127,7 +127,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         match expr {
             Expr::Literal { value: lit, .. } => match lit {
                 Literal::String(_) => SemType::Primitive(PrimitiveType::String),
-                Literal::Number(n) => SemType::Primitive(n.primitive_type()),
+                Literal::Number(n) => SemType::Primitive(
+                    self.literal_types
+                        .get(&super::literal_types::node_key(expr))
+                        .copied()
+                        .unwrap_or_else(|| n.primitive_type()),
+                ),
                 Literal::Boolean(_) => SemType::Primitive(PrimitiveType::Boolean),
                 Literal::Nil => SemType::Nil,
             },
@@ -154,6 +159,24 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 args,
                 ..
             } => self.infer_type_invocation(path, type_args, args, file),
+            Expr::EnumInstantiation { .. }
+                if self
+                    .expr_types
+                    .contains_key(&super::literal_types::node_key(expr)) =>
+            {
+                self.expr_types
+                    .get(&super::literal_types::node_key(expr))
+                    .cloned()
+                    .unwrap_or(SemType::Unknown)
+            }
+            Expr::EnumInstantiation {
+                enum_name,
+                type_args,
+                ..
+            } if !type_args.is_empty() => SemType::Generic {
+                base: enum_name.name.clone(),
+                args: type_args.iter().map(SemType::from_ast).collect(),
+            },
             Expr::EnumInstantiation {
                 enum_name,
                 variant,
@@ -168,7 +191,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         args,
                     },
                 ),
-            Expr::InferredEnumInstantiation { .. } => SemType::InferredEnum,
+            Expr::InferredEnumInstantiation { .. } => self
+                .expr_types
+                .get(&super::literal_types::node_key(expr))
+                .cloned()
+                .unwrap_or(SemType::InferredEnum),
             Expr::Reference { path, .. } => self.infer_type_reference(path, file),
             Expr::BinaryOp { left, op, .. } => self.infer_type_binary_op(left, *op, file),
             Expr::UnaryOp { op, operand, .. } => match op {
@@ -282,13 +309,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 let obj_type = self.infer_type_sem(object, file);
                 self.infer_field_type(&obj_type, &field.name)
             }
+            Expr::Call { callee, .. } => {
+                if let SemType::Closure { return_ty, .. } = self.infer_type_sem(callee, file) {
+                    *return_ty
+                } else {
+                    SemType::Unknown
+                }
+            }
             Expr::MethodCall {
                 receiver,
                 method,
                 args,
                 ..
             } => {
-                let receiver_type = self.infer_type_sem(receiver, file);
+                // `Counter.zero()` calls a static method on the type.
+                let receiver_type = self
+                    .type_receiver(receiver)
+                    .unwrap_or_else(|| self.infer_type_sem(receiver, file));
                 self.infer_method_return_type(&receiver_type, &method.name, args, file)
             }
             Expr::ClosureExpr {
@@ -370,10 +407,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.current_impl_struct
                 .as_ref()
                 .map_or(SemType::Unknown, |s| SemType::Named(s.clone()))
+        } else if let Some((local_type, _mutable)) = self.local_let_bindings.get(&first.name) {
+            // A parameter or a local `let` hides a module `let` of the
+            // same name.
+            local_type.clone()
         } else if let Some(let_type) = self.symbols.get_let_type(&first.name) {
             let_type.clone()
-        } else if let Some((local_type, _mutable)) = self.local_let_bindings.get(&first.name) {
-            local_type.clone()
         } else if let Some(ref struct_name) = self.current_impl_struct {
             // Top-level field reference in an impl body — resolve against self.
             self.symbols

@@ -1,0 +1,19 @@
+// expect: run
+// docs/user/types.md: an operand takes its type from the other operand.
+// `1` is an I64 next to an I64. Two literals take the type that the
+// context gives to an arithmetic operator.
+pub fn next(n: I64) -> I64 {
+    n + 1
+}
+
+pub let product: I64 = 2 * 3
+pub let negated: I64 = -(2 * 3_000_000_000)
+
+pub fn run_checks() {
+    assert(condition: next(n: 3_000_000_000) == 3_000_000_001)
+    assert(condition: product == 6)
+    assert(condition: negated == -6_000_000_000)
+    assert(condition: 1 < 3_000_000_000I64)
+    let n: I32 = for i in 0..3I64 { i }.count()
+    assert(condition: n == 3)
+}

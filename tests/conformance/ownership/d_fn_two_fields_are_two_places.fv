@@ -1,0 +1,16 @@
+// expect: compile
+// docs/user/functions.md: `swap(a: p.x, b: p.y)` is ok.
+pub struct Point { x: I32, y: I32 }
+
+fn swap(mut a: I32, mut b: I32) {
+    let t = a
+    a = b
+    b = t
+}
+
+pub fn run_checks() {
+    let mut p: Point = Point(x: 1, y: 2)
+    swap(a: p.x, b: p.y)
+    assert(condition: p.x == 2)
+    assert(condition: p.y == 1)
+}

@@ -1,0 +1,6 @@
+// expect: reject UseAfterSink
+// docs/user/control-flow.md: reading a sequence twice is E136.
+pub fn f() -> I32 {
+    let g: (Seq<I32>) -> I32 = (s) -> s.count() + s.count()
+    g(for x in [1] { x })
+}

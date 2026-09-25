@@ -1,7 +1,7 @@
 //! IR lowering pass: AST + `SymbolTable` → `IrModule`
 //!
 //! The IR layer intentionally consumes the semantic analyzer's
-//! [`SymbolTable`](crate::semantic::SymbolTable) along with its public
+//! [`crate::semantic::SymbolTable`] along with its public
 //! shape types ([`StructInfo`](crate::semantic::StructInfo),
 //! [`EnumInfo`](crate::semantic::EnumInfo), etc.). Those types are the
 //! narrow contract between the two phases and are re-exported from
@@ -12,8 +12,11 @@
 mod definitions;
 mod destructuring;
 mod expr;
+mod functions;
 mod let_and_module;
+mod linked;
 mod register;
+mod scope_lookup;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -24,6 +27,8 @@ use crate::semantic::{SymbolKind, SymbolTable};
 
 use super::{ImportedKind, IrGenericParam, IrImport, IrImportItem, IrModule, ResolvedType};
 use std::collections::HashMap;
+
+pub(crate) use linked::{lower_linked, LinkedLowering};
 
 /// Lower an AST and symbol table into an IR module.
 ///
@@ -120,9 +125,9 @@ struct IrLowerer<'a> {
     /// `InternalError` diagnostics can cite a meaningful source location
     /// instead of `Span::default()`.
     pub(super) current_span: crate::location::Span,
-    /// File id for the source being lowered. The lowerer registers the
-    /// entry-point file as `FileId(1)` on construction; cross-module
-    /// inlining (in `MonomorphisePass`) updates this for cloned items.
+    /// File id for the source being lowered. `FileId(0)` when no path
+    /// is known. The linked lowering registers the file of the module
+    /// and sets this to its id.
     pub(super) current_file: crate::ir::FileId,
     /// when a closure literal is being lowered as the
     /// argument to a function call (or assigned to a closure-typed
@@ -176,6 +181,10 @@ struct IrLowerer<'a> {
     /// The impl blocks with the signatures of their methods, with no
     /// bodies. A method call before the impl of its type reads them.
     pub(super) declared_impls: Vec<crate::ir::IrImpl>,
+    /// The number of impls in `module.impls` when the declare pass
+    /// began. The impl at `declared_impls[k]` takes the id
+    /// `declared_impl_base + k` when its body is lowered.
+    pub(super) declared_impl_base: usize,
     /// While `register_imported_types` is lowering an imported struct's
     /// or enum's field types, this holds the source module's logical
     /// path. The `lower_type` fallback uses it to default unresolved
@@ -185,6 +194,14 @@ struct IrLowerer<'a> {
     /// import them, and the `MonomorphisePass` will pull them in via
     /// Phase 1a.
     pub(super) imported_source_context: Option<Vec<String>>,
+    /// True when the linker put the imported modules into `module`
+    /// before the lowering. An imported item is then a real item of
+    /// `module` under its short name, not a placeholder.
+    pub(super) linked: bool,
+    /// The name that a reference to a module `let` carries, by the
+    /// name that the source writes. Empty unless `linked` is set; see
+    /// [`crate::ir::link`].
+    pub(super) linked_let_names: HashMap<String, String>,
 }
 
 impl<'a> IrLowerer<'a> {
@@ -253,7 +270,10 @@ impl<'a> IrLowerer<'a> {
             signatures_only: false,
             declared_functions: Vec::new(),
             declared_impls: Vec::new(),
+            declared_impl_base: 0,
             imported_source_context: None,
+            linked: false,
+            linked_let_names: HashMap::new(),
         }
     }
 
@@ -263,108 +283,10 @@ impl<'a> IrLowerer<'a> {
         crate::ir::IrSpan::new(self.current_span, self.current_file)
     }
 
-    /// Look up a function by its source-level (single-segment) name
-    /// using module-aware resolution: when called from inside
-    /// `mod foo { … }`, prefer `"foo::name"` so intra-module calls
-    /// resolve to the local definition; fall back to the bare name
-    /// for top-level functions.
-    pub(super) fn find_function_in_scope(&self, name: &str) -> Option<crate::ir::FunctionId> {
-        if !self.current_module_prefix.is_empty() {
-            let qualified = format!("{}::{}", self.current_module_prefix, name);
-            if let Some(id) = self.module.function_id(&qualified) {
-                return Some(id);
-            }
-        }
-        self.module.function_id(name)
-    }
-
-    /// The id of the overload of `name` that the call's argument
-    /// labels select.
-    ///
-    /// `IrModule.function_names` maps a name to one id, so a later
-    /// overload overwrites an earlier one and every call to an
-    /// overloaded name lowered to whichever was registered last. The
-    /// semantic analyser resolved the overloads correctly, so the
-    /// program compiled — and then a backend emitted a call to the
-    /// wrong function. `format(value: x)` and
-    /// `format(value: x, precision: p)` both became a call to the
-    /// one-argument `format`.
-    ///
-    /// Selection mirrors the analyser: an overload is a candidate when
-    /// it can take every label the call supplies and the call supplies
-    /// every parameter it has no default for. Among candidates the one
-    /// firing the fewest defaults wins; a tie keeps the first, which is
-    /// the ambiguous case the analyser has already reported.
-    pub(super) fn find_overload_in_scope(
-        &self,
-        name: &str,
-        arg_labels: &[Option<String>],
-        arg_count: usize,
-    ) -> Option<crate::ir::FunctionId> {
-        let qualified = if self.current_module_prefix.is_empty() {
-            None
-        } else {
-            Some(format!("{}::{}", self.current_module_prefix, name))
-        };
-
-        let mut candidates: Vec<(crate::ir::FunctionId, &crate::ir::IrFunction)> = self
-            .module
-            .functions
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| qualified.as_deref() == Some(f.name.as_str()) || f.name == name)
-            .filter_map(|(i, f)| u32::try_from(i).ok().map(|i| (crate::ir::FunctionId(i), f)))
-            .collect();
-
-        // A call inside `mod math` means `math::add` when that exists,
-        // whatever a top-level `add` says. Narrowing here keeps that
-        // lexical rule ahead of the label matching below.
-        if let Some(prefixed) = qualified.as_deref() {
-            if candidates.iter().any(|(_, f)| f.name == prefixed) {
-                candidates.retain(|(_, f)| f.name == prefixed);
-            }
-        }
-
-        if candidates.len() <= 1 {
-            return candidates
-                .first()
-                .map(|(id, _)| *id)
-                .or_else(|| self.find_function_in_scope(name));
-        }
-
-        // The same rule a method call uses — labels fit, count between
-        // required and declared, fewest defaults fired. One copy, so
-        // the two cannot drift and so one test covers both.
-        let ordered = candidates;
-        crate::ir::overload::choose(
-            ordered.iter().map(|(_, f)| *f).enumerate(),
-            |f| f.params.as_slice(),
-            arg_labels,
-            arg_count,
-        )
-        .and_then(|index| ordered.get(index).map(|(id, _)| *id))
-        .or_else(|| self.find_function_in_scope(name))
-    }
-
-    /// The name under which the type `name`, written in the current
-    /// module, is registered.
-    ///
-    /// A type in an inline `mod` is registered by its qualified name,
-    /// `m::P`, and the code in `m` names it `P`. The current module
-    /// comes first, then each enclosing module, then the top level.
-    pub(super) fn scoped_type_name(&self, name: &str) -> String {
-        let mut prefix = self.current_module_prefix.as_str();
-        while !prefix.is_empty() {
-            let qualified = format!("{prefix}::{name}");
-            if self.module.struct_id(&qualified).is_some()
-                || self.module.enum_id(&qualified).is_some()
-                || self.module.trait_id(&qualified).is_some()
-            {
-                return qualified;
-            }
-            prefix = prefix.rsplit_once("::").map_or("", |(outer, _)| outer);
-        }
-        name.to_string()
+    /// Build an `IrSpan` for `span` in the file that lowers now. A
+    /// definition takes the span of its own AST node.
+    pub(super) const fn ir_span(&self, span: crate::location::Span) -> crate::ir::IrSpan {
+        crate::ir::IrSpan::new(span, self.current_file)
     }
 
     /// Look up a local binding's resolved type by name from the innermost
@@ -472,6 +394,7 @@ impl<'a> IrLowerer<'a> {
         let errors_before = self.errors.len();
         let saved_imports = self.imports_by_module.clone();
         self.signatures_only = true;
+        self.declared_impl_base = self.module.impls.len();
         for statement in &file.statements {
             if let Statement::Definition(def) = statement {
                 if matches!(
@@ -518,6 +441,11 @@ impl<'a> IrLowerer<'a> {
         name: &str,
         type_args: Vec<ResolvedType>,
     ) -> Option<ResolvedType> {
+        // The linker put each imported type in the module under its
+        // short name, so the type is a local one.
+        if self.linked {
+            return None;
+        }
         // Check if this symbol was imported from another module
         let module_path = self.symbols.get_module_logical_path(name)?;
         let kind = self.symbols.get_symbol_kind(name)?;

@@ -1,0 +1,9 @@
+// expect: run
+// A value and a type live in different namespaces, so a `let` may take a
+// type name and a later read means the value.
+pub struct P { x: I32 }
+
+pub fn run_checks() {
+    let P: I32 = 3
+    assert(condition: P == 3)
+}

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `cold` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let cold = 1
+    assert(condition: cold == 1)
+}

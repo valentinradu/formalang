@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/core.md: a string may not hold a raw bidirectional control
+// character, but the escape \u202E is visible, so it is allowed.
+pub let marker: String = "a\u202Eb"
+
+pub fn run_checks() {
+    assert(condition: marker.len() == 5)
+}

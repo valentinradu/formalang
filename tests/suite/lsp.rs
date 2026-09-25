@@ -808,7 +808,7 @@ fn test_find_node_at_offset_impl_block() -> Result<(), Box<dyn std::error::Error
             data: String = "test"
         }
         impl Value {
-            fn get_data() -> String { self.data }
+            fn get_data(self) -> String { self.data }
         }
     "#;
     let result = compile_with_analyzer(source);

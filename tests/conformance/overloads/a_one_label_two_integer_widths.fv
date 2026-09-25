@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/functions.md, Mode A: the overloads differ by the width of
+// one integer label.
+fn width(v: I32) -> I32 { 32 }
+fn width(v: I64) -> I32 { 64 }
+pub fn run_checks() {
+    assert(condition: width(v: 1I64) == 64)
+    assert(condition: width(v: 1) == 32)
+}

@@ -9,8 +9,10 @@ use crate::ast::{BinaryOperator, Literal, ParamConvention, UnaryOperator};
 
 use super::block::{IrBlockStatement, IrMatchArm};
 use super::{
-    BindingId, EnumId, FieldIdx, FunctionId, MethodIdx, ResolvedType, StructId, VariantIdx,
+    BindingId, EnumId, FieldIdx, FunctionId, IrSpan, MethodIdx, ResolvedType, StructId, VariantIdx,
 };
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// An expression in the IR.
 ///
@@ -28,7 +30,8 @@ use super::{
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IrExpr {
     /// Literal value (string, number, boolean, etc.)
     Literal {
@@ -37,8 +40,8 @@ pub enum IrExpr {
         /// Resolved type of this literal
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Struct instantiation: `User(name: "Alice", age: 30)`
@@ -56,11 +59,11 @@ pub enum IrExpr {
         /// Resolved type (the struct type or External)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
-    /// Enum variant instantiation: `Status::Active` or `.Active`
+    /// Enum variant instantiation: `Status.active` or `.active`
     EnumInst {
         /// The enum being instantiated.
         /// `None` for external enums - use `ty` field instead.
@@ -78,19 +81,19 @@ pub enum IrExpr {
         /// Resolved type (the enum type or External)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Array literal: `[1, 2, 3]`
     Array {
         /// Array elements
         elements: Vec<Self>,
-        /// Resolved type: `Array(element_type)`
+        /// Resolved type: `[element_type]`, a `Generic` over the prelude `Array`
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Tuple literal: `(x: 1, y: 2)`
@@ -100,8 +103,8 @@ pub enum IrExpr {
         /// Resolved type: `Tuple(fields)`
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Variable or field reference: `user` or `user.name`
@@ -118,8 +121,8 @@ pub enum IrExpr {
         /// Resolved type of the referenced value
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Reference to a field on `self` within an impl block: `self.color`
@@ -131,8 +134,12 @@ pub enum IrExpr {
     /// # Example
     ///
     /// ```formalang
+    /// pub struct Button { color: String }
+    ///
     /// impl Button {
-    ///     background: fill::Solid(color: self.color)
+    ///     fn label(self) -> String {
+    ///         self.color
+    ///     }
     /// }
     /// ```
     SelfFieldRef {
@@ -147,8 +154,8 @@ pub enum IrExpr {
         /// Resolved type of the field
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Field access on arbitrary expressions: `(-chord).y`, `(a + b).len`
@@ -168,8 +175,8 @@ pub enum IrExpr {
         /// Resolved type of the field
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Reference to a function-local `let` binding by name.
@@ -191,8 +198,8 @@ pub enum IrExpr {
         /// Resolved type of the binding
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Binary operation: `a + b`, `x == y`, `p && q`
@@ -206,8 +213,8 @@ pub enum IrExpr {
         /// Resolved type (operand type for arithmetic, Boolean for comparison/logical)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Unary operation: `-x`, `!flag`
@@ -219,8 +226,8 @@ pub enum IrExpr {
         /// Resolved type (operand type for negation, Boolean for logical not)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Conditional expression: `if cond { a } else { b }`
@@ -234,8 +241,8 @@ pub enum IrExpr {
         /// Resolved type (same as branches)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// For loop: `for item in items { body }`
@@ -249,7 +256,7 @@ pub enum IrExpr {
         /// references to `var` inside `body`. Lowering emits
         /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
         var_binding_id: BindingId,
-        /// Collection being iterated (must be Array)
+        /// Collection being iterated
         collection: Box<Self>,
         /// Loop body
         body: Box<Self>,
@@ -261,11 +268,11 @@ pub enum IrExpr {
         /// single value, `.run()` to execute it for effects alone.
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
-    /// Match expression: `match x { A => ..., B => ... }`
+    /// Match expression: `match x { .a: ..., .b(v): ... }`
     Match {
         /// Value being matched (must be Enum)
         scrutinee: Box<Self>,
@@ -274,21 +281,19 @@ pub enum IrExpr {
         /// Resolved type (same as arm bodies)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Function call: `sin(angle: x)` or `builtin::math::sin(angle: x)`
     FunctionCall {
-        /// Function path (e.g., `["builtin", "math", "sin"]`) —
-        /// preserved alongside [`Self::FunctionCall::function_id`]
-        /// for diagnostics and as a fallback when resolution fails
-        /// (e.g. cross-module call where the target lives in another
-        /// `IrModule` not yet linked).
+        /// Function path (e.g., `["math", "sin"]`), preserved alongside
+        /// [`Self::FunctionCall::function_id`] for diagnostics. For an
+        /// imported function it holds the module path, such as
+        /// `["geom", "double_x"]`.
         path: Vec<String>,
-        /// Resolved target function id. `None` when the path is
-        /// genuinely external (cross-module) or when lowering /
-        /// `ResolveReferencesPass` couldn't bind it. Backends key on
+        /// Resolved target function id. `None` when no function of the
+        /// module has the path. Backends key on
         /// this id to dispatch directly without re-walking
         /// `IrModule.functions` and without inferring scope from the
         /// caller's module prefix.
@@ -299,8 +304,8 @@ pub enum IrExpr {
         /// Resolved return type
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Indirect call of a closure-typed value: `f(x)` where `f` is a
@@ -311,11 +316,12 @@ pub enum IrExpr {
     /// invoked indirectly with the captured environment + the explicit
     /// arguments.
     ///
-    /// Lowering only emits this variant after a path resolves to a
-    /// closure-typed binding rather than a top-level function (see the
-    /// AST→IR lowering of [`crate::ast::Expr::Invocation`]). For
-    /// statically-known top-level calls, [`Self::FunctionCall`] is
-    /// still produced.
+    /// Lowering emits this variant in two cases: an
+    /// [`crate::ast::Expr::Invocation`] whose path names a
+    /// closure-typed binding rather than a top-level function, and an
+    /// [`crate::ast::Expr::Call`], a call of the value of another
+    /// expression such as `make()(4)`. For statically-known top-level
+    /// calls, [`Self::FunctionCall`] is still produced.
     ///
     /// The closure-conversion pass walks into `closure` like any other
     /// sub-expression — it does not need to rewrite the call site,
@@ -324,23 +330,23 @@ pub enum IrExpr {
     /// `call_indirect`) read the funcref and env pointer out of the
     /// closure value at the call site.
     CallClosure {
-        /// Expression producing the closure value being invoked.
-        /// Typically an [`Self::LetRef`] / [`Self::Reference`] /
-        /// [`Self::FieldAccess`] whose type is
+        /// Expression producing the closure value being invoked: a
+        /// [`Self::LetRef`] for a named binding, or the lowered callee
+        /// of an [`crate::ast::Expr::Call`]. Its type is
         /// [`ResolvedType::Closure`].
         closure: Box<Self>,
-        /// Arguments: `(optional_parameter_name, value)`. Mirrors
-        /// [`Self::FunctionCall::args`]; closures don't currently
-        /// carry parameter names so the optional name is always
-        /// `None` after lowering, but the structure is kept for
-        /// consistency.
+        /// Arguments: `(optional_label, value)`. Mirrors
+        /// [`Self::FunctionCall::args`]. A closure type has no
+        /// parameter names, so the arguments fill the parameters in
+        /// order. A label that the source writes stays in the IR, but
+        /// it does not choose a parameter.
         args: Vec<(Option<String>, Self)>,
         /// Resolved return type — the `return_ty` from the closure's
         /// [`ResolvedType::Closure`] type.
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Method call: `self.fill.sample(coords)`
@@ -363,11 +369,11 @@ pub enum IrExpr {
         /// Resolved return type
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
-    /// Closure expression: `|x: f32, y: f32| -> f32 { x + y }`
+    /// Closure expression: `(x: F32, y: F32) -> x + y`
     Closure {
         /// Parameter conventions, binding ids, names, and types.
         /// `binding_id` is fresh per-function; lowering emits
@@ -377,8 +383,10 @@ pub enum IrExpr {
         /// enclosing scope. Each entry is
         /// `(outer_binding_id, name, capture_mode, resolved_type)` — the
         /// mode mirrors the `ParamConvention` of the outer binding (or
-        /// `Let` for a plain immutable capture) so backends can choose
-        /// between copy, move, reference, or sink semantics. The
+        /// `Let` for a plain immutable capture). A closure captures by
+        /// value: it copies each value when it is made, and a `Sink`
+        /// capture moves it. A returned closure can capture a local, so
+        /// a capture never refers to the frame of its function. The
         /// `outer_binding_id` is the [`BindingId`] of the introducing
         /// binding *in the enclosing function*; lowering emits
         /// `BindingId(0)` and `ResolveReferencesPass` overwrites it.
@@ -398,8 +406,8 @@ pub enum IrExpr {
         /// Resolved type: `Closure { param_tys, return_ty }`
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Reference to a lifted closure: a top-level function paired with
@@ -431,22 +439,23 @@ pub enum IrExpr {
         /// [`Self::Closure`] node (`Closure { param_tys, return_ty }`).
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Dictionary literal: `["key": value, "key2": value2]`
     DictLiteral {
         /// Key-value entries
         entries: Vec<(Self, Self)>,
-        /// Resolved type: `Dictionary { key_ty, value_ty }`
+        /// Resolved type: `[K: V]`, a `Generic` over the prelude `Dictionary`
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
-    /// Dictionary access: `dict["key"]` or `dict[index]`
+    /// Dictionary access: `dict["key"]`, and an array index `array[i]`.
+    /// A string index `s[i]` lowers to the method call `s.byte_at(i)`.
     DictAccess {
         /// The dictionary being accessed
         dict: Box<Self>,
@@ -455,8 +464,8 @@ pub enum IrExpr {
         /// Resolved type: the value type of the dictionary
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 
     /// Block expression: `{ let x = 1; let y = 2; x + y }`
@@ -471,7 +480,7 @@ pub enum IrExpr {
         /// Resolved type (same as result expression)
         ty: ResolvedType,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
 }

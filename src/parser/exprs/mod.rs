@@ -1,5 +1,6 @@
 // Expression parsers
 
+mod closure_guard;
 mod literals;
 mod operators;
 mod patterns;
@@ -16,10 +17,10 @@ use crate::lexer::Token;
 
 use super::block_statements_to_expr;
 use super::defs::binding_pattern_parser;
-use super::ident_no_self_parser;
+use super::ident_or_self_parser;
 use super::ident_parser;
-use super::invocation_target_parser;
 use super::newlines;
+use super::recovery::{skip_failed_statement, statement_end};
 use super::span_from_simple;
 use super::types::type_parser;
 
@@ -87,23 +88,32 @@ where
 
         // Enum instantiation: EnumType.variant OR EnumType.variant(field: value, ...)
         // Supports module-qualified paths: module::EnumType.variant
-        // Note: Uses ident_no_self_parser to prevent 'self.field' from being parsed as enum instantiation
+        // Note: Uses ident_parser to prevent 'self.field' from being parsed as enum instantiation
         // IMPORTANT: If there are parens, they MUST contain named args (ident: value).
         // This prevents foo.bar(1) from being parsed as enum instantiation.
         // IMPORTANT: The type name (last path element) must start with uppercase to distinguish
         // from field access (e.g., `Status.active` vs `point.x`).
-        let enum_base = ident_no_self_parser()
+        // A path may write type arguments: `Maybe<I32>.none`.
+        let enum_type_args = crate::parser::types::type_parser()
+            .separated_by(just(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::Lt), just(Token::Gt))
+            .or_not()
+            .map(Option::unwrap_or_default);
+        let enum_base = ident_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
+            .then(enum_type_args)
             .then_ignore(just(Token::Dot))
             .then(ident_parser())
             // Filter: only match if the type name (last path element) starts with uppercase
             // This distinguishes `Status.active` (enum) from `point.x` (field access)
-            .try_map(|(path, variant), span| {
+            .try_map(|((path, type_args), variant), span| {
                 let type_name = path.last().map_or("", |id| id.name.as_str());
                 if type_name.chars().next().is_some_and(char::is_uppercase) {
-                    Ok((path, variant))
+                    Ok(((path, type_args), variant))
                 } else {
                     Err(Rich::custom(
                         span,
@@ -116,36 +126,37 @@ where
             .clone()
             .then(enum_named_args.clone())
             .map(|((path, variant), data)| (path, variant, data));
+        // `path` holds the path and its type arguments.
         // Without args: Type.variant (no parens at all - checked by NOT seeing LParen)
         let enum_without_args = enum_base
             .clone()
             .then(just(Token::LParen).not().rewind())
             .map(|((path, variant), ())| (path, variant, vec![]));
         // Try with-args first, then without-args
-        let enum_instantiation =
-            enum_with_args
-                .or(enum_without_args)
-                .map_with(|(path, variant, data), e| {
-                    // Join module path into a single identifier
-                    let enum_name_str = path
-                        .iter()
-                        .map(|id: &Ident| id.name.as_str())
-                        .collect::<Vec<_>>()
-                        .join("::");
-                    let enum_name = Ident::new(enum_name_str, span_from_simple(e.span()));
+        let enum_instantiation = enum_with_args.or(enum_without_args).map_with(
+            |((path, type_args), variant, data), e| {
+                // Join module path into a single identifier
+                let enum_name_str = path
+                    .iter()
+                    .map(|id: &Ident| id.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("::");
+                let enum_name = Ident::new(enum_name_str, span_from_simple(e.span()));
 
-                    Expr::EnumInstantiation {
-                        enum_name,
-                        variant,
-                        data,
-                        span: span_from_simple(e.span()),
-                    }
-                });
+                Expr::EnumInstantiation {
+                    enum_name,
+                    type_args,
+                    variant,
+                    data,
+                    span: span_from_simple(e.span()),
+                }
+            },
+        );
 
         // Invocation: Name(arg: value, ...) or Name<Type>(arg: value, ...)
         // Can be struct instantiation or function call.
         // Supports module-qualified paths: module::Name(...)
-        let invocation = invocation_target_parser()
+        let invocation = ident_or_self_parser()
             .separated_by(just(Token::DoubleColon))
             .at_least(1)
             .collect::<Vec<_>>()
@@ -173,7 +184,7 @@ where
         // Reference: single identifier (e.g., user, self, field)
         // Field access like foo.bar is handled by the postfix `.` operator
         // Colon-separated paths are no longer supported
-        let reference = ident_parser().map_with(|ident, e| Expr::Reference {
+        let reference = ident_or_self_parser().map_with(|ident, e| Expr::Reference {
             path: vec![ident],
             span: span_from_simple(e.span()),
         });
@@ -228,12 +239,17 @@ where
                 span: span_from_simple(e.span()),
             });
 
-        let paren_closure = closure_param
-            .clone()
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
+        // Try the closure form only when the matching `)` is followed by
+        // `->`. See `closure_guard` for why.
+        let paren_closure = closure_guard::closure_ahead()
+            .ignore_then(
+                closure_param
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
             .then_ignore(just(Token::Arrow))
             .then(expr.clone())
             .map_with(|(params, body), e| Expr::ClosureExpr {
@@ -269,8 +285,14 @@ where
         // missing `=`, once for the expression — and that doubling
         // compounds with each level of nesting, so the cost was
         // 2^depth. Read the expression once and branch on what follows.
-        let block_assign_or_expr_item = expr
-            .clone()
+        //
+        // A statement that starts with `let` is only ever the `let`
+        // statement above. When that fails, the `let ... in` expression
+        // fails on the same tokens, so it is not tried: the second
+        // attempt doubled the time for each level of nesting.
+        let block_assign_or_expr_item = just(Token::Let)
+            .not()
+            .ignore_then(expr.clone())
             .then(just(Token::Equals).ignore_then(expr.clone()).or_not())
             .map_with(|(target, value), e| match value {
                 Some(value) => BlockStatement::Assign {
@@ -282,36 +304,31 @@ where
             });
 
         // recover_with(via_parser) so a malformed block item doesn't
-        // abort parsing of later items. Mirrors `fn_body_parser` — the
-        // first token is consumed except when it's `}` (which must reach
-        // `delimited_by`).
-        let block_recovery_head = any().and_is(just(Token::RBrace).not()).ignored();
-        let block_recovery_tail = any()
-            .and_is(just(Token::Let).not())
-            .and_is(just(Token::RBrace).not())
-            .ignored()
-            .repeated();
-        let block_recovery =
-            block_recovery_head
-                .then(block_recovery_tail)
-                .map_with(|((), ()), e| {
-                    BlockStatement::Expr(Expr::Group {
-                        expr: Box::new(Expr::Literal {
-                            value: Literal::Nil,
-                            span: span_from_simple(e.span()),
-                        }),
-                        span: span_from_simple(e.span()),
-                    })
-                });
+        // abort parsing of later items. Mirrors `fn_body_parser`. See
+        // `skip_failed_statement` for what the recovery skips.
+        let block_recovery = skip_failed_statement().map_with(|(), e| {
+            BlockStatement::Expr(Expr::Group {
+                expr: Box::new(Expr::Literal {
+                    value: Literal::Nil,
+                    span: span_from_simple(e.span()),
+                }),
+                span: span_from_simple(e.span()),
+            })
+        });
         // Statements inside a block are separated by newlines. The lexer
         // keeps only the newlines that end a statement, so consuming
         // them here is what stops one statement running into the next:
         // `a` on one line and `-1` on the next used to parse as
         // `a - 1`.
+        //
+        // A statement must end at a line break or at the `}` of the
+        // block: `let a = 1 let b = 2` on one line is an error, not two
+        // statements.
         let block_breaks = just(Token::Newline).repeated().ignored();
         let block_item = block_breaks
             .clone()
             .ignore_then(choice((block_let_item.clone(), block_assign_or_expr_item)))
+            .then_ignore(statement_end())
             .then_ignore(block_breaks.clone())
             .recover_with(via_parser(block_recovery));
 

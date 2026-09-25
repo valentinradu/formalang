@@ -111,6 +111,17 @@ const PROGRAMS: &[Program] = &[
                  pub fn probe() -> I32 {\n    total(item: Square(side: 5))\n}\n",
     },
     Program {
+        what: "two instances of one generic trait, for devirtualisation",
+        source: "trait Container<T> {\n    fn get(self) -> T\n}\n\n\
+                 struct Box {\n    n: I32,\n    m: I32\n}\n\n\
+                 impl Container<I32> for Box {\n    fn get(self) -> I32 { self.n }\n}\n\n\
+                 impl Container<I64> for Box {\n    fn get(self) -> I64 { 1000I64 }\n}\n\n\
+                 fn small<T: Container<I32>>(item: T) -> I32 {\n    item.get()\n}\n\n\
+                 fn large<T: Container<I64>>(item: T) -> I64 {\n    item.get()\n}\n\n\
+                 pub fn probe() -> I32 {\n    let b = Box(n: 5, m: 0)\n    \
+                 if large(item: b) == 1000I64 { small(item: b) } else { 0 }\n}\n",
+    },
+    Program {
         what: "an enum matched to a value",
         source: "enum Colour {\n    red,\n    green\n}\n\n\
                  pub fn probe() -> I32 {\n    match Colour.green {\n        \

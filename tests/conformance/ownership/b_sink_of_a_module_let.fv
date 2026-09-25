@@ -1,0 +1,10 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/borrowck/ (cannot move out of a static item).
+// A module `let` is shared by every function. One call cannot own it:
+// here `f` and `g` each consume the one value.
+let S: String = "x"
+
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 { take(s: S) }
+pub fn g() -> I32 { take(s: S) }

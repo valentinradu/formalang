@@ -27,6 +27,7 @@ mod helpers;
 mod literals_and_containers;
 mod method_choice;
 mod operators;
+mod reference;
 mod type_params;
 
 use super::IrLowerer;
@@ -60,10 +61,14 @@ impl IrLowerer<'_> {
             } => self.lower_invocation(path, type_args, args),
             Expr::EnumInstantiation {
                 enum_name,
+                type_args,
                 variant,
                 data,
                 ..
-            } => self.lower_enum_instantiation(&enum_name.name, &variant.name, data),
+            } => {
+                let inst = self.lower_enum_instantiation(&enum_name.name, &variant.name, data);
+                self.apply_enum_path_type_args(inst, type_args)
+            }
             Expr::InferredEnumInstantiation { variant, data, .. } => {
                 self.lower_inferred_enum_instantiation(&variant.name, data)
             }
@@ -117,6 +122,7 @@ impl IrLowerer<'_> {
                     span: self.current_ir_span(),
                 }
             }
+            Expr::Call { callee, args, .. } => self.lower_value_call(callee, args),
             Expr::MethodCall {
                 receiver,
                 method,

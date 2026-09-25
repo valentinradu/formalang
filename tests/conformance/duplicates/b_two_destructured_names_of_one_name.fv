@@ -1,0 +1,7 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/pattern/ (E0416, identifier bound more than once in
+// the same pattern).
+pub fn f() -> I32 {
+    let [a, a] = [1, 2]
+    a
+}

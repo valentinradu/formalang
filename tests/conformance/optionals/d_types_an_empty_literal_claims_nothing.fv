@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/types.md: `let d: [I32?] = []` is ok.
+pub fn run_checks() {
+    let d: [I32?] = []
+    assert(condition: d.len() == 0)
+}

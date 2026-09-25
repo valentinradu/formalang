@@ -1,0 +1,8 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: a sequence has at most one reader. A closure
+// that reads it is one reader, and a later read is a second.
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    let g: () -> I32 = () -> s.count()
+    g() + s.count()
+}

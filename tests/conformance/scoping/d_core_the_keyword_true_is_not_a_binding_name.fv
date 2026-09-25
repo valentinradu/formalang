@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `true` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let true = 1
+    assert(condition: true == 1)
+}

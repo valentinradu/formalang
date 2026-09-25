@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: the convention is part of the closure type.
+pub fn f() -> I32 {
+    let g: (mut I32) -> I32 = (x: I32) -> x
+    let mut n: I32 = 1
+    g(n)
+}

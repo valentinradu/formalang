@@ -1,0 +1,15 @@
+// expect: run
+// docs/user/generics.md: `total<Square>(item: s)`.
+pub trait Shape { fn area(self) -> I32 }
+pub struct Square { side: I32 }
+
+impl Shape for Square {
+    fn area(self) -> I32 { self.side * self.side }
+}
+
+fn total<T: Shape>(item: T) -> I32 { item.area() }
+
+pub fn run_checks() {
+    assert(condition: total<Square>(item: Square(side: 3)) == 9)
+    assert(condition: total(item: Square(side: 2)) == 4)
+}

@@ -1,0 +1,16 @@
+// expect: reject EnumVariantWithoutData
+// The leading-dot form gets its enum from the annotation of a local `let`.
+// The variant `empty` holds no data. The full form `Shape.empty(r: 1)` reports EnumVariantWithoutData, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub fn make() -> I32 {
+    let n: I32 = 2
+    let v: Shape = .empty(r: 1)
+    0
+}

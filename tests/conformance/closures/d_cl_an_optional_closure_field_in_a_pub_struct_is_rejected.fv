@@ -1,0 +1,3 @@
+// expect: reject PublicClosureField
+// docs/user/closures.md: a `pub struct` field cannot have a closure type.
+pub struct S { f: ((I32) -> I32)? }

@@ -1,0 +1,15 @@
+// expect: run
+// docs/user/structs.md: an optional field is nil when a literal leaves
+// it out. The IR struct literal holds the `nil`, so a backend reads the
+// field.
+pub struct User {
+    name: String,
+    nickname: String?
+}
+
+pub let u: User = User(name: "Alice")
+
+pub fn run_checks() {
+    assert(condition: u.nickname == nil)
+    assert(condition: User(name: "Bob", nickname: "B").nickname != nil)
+}

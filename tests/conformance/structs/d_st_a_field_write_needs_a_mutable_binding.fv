@@ -1,0 +1,10 @@
+// expect: reject AssignmentToImmutable
+// docs/user/structs.md: to update any field of a value, the binding must
+// be `let mut`.
+pub struct Counter { count: I32 }
+
+pub fn run_checks() {
+    let c = Counter(count: 0)
+    c.count = 1
+    assert(condition: c.count == 1)
+}

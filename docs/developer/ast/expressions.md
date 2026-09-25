@@ -8,7 +8,10 @@ generation.
 
 ```rust
 pub enum Expr {
-    Literal(Literal),
+    Literal {
+        value: Literal,
+        span: Span,
+    },
 
     /// Unified invocation: struct instantiation or function call.
     /// Semantic analysis determines which based on the name.
@@ -19,8 +22,16 @@ pub enum Expr {
         span: Span,
     },
 
+    /// A call of the value of an expression: `make()(4)`.
+    Call {
+        callee: Box<Expr>,
+        args: Vec<(Option<Ident>, Expr)>,
+        span: Span,
+    },
+
     EnumInstantiation {
-        enum_name: Ident,
+        enum_name: Ident,        // `Status`, or `shapes::Status` as one name
+        type_args: Vec<Type>,    // `Maybe<I32>.none` gives [I32]
         variant: Ident,
         data: Vec<(Ident, Expr)>,
         span: Span,
@@ -96,8 +107,15 @@ pub enum Expr {
         span: Span,
     },
 
+    FieldAccess {
+        object: Box<Expr>,
+        field: Ident,
+        span: Span,
+    },
+
     ClosureExpr {
         params: Vec<ClosureParam>,
+        return_type: Option<Type>,   // The parser always sets None
         body: Box<Expr>,
         span: Span,
     },
@@ -114,7 +132,7 @@ pub enum Expr {
     MethodCall {
         receiver: Box<Expr>,
         method: Ident,
-        args: Vec<Expr>,
+        args: Vec<(Option<Ident>, Expr)>,  // Arguments with optional labels
         span: Span,
     },
 
@@ -125,6 +143,46 @@ pub enum Expr {
     },
 }
 ```
+
+`Expr::span()` returns the span of any variant.
+
+### Calls
+
+The parser reads `name(args)` and `a::b::name(args)` as an
+`Invocation`. The semantic pass decides if the name is a struct or a
+function. The parser reads `(args)` after any other expression as a
+`Call`: `make()(4)`, `f(x)(3)` and `(g)(1)` are calls of a value. A
+`Call` lowers to `IrExpr::CallClosure`.
+
+### Enum paths
+
+`EnumInstantiation.enum_name` holds the whole path as one name, joined
+with `::`: `shapes::Status.active` gives `enum_name` `shapes::Status`.
+`type_args` holds the type arguments written on the path, so
+`Maybe<I32>.none` gives `[I32]`. It is empty when the path writes
+none. Serialisation omits an empty `type_args`, and deserialisation
+reads a missing one as empty.
+
+### Field paths
+
+The parser appends a field to a `Reference` path: `user.name` is a
+`Reference` with the path `[user, name]`. After any other expression,
+`.field` gives a `FieldAccess`, for example `make().name`.
+
+### `if let`
+
+The parser changes `if let x = value { a } else { b }` into a
+`MatchExpr` on `value` with two arms: `.some(x): a` and `.none: b`. So
+the AST has no `if let` node.
+
+### Closures
+
+A closure is `(params) -> body`. The parentheses are required, also for
+one parameter. The syntax has no place for a return type, so the parser
+always sets `return_type` to `None`. The semantic pass reads a
+`return_type` that a tool sets on a hand-built AST.
+
+### Value paths
 
 The parser reads `Name.variant` and `Name.variant(label: value)` as an
 `EnumInstantiation` when `Name` starts with an uppercase letter. The
@@ -229,10 +287,14 @@ pub enum BinaryOperator {
 }
 ```
 
-Operator precedence (higher binds tighter):
+Operator precedence (higher binds tighter). All binary operators are
+left-associative:
 
 | Precedence | Operators            |
 |------------|----------------------|
+| 11         | `.method(...)`, call `(...)` (postfix) |
+| 10         | `.field`, `[index]` (postfix) |
+| 9          | `-`, `!` (prefix)    |
 | 6          | `*`, `/`, `%`        |
 | 5          | `+`, `-`             |
 | 4          | `<`, `>`, `<=`, `>=` |

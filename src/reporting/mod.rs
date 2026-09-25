@@ -6,6 +6,7 @@ use ariadne::{Config, Source};
 mod errors;
 mod errors_advanced;
 mod internal_codes;
+mod lexical;
 
 /// Audit2 B35: honour the `NO_COLOR` environment variable.
 ///
@@ -27,6 +28,15 @@ fn colour_enabled() -> bool {
 /// Report a single compiler error with beautiful formatting
 #[must_use]
 pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> String {
+    report_errors(std::slice::from_ref(error), source, filename)
+}
+
+/// Render each error in `errors` against one source.
+///
+/// The source index is built once for all the errors. Building it for
+/// each error made the time grow with the number of errors times the
+/// length of the source.
+fn render_all(errors: &[CompilerError], source: &str, filename: &str) -> Vec<String> {
     let with_colour = colour_enabled();
 
     // `yansi`'s switch is process-global, and ariadne re-exports
@@ -45,12 +55,25 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
         yansi::disable();
     }
 
-    let mut output = Vec::new();
-    let report =
-        build_error_report(error, filename).with_config(Config::default().with_color(with_colour));
-    let render = report
-        .finish()
-        .write((filename, Source::from(source)), &mut output);
+    let mut cache = (filename, Source::from(source));
+    let rendered = errors
+        .iter()
+        .map(|error| {
+            let mut output = Vec::new();
+            let render = build_error_report(error, filename)
+                .with_config(Config::default().with_color(with_colour))
+                .finish()
+                .write(&mut cache, &mut output);
+            match render {
+                Ok(()) => String::from_utf8_lossy(&output).into_owned(),
+                // Writing to a Vec<u8> buffer cannot fail for I/O reasons, so
+                // reaching this branch indicates a formatter bug. Fall back to
+                // the error's Display impl so the caller still sees a useful
+                // message instead of an empty string.
+                Err(write_error) => format!("failed to render error: {write_error}\n{error}"),
+            }
+        })
+        .collect();
 
     if !with_colour {
         if previously_enabled {
@@ -59,13 +82,7 @@ pub fn report_error(error: &CompilerError, source: &str, filename: &str) -> Stri
             yansi::disable();
         }
     }
-    if let Err(write_error) = render {
-        // Writing to a Vec<u8> buffer cannot fail for I/O reasons, so reaching this
-        // branch indicates a formatter bug. Fall back to the error's Display impl so
-        // the caller still sees a useful message instead of an empty string.
-        return format!("failed to render error: {write_error}\n{error}");
-    }
-    String::from_utf8_lossy(&output).into_owned()
+    rendered
 }
 
 /// Type alias used by sub-module builder functions to return a chained
@@ -93,6 +110,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         } => errors::type_mismatch(filename, span, expected, found),
         CompilerError::ModuleNotFound { name, .. } => {
             errors::module_not_found(filename, span, name)
+        }
+        CompilerError::AmbiguousModulePath { name, .. } => {
+            errors::ambiguous_module_path(filename, span, name)
         }
         CompilerError::CircularImport { cycle, .. } => {
             errors::circular_import(filename, span, cycle)
@@ -190,6 +210,12 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::InvalidUnicodeEscape { value, .. } => {
             errors::invalid_unicode_escape(filename, span, value)
         }
+        CompilerError::InvalidEscape { sequence, .. } => {
+            lexical::invalid_escape(filename, span, sequence)
+        }
+        CompilerError::BidirectionalControl { character, .. } => {
+            lexical::bidirectional_control(filename, span, *character)
+        }
         CompilerError::InvalidNumber { value, .. } => errors::invalid_number(filename, span, value),
         CompilerError::UnexpectedToken {
             expected, found, ..
@@ -200,6 +226,9 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         }
         CompilerError::PrimitiveRedefinition { name, .. } => {
             errors::primitive_redefinition(filename, span, name)
+        }
+        CompilerError::ImplOnPrimitive { name, .. } => {
+            errors::impl_on_primitive(filename, span, name)
         }
         CompilerError::UndefinedTrait { name, .. } => errors::undefined_trait(filename, span, name),
         CompilerError::ModuleReadError { path, error, .. } => {
@@ -311,8 +340,8 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::ClosureParameterNeedsType { param, .. } => {
             errors_advanced::closure_parameter_needs_type(filename, span, param)
         }
-        CompilerError::FloatDictionaryKey { key_type, .. } => {
-            errors_advanced::float_dictionary_key(filename, span, key_type)
+        CompilerError::InvalidDictionaryKey { key_type, .. } => {
+            errors_advanced::invalid_dictionary_key(filename, span, key_type)
         }
         CompilerError::SeqNotConsumed { .. } => errors_advanced::seq_not_consumed(filename, span),
         CompilerError::SeqUsedTwice { name, .. } => {
@@ -324,14 +353,17 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::ExpressionDepthExceeded { .. } => {
             errors_advanced::expression_depth_exceeded(filename, span)
         }
+        CompilerError::InstantiationDepthExceeded {
+            name,
+            limit,
+            written,
+            ..
+        } => errors_advanced::instantiation_depth_exceeded(filename, span, name, *limit, *written),
         CompilerError::TooManyDefinitions { kind, .. } => {
             errors_advanced::too_many_definitions(filename, span, kind)
         }
         CompilerError::VisibilityViolation { name, .. } => {
             errors_advanced::visibility_violation(filename, span, name)
-        }
-        CompilerError::ClosureCaptureEscapesLocalBinding { binding, .. } => {
-            errors_advanced::closure_capture_escapes_local_binding(filename, span, binding)
         }
         CompilerError::InternalError { detail, .. } => {
             errors_advanced::internal_error(filename, span, detail)
@@ -342,15 +374,17 @@ fn build_error_report<'a>(error: &'a CompilerError, filename: &'a str) -> Report
         CompilerError::PublicClosureField { owner, field, .. } => {
             errors_advanced::public_closure_field(filename, span, owner, field)
         }
+        CompilerError::LabelledClosureArgument { label, .. } => {
+            errors_advanced::labelled_closure_argument(filename, span, label)
+        }
+        CompilerError::NotAStaticMethod {
+            method, type_name, ..
+        } => errors_advanced::not_a_static_method(filename, span, method, type_name),
     }
 }
 
 /// Report multiple compiler errors
 #[must_use]
 pub fn report_errors(errors: &[CompilerError], source: &str, filename: &str) -> String {
-    errors
-        .iter()
-        .map(|error| report_error(error, source, filename))
-        .collect::<Vec<_>>()
-        .join("\n")
+    render_all(errors, source, filename).join("\n")
 }

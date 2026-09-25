@@ -1,0 +1,11 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/moves/ (a move in one arm of a `match`).
+pub enum E { a, b }
+
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f(e: E) -> I32 {
+    let s: String = "x"
+    let n = match e { .a: take(s: s), .b: 0 }
+    n + s.len()
+}

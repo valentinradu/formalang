@@ -3,22 +3,35 @@
 //! Walks every function body and:
 //!
 //! - assigns a fresh per-function [`BindingId`] to every
-//!   [`IrFunctionParam`] and every [`IrBlockStatement::Let`];
+//!   [`crate::ir::IrFunctionParam`] and every [`crate::ir::IrBlockStatement::Let`];
 //! - rewrites each [`IrExpr::LetRef`] to carry the introducing
 //!   binding's [`BindingId`];
 //! - rewrites each [`IrExpr::Reference`] to carry a resolved
-//!   [`ReferenceTarget`] (function / struct / enum / trait /
+//!   [`crate::ir::ReferenceTarget`] (function / struct / enum / trait /
 //!   module-let / function-local binding / parameter, or a
-//!   `path`-keyed `External` placeholder for cross-module references
-//!   that haven't been linked yet);
-//! - rewrites each [`IrMatchArm`] to carry the matched variant's
-//!   [`VariantIdx`] within its scrutinee enum.
+//!   `path`-keyed `External` placeholder for a reference into a module
+//!   that is not linked);
+//! - rewrites each [`crate::ir::IrMatchArm`] to carry the matched variant's
+//!   [`crate::ir::VariantIdx`] within its scrutinee enum;
+//! - fills the `FieldIdx` of each field read and each field of a
+//!   struct or variant literal, and the `MethodIdx` of each method
+//!   call.
+//!
+//! A generic struct or enum, such as `Box<I32>`, `I32?` or
+//! `Maybe<I32>`, has its fields and variants on its base definition.
+//! The pass looks there, so an arm on an optional gets the index of
+//! `some` or `none`, not index 0.
+//!
+//! The pass also walks the default of each field of each struct, enum
+//! variant and trait: a default can build a struct, call a function or
+//! read a module `let`, so it needs the same ids.
 //!
 //! The pass is **idempotent** — running it twice produces the same
 //! output as running it once. Backends that emit integer-indexed code
 //! consume its output directly without re-resolving names.
 //!
-//! See `docs/developer/resolve_references_pass.md` for the design.
+//! See `docs/developer/architecture/passes.md` for where it sits in a
+//! pipeline.
 
 use std::collections::HashMap;
 
@@ -110,6 +123,7 @@ impl IrPass for ResolveReferencesPass {
             resolve_module_let(l, &symbols, &module, &mut errors);
         }
         module.lets = lets;
+        resolve_field_defaults(&mut module, &symbols, &mut errors);
 
         // DP-8: post-resolution default substitution.
         // After the resolve walks above bind every previously-None
@@ -212,7 +226,7 @@ use walkers::module_prefix_of;
 /// Whether a binding was introduced as a function parameter or as a
 /// function-local `let` (or for-loop / match-arm / closure parameter,
 /// all of which the `Local` arm covers — only top-level
-/// [`IrFunctionParam`] entries are `Param`).
+/// [`crate::ir::IrFunctionParam`] entries are `Param`).
 #[derive(Copy, Clone)]
 enum BindingKind {
     Param,
@@ -321,6 +335,61 @@ fn resolve_function(
     if let Some(body) = func.body.as_mut() {
         resolve_expr(body, &mut r);
     }
+}
+
+/// Resolve the default of each field of each struct, enum variant and
+/// trait. A default is an expression like any other: it can build a
+/// struct, call a function or read a module `let`, so it needs the same
+/// indexes and targets. Each default is taken out of the module for its
+/// walk, so the rest of the module stays readable.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "indices come from the bounds of the just-read .len() calls"
+)]
+fn resolve_field_defaults(
+    module: &mut IrModule,
+    symbols: &ModuleSymbols,
+    errors: &mut Vec<CompilerError>,
+) {
+    for s in 0..module.structs.len() {
+        for f in 0..module.structs[s].fields.len() {
+            let prefix = module_prefix_of(&module.structs[s].name);
+            let taken = module.structs[s].fields[f].default.take();
+            module.structs[s].fields[f].default =
+                resolve_default(taken, prefix, symbols, module, errors);
+        }
+    }
+    for e in 0..module.enums.len() {
+        for v in 0..module.enums[e].variants.len() {
+            for f in 0..module.enums[e].variants[v].fields.len() {
+                let prefix = module_prefix_of(&module.enums[e].name);
+                let taken = module.enums[e].variants[v].fields[f].default.take();
+                module.enums[e].variants[v].fields[f].default =
+                    resolve_default(taken, prefix, symbols, module, errors);
+            }
+        }
+    }
+    for t in 0..module.traits.len() {
+        for f in 0..module.traits[t].fields.len() {
+            let prefix = module_prefix_of(&module.traits[t].name);
+            let taken = module.traits[t].fields[f].default.take();
+            module.traits[t].fields[f].default =
+                resolve_default(taken, prefix, symbols, module, errors);
+        }
+    }
+}
+
+fn resolve_default(
+    default: Option<IrExpr>,
+    prefix: String,
+    symbols: &ModuleSymbols,
+    module: &IrModule,
+    errors: &mut Vec<CompilerError>,
+) -> Option<IrExpr> {
+    let mut expr = default?;
+    let mut r = FnResolver::new(symbols, module, errors, prefix);
+    resolve_expr(&mut expr, &mut r);
+    Some(expr)
 }
 
 fn resolve_module_let(

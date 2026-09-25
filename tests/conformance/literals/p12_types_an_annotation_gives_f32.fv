@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: `let tiny: F32 = 0.5`. The annotation gives the
+// unsuffixed literal the type F32.
+pub fn run_checks() {
+    let tiny: F32 = 0.5
+    assert(condition: tiny == 0.5F32)
+}

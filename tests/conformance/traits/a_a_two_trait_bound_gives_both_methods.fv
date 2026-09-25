@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/generics.md: `<T: A + B>` gives T the methods of both.
+pub trait A { fn a(self) -> I32 }
+pub trait B { fn b(self) -> I32 }
+pub struct S { n: I32 }
+impl A for S { fn a(self) -> I32 { self.n } }
+impl B for S { fn b(self) -> I32 { self.n * 10 } }
+fn both<T: A + B>(x: T) -> I32 { x.a() + x.b() }
+pub fn run_checks() {
+    assert(condition: both(x: S(n: 2)) == 22)
+}

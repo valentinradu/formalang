@@ -1,0 +1,7 @@
+// expect: reject SeqNotConsumed
+// docs/user/control-flow.md: a sequence is consumed at least once. When
+// the other branch runs, the sequence is dropped.
+pub fn f(c: Boolean) -> I32 {
+    let s = for x in [1, 2] { x }
+    if c { s.count() } else { 0 }
+}

@@ -1,0 +1,7 @@
+// expect: reject MissingTraitField
+// docs/user/traits.md: struct fields required by the trait must be present
+// in the struct definition.
+pub trait Named { name: String }
+pub struct Circle { radius: I32 }
+
+impl Named for Circle {}

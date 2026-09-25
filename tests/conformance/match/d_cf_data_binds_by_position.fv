@@ -1,0 +1,20 @@
+// expect: run
+// docs/user/control-flow.md: a pattern binds the associated values by
+// position. Each name takes the value at the same position, whatever
+// the parameter is called.
+pub enum Message {
+    text(content: String),
+    image(url: String, size: I32)
+}
+
+fn weight(m: Message) -> I32 {
+    match m {
+        .text(body): body.len(),
+        .image(link, n): link.len() + n
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: weight(m: .text(content: "abc")) == 3)
+    assert(condition: weight(m: .image(url: "u", size: 10)) == 11)
+}

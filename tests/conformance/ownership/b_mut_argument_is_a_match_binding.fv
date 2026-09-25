@@ -1,0 +1,7 @@
+// expect: reject MutabilityMismatch
+// A match binding is not a `let mut` binding.
+fn bump(mut n: I32) -> I32 { n }
+
+pub fn f(o: I32?) -> I32 {
+    match o { .some(v): bump(n: v), .none: 0 }
+}

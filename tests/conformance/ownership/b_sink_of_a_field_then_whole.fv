@@ -1,0 +1,15 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/moves/move-fn-self-receiver.rs, partial moves.
+// Sinking a field moves part of the struct. The struct is then not
+// whole, and a sink of the whole struct reads the moved part.
+pub struct P { name: String, tag: String }
+
+fn take_s(sink s: String) -> I32 { s.len() }
+fn take_p(sink p: P) -> I32 { p.tag.len() }
+
+pub fn f() -> I32 {
+    let p = P(name: "x", tag: "y")
+    let a = take_s(s: p.name)
+    let b = take_p(p: p)
+    a + b
+}

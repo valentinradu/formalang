@@ -1,0 +1,6 @@
+// expect: run
+// The declared element type gives the literals their type.
+pub fn run_checks() {
+    let xs: [I64] = [1, 2, 3]
+    assert(condition: xs.len() == 3)
+}

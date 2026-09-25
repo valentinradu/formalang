@@ -1,0 +1,8 @@
+// expect: run
+// The stages run in the order of the chain.
+pub fn run_checks() {
+    let a = for x in [1, 2, 3, 4, 5] { x }.take(count: 3).skip(count: 1).fold(initial: 0, f: (s, v) -> s + v)
+    assert(condition: a == 5)
+    let b = for x in [1, 2, 3, 4, 5] { x }.skip(count: 1).take(count: 3).fold(initial: 0, f: (s, v) -> s + v)
+    assert(condition: b == 9)
+}

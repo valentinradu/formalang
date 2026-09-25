@@ -2,6 +2,8 @@
 //! existence lookup across local impls, trait impls, generic constraints,
 //! cached modules, and qualified-type module paths.
 
+mod bound;
+mod choice;
 mod lookup;
 
 use super::super::module_resolver::ModuleResolver;
@@ -30,8 +32,23 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         key_reported: bool,
         file: &File,
     ) {
-        self.validate_expr(receiver, file);
-        let receiver_sem = self.infer_type_sem(receiver, file);
+        // `Counter.zero()`: the receiver names a struct, not a value.
+        let type_receiver = self.type_receiver(receiver);
+        if type_receiver.is_none() {
+            self.validate_expr(receiver, file);
+        }
+        // A receiver gets no expected type, so a dot variant there
+        // names no enum: `.w.assert(...)`.
+        if let Expr::InferredEnumInstantiation { variant, span, .. } = receiver {
+            self.errors.push(CompilerError::CannotInferEnumType {
+                variant: variant.name.clone(),
+                span: *span,
+            });
+            return;
+        }
+        let receiver_sem = type_receiver
+            .clone()
+            .unwrap_or_else(|| self.infer_type_sem(receiver, file));
         // The four built-in compound shapes route to the prelude-defined
         // generic structs/enum so `xs.len()`, `opt.is_some()`, `d.len()`,
         // `r.len()` resolve through the same machinery as user types.
@@ -41,8 +58,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // Indeterminate receivers (`SemType::Unknown` or types
         // containing `Unknown` anywhere) skip method validation;
         // there's nothing to check until inference resolves them.
-        let receiver_type =
-            (!receiver_sem.is_indeterminate()).then(|| Self::method_receiver_name(&receiver_sem));
+        // A carrier whose contents are not known still names its
+        // methods: `[]` is an `Array` whatever it will hold.
+        let is_carrier = matches!(
+            receiver_sem,
+            crate::semantic::sem_type::SemType::Array(_)
+                | crate::semantic::sem_type::SemType::Dictionary { .. }
+                | crate::semantic::sem_type::SemType::Optional(_)
+        );
+        let receiver_type = (!receiver_sem.is_indeterminate() || is_carrier)
+            .then(|| Self::method_receiver_name(&receiver_sem));
         // A method overloads by the shape of the call. Check the call
         // against the overload it fits; only when none fits is
         // anything wrong, and then the first is what the message
@@ -51,10 +76,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         let overloads = receiver_type.as_ref().map_or_else(Vec::new, |name| {
             Self::find_method_overloads(name, &method.name, file)
         });
-        let chosen = Self::choose_method_overload(&overloads, args);
+        let chosen = self.choose_method_overload(&overloads, args, file);
         let expected = self.method_argument_types(&receiver_sem, chosen, args, file);
-        for ((_, arg), arg_expected) in args.iter().zip(expected) {
+        for ((_, arg), arg_expected) in args.iter().zip(expected.iter().cloned()) {
             self.validate_expr_expecting(arg, arg_expected, file);
+        }
+        // A closure in a field of a tuple: `t.f(1)`.
+        if let Some(crate::semantic::sem_type::SemType::Closure { params, .. }) =
+            Self::tuple_closure_field(&receiver_sem, &method.name)
+        {
+            self.validate_closure_call_shape(&params, args, span, file);
+            return;
         }
         let Some(receiver_type) = receiver_type else {
             return;
@@ -62,7 +94,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let (Some(chosen), false) = (chosen, key_reported) {
             self.check_method_float_key(&receiver_sem, chosen, args, span, file);
         }
+        if type_receiver.is_some()
+            && !self.check_static_call(chosen.map(|(f, _)| f), &method.name, &receiver_type, span)
+        {
+            return;
+        }
         if let Some((fn_def, impl_generics)) = chosen {
+            if Self::has_twin_method(&overloads, fn_def) {
+                self.errors.push(CompilerError::AmbiguousCall {
+                    function: method.name.clone(),
+                    span,
+                });
+                return;
+            }
             let params = fn_def.params.clone();
             // A parameter type that names a type parameter of the impl
             // or of the method itself has no concrete type to compare.
@@ -87,15 +131,11 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .iter()
                 .map(crate::semantic::validation::invocation::overloads::ParamView::of_fn_param)
                 .collect();
-            self.validate_arg_types(&views, &generics, args, file);
-            if let Some((expected, actual)) = Self::method_arity_mismatch(&params, args) {
-                self.errors.push(CompilerError::ArgumentCountMismatch {
-                    callee: format!("Method '{}'", method.name),
-                    expected,
-                    actual,
-                    span,
-                });
-            }
+            self.validate_arg_types(&views, &generics, args, &expected, file);
+            let callee = format!("Method '{}'", method.name);
+            self.validate_call_shape(&callee, &method.name, &views, args, span);
+        } else if let Some(bound) = self.bound_method(&receiver_type, &method.name) {
+            self.validate_bound_method_call(&bound, args, span, file);
         } else if self.method_exists_on_type(&receiver_type, &method.name, file) {
             // Method exists in a trait/impl block; convention checks on
             // those signatures still happen via `find_method_fn_def`
@@ -105,7 +145,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Calling a closure-typed field of a struct: `f.onPress()`
             // where `onPress: () -> E`. The convention checks for the
             // closure's own params live in the closure-binding maps,
-            // populated when the field was registered.
+            // populated when the field was registered. A closure type
+            // has no parameter names, so a label names nothing.
+            for label in args.iter().filter_map(|(label, _)| label.as_ref()) {
+                self.errors.push(CompilerError::LabelledClosureArgument {
+                    label: label.name.clone(),
+                    span: label.span,
+                });
+            }
         } else {
             self.errors.push(CompilerError::UndefinedReference {
                 name: format!("method '{}' on type '{}'", method.name, receiver_type),
@@ -211,37 +258,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Some(substitute_all(&substitute_all(&declared, &view), &bindings))
             })
             .collect()
-    }
-
-    /// The overload of a method that a call means.
-    ///
-    /// The rule is `crate::ir::overload::choose`, the one IR lowering
-    /// uses: of the overloads whose parameters take the call's labels
-    /// and count, the one that leaves the fewest parameters to their
-    /// defaults. When none fits, the first that takes the count, then
-    /// the first, so a diagnostic names the likeliest one.
-    pub(in crate::semantic) fn choose_method_overload<'f>(
-        overloads: &[(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])],
-        args: &[(Option<crate::ast::Ident>, Expr)],
-    ) -> Option<(&'f crate::ast::FnDef, &'f [crate::ast::GenericParam])> {
-        let labels: Vec<Option<String>> = args
-            .iter()
-            .map(|(label, _)| label.as_ref().map(|l| l.name.clone()))
-            .collect();
-        crate::ir::overload::choose(
-            overloads.iter().enumerate(),
-            |(fn_def, _)| fn_def.params.as_slice(),
-            &labels,
-            args.len(),
-        )
-        .and_then(|index| overloads.get(index))
-        .or_else(|| {
-            overloads
-                .iter()
-                .find(|(fn_def, _)| Self::method_arity_mismatch(&fn_def.params, args).is_none())
-        })
-        .or_else(|| overloads.first())
-        .copied()
     }
 
     /// Whether a method call gives the wrong number of arguments.
@@ -448,5 +464,22 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 ParamConvention::Let => {}
             }
         }
+    }
+
+    /// The closure type of the field `name` of a tuple receiver, when
+    /// the receiver is a tuple with such a field.
+    pub(in crate::semantic) fn tuple_closure_field(
+        receiver: &crate::semantic::sem_type::SemType,
+        name: &str,
+    ) -> Option<crate::semantic::sem_type::SemType> {
+        let crate::semantic::sem_type::SemType::Tuple(fields) = receiver.strip_optional() else {
+            return None;
+        };
+        fields
+            .into_iter()
+            .find(|(field, ty)| {
+                field == name && matches!(ty, crate::semantic::sem_type::SemType::Closure { .. })
+            })
+            .map(|(_, ty)| ty)
     }
 }

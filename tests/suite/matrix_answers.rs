@@ -1,9 +1,9 @@
 //! The cells the matrices accept are run, and asked for their answer.
 //!
 //! `type_matrix`, `operator_matrix` and `method_matrix` between them
-//! generate 7429 cells. 7054 of those are rejections, and for a
+//! generate 7871 cells. 7425 of those are rejections, and for a
 //! rejection "does this compile?" is the whole question — there is
-//! nothing to run. The remaining **375 accept**, which means each one
+//! nothing to run. The remaining **446 accept**, which means each one
 //! compiles to a program that produces a value, and until this file
 //! existed not one of them was ever asked what that value was.
 //!
@@ -287,7 +287,8 @@ fn the_logical_operators_are_idempotent() {
 
 /// Every accepted prelude method answers what its carrier says.
 ///
-/// These are the twenty-six accepted cells of `method_matrix`, each
+/// `method_matrix` accepts twenty-five cells. The cases below cover
+/// each accepted method on a receiver of each kind, and `fold`, each
 /// with the answer its receiver makes obvious.
 #[test]
 fn every_accepted_method_call_answers_correctly() {

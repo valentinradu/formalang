@@ -1,0 +1,12 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a field is part of its struct. This holds at
+// any depth.
+pub struct In { v: I32 }
+pub struct Out { i: In }
+
+fn put(mut a: I32, b: In) -> I32 { a }
+
+pub fn f() -> I32 {
+    let mut o = Out(i: In(v: 1))
+    put(a: o.i.v, b: o.i)
+}

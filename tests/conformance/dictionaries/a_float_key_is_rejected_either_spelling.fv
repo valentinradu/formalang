@@ -1,4 +1,4 @@
-// expect: reject FloatDictionaryKey
+// expect: reject InvalidDictionaryKey
 // `Dictionary<K, V>` is the same type as `[K: V]`, so the key rule is
 // the same. Only the sugar was checked before.
 

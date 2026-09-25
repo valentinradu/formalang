@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: numeric keys are unquoted. The declared key type
+// gives the literals their type.
+pub fn run_checks() {
+    let d: [I64: String] = [1: "a", 2: "b"]
+    assert(condition: d.len() == 2)
+}

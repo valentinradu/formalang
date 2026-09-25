@@ -1,0 +1,10 @@
+// expect: run
+// from: rust tests/ui/pattern/slice-patterns-nested.rs. An array
+// pattern can hold an array pattern.
+pub fn f(xs: [[I32]]) -> I32 {
+    let [[a, b], [c]] = xs
+    a + b + c
+}
+pub fn run_checks() {
+    assert(condition: f(xs: [[1, 2], [3]]) == 6)
+}

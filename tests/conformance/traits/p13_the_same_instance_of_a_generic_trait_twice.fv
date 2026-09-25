@@ -1,0 +1,16 @@
+// expect: reject DuplicateDefinition
+// PLAN.md phase 13 item 4: two impls of one trait instance for one
+// type are a duplicate.
+pub trait Container<T> {
+    fn get(self) -> T
+}
+
+pub struct Box { n: I32 }
+
+impl Container<I32> for Box {
+    fn get(self) -> I32 { self.n }
+}
+
+impl Container<I32> for Box {
+    fn get(self) -> I32 { self.n }
+}

@@ -1,0 +1,10 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a `sink` argument needs sole access to the value
+// for the whole call.
+fn both(sink a: String, sink b: String) -> String { a + b }
+
+pub fn run_checks() {
+    let s: String = "x"
+    let r = both(a: s, b: s)
+    assert(condition: r == "xx")
+}

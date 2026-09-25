@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/resolve/ (E0428).
+trait T { x: I32 }
+trait T { y: I32 }

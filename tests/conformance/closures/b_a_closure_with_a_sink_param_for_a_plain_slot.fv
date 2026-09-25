@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: the convention is part of the closure type. A
+// `(sink String) -> I32` closure is not a `(String) -> I32`.
+pub fn f() -> I32 {
+    let g: (String) -> I32 = (sink s) -> s.len()
+    g("x")
+}

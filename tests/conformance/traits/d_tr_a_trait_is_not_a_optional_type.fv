@@ -1,0 +1,14 @@
+// expect: reject TraitUsedAsValueType
+// docs/user/traits.md: a trait is a constraint, never the type of a value
+// (E063). The rule holds at every value position.
+pub trait Printable {
+    fn label(self) -> String
+}
+
+pub struct Doc { text: String }
+
+impl Printable for Doc {
+    fn label(self) -> String { self.text }
+}
+
+fn f(x: Printable?) -> I32 { 1 }

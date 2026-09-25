@@ -1,0 +1,6 @@
+// expect: reject ParseError
+// from: rust tests/ui/ (E0424, self outside an impl). A free function has
+// no receiver.
+pub fn f(self) -> I32 {
+    0
+}

@@ -1,0 +1,11 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: impl blocks and the prelude declare the methods
+// of a type. A method that none of them declares is unknown, and the
+// error must name it, not report an internal error.
+
+let EMPTY = []
+
+fn size() -> I32 {
+    let e = EMPTY
+    e.zz_len()
+}

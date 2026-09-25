@@ -1,0 +1,12 @@
+// expect: reject TypeMismatch
+// The receiver is a Box<I32>, so `f` takes and answers an I32.
+pub struct Box<T> { value: T }
+impl Box<T> {
+    fn with(self, v: T) -> Box<T> { Box(value: v) }
+    fn get(self) -> T { self.value }
+    fn pair(self, other: Box<T>) -> T { other.value }
+    fn items(self, xs: [T]) -> I32 { xs.len() }
+    fn apply(self, f: (T) -> T) -> T { f(self.value) }
+}
+
+pub let n = Box(value: 4).apply(f: (s: String) -> s)

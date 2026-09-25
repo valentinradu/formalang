@@ -1,0 +1,9 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: `put(a: x, b: x)` is E144.
+fn put(mut a: I32, b: I32) -> I32 { b }
+
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let r = put(a: x, b: x)
+    assert(condition: r == 1)
+}

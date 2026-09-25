@@ -1,0 +1,9 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: `swap(a: x, b: x)` is E144.
+fn swap(mut a: I32, mut b: I32) -> I32 { a }
+
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let r = swap(a: x, b: x)
+    assert(condition: r == 1)
+}

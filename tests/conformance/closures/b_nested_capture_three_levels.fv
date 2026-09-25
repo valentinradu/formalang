@@ -1,0 +1,9 @@
+// expect: run
+// A capture passes through two closures.
+pub fn run_checks() {
+    let a: I32 = 1
+    let f: () -> () -> () -> I32 = () -> () -> () -> a + 1
+    let g = f()
+    let h = g()
+    assert(condition: h() == 2)
+}

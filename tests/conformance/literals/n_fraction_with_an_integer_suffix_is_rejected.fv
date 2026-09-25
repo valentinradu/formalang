@@ -1,0 +1,9 @@
+// expect: reject InvalidNumber
+// 1.5 is not an integer, so it does not fit in an I64. The compiler
+// must not give the IR a Float payload with the type I64.
+// docs/user/types.md: a literal that does not fit its suffixed type
+// is a compile error.
+
+pub fn f() -> I64 {
+    1.5I64
+}

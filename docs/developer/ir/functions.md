@@ -12,6 +12,10 @@ pub struct IrFunction {
     /// Function name
     pub name: String,
 
+    /// Visibility. A backend keys its export list on this. Serde
+    /// defaults it to private.
+    pub visibility: Visibility,
+
     /// Generic type parameters declared on the function or method
     /// itself (e.g. `fn identity<T>(x: T) -> T`,
     /// `fn map<U>(self, f: (T) -> U) -> Box<U>`). Enclosing-type
@@ -41,6 +45,9 @@ pub struct IrFunction {
 
     /// Joined `///` doc comments preceding this function.
     pub doc: Option<String>,
+
+    /// Source span: the declaration of the function.
+    pub span: IrSpan,
 }
 
 impl IrFunction {
@@ -68,6 +75,9 @@ pub struct IrFunctionSig {
 
     /// Codegen-hint attributes (`inline`, `no_inline`, `cold`).
     pub attributes: Vec<FunctionAttribute>,
+
+    /// Source span.
+    pub span: IrSpan,
 }
 ```
 
@@ -75,8 +85,17 @@ pub struct IrFunctionSig {
 
 ```rust
 pub struct IrFunctionParam {
+    /// Per-function-unique id. Uses of the parameter carry the same id.
+    /// Lowering emits `BindingId(0)` and `ResolveReferencesPass`
+    /// overwrites it.
+    pub binding_id: BindingId,
+
     /// Parameter name
     pub name: String,
+
+    /// External call-site label, for `fn send(to name: String)`.
+    /// `None` when the parameter has no separate label.
+    pub external_label: Option<String>,
 
     /// Parameter type (None for bare `self`)
     pub ty: Option<ResolvedType>,
@@ -86,6 +105,9 @@ pub struct IrFunctionParam {
 
     /// Parameter passing convention
     pub convention: ParamConvention,
+
+    /// Source span.
+    pub span: IrSpan,
 }
 ```
 

@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: equality compares each element of a
+// container.
+pub fn run_checks() {
+    assert(condition: [1, 2] == [1, 2])
+    assert(condition: [1, 2] != [2, 1])
+    assert(condition: [1, 2] != [1, 2, 3])
+}

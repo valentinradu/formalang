@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/types.md: F32 is a 32-bit IEEE 754 float. In F32
+// arithmetic, 0.1 + 0.2 rounds to the same F32 as 0.3. (In F64 it does
+// not.) The program must give the F32 answer.
+
+pub fn run_checks() {
+    let a: F32 = 0.1F32
+    let b: F32 = 0.2F32
+    assert(condition: a + b == 0.3F32)
+}

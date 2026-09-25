@@ -257,7 +257,7 @@ fn test_field_access_simple() -> Result<(), Box<dyn std::error::Error>> {
         struct Inner { value: String }
         struct Outer { inner: Inner }
         impl Outer {
-            fn display() -> Inner { self.inner }
+            fn display(self) -> Inner { self.inner }
         }
     ";
     compile(source).map_err(|e| format!("Field access simple: {e:?}"))?;
@@ -345,7 +345,7 @@ fn test_match_exhaustive() -> Result<(), Box<dyn std::error::Error>> {
         enum AB { a, b }
         struct Handler { x: AB }
         impl Handler {
-            fn result() -> String {
+            fn result(self) -> String {
                 match self.x {
                     .a: "first",
                     .b: "second"
@@ -664,11 +664,11 @@ fn test_view_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         impl Card {
-            fn getBody() -> String { self.title }
+            fn getBody(self) -> String { self.title }
         }
 
         impl Button {
-            fn getOnClick() -> String { self.label }
+            fn getOnClick(self) -> String { self.label }
         }
     ";
     compile(source).map_err(|e| format!("View hierarchy: {e:?}"))?;
@@ -839,7 +839,7 @@ fn test_method_call_single() -> Result<(), Box<dyn std::error::Error>> {
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
         impl A {
-            fn get_area() -> I32 { self.x.area() }
+            fn get_area(self) -> I32 { self.x.area() }
         }
     ";
     compile(source).map_err(|e| format!("Method call: {e:?}"))?;
@@ -856,7 +856,7 @@ fn test_method_call_with_args() -> Result<(), Box<dyn std::error::Error>> {
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
         impl A {
-            fn get_scaled() -> Canvas { self.x.scale(factor: 2) }
+            fn get_scaled(self) -> Canvas { self.x.scale(factor: 2) }
         }
     ";
     compile(source).map_err(|e| format!("Method call with args: {e:?}"))?;
@@ -874,7 +874,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
         extern fn get_canvas() -> Canvas
         struct A { x: Canvas }
         impl A {
-            fn get_area() -> I32 { self.x.flip().area() }
+            fn get_area(self) -> I32 { self.x.flip().area() }
         }
     ";
     compile(source).map_err(|e| format!("Chained method calls: {e:?}"))?;
@@ -887,7 +887,7 @@ fn test_function_and_method_mixed() -> Result<(), Box<dyn std::error::Error>> {
         fn process(val: I32) -> I32 { val }
         struct A { x: I32 }
         impl A {
-            fn compute() -> I32 { process(val: self.x) }
+            fn compute(self) -> I32 { process(val: self.x) }
         }
     ";
     compile(source).map_err(|e| format!("Mixed function and method calls: {e:?}"))?;

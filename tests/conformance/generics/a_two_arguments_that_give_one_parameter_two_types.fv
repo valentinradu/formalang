@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// from: TypeScript typeArgumentInference. Both arguments give T its
+// type, and they do not agree.
+fn same<T>(a: T, b: T) -> T {
+    a
+}
+pub let x = same(a: 1, b: "x")

@@ -1,0 +1,4 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a module-level `let`
+// (E137).
+pub let s = for x in [1, 2] { x }

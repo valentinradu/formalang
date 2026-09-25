@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/functions.md: a function with no return type returns unit.
+// Unit is not a number.
+fn g() { 1 }
+
+pub fn f() -> I32 { g() + 1 }

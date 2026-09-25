@@ -82,6 +82,10 @@ pub struct TraitImplInfo {
     pub struct_name: String,
     /// Generic parameters
     pub generics: Vec<GenericParam>,
+    /// The type arguments of the trait: `I32` in
+    /// `impl Container<I32> for Box`. Empty for a trait with no type
+    /// parameters.
+    pub trait_args: Vec<Type>,
     /// Span for error reporting
     pub span: Span,
 }

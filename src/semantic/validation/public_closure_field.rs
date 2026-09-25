@@ -38,7 +38,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
         for field in &struct_def.fields {
-            if matches!(field.ty, Type::Closure { .. }) {
+            if holds_a_closure(&field.ty) {
                 self.errors.push(CompilerError::PublicClosureField {
                     owner: format!("struct {}", struct_def.name.name),
                     field: field.name.name.clone(),
@@ -54,7 +54,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
         for variant in &enum_def.variants {
             for field in &variant.fields {
-                if matches!(field.ty, Type::Closure { .. }) {
+                if holds_a_closure(&field.ty) {
                     self.errors.push(CompilerError::PublicClosureField {
                         owner: format!("enum {} variant {}", enum_def.name.name, variant.name.name),
                         field: field.name.name.clone(),
@@ -63,5 +63,19 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
         }
+    }
+}
+
+/// True when `ty` is a closure type or holds one: in an array, an
+/// optional, a tuple, a dictionary or a type argument. A named type has
+/// its own check where it is declared.
+fn holds_a_closure(ty: &Type) -> bool {
+    match ty {
+        Type::Closure { .. } => true,
+        Type::Array(inner) | Type::Optional(inner) => holds_a_closure(inner),
+        Type::Tuple(fields) => fields.iter().any(|f| holds_a_closure(&f.ty)),
+        Type::Dictionary { key, value } => holds_a_closure(key) || holds_a_closure(value),
+        Type::Generic { args, .. } => args.iter().any(holds_a_closure),
+        Type::Primitive(_) | Type::Ident(_) => false,
     }
 }

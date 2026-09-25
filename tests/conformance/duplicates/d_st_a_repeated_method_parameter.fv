@@ -1,0 +1,7 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: the parameters of a method may not repeat a name.
+pub struct S { n: I32 }
+
+impl S {
+    fn f(self, a: I32, a: I32) -> I32 { a }
+}

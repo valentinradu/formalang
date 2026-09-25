@@ -19,70 +19,97 @@ pub enum ResolvedType {
     /// Reference to an enum definition
     Enum(EnumId),
 
-    /// Array type: [T]
-    Array(Box<ResolvedType>),
-
-    /// Range type: T..T: produced by `start..end` expressions and consumed
-    /// by `for x in start..end { ... }` loops.
-    Range(Box<ResolvedType>),
-
-    /// Optional type: T?
-    Optional(Box<ResolvedType>),
-
     /// Named tuple type: (name1: T1, name2: T2)
     Tuple(Vec<(String, ResolvedType)>),
 
-    /// Generic type instantiation: Box<String> or Option<I32>
+    /// Generic type instantiation: Box<String>, Optional<I32>, [I32]
     Generic {
-        /// The generic struct or enum being instantiated.
+        /// The generic struct, enum or trait.
         base: GenericBase,
         args: Vec<ResolvedType>,
     },
 
-    /// Unresolved type parameter (T) in generic definitions
+    /// Type parameter (T) inside a generic definition
     TypeParam(String),
 
-    /// Reference to a type in another module (imported via `use`)
+    /// Reference to a type in another module
     External {
-        module_path: Vec<String>,  // e.g., ["utils", "helpers"]
-        name: String,              // Type name
-        kind: ImportedKind,        // Struct, Trait, or Enum
+        module_path: Vec<String>,      // e.g., ["utils", "helpers"]
+        name: String,                  // Type name
+        kind: ImportedKind,            // Struct, Trait, Enum, Function or ModuleLet
         type_args: Vec<ResolvedType>,  // For generics
     },
 
-    /// Dictionary type: [K: V]
-    Dictionary {
-        key_ty: Box<ResolvedType>,
-        value_ty: Box<ResolvedType>,
-    },
-
-    /// General closure / function type: (T1, T2) -> R
+    /// Closure / function type: (T1, T2) -> R
     ///
-    /// Each element is `(convention, type)`: convention constrains the
-    /// **caller** of the closure. Event-handler shapes like
-    /// `(String) -> Event` use this variant with the enum return type.
+    /// Each element is `(convention, type)`. The convention constrains
+    /// the caller of the closure.
     Closure {
         param_tys: Vec<(ParamConvention, ResolvedType)>,
         return_ty: Box<ResolvedType>,
     },
 
-    /// Typed-out-of-band error placeholder. Produced by IR lowering when an
-    /// upstream `CompilerError` has already been pushed but the surrounding
-    /// code still needs to materialise *some* `ResolvedType` to keep walking
-    /// the AST. Backends should treat `Error` as unreachable: if it survives
-    /// to code generation, the compile would already have returned the
-    /// associated `CompilerError` to the caller.
+    /// Error placeholder. See below.
     Error,
 }
 ```
+
+## The built-in compound types
+
+The IR has no special variant for an array, an optional, a dictionary,
+a range or a sequence. The prelude declares each one as an ordinary
+generic definition, and a type of that kind is a `Generic` over it:
+
+| Source type | Prelude definition | `ResolvedType` |
+| ----------- | ------------------ | -------------- |
+| `[T]` | `struct Array<T>` | `Generic { base: Struct(array_id), args: [T] }` |
+| a `for` result | `struct Seq<T>` | `Generic { base: Struct(seq_id), args: [T] }` |
+| `[K: V]` | `struct Dictionary<K, V>` | `Generic { base: Struct(dictionary_id), args: [K, V] }` |
+| `a..b` | `struct Range<T>` | `Generic { base: Struct(range_id), args: [T] }` |
+| `T?` | `enum Optional<T>` | `Generic { base: Enum(optional_id), args: [T] }` |
+
+The prelude comes first in each module, so these definitions have the
+lowest ids: `Array`, `Seq`, `Dictionary` and `Range` are `StructId(0)`
+to `StructId(3)`, and `Optional` is `EnumId(0)`. Do not write these
+numbers in a backend. Use the accessors on `IrModule`:
+
+```rust
+impl IrModule {
+    pub fn prelude_array_id(&self) -> Option<StructId>;
+    pub fn prelude_seq_id(&self) -> Option<StructId>;
+    pub fn prelude_dictionary_id(&self) -> Option<StructId>;
+    pub fn prelude_range_id(&self) -> Option<StructId>;
+    pub fn prelude_optional_id(&self) -> Option<EnumId>;
+
+    /// `T` when `ty` is `[T]`, and so on for each carrier.
+    pub fn array_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType>;
+    pub fn seq_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType>;
+    pub fn dictionary_kv_ty<'a>(&self, ty: &'a ResolvedType)
+        -> Option<(&'a ResolvedType, &'a ResolvedType)>;
+    pub fn range_element_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType>;
+    pub fn optional_inner_ty<'a>(&self, ty: &'a ResolvedType) -> Option<&'a ResolvedType>;
+
+    /// True for `Array`, `Seq`, `Dictionary` and `Range`.
+    pub fn is_prelude_struct(&self, id: StructId) -> bool;
+    /// True for `Optional`.
+    pub fn is_prelude_enum(&self, id: EnumId) -> bool;
+    /// The structs and enums without the prelude definitions.
+    pub fn user_structs(&self) -> impl Iterator<Item = &IrStruct>;
+    pub fn user_enums(&self) -> impl Iterator<Item = &IrEnum>;
+}
+```
+
+`MonomorphisePass` does not specialise these five definitions. After
+the pass, a `Generic` over one of them is the final shape, and a
+backend reads the element type from `args`.
 
 ## GenericBase
 
 Target of a `Generic` instantiation: a generic struct, enum, or
 trait. Traits appear here only inside generic constraints
-(`<T: Foo<X>>`) and impl headers (`impl Foo<X> for Y`); FormaLang
-has no dynamic dispatch, so a trait base never sits in a value-
-type position. Match exhaustively when extracting the underlying ID.
+(`<T: Foo<X>>`) and impl headers (`impl Foo<X> for Y`). FormaLang
+has no dynamic dispatch, so a trait base never sits in a value
+type position. Match exhaustively when you extract the ID.
 
 ```rust
 pub enum GenericBase {
@@ -92,7 +119,30 @@ pub enum GenericBase {
 }
 ```
 
+## External
+
+The lowering of each module links in the modules that it imports (see
+[Obtaining the IR](obtaining.md#programs-over-several-files)). An
+imported struct, enum or trait is then a local definition with a local
+id, so a type that names it is `Struct`, `Enum` or `Trait`. The public
+entry points do not give `External` for a type that a `use` imports.
+
+`External` stays in the IR for backends that build IR by hand or read
+it from another tool. [`MonomorphisePass::with_imports`](../architecture/passes.md#monomorphisepass)
+can replace each `External` with a local copy of the imported
+definition.
+
+## Error
+
+The lowering gives `Error` when it has already recorded a
+`CompilerError` for the node, and it must still give the node a type.
+The compile then returns that error, so a module that reaches a backend
+holds no `Error`. A backend can treat `Error` as unreachable.
+
 ## Type Resolution Examples
+
+The ids below are the ids in a module with no other definitions:
+the prelude takes the first ids.
 
 | FormaLang Type | ResolvedType |
 | -------------- | ------------ |
@@ -101,20 +151,18 @@ pub enum GenericBase {
 | `F32` / `F64` | `Primitive(PrimitiveType::F32)` / `Primitive(PrimitiveType::F64)` |
 | `Boolean` | `Primitive(PrimitiveType::Boolean)` |
 | `Never` | `Primitive(PrimitiveType::Never)` |
-| `User` (local struct) | `Struct(StructId(n))` |
-| `Named` (local trait) | `Trait(TraitId(n))` |
-| `Status` (local enum) | `Enum(EnumId(n))` |
-| `[String]` | `Array(Box::new(Primitive(String)))` |
-| `0..10` | `Range(Box::new(Primitive(I32)))` |
-| `String?` | `Optional(Box::new(Primitive(String)))` |
-| `[[I32]]` | `Array(Box::new(Array(Box::new(Primitive(I32)))))` |
-| `Box<String>` | `Generic { base: GenericBase::Struct(StructId(n)), args: [Primitive(String)] }` |
-| `Option<I32>` | `Generic { base: GenericBase::Enum(EnumId(n)), args: [Primitive(I32)] }` |
-| `(x: I32, y: I32)` | `Tuple(vec![("x", Primitive(I32)), ("y", Primitive(I32))])` |
+| `User` (local struct) | `Struct(StructId(4))` |
+| `Named` (local trait) | `Trait(TraitId(0))` |
+| `Status` (local enum) | `Enum(EnumId(1))` |
+| `[String]` | `Generic { base: Struct(StructId(0)), args: [Primitive(String)] }` |
+| `0..10` | `Generic { base: Struct(StructId(3)), args: [Primitive(I32)] }` |
+| `String?` | `Generic { base: Enum(EnumId(0)), args: [Primitive(String)] }` |
+| `[[I32]]` | `Generic { base: Struct(StructId(0)), args: [Generic { base: Struct(StructId(0)), args: [Primitive(I32)] }] }` |
+| `[String: I32]` | `Generic { base: Struct(StructId(2)), args: [Primitive(String), Primitive(I32)] }` |
+| `Box<String>` (local generic struct) | `Generic { base: Struct(StructId(4)), args: [Primitive(String)] }` |
+| `Maybe<I32>` (local generic enum) | `Generic { base: Enum(EnumId(1)), args: [Primitive(I32)] }` |
+| `(x: I32, y: I32)` | `Tuple([("x", Primitive(I32)), ("y", Primitive(I32))])` |
 | `T` (in generic) | `TypeParam("T")` |
-| `Helper` (from `use utils::Helper`) | `External { module_path: ["utils"], name: "Helper", ... }` |
-| `Box<String>` (from `use containers::Box`) | `External { module_path: ["containers"], name: "Box", type_args: [...] }` |
-| `[String: I32]` | `Dictionary { key_ty: Primitive(String), value_ty: Primitive(I32) }` |
 | `(String, I32) -> Boolean` | `Closure { param_tys: [(Let, Primitive(String)), (Let, Primitive(I32))], return_ty: Primitive(Boolean) }` |
 | `(mut I32) -> Boolean` | `Closure { param_tys: [(Mut, Primitive(I32))], return_ty: Primitive(Boolean) }` |
 | `(sink String) -> Boolean` | `Closure { param_tys: [(Sink, Primitive(String))], return_ty: Primitive(Boolean) }` |
@@ -123,12 +171,15 @@ pub enum GenericBase {
 
 ```rust
 impl ResolvedType {
-    /// Get a display name for this type (useful for debugging/error messages)
+    /// A display name for this type, for debug output and messages.
     pub fn display_name(&self, module: &IrModule) -> String;
 }
 
-// Example usage
+// Example
 let ty = &field.ty;
 println!("Field type: {}", ty.display_name(&module));
 // Output: "[String]" or "User" or "Box<I32>"
 ```
+
+`display_name` writes the source form of a built-in carrier: `[T]`,
+`T?`, `[K: V]` and `T..T`. A sequence has the form `Seq<T>`.

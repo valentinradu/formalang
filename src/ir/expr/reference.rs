@@ -2,7 +2,9 @@
 //! resolved (or that it hasn't been yet) and how a `MethodCall`
 //! should be dispatched.
 
-use crate::ir::{BindingId, EnumId, FunctionId, ImplId, ImportedKind, LetId, StructId, TraitId};
+use crate::ir::{
+    BindingId, EnumId, FunctionId, ImplId, ImportedKind, LetId, ResolvedType, StructId, TraitId,
+};
 
 /// Target of an [`super::IrExpr::Reference`] after
 /// `ResolveReferencesPass` runs.
@@ -16,7 +18,8 @@ use crate::ir::{BindingId, EnumId, FunctionId, ImplId, ImportedKind, LetId, Stru
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReferenceTarget {
     /// A standalone function (resolved against `IrModule::functions`).
     Function(FunctionId),
@@ -34,8 +37,10 @@ pub enum ReferenceTarget {
     /// A function parameter (introduced by
     /// [`crate::ir::IrFunctionParam`]).
     Param(BindingId),
-    /// A reference into another module that has not yet been linked;
-    /// cross-module linking lands later (formawasm Phase 4).
+    /// A reference into another module that is not linked. The public
+    /// entry points link each imported module during the lowering, so
+    /// their modules hold none of these. Only IR from
+    /// [`crate::ir::lower_to_ir`] or from another tool can.
     External {
         module_path: Vec<String>,
         name: String,
@@ -57,7 +62,8 @@ pub enum ReferenceTarget {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DispatchKind {
     /// Direct call on a known concrete type; no runtime lookup needed.
     Static {
@@ -76,5 +82,15 @@ pub enum DispatchKind {
         trait_id: TraitId,
         /// The method name on the trait.
         method_name: String,
+        /// The type arguments of the trait in the bound: `[I32]` for
+        /// `<T: Container<I32>>`. Empty for a trait with no type
+        /// parameters. One type can implement two instances of one
+        /// generic trait, and these arguments say which instance the
+        /// call means.
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Vec::is_empty")
+        )]
+        trait_args: Vec<ResolvedType>,
     },
 }

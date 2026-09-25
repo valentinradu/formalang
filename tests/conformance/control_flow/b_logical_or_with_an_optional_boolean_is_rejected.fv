@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `||` takes two booleans. A `Boolean?` is not
+// a `Boolean`.
+pub fn f(a: Boolean?) -> Boolean { a || true }

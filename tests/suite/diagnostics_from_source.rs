@@ -61,6 +61,11 @@ const CASES: &[(&str, &str)] = &[
         // a UTF-16 surrogate pair and is not a character.
         "pub fn f() -> String {\n    \"\\uD800\"\n}\n",
     ),
+    ("InvalidEscape", "pub fn f() -> String {\n    \"a\\qb\"\n}\n"),
+    (
+        "BidirectionalControl",
+        "pub fn f() -> String {\n    \"a\u{202e}b\"\n}\n",
+    ),
     ("InvalidNumber", "pub fn f() -> F64 {\n    1e400\n}\n"),
     // --- syntax ----------------------------------------------------
     ("ParseError", "pub struct A { a: I32"),
@@ -81,6 +86,10 @@ const CASES: &[(&str, &str)] = &[
     (
         "PrimitiveRedefinition",
         "pub struct I32 { a: I32 }\n",
+    ),
+    (
+        "ImplOnPrimitive",
+        "impl I32 {\n    fn twice(self) -> I32 {\n        self * 2\n    }\n}\n",
     ),
     // --- modules ---------------------------------------------------
     ("ModuleNotFound", "use no_such_module::Thing\n"),
@@ -201,7 +210,7 @@ const CASES: &[(&str, &str)] = &[
     ),
     // --- dictionaries ----------------------------------------------
     (
-        "FloatDictionaryKey",
+        "InvalidDictionaryKey",
         "pub fn f() -> I32 {\n    let d: [F64: I32] = [1.0: 1]\n    0\n}\n",
     ),
     // --- functions -------------------------------------------------
@@ -218,6 +227,14 @@ const CASES: &[(&str, &str)] = &[
     (
         "PublicClosureField",
         "pub struct A {\n    callback: (I32) -> I32\n}\n",
+    ),
+    (
+        "NotAStaticMethod",
+        "pub struct Counter {\n    value: I32\n}\n\nimpl Counter {\n    fn get(self) -> I32 {\n        self.value\n    }\n}\n\npub fn f() -> I32 {\n    Counter.get()\n}\n",
+    ),
+    (
+        "LabelledClosureArgument",
+        "pub fn f(g: (I32) -> I32) -> I32 {\n    g(x: 1)\n}\n",
     ),
 ];
 
@@ -236,8 +253,18 @@ fn unreachable_from_source() -> Vec<(&'static str, &'static str)> {
             "needs more than 2^32 definitions of one kind in a single module",
         ),
         (
+            "InstantiationDepthExceeded",
+            "raised by MonomorphisePass, which compile_to_ir does not run; \
+             pass_adversarial reaches it through a pipeline",
+        ),
+        (
             "ExpressionDepthExceeded",
             "guards the recursive walks; the parser rejects such input first",
+        ),
+        (
+            "AmbiguousModulePath",
+            "needs a module file beside the source; \
+             cross_module_adversarial reaches it with a resolver",
         ),
         (
             "ModuleReadError",

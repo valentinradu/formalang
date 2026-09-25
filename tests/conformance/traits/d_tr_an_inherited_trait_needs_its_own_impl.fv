@@ -1,0 +1,10 @@
+// expect: reject MissingTraitMethod
+// docs/user/traits.md: trait composition requires a separate impl block for
+// each trait in the hierarchy.
+pub trait Base { fn id(self) -> I32 }
+pub trait Extended: Base { fn name(self) -> String }
+pub struct Item { value: I32 }
+
+impl Extended for Item {
+    fn name(self) -> String { "item" }
+}

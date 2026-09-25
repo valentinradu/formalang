@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: an array takes an index by position.
+pub fn f(xs: [I32]) -> I32? { xs["a"] }

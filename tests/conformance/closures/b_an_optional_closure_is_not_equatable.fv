@@ -1,0 +1,8 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: a type that holds a closure is not equatable.
+// An optional closure holds one.
+pub fn g() -> Boolean {
+    let a: ((I32) -> I32)? = (x) -> x
+    let b: ((I32) -> I32)? = (x) -> x
+    a == b
+}

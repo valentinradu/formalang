@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// docs/user/generics.md: an explicit type argument fixes T. The
+// argument is a String, and T is I32.
+fn id<T>(x: T) -> T {
+    x
+}
+pub let a: I32 = id<I32>(x: "s")

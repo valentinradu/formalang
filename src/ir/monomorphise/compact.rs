@@ -28,6 +28,28 @@ fn is_prelude_enum_name(name: &str) -> bool {
     name == "Optional"
 }
 
+/// The bases of the prelude carriers in `module`, by id. The pass never
+/// specialises them, and a `Generic` over one of them is a correct
+/// shape after the pass. This is the one list of their ids: it follows
+/// the names above, so the two cannot disagree.
+pub(super) fn prelude_carrier_bases(module: &IrModule) -> std::collections::HashSet<GenericBase> {
+    let structs = module
+        .structs
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| is_prelude_struct_name(&s.name))
+        .filter_map(|(i, _)| u32::try_from(i).ok())
+        .map(|i| GenericBase::Struct(StructId(i)));
+    let enums = module
+        .enums
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| is_prelude_enum_name(&e.name))
+        .filter_map(|(i, _)| u32::try_from(i).ok())
+        .map(|i| GenericBase::Enum(EnumId(i)));
+    structs.chain(enums).collect()
+}
+
 /// Build an old-id → new-id remap table for structs. Structs with non-empty
 /// `generic_params` become `None` (they will be dropped on compaction);
 /// surviving structs (including the prelude-shipped generic carriers, which

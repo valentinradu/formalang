@@ -14,6 +14,7 @@ pub struct TraitDef {
     pub traits: Vec<Ident>,    // Trait composition (A + B + C)
     pub fields: Vec<FieldDef>, // Required fields
     pub methods: Vec<FnSig>,   // Required method signatures
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -26,6 +27,7 @@ pub struct StructDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<StructField>, // Regular fields
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -39,9 +41,10 @@ not inline on the struct definition.
 pub struct StructField {
     pub mutable: bool,
     pub name: Ident,
-    pub ty: Type,
+    pub ty: Type,               // Type::Optional(..) for `T?`
     pub optional: bool,         // true if Type?
     pub default: Option<Expr>,  // Default value
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -55,6 +58,7 @@ pub struct FieldDef {
     pub mutable: bool,
     pub name: Ident,
     pub ty: Type,
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -72,6 +76,7 @@ pub struct ImplDef {
     pub generics: Vec<GenericParam>,
     pub functions: Vec<FnDef>,        // Method definitions
     pub is_extern: bool,              // true for `extern impl` blocks
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -94,6 +99,7 @@ pub struct EnumDef {
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<EnumVariant>,
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
@@ -117,6 +123,7 @@ pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub definitions: Vec<Definition>,
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```

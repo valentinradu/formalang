@@ -1,0 +1,14 @@
+// expect: reject UseAfterSink
+// docs/user/functions.md: `sink self` consumes the receiver.
+pub struct Counter { count: I32 }
+
+impl Counter {
+    fn destroy(sink self) -> I32 { self.count }
+}
+
+pub fn run_checks() {
+    let c = Counter(count: 0)
+    let a = c.destroy()
+    let b = c.count
+    assert(condition: a == b)
+}

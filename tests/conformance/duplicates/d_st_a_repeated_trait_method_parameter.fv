@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: the parameters of a trait method may not repeat a
+// name.
+pub trait T {
+    fn f(self, a: I32, a: I32) -> I32
+}

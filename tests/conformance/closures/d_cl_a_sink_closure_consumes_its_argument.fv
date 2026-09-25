@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+// docs/user/closures.md: after `consume(label)`, `label` is consumed.
+pub fn run_checks() {
+    let consume: (sink String) -> String = (sink s) -> s
+    let label: String = "hello"
+    let a: String = consume(label)
+    let b: String = label
+    assert(condition: a == b)
+}

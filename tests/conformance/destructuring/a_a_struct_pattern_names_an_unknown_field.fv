@@ -1,0 +1,7 @@
+// expect: reject UnknownField
+// A struct pattern names a field that the struct does not have.
+pub struct P { x: I32 }
+pub fn f(p: P) -> I32 {
+    let {z} = p
+    z
+}

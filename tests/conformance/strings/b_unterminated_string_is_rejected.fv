@@ -1,0 +1,3 @@
+// expect: reject UnterminatedString
+// from: go test/ (string literal not terminated).
+pub let s: String = "abc

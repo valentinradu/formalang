@@ -1,4 +1,4 @@
-use super::normalization::param_signature;
+use super::normalization::{param_signature, trait_args_signature};
 use super::{
     EnumInfo, FieldInfo, FunctionInfo, ImplInfo, ImportError, LetInfo, ModuleInfo, ParamInfo,
     StructInfo, SymbolKind, SymbolTable, TraitImplInfo, TraitInfo,
@@ -105,10 +105,15 @@ impl SymbolTable {
         None
     }
 
-    /// Register a trait implementation (impl Trait for Struct)
+    /// Register a trait implementation (`impl Trait for Struct`).
     ///
-    /// Returns an error if the trait or struct doesn't exist, or if this
-    /// implementation already exists.
+    /// `trait_args` holds the type arguments of a generic trait: `[I32]`
+    /// for `impl Container<I32> for Box`. It is empty for a trait with
+    /// no type parameters. The table keeps one impl of each trait
+    /// instance for each type. A second impl of the same trait with the
+    /// same `trait_args` is a duplicate. Two instances of one generic
+    /// trait, such as `Container<I32>` and `Container<String>`, are two
+    /// different impls.
     ///
     /// # Errors
     ///
@@ -120,6 +125,7 @@ impl SymbolTable {
         trait_name: String,
         struct_name: String,
         generics: Vec<GenericParam>,
+        trait_args: Vec<crate::ast::Type>,
         span: Span,
     ) -> Result<(), (SymbolKind, Span)> {
         // Check if trait exists
@@ -137,7 +143,11 @@ impl SymbolTable {
 
         // Check for duplicate implementation
         let existing_impls = self.trait_impls.entry(struct_name.clone()).or_default();
-        if let Some(existing) = existing_impls.iter().find(|i| i.trait_name == trait_name) {
+        let args_key = trait_args_signature(&trait_args);
+        if let Some(existing) = existing_impls
+            .iter()
+            .find(|i| i.trait_name == trait_name && trait_args_signature(&i.trait_args) == args_key)
+        {
             return Err((SymbolKind::Impl, existing.span));
         }
 
@@ -146,6 +156,7 @@ impl SymbolTable {
             trait_name,
             struct_name,
             generics,
+            trait_args,
             span,
         });
 
@@ -300,6 +311,17 @@ impl SymbolTable {
         }
     }
 
+    /// Each trait that the imported type `name` implements comes with
+    /// it, so the type satisfies a bound on that trait.
+    fn import_trait_impls(&mut self, name: &str, module_table: &Self) {
+        if let Some(trait_impls) = module_table.trait_impls.get(name) {
+            self.trait_impls
+                .entry(name.to_string())
+                .or_default()
+                .extend(trait_impls.iter().cloned());
+        }
+    }
+
     /// Import a symbol from another module
     /// Returns an error if the symbol is private or doesn't exist
     ///
@@ -352,8 +374,16 @@ impl SymbolTable {
             });
         };
 
+        // A name of the prelude, or of a private `use`, is not an item
+        // of the module.
+        if crate::prelude_names().contains(name) {
+            return Err(ImportError::ItemNotFound {
+                name: name.to_string(),
+                available: module_table.all_public_symbols(),
+            });
+        }
         // Check if symbol is public
-        if visibility != Visibility::Public {
+        if visibility != Visibility::Public || !module_table.is_exportable(name) {
             return Err(ImportError::PrivateItem {
                 name: name.to_string(),
                 kind,
@@ -374,6 +404,7 @@ impl SymbolTable {
                     if let Some(impl_info) = module_table.impls.get(name) {
                         self.impls.insert(name.to_string(), impl_info.clone());
                     }
+                    self.import_trait_impls(name, module_table);
                 }
             }
             SymbolKind::Impl => {
@@ -386,6 +417,7 @@ impl SymbolTable {
                     if let Some(impl_info) = module_table.impls.get(name) {
                         self.impls.insert(name.to_string(), impl_info.clone());
                     }
+                    self.import_trait_impls(name, module_table);
                 }
             }
             SymbolKind::Let => {

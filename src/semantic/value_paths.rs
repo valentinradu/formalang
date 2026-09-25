@@ -13,6 +13,10 @@
 //! When a local binding has the name of an enum, the enum wins. A type
 //! declared in an inline `mod` counts too, because the code in that
 //! module names it without the module prefix.
+//!
+//! A struct name is a type too. `Counter.zero()` with parentheses on a
+//! struct is the call of a static method, so the pass changes it into a
+//! method call whose receiver is the name of the struct.
 
 use super::symbol_table::SymbolTable;
 use crate::ast::{
@@ -26,18 +30,29 @@ use std::collections::HashSet;
 struct TypeNames<'a> {
     symbols: &'a SymbolTable,
     in_file: HashSet<String>,
+    /// The structs among `in_file`.
+    structs_in_file: HashSet<String>,
 }
 
 /// Rewrite each value path in `file` that the parser read as an enum
 /// instantiation.
 pub(super) fn rewrite_value_paths(file: &mut File, symbols: &SymbolTable) {
     let mut in_file = HashSet::new();
+    let mut structs_in_file = HashSet::new();
     for statement in &file.statements {
         if let Statement::Definition(def) = statement {
-            collect_types(std::slice::from_ref(&**def), &mut in_file);
+            collect_types(
+                std::slice::from_ref(&**def),
+                &mut in_file,
+                &mut structs_in_file,
+            );
         }
     }
-    let types = TypeNames { symbols, in_file };
+    let types = TypeNames {
+        symbols,
+        in_file,
+        structs_in_file,
+    };
     for statement in &mut file.statements {
         match statement {
             Statement::Use(_) => {}
@@ -48,12 +63,18 @@ pub(super) fn rewrite_value_paths(file: &mut File, symbols: &SymbolTable) {
 }
 
 /// Add the name of each struct, enum and trait in `definitions`, and in
-/// each module nested inside, to `names`.
-fn collect_types(definitions: &[Definition], names: &mut HashSet<String>) {
+/// each module nested inside, to `names`. Add each struct to `structs`
+/// too.
+fn collect_types(
+    definitions: &[Definition],
+    names: &mut HashSet<String>,
+    structs: &mut HashSet<String>,
+) {
     for def in definitions {
         match def {
             Definition::Struct(s) => {
                 names.insert(s.name.name.clone());
+                structs.insert(s.name.name.clone());
             }
             Definition::Enum(e) => {
                 names.insert(e.name.name.clone());
@@ -61,7 +82,7 @@ fn collect_types(definitions: &[Definition], names: &mut HashSet<String>) {
             Definition::Trait(t) => {
                 names.insert(t.name.name.clone());
             }
-            Definition::Module(m) => collect_types(&m.definitions, names),
+            Definition::Module(m) => collect_types(&m.definitions, names, structs),
             Definition::Impl(_) | Definition::Function(_) => {}
         }
     }
@@ -123,12 +144,29 @@ fn names_a_value(name: &str, types: &TypeNames<'_>) -> bool {
         && !types.in_file.contains(name)
 }
 
+/// True when `name` is a struct and not an enum. `Name.method(...)` on
+/// a struct is a call of a static method; on an enum it stays a variant.
+fn names_a_struct(name: &str, types: &TypeNames<'_>) -> bool {
+    (types.symbols.is_struct(name) || types.structs_in_file.contains(name))
+        && types.symbols.get_enum_variants(name).is_none()
+}
+
 fn rewrite_expr(expr: &mut Expr, types: &TypeNames<'_>) {
     if let Expr::EnumInstantiation {
-        enum_name, span, ..
+        enum_name,
+        variant,
+        span,
+        ..
     } = expr
     {
-        if names_a_value(&enum_name.name, types) {
+        // The parentheses of a call end after the member name:
+        // `Name.member()` has them, and `Name.member` has none.
+        let has_parentheses = span.end.offset > variant.span.end.offset;
+        // `Counter.zero()` on a struct calls a static method. On a value,
+        // `name.member(...)` calls a method and `name.member` reads a
+        // field.
+        let static_call = has_parentheses && names_a_struct(&enum_name.name, types);
+        if static_call || names_a_value(&enum_name.name, types) {
             let span = *span;
             let placeholder = Expr::Reference {
                 path: Vec::new(),
@@ -141,14 +179,7 @@ fn rewrite_expr(expr: &mut Expr, types: &TypeNames<'_>) {
                 ..
             } = std::mem::replace(expr, placeholder)
             {
-                *expr = if data.is_empty() {
-                    // `Name.field`, the same shape as `name.field`.
-                    Expr::Reference {
-                        path: vec![enum_name, variant],
-                        span,
-                    }
-                } else {
-                    // `Name.method(label: value, ...)`.
+                *expr = if has_parentheses {
                     let receiver_span = enum_name.span;
                     Expr::MethodCall {
                         receiver: Box::new(Expr::Reference {
@@ -160,6 +191,11 @@ fn rewrite_expr(expr: &mut Expr, types: &TypeNames<'_>) {
                             .into_iter()
                             .map(|(label, value)| (Some(label), value))
                             .collect(),
+                        span,
+                    }
+                } else {
+                    Expr::Reference {
+                        path: vec![enum_name, variant],
                         span,
                     }
                 };
@@ -177,7 +213,12 @@ fn rewrite_children(expr: &mut Expr, types: &TypeNames<'_>) {
                 rewrite_expr(arg, types);
             }
         }
-        Expr::MethodCall { receiver, args, .. } => {
+        Expr::MethodCall { receiver, args, .. }
+        | Expr::Call {
+            callee: receiver,
+            args,
+            ..
+        } => {
             rewrite_expr(receiver, types);
             for (_, arg) in args {
                 rewrite_expr(arg, types);

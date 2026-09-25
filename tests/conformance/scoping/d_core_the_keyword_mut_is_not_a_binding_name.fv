@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `mut` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let mut = 1
+    assert(condition: mut == 1)
+}

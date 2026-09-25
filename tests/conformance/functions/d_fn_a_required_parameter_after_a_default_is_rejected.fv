@@ -1,0 +1,3 @@
+// expect: reject RequiredParamAfterDefault
+// docs/user/functions.md: `fn f(x = 0, y)` is rejected at definition time.
+fn f(x: I32 = 0, y: I32) -> I32 { x + y }

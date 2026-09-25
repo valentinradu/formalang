@@ -1,0 +1,11 @@
+// expect: run
+// A generic function that swaps the two fields of a pair.
+pub struct Pair<A, B> { first: A, second: B }
+fn swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
+    Pair(first: p.second, second: p.first)
+}
+pub fn run_checks() {
+    let s = swap(p: Pair(first: 1, second: "a"))
+    assert(condition: s.first == "a")
+    assert(condition: s.second == 1)
+}

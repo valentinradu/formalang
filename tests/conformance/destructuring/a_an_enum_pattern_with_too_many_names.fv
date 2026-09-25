@@ -1,0 +1,10 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// The variant holds two fields, and the pattern binds three names.
+// This must be an error the user can act on, not an internal error.
+pub enum Point { at(x: I32, y: I32) }
+pub fn sum(p: Point) -> I32 {
+    let (x, y, z) = p
+    x
+}

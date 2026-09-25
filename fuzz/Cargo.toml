@@ -12,8 +12,11 @@ libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 
+# The `program` and `ir_json` targets use the IR JSON, so they need
+# the `serde` feature.
 [dependencies.formalang]
 path = ".."
+features = ["serde"]
 
 # `cargo fuzz` builds each target as a `#![no_main]` binary. The shared
 # program generator lives in a library target so every target can use it.

@@ -1,0 +1,8 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/resolve/ (E0424, `self` in an associated function
+// with no `self` parameter).
+pub struct C { x: I32 }
+
+impl C {
+    fn make() -> I32 { self.x }
+}

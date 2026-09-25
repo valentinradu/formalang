@@ -11,29 +11,20 @@ use crate::ast::{
     Type, Visibility,
 };
 use crate::location::Span;
-use serde::{Deserialize, Serialize};
-
-/// The current AST serialization format version.
-///
-/// Embedders use this to detect incompatible AST changes. Increment when making
-/// breaking changes to any public AST type.
-pub const FORMAT_VERSION: u32 = 1;
 
 /// Root node representing a complete `.fv` file.
-///
-/// The `format_version` field allows embedders to detect AST format changes when
-/// using the AST as a wire format. Currently [`FORMAT_VERSION`].
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct File {
-    /// AST serialization format version. See [`FORMAT_VERSION`].
-    pub format_version: u32,
+    /// Joined `//!` doc comments at the start of the file. They document
+    /// the file itself.
+    pub doc: Option<String>,
     pub statements: Vec<Statement>,
     pub span: Span,
 }
 
 impl File {
-    /// Create a new `File` with the current [`FORMAT_VERSION`].
+    /// Create a new `File` with no file doc comment.
     #[must_use]
     #[expect(
         clippy::missing_const_for_fn,
@@ -41,7 +32,7 @@ impl File {
     )]
     pub fn new(statements: Vec<Statement>, span: Span) -> Self {
         Self {
-            format_version: FORMAT_VERSION,
+            doc: None,
             statements,
             span,
         }
@@ -50,7 +41,7 @@ impl File {
 
 /// Top-level statement (use, let, or definition)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Use(UseStmt),
     Let(Box<LetBinding>),
@@ -59,7 +50,7 @@ pub enum Statement {
 
 /// Definition (trait, struct, impl, enum, module, or function)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Definition {
     Trait(TraitDef),
     Struct(StructDef),
@@ -75,7 +66,7 @@ pub enum Definition {
 /// `body` is `None` for `extern fn` declarations.
 /// `body` is `Some(_)` for regular functions.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDef {
     pub visibility: Visibility,
     pub name: Ident,
@@ -112,7 +103,7 @@ impl FunctionDef {
 
 /// Use statement (import items from modules)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UseStmt {
     pub visibility: Visibility,
     pub path: Vec<Ident>,
@@ -122,7 +113,7 @@ pub struct UseStmt {
 
 /// Items to import (single, multiple, or glob)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UseItems {
     Single(Ident),
     Multiple(Vec<Ident>),
@@ -132,7 +123,7 @@ pub enum UseItems {
 
 /// Let binding (file-level constant)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LetBinding {
     pub visibility: Visibility,
     pub mutable: bool,
@@ -158,7 +149,7 @@ pub struct LetBinding {
 /// }
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TraitDef {
     pub visibility: Visibility,
     pub name: Ident,
@@ -176,7 +167,7 @@ pub struct TraitDef {
 
 /// Struct definition
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub visibility: Visibility,
     pub name: Ident,
@@ -189,7 +180,7 @@ pub struct StructDef {
 
 /// Struct field (with optional and default support)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StructField {
     pub mutable: bool,
     pub name: Ident,
@@ -208,7 +199,7 @@ pub struct StructField {
 /// - `impl Trait<X> for Type { ... }` — generic-trait instantiation
 /// - `extern impl Type { ... }` — extern method declarations (bodies must all be `None`)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImplDef {
     pub trait_name: Option<Ident>,
     /// Type arguments applied to `trait_name` for generic-trait
@@ -230,14 +221,13 @@ pub struct ImplDef {
 ///
 /// `body` is `None` inside `extern impl` blocks; `Some(_)` in regular impl blocks.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FnDef {
     pub name: Ident,
     /// The type parameters of the method itself: `U` in
     /// `fn map<U>(self, f: (T) -> U) -> [U]`. Empty for a method that
     /// has none. The type parameters of the impl block are on
     /// [`ImplDef::generics`].
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
@@ -262,13 +252,12 @@ pub struct FnDef {
 /// }
 /// ```
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FnSig {
     pub name: Ident,
     /// The type parameters of the method itself. A trait method may
     /// not declare any: semantic analysis reports
     /// [`crate::error::CompilerError::GenericTraitMethod`].
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub generics: Vec<GenericParam>,
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
@@ -280,7 +269,7 @@ pub struct FnSig {
 
 /// Function parameter
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FnParam {
     /// Parameter passing convention (default: `Let`).
     pub convention: ParamConvention,
@@ -295,7 +284,7 @@ pub struct FnParam {
 
 /// Enum definition (sum type)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
     pub visibility: Visibility,
     pub name: Ident,
@@ -308,7 +297,7 @@ pub struct EnumDef {
 
 /// Enum variant (with optional named associated data)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant {
     pub name: Ident,
     pub fields: Vec<FieldDef>,
@@ -317,19 +306,20 @@ pub struct EnumVariant {
 
 /// Module definition (namespace for grouping types)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleDef {
     pub visibility: Visibility,
     pub name: Ident,
     pub definitions: Vec<Definition>,
-    /// Joined `///` doc comments preceding this module. Audit #51.
+    /// Joined `///` doc comments before this module, then the `//!`
+    /// doc comments at the start of its body.
     pub doc: Option<String>,
     pub span: Span,
 }
 
 /// Field definition (used in traits and enum variants)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldDef {
     pub mutable: bool,
     pub name: Ident,

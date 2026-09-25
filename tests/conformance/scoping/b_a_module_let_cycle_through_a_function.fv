@@ -1,0 +1,5 @@
+// expect: reject CircularDependency
+// from: go test/initloop.go (initialization cycle through a function).
+let A: I32 = f()
+
+fn f() -> I32 { A + 1 }

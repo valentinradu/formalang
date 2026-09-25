@@ -54,6 +54,20 @@ pub trait ModuleResolver {
     ) -> Result<(String, PathBuf), ModuleError>;
 }
 
+/// A borrowed resolver resolves as the resolver it borrows.
+///
+/// The analysis of an imported module borrows the resolver of the
+/// module that imports it.
+impl<T: ModuleResolver + ?Sized> ModuleResolver for &T {
+    fn resolve(
+        &self,
+        path: &[String],
+        current_file: Option<&PathBuf>,
+    ) -> Result<(String, PathBuf), ModuleError> {
+        (**self).resolve(path, current_file)
+    }
+}
+
 /// Default filesystem-based module resolver
 ///
 /// Resolves module paths by mapping them to .fv files on the filesystem.

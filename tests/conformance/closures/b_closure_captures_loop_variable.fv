@@ -1,0 +1,8 @@
+// expect: run
+// from: go test/closure*.go (each iteration has its own variable).
+// Each pass of the loop makes a closure that captures that pass's value.
+pub fn run_checks() {
+    let fs: [() -> I32] = for i in [1, 2, 3] { () -> i * 10 }.collect()
+    if let f0 = fs[0] { assert(condition: f0() == 10) } else { assert(condition: false) }
+    if let f2 = fs[2] { assert(condition: f2() == 30) } else { assert(condition: false) }
+}

@@ -1,0 +1,4 @@
+// expect: reject UndefinedReference
+// docs/user/extern.md: the prelude declares the Array methods. Any
+// other method is unknown.
+pub fn f(xs: [I32]) -> I32 { xs.zz_len() }

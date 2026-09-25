@@ -1,0 +1,18 @@
+// expect: run
+// The variant that a dot form names is the variant stored. In an array
+// annotated [S], `.c` must not be read as the first variant.
+pub enum S { a, b, c }
+pub fn code(s: S) -> I32 {
+    match s {
+        .a: 1,
+        .b: 2,
+        .c: 3
+    }
+}
+pub fn first_code(xs: [S]) -> I32 {
+    if let s = xs[0] { code(s: s) } else { 0 }
+}
+pub fn run_checks() {
+    let xs: [S] = [.c, .b, .a]
+    assert(condition: first_code(xs: xs) == 3)
+}

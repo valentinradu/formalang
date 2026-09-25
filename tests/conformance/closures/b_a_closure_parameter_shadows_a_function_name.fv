@@ -1,0 +1,9 @@
+// expect: run
+// A closure parameter with the name of a function hides the function in
+// the body.
+fn n() -> I32 { 100 }
+
+pub fn run_checks() {
+    let g: (I32) -> I32 = (n) -> n + 1
+    assert(condition: g(1) == 2)
+}

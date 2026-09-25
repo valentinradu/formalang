@@ -1,0 +1,8 @@
+// expect: run
+// from: swift test/expr/closure/closures.swift (a curried closure).
+// The inner closure captures the parameter of the outer closure.
+pub fn run_checks() {
+    let add: (I32) -> (I32) -> I32 = (a) -> (b) -> a + b
+    let add2 = add(2)
+    assert(condition: add2(3) == 5)
+}

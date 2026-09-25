@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/types.md: a repeated key makes one entry. The rule is about
+// equal keys, so two equal struct literals are one key.
+pub struct K { a: I32 }
+
+pub fn run_checks() {
+    let d: [K: I32] = [K(a: 1): 1, K(a: 1): 2]
+    assert(condition: d.len() == 1)
+}

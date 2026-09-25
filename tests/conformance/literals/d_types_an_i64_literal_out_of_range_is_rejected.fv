@@ -1,0 +1,4 @@
+// expect: reject NumericOverflow
+// docs/user/types.md: literals that do not fit their declared type are
+// a compile error. I64 ends at 9_223_372_036_854_775_807.
+pub let x: I64 = 9_223_372_036_854_775_808

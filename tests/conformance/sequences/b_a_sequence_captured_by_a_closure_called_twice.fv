@@ -1,0 +1,8 @@
+// expect: reject UseAfterSink
+// docs/user/control-flow.md: a sequence runs once. A closure that
+// consumes it can run twice.
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    let g: () -> I32 = () -> s.count()
+    g() + g()
+}

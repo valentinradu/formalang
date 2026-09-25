@@ -1,0 +1,14 @@
+// expect: reject UseAfterSink
+// A `sink self` call consumes the receiver. A second call on the same
+// binding reads a moved value.
+pub struct C { n: I32 }
+
+impl C {
+    fn eat(sink self) -> C { self }
+}
+
+pub fn f() -> I32 {
+    let c = C(n: 1)
+    let d = c.eat()
+    c.eat().n + d.n
+}

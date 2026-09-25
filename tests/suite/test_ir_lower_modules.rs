@@ -2836,6 +2836,7 @@ fn visitor_walk_expr_visits_method_call_receiver_and_args() -> Result<(), Box<dy
         dispatch: DispatchKind::Virtual {
             trait_id: TraitId(0),
             method_name: "scale".to_string(),
+            trait_args: Vec::new(),
         },
         ty: num_ty,
 

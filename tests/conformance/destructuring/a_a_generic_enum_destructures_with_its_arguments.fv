@@ -1,0 +1,13 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts the associated
+// data. The data of a generic enum has the type argument.
+pub enum Pair<A, B> { of(first: A, second: B) }
+pub fn first(p: Pair<I32, String>) -> I32 {
+    let (a, b) = p
+    a + b.len()
+}
+pub fn run_checks() {
+    assert(condition: first(p: Pair.of(first: 1, second: "abc")) == 4)
+}

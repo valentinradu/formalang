@@ -1,0 +1,5 @@
+// expect: reject GenericArityMismatch
+// Container takes one type argument, and the impl gives two.
+pub trait Container<T> { fn get(self) -> T }
+pub struct Box { value: I32 }
+impl Container<I32, I32> for Box { fn get(self) -> I32 { self.value } }

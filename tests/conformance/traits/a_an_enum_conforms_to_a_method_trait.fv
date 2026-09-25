@@ -1,0 +1,16 @@
+// expect: run
+// An enum can conform to a trait, and a bound accepts it.
+pub trait Shape { fn area(self) -> I32 }
+pub enum E { a, b }
+impl Shape for E {
+    fn area(self) -> I32 {
+        match self {
+            .a: 1,
+            .b: 2
+        }
+    }
+}
+fn total<T: Shape>(x: T) -> I32 { x.area() }
+pub fn run_checks() {
+    assert(condition: total(x: E.b) == 2)
+}

@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/control-flow.md: the stages run in the order of the chain.
+pub fn run_checks() {
+    let n = for x in [1, 2, 3, 4] { x }.map(f: (v) -> v * 10).filter(f: (v) -> v > 15).count()
+    assert(condition: n == 3)
+    let m = for x in [1, 2, 3, 4] { x }.filter(f: (v) -> v > 15).map(f: (v) -> v * 10).count()
+    assert(condition: m == 0)
+}

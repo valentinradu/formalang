@@ -1,0 +1,6 @@
+// expect: reject AssignmentToImmutable
+// A literal is not a place.
+pub fn f() -> I32 {
+    1 = 2
+    0
+}

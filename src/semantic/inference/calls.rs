@@ -89,6 +89,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// callable, and the check does not depend on the order in which
     /// the passes see the bindings.
     pub(in crate::semantic) fn lookup_closure_type(&self, name: &str) -> Option<SemType> {
+        self.lookup_binding_type(name)
+            .filter(|ty| matches!(ty, SemType::Closure { .. }))
+    }
+
+    /// The type of the binding `name`: a pattern or closure parameter,
+    /// a loop variable, a local `let`, or a module `let`. `None` for a
+    /// closure parameter with no known type, and for a name that is not
+    /// a binding.
+    pub(in crate::semantic) fn lookup_binding_type(&self, name: &str) -> Option<SemType> {
         let from_scope = {
             let stack = self.inference_scope_stack.borrow();
             stack
@@ -111,7 +120,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 .map(|(ty, _)| ty.clone())
                 .or_else(|| self.symbols.get_let_type(name).cloned())?,
         };
-        matches!(ty, SemType::Closure { .. }).then_some(ty)
+        Some(ty)
     }
 
     /// Give each name in `ty` that `module` declares the path `prefix`,

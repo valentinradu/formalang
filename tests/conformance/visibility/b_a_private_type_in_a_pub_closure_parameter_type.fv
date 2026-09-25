@@ -1,0 +1,8 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: the rule reaches inside containers. A closure
+// type names its parameter types.
+struct Hidden { x: I32 }
+
+pub struct S { n: I32 }
+
+pub fn f(g: (Hidden) -> I32) -> I32 { 0 }

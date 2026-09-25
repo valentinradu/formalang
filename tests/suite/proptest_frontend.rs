@@ -139,17 +139,6 @@ proptest! {
         }
     }
 
-    /// An AST that parsed must survive a JSON round trip. `File` is a
-    /// serde compatibility surface.
-    #[test]
-    fn ast_round_trips_through_json(source in token_soup()) {
-        let Ok(file) = parse_only(&source) else { return Ok(()); };
-        let json = serde_json::to_string(&file).map_err(|e| TestCaseError::fail(e.to_string()))?;
-        let back: formalang::File =
-            serde_json::from_str(&json).map_err(|e| TestCaseError::fail(e.to_string()))?;
-        prop_assert_eq!(file, back, "the AST changed across a JSON round trip");
-    }
-
     /// The whole frontend never panics on token soup.
     #[test]
     fn compile_is_total(source in token_soup()) {

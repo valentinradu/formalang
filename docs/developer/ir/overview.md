@@ -17,6 +17,8 @@ source syntax, the IR provides:
 
 - **Resolved types** on every expression
 - **Linked references** (IDs pointing to definitions, not string names)
+- **One module for the whole program**: the items of each imported
+  module are in it (see [Obtaining the IR](obtaining.md))
 - **Flattened structure** optimized for code generation
 - **Visitor pattern** for traversal
 
@@ -50,13 +52,14 @@ Plugin System -> [IrPass, ...] -> Backend -> Output
 | Type resolution               | No  | Yes                           |
 | ID-based references           | No  | Yes                           |
 | String type names             | Yes | No                            |
-| Use statements                | Yes | No                            |
+| Use statements                | Yes | Names only (`IrModule.imports`) |
 | Comments                      | Yes | No                            |
 | Parentheses/grouping          | Yes | No                            |
 
 The IR intentionally omits:
 
-- **Use statements**: already resolved during lowering
+- **Use statements**: the lowering resolves them. `IrModule.imports`
+  keeps the imported names for backends that emit import statements
 - **Comments**: purely syntactic, not needed for codegen
 - **Parentheses/grouping**: expression structure is normalized
 - **String type references**: all resolved to typed IDs
@@ -78,6 +81,12 @@ fixtures). Real source files start at `FileId(1)` and live in
 `IrModule.file_table: Vec<PathBuf>`. The lowerer registers files via
 `IrModule.register_file(path)` which returns the assigned id.
 
+`compile_to_ir` knows no path, so every span in its result has
+`FileId(0)`. Use `compile_to_ir_with_path` or
+`compile_to_ir_with_path_and_resolver` when a backend needs the file.
+In a program over several files, the linker registers the file of each
+imported module, and the spans of each copied item name that file.
+
 Spans cover every data struct (`IrFunction`, `IrStruct`, `IrEnum`,
 `IrEnumVariant`, `IrField`, `IrLet`, `IrTrait`, `IrFunctionSig`,
 `IrFunctionParam`, `IrImpl`) and every `IrExpr` variant
@@ -93,9 +102,9 @@ Backends emit:
 - **JVM `LineNumberTable`** by mapping bytecode offsets to
   `IrFunctionSig.span.start.line`.
 
-All `span` fields are `#[serde(default, skip_serializing_if =
-"IrSpan::is_default")]`, so synthetic / round-tripped IR doesn't
-bloat the serialised form.
+With the `serde` feature, serde leaves out each `span` field that is
+at its default (`IrSpan::is_default`), and reads a missing `span` as
+the default. So synthetic IR does not make the serialised form larger.
 
 Every built-in pass carries these spans through the nodes it rewrites,
 so the positions survive `Pipeline::for_codegen`.
@@ -115,7 +124,7 @@ inside `mod foo { ... }` is stored on `IrModule.structs` with a
 qualified name `"foo::Bar"`. A parallel
 `IrModule.modules: Vec<IrModuleNode>` tree mirrors the source `mod`
 hierarchy with per-module ID lists for backends that need namespaced
-output (see [IrModuleNode](module.md#irmodulenode--source-mod-hierarchy)).
+output (see [IrModuleNode](module.md#irmodulenode-source-mod-hierarchy)).
 
 ## Relationship to the Symbol Table
 

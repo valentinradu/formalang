@@ -1,0 +1,3 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `&&` takes two booleans.
+pub let s = 1 && 0

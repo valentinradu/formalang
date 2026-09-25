@@ -24,8 +24,9 @@ use crate::ir::{DispatchKind, IrExpr, IrFunction, IrImpl, IrModule, MethodIdx, R
 use crate::location::Span;
 
 use super::expr_walk::for_each_module_expr_mut;
-use super::functions::{contains_type_param, unify_types};
+use super::origins::Origins;
 use super::specialise::{substitute_expr_types, substitute_type, type_suffix};
+use super::unify::{contains_type_param, unify_types, Conflict};
 
 /// `(impl index, method index, type arguments)`: one copy of a generic
 /// method.
@@ -47,7 +48,16 @@ pub(super) fn any_template(module: &IrModule) -> bool {
 /// The copy that a method call needs, when `expr` calls a generic
 /// method with a body and its arguments give every type parameter a
 /// concrete type.
-pub(super) fn method_call_spec(impls: &[IrImpl], expr: &IrExpr) -> Option<MethodSpec> {
+///
+/// # Errors
+///
+/// Returns the [`Conflict`] when the arguments bind one type parameter
+/// of the method to two concrete types.
+pub(super) fn method_call_spec(
+    impls: &[IrImpl],
+    expr: &IrExpr,
+    origins: &Origins,
+) -> Result<Option<MethodSpec>, Box<Conflict>> {
     let IrExpr::MethodCall {
         dispatch: DispatchKind::Static { impl_id },
         method_idx,
@@ -55,17 +65,17 @@ pub(super) fn method_call_spec(impls: &[IrImpl], expr: &IrExpr) -> Option<Method
         ..
     } = expr
     else {
-        return None;
+        return Ok(None);
     };
-    let method = impls
-        .get(impl_id.0 as usize)?
-        .functions
-        .get(method_idx.0 as usize)?;
-    if !is_template(method) {
-        return None;
-    }
-    let type_args = infer_method_type_args(method, args)?;
-    Some((impl_id.0, method_idx.0, type_args))
+    let Some(method) = impls
+        .get(impl_id.0 as usize)
+        .and_then(|imp| imp.functions.get(method_idx.0 as usize))
+        .filter(|m| is_template(m))
+    else {
+        return Ok(None);
+    };
+    let type_args = infer_method_type_args(method, args, origins)?;
+    Ok(type_args.map(|type_args| (impl_id.0, method_idx.0, type_args)))
 }
 
 /// Match the declared type of each parameter against the type of the
@@ -74,7 +84,8 @@ pub(super) fn method_call_spec(impls: &[IrImpl], expr: &IrExpr) -> Option<Method
 fn infer_method_type_args(
     method: &IrFunction,
     args: &[(Option<String>, IrExpr)],
-) -> Option<Vec<ResolvedType>> {
+    origins: &Origins,
+) -> Result<Option<Vec<ResolvedType>>, Box<Conflict>> {
     let mut subs: HashMap<String, ResolvedType> = HashMap::new();
     let params = method.params.iter().filter(|p| p.name != "self");
     for (index, param) in params.enumerate() {
@@ -95,10 +106,10 @@ fn infer_method_type_args(
                     .map(|(_, e)| e)
             });
         if let Some(arg) = arg {
-            unify_types(declared, arg.ty(), &mut subs);
+            unify_types(declared, arg.ty(), &mut subs, origins)?;
         }
     }
-    method
+    Ok(method
         .generic_params
         .iter()
         .map(|p| {
@@ -106,7 +117,7 @@ fn infer_method_type_args(
                 .filter(|ty| !contains_type_param(ty))
                 .cloned()
         })
-        .collect()
+        .collect())
 }
 
 /// Copy the generic method that `spec` names for its type arguments,
@@ -186,6 +197,7 @@ pub(super) fn specialise_method(
 pub(super) fn rewrite_method_calls(
     module: &mut IrModule,
     mapping: &HashMap<MethodSpec, u32>,
+    origins: &Origins,
 ) -> Result<(), Vec<CompilerError>> {
     if !any_template(module) {
         return Ok(());
@@ -196,7 +208,8 @@ pub(super) fn rewrite_method_calls(
     let snapshot = module.impls.clone();
     let mut errors = Vec::new();
     for_each_module_expr_mut(module, &mut |expr| {
-        let spec = method_call_spec(&snapshot, expr);
+        // `discover` reports a conflict; here it copies nothing.
+        let spec = method_call_spec(&snapshot, expr, origins).ok().flatten();
         let IrExpr::MethodCall {
             dispatch: DispatchKind::Static { impl_id },
             method,

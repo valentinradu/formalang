@@ -1,0 +1,4 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a struct field (E137).
+// An optional adds nothing that can be stored.
+pub struct S { items: Seq<I32>? }

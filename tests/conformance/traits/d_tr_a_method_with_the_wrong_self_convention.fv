@@ -1,0 +1,9 @@
+// expect: reject TraitMethodSignatureMismatch
+// docs/user/traits.md: method signatures must match exactly. A `mut self`
+// is not a `self`.
+pub trait Shape { fn area(self) -> I32 }
+pub struct Sq { s: I32 }
+
+impl Shape for Sq {
+    fn area(mut self) -> I32 { self.s }
+}

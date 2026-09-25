@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: each name appears once in a parameter list.
+pub fn f() -> I32 {
+    let g: (I32, I32) -> I32 = (a, a) -> a
+    g(1, 2)
+}

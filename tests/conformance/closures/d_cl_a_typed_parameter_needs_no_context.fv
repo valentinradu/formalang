@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/closures.md: `let g = (x: I32) -> x + 1` is ok.
+pub fn run_checks() {
+    let g = (x: I32) -> x + 1
+    assert(condition: g(1) == 2)
+}

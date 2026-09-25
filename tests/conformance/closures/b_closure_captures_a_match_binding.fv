@@ -1,0 +1,7 @@
+// expect: run
+// A closure made in a match arm captures the arm's binding.
+pub fn run_checks() {
+    let o: I32? = 4
+    let g: () -> I32 = match o { .some(v): () -> v + 1, .none: () -> 0 }
+    assert(condition: g() == 5)
+}

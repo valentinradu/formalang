@@ -1,0 +1,7 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: the float rule applies to the key closure of
+// `collect`.
+pub fn f() -> I32 {
+    let d = for x in [1, 2] { x }.collect(key: (v) -> 1.5, value: (v) -> v)
+    d.len()
+}

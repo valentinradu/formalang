@@ -1,0 +1,6 @@
+// expect: run
+// An `if` is an expression, so it may be a condition.
+pub fn run_checks() {
+    let a: I32 = if if true { false } else { true } { 1 } else { 2 }
+    assert(condition: a == 2)
+}

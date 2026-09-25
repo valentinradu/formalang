@@ -855,7 +855,7 @@ fn test_if_optional_auto_binding() -> Result<(), Box<dyn std::error::Error>> {
     // Implicit auto-bind on `if` is gone. Optional unwrap-and-bind is now the
     // `if let` form (parsed as a match).
     let source = r#"
-        struct User { nickname: String? }
+        pub struct User { nickname: String? }
         fn greet(name: String) -> String { name }
         pub let u = User(nickname: "alice")
         pub let out = if let nickname = u.nickname {
@@ -1253,8 +1253,11 @@ fn test_tuple_let_destructuring() -> Result<(), Box<dyn std::error::Error>> {
         let p: Point = Point(x: 1, y: 2)
         let (a, b) = p
     ";
-    compile(source).map_err(|e| format!("{e:?}"))?;
-    // Tuple destructuring of a struct should succeed
+    // A tuple pattern takes a tuple. A struct is taken apart with a
+    // struct pattern, `let {x, y} = p`.
+    if compile(source).is_ok() {
+        return Err("a tuple pattern on a struct must be refused".into());
+    }
     Ok(())
 }
 
@@ -1538,7 +1541,7 @@ fn test_function_return_type_valid() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Calculator { value: I32 }
         impl Calculator {
-            fn double() -> I32 { self.value + self.value }
+            fn double(self) -> I32 { self.value + self.value }
         }
     ";
     compile(source).map_err(|e| format!("Function with valid return type: {e:?}"))?;
@@ -1572,8 +1575,8 @@ fn test_method_call_on_struct_in_impl() -> Result<(), Box<dyn std::error::Error>
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> I32 { self.x }
-            fn get_y() -> I32 { self.y }
+            fn get_x(self) -> I32 { self.x }
+            fn get_y(self) -> I32 { self.y }
         }
     ";
     compile(source).map_err(|e| format!("Method call in impl: {e:?}"))?;
@@ -1589,7 +1592,7 @@ fn test_simple_impl_method_with_self_field_access() -> Result<(), Box<dyn std::e
     let source = r"
         struct Point { x: I32 = 0 }
         impl Point {
-            fn get_x() -> I32 { self.x }
+            fn get_x(self) -> I32 { self.x }
         }
     ";
     compile(source).map_err(|e| format!("Simple impl method: {e:?}"))?;

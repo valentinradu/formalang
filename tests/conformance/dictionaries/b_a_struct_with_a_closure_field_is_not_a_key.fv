@@ -1,0 +1,9 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/expressions.md: a struct with a closure field is not
+// equatable, so it cannot be a key.
+struct K { f: (I32) -> I32 }
+
+pub fn f() -> I32 {
+    let d: [K: I32] = [:]
+    d.len()
+}

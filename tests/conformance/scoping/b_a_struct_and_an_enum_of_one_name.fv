@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/resolve/ (E0428, a type defined twice).
+struct T { x: I32 }
+enum T { a }

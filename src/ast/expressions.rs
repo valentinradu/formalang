@@ -7,11 +7,10 @@
 
 use crate::ast::{BinaryOperator, Ident, NumberLiteral, ParamConvention, Type, UnaryOperator};
 use crate::location::Span;
-use serde::{Deserialize, Serialize};
 
 /// Expression
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal {
         value: Literal,
@@ -26,8 +25,23 @@ pub enum Expr {
         span: Span,
     },
 
+    /// A call of the value of an expression: `make()(4)`. The callee
+    /// is not a plain name; `f(x)` is an [`Self::Invocation`].
+    Call {
+        callee: Box<Self>,
+        args: Vec<(Option<Ident>, Self)>,
+        span: Span,
+    },
+
+    /// Enum instantiation: `Status.active` or
+    /// `Shape.circle(radius: 1.0)`. The semantic pass changes it into a
+    /// field path or a method call when `enum_name` names a value.
     EnumInstantiation {
+        /// The path of the enum as one name: `shapes::Status`.
         enum_name: Ident,
+        /// The type arguments written on the path: `Maybe<I32>.none`.
+        /// Empty when the path writes none.
+        type_args: Vec<Type>,
         variant: Ident,
         data: Vec<(Ident, Self)>,
         span: Span,
@@ -111,9 +125,10 @@ pub enum Expr {
 
     ClosureExpr {
         params: Vec<ClosureParam>,
-        /// Optional declared return type (`|x: T| -> R { body }`). `None`
-        /// when the closure does not specify one and the type is inferred
-        /// from the body.
+        /// A declared return type. The closure syntax `(params) -> body`
+        /// has no place for one, so the parser always sets `None` and the
+        /// type comes from the body. The semantic pass checks the body
+        /// against a type that a tool sets on a hand-built AST.
         return_type: Option<Type>,
         body: Box<Self>,
         span: Span,
@@ -137,7 +152,8 @@ pub enum Expr {
         span: Span,
     },
 
-    /// Block expression: `{ let x = 1; x + 1 }`
+    /// Block expression. A line break separates two statements:
+    /// `{ let x = 1` on one line, `x + 1 }` on the next.
     Block {
         statements: Vec<BlockStatement>,
         result: Box<Self>,
@@ -152,6 +168,7 @@ impl Expr {
         match self {
             Self::Literal { span, .. }
             | Self::Invocation { span, .. }
+            | Self::Call { span, .. }
             | Self::EnumInstantiation { span, .. }
             | Self::InferredEnumInstantiation { span, .. }
             | Self::Array { span, .. }
@@ -176,7 +193,7 @@ impl Expr {
 
 /// A statement within a block expression
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockStatement {
     Let {
         mutable: bool,
@@ -195,7 +212,7 @@ pub enum BlockStatement {
 
 /// Closure parameter
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClosureParam {
     pub convention: ParamConvention,
     pub name: Ident,
@@ -205,7 +222,8 @@ pub struct ClosureParam {
 
 /// Literal values
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Literal {
     String(String),
     /// Numeric literal: see [`NumberLiteral`] for the carried payload.
@@ -216,16 +234,19 @@ pub enum Literal {
 
 /// Match arm
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub body: Expr,
     pub span: Span,
 }
 
-/// Pattern (for match expressions)
+/// Pattern (for match expressions).
+///
+/// The `bindings` of a variant are positional: the first name binds
+/// the first field of the variant, whatever the names of the fields.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
     Variant { name: Ident, bindings: Vec<Ident> },
     Wildcard,
@@ -233,7 +254,7 @@ pub enum Pattern {
 
 /// Binding pattern (for let bindings with destructuring)
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BindingPattern {
     Simple(Ident),
     Array {
@@ -252,7 +273,7 @@ pub enum BindingPattern {
 
 /// Element in an array destructuring pattern
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArrayPatternElement {
     Binding(BindingPattern),
     Rest(Option<Ident>),
@@ -261,7 +282,7 @@ pub enum ArrayPatternElement {
 
 /// Field in a struct destructuring pattern
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructPatternField {
     pub name: Ident,
     pub alias: Option<Ident>,

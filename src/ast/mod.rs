@@ -12,19 +12,27 @@
 //!    to determine whether it's a struct or function:
 //!    - **Struct instantiation**: Requires named arguments (`field: value`), supports generic
 //!      type arguments.
-//!    - **Function call**: Uses positional or named arguments; type arguments are rejected.
+//!    - **Function call**: Uses positional or named arguments. A generic function
+//!      takes explicit type arguments too: `id<I32>(x: 1)`.
+//!
+//! A call of any other expression, for example `make()(4)`, is an [`Expr::Call`].
 //!
 //! This approach follows Rust's model where the same syntax can represent different constructs
 //! depending on what the name resolves to.
 //!
 //! # Module layout
 //!
-//! - [`types`]   — [`Type`], generics, function attributes, extern ABI
-//! - [`definitions`] — [`File`], [`Statement`], [`Definition`] and friends
-//! - [`expressions`] — [`Expr`], [`Literal`], patterns, block statements
+//! - `types` — [`Type`], generics, function attributes, extern ABI
+//! - `definitions` — [`File`], [`Statement`], [`Definition`] and friends
+//! - `expressions` — [`Expr`], [`Literal`], patterns, block statements
 //!
 //! Everything is re-exported here so callers continue to use
 //! `crate::ast::Foo` paths.
+//!
+//! The AST has no serialized form. The IR holds some AST types, for
+//! example [`Literal`] and [`PrimitiveType`]. Only these types derive
+//! `serde::Serialize` and `serde::Deserialize`, and only with the
+//! `serde` feature.
 
 mod definitions;
 mod expressions;
@@ -35,12 +43,10 @@ mod types;
 mod tests;
 
 use crate::location::Span;
-use serde::{Deserialize, Serialize};
 
 pub use definitions::{
     Definition, EnumDef, EnumVariant, FieldDef, File, FnDef, FnParam, FnSig, FunctionDef, ImplDef,
     LetBinding, ModuleDef, Statement, StructDef, StructField, TraitDef, UseItems, UseStmt,
-    FORMAT_VERSION,
 };
 pub use expressions::{
     ArrayPatternElement, BindingPattern, BlockStatement, ClosureParam, Expr, Literal, MatchArm,
@@ -54,7 +60,8 @@ pub use types::{
 
 /// Visibility modifier
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Visibility {
     Public,
     /// The default. An item is internal unless it says `pub`, and a
@@ -71,7 +78,8 @@ pub enum Visibility {
 ///   to the caller at the end of the call.
 /// - `Sink` — ownership transfer. The caller gives up the value; the callee owns it.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParamConvention {
     #[default]
     Let,
@@ -81,7 +89,8 @@ pub enum ParamConvention {
 
 /// Primitive types
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PrimitiveType {
     String,
     I32,
@@ -95,7 +104,8 @@ pub enum PrimitiveType {
 
 /// Binary operators
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -137,7 +147,8 @@ impl BinaryOperator {
 
 /// Unary operators
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UnaryOperator {
     Neg,
     Not,
@@ -145,7 +156,7 @@ pub enum UnaryOperator {
 
 /// Identifier with source location
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident {
     pub name: String,
     pub span: Span,

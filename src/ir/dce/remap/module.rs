@@ -62,6 +62,11 @@ pub(super) fn remap_module(module: &mut IrModule, remap: &IdRemap) {
             }
             crate::ir::ImplTarget::Primitive(_) => {}
         }
+        // The analysis keeps the trait of each impl that survives, so
+        // the trait always has a new id here.
+        if let Some(trait_ref) = &mut i.trait_ref {
+            retain_trait_ref(trait_ref, remap);
+        }
         for f in &mut i.functions {
             remap_function(f, remap);
         }

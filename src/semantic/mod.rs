@@ -1,25 +1,29 @@
 //! Semantic analysis (validation only — no evaluation or expansion).
 //!
-//! The semantic layer runs six passes against a parsed `File`:
+//! [`SemanticAnalyzer`] runs these passes in order against a parsed
+//! `File`, with the prelude's statements first:
 //!
-//! - **Pass 0** — resolve modules and imports.
-//! - **Pass 1** — build the symbol table (structs, traits, enums,
-//!   impls, lets, functions, modules). Includes a sub-pass (`Pass 1.5`)
-//!   that validates duplicate generic parameters before later passes
-//!   consume them.
-//! - **Pass 2** — resolve type references; map AST `Type::Ident` /
+//! - **Pass 0**: resolve modules and imports. Each imported module
+//!   gets an analyzer of its own, and then lowers to IR on top of the
+//!   modules that it imports. See `module_links`.
+//! - **Pass 1**: build the symbol table (structs, traits, enums,
+//!   impls, lets, functions, modules), and bring in the names of a
+//!   `use` of an inline module.
+//! - **Pass 1.1**: change each `EnumInstantiation` whose name is a value
+//!   into a field access or a method call (`value_paths`). Make each
+//!   `-<numeric literal>` one negative literal (`literal_types`).
+//! - **Pass 1.5**: validate the generic parameters.
+//! - **Pass 1.6**: infer the types of the module-level `let` bindings,
+//!   and record the captures of their closures.
+//! - **Pass 2**: resolve type references: map AST `Type::Ident` /
 //!   `Type::Generic` to entries in the symbol table.
-//! - **Pass 3** — validate expressions: operator typing, `for`/`if`/
-//!   `match` shape, mutability/sink rules.
-//! - **Pass 4** — validate trait composition (model traits' required
-//!   field requirements; view traits are validated separately).
-//! - **Pass 5** — detect circular dependencies in let-bindings and
-//!   in struct/trait/enum field types.
-//!
-//! this file's overview comment used `//` (a regular line
-//! comment) and didn't reach `cargo doc`. Promoted to `//!` so the
-//! pass list shows up in the rendered API docs alongside the
-//! `SemanticAnalyzer` type.
+//! - **Pass 3**: validate the expressions: types, calls, overloads,
+//!   operators, `for` / `if` / `match`, mutability, `sink`, exclusive
+//!   access and sequences. Then write the type of each unsuffixed
+//!   numeric literal into the AST as a suffix (`literal_types`).
+//! - **Pass 4**: validate the trait implementations.
+//! - **Pass 5**: detect circular dependencies in `let` bindings and in
+//!   struct, trait and enum field types.
 
 pub(crate) mod import_graph;
 pub mod module_resolver;
@@ -29,11 +33,15 @@ pub mod queries;
 pub mod symbol_table;
 pub(crate) mod type_graph;
 
+mod ast_walk;
+mod bound_methods;
 mod circular;
 pub(crate) mod helpers;
 mod imports;
 mod inference;
+mod literal_types;
 mod module_collect;
+mod module_links;
 mod pass1_symbols;
 mod pattern_types;
 pub mod sem_type;
@@ -94,11 +102,12 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     import_graph: ImportGraph,
     /// Cache of parsed modules (path -> (AST, `SymbolTable`))
     module_cache: HashMap<PathBuf, (File, SymbolTable)>,
-    /// Cache of IR modules for imported modules (keyed by file path)
-    ///
-    /// Populated during `parse_and_analyze_module()` to enable codegen
-    /// backends to generate impl blocks from imported types.
+    /// The IR of each imported module as a module on its own, keyed by
+    /// file path. See [`Self::imported_ir_modules`].
     module_ir_cache: HashMap<PathBuf, crate::ir::IrModule>,
+    /// The id, the module path and the linked IR of each imported
+    /// module. See [`crate::ir::link`].
+    module_links: module_links::ModuleLinks,
     /// Current file path being analyzed
     current_file: Option<PathBuf>,
     /// Stack of generic scopes (for tracking type parameters)
@@ -118,7 +127,8 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     /// Types are stored structurally as [`SemType`] so boundary checks can
     /// match on `SemType::Unknown` directly instead of comparing strings.
     local_let_bindings: HashMap<String, (SemType, bool)>,
-    /// Bindings consumed by a `sink` parameter call — cannot be used after
+    /// The bindings that a `sink` argument consumed. A later use of one
+    /// is `UseAfterSink`.
     consumed_bindings: HashSet<String>,
     /// Scoped overrides used during inference. When inferring the body of
     /// a match arm or a similar pattern-introducing construct, the
@@ -154,14 +164,10 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     ///   each captured binding is marked consumed at the escape site.
     /// - Transitive: if closure A captures closure B and A escapes, B's
     ///   captures are also consumed.
-    /// - Function-return escape: when a function's declared return type is
-    ///   a closure type, the returned closure's captures are validated
-    ///   against `current_fn_param_conventions`. Only `sink` parameters and
-    ///   outer-scope bindings (module-level or wider) may be captured; local
-    ///   `let` bindings and `let`/`mut` parameters would leave dangling
-    ///   captures and are rejected with
-    ///   `ClosureCaptureEscapesLocalBinding`. A `sink`-parameter capture
-    ///   that escapes is marked consumed in the function's scope.
+    /// - Function-return escape: a closure captures by value, so a
+    ///   returned closure can capture any binding. A `sink` parameter that
+    ///   a returned closure captures is marked consumed in the function's
+    ///   scope.
     ///
     /// Not covered:
     /// - Closures stored in arbitrary non-let places (e.g., assigned to a
@@ -182,6 +188,19 @@ pub struct SemanticAnalyzer<R: ModuleResolver> {
     pub(super) current_fn_param_conventions: HashMap<String, ParamConvention>,
     /// Recursion depth counter for `validate_expr` (to prevent stack overflow)
     validate_expr_depth: usize,
+    /// The type of each unsuffixed numeric literal that takes its type
+    /// from its position, keyed by the literal node. See
+    /// `literal_types`.
+    literal_types: HashMap<usize, crate::ast::PrimitiveType>,
+    /// The type that an enum instantiation takes from its position,
+    /// keyed by the node. See `validation::expr::enums`.
+    expr_types: HashMap<usize, SemType>,
+    /// The outer bindings of each loop body and closure body around the
+    /// code under check. See `validation::outer_frames`.
+    outer_frames: Vec<validation::outer_frames::OuterFrame>,
+    /// True while the value of a module-level `let` is under check. A
+    /// module `let` may sink another there; a function may not.
+    in_module_let: bool,
 }
 
 impl<R: ModuleResolver> std::fmt::Debug for SemanticAnalyzer<R> {
@@ -194,6 +213,8 @@ impl<R: ModuleResolver> std::fmt::Debug for SemanticAnalyzer<R> {
 }
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// Create a new analyzer with no file path. The analyzer resolves
+    /// the imports through `resolver`.
     pub fn new(resolver: R) -> Self {
         Self {
             symbols: SymbolTable::new(),
@@ -202,6 +223,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
             module_ir_cache: HashMap::new(),
+            module_links: module_links::ModuleLinks::default(),
             current_file: None,
             generic_scopes: Vec::new(),
             current_impl_struct: None,
@@ -216,6 +238,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fn_scope_closure_captures: HashMap::new(),
             current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
+            literal_types: HashMap::new(),
+            expr_types: HashMap::new(),
+            outer_frames: Vec::new(),
+            in_module_let: false,
         }
     }
 
@@ -228,6 +254,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             import_graph: ImportGraph::new(),
             module_cache: HashMap::new(),
             module_ir_cache: HashMap::new(),
+            module_links: module_links::ModuleLinks::default(),
             current_file: Some(file_path),
             generic_scopes: Vec::new(),
             current_impl_struct: None,
@@ -242,6 +269,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             fn_scope_closure_captures: HashMap::new(),
             current_fn_param_conventions: HashMap::new(),
             validate_expr_depth: 0,
+            literal_types: HashMap::new(),
+            expr_types: HashMap::new(),
+            outer_frames: Vec::new(),
+            in_module_let: false,
         }
     }
 
@@ -300,7 +331,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .collect()
     }
 
-    /// Drive all six semantic passes in order. Shared by [`Self::analyze`]
+    /// Drive the semantic passes in order. Shared by [`Self::analyze`]
     /// and [`Self::analyze_and_classify`] so the two entry points stay in
     /// lockstep.
     fn run_passes(&mut self, file: &mut File) {
@@ -309,10 +340,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Pass 1: Build symbol table (collect all definitions)
         self.build_symbol_table(file);
+        self.resolve_local_uses(file);
 
         // Pass 1.1: Change each value path that the parser read as an
         // enum instantiation. The symbol table must be complete first.
         value_paths::rewrite_value_paths(file, &self.symbols);
+        literal_types::fold_negative_literals(file);
 
         // Pass 1.5: Validate generic parameters
         self.validate_generic_parameters(file);
@@ -326,6 +359,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
 
         // Pass 3: Validate expressions
         self.validate_expressions(file);
+        literal_types::apply_literal_types(file, &self.literal_types);
 
         // Pass 4: Validate trait implementations (field requirements)
         self.validate_trait_implementations(file);
@@ -347,20 +381,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         &self.module_cache
     }
 
-    /// Get all cached IR modules from imports.
+    /// The IR of each imported module, keyed by its file path.
     ///
-    /// Returns a map from file path to `IrModule` for all modules that were
-    /// analyzed during import resolution. Used by codegen backends to generate
-    /// impl blocks from imported types.
+    /// Each imported module lowers on top of the modules that it
+    /// imports. The value here is that IR as a module on its own: its
+    /// own items have their short names, and each item that it imports
+    /// has the path of its module, for example `geom::Point`.
     ///
-    /// The cache is populated as a side effect of `parse_and_analyze_module`:
-    /// after each imported module is semantically analyzed, its AST is also
-    /// lowered to IR and stored here keyed by its filesystem path.
-    ///
-    /// # Returns
-    ///
-    /// Reference to the cached IR modules. Empty if no imports were processed
-    /// or if every imported module failed IR lowering.
+    /// The entry points do not read this map: the IR that they return
+    /// already holds each imported item. See the `ir::link` module for
+    /// the linker. The map is empty when the program imports nothing,
+    /// and it has no entry for a module whose analysis failed.
     pub const fn imported_ir_modules(&self) -> &HashMap<PathBuf, crate::ir::IrModule> {
         &self.module_ir_cache
     }

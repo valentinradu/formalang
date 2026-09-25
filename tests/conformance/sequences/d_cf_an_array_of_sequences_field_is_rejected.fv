@@ -1,0 +1,4 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence holds no elements, so there is
+// nothing to store in a field, in an array or not.
+pub struct S { items: [Seq<I32>] }

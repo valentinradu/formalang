@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: `as` renames a field.
+pub struct User { name: String, age: I32 }
+
+pub fn run_checks() {
+    let {name as n, age as a} = User(name: "al", age: 3)
+    assert(condition: n == "al")
+    assert(condition: a == 3)
+}

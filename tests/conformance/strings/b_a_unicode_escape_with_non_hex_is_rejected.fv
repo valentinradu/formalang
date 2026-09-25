@@ -1,0 +1,3 @@
+// expect: reject InvalidUnicodeEscape
+// docs/user/expressions.md: `\uXXXX` takes four hex digits.
+pub let s: String = "\uZZZZ"

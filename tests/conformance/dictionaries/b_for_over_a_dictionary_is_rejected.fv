@@ -1,0 +1,7 @@
+// expect: reject ForLoopNotArray
+// docs/user/control-flow.md: the source is an array, a range, or another
+// sequence. A dictionary is none of these.
+pub fn f() -> I32 {
+    let d: [String: I32] = ["a": 1]
+    for e in d { 1 }.count()
+}

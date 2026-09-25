@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// from: TypeScript typeArgumentInference. The argument makes T an I32,
+// and the closure takes a String.
+fn apply<T>(x: T, f: (T) -> T) -> T {
+    f(x)
+}
+pub let r = apply(x: 1, f: (s: String) -> s)

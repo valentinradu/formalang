@@ -1,0 +1,8 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/pattern/ (E0416, a name bound twice in one pattern)
+pub enum Pair { two(a: I32, b: I32) }
+pub fn f(p: Pair) -> I32 {
+    match p {
+        .two(x, x): x
+    }
+}

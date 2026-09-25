@@ -1,0 +1,22 @@
+// expect: run
+// docs/user/structs.md and docs/user/types.md: `Optional<T>` is `T?`, so
+// a field of either spelling may be left out, and it is nil. A generic
+// field `T?` too.
+pub struct User {
+    name: String,
+    nickname: String?,
+    alias: Optional<String>
+}
+
+pub struct Holder<T> {
+    value: T,
+    extra: T?
+}
+
+pub fn run_checks() {
+    let u = User(name: "A")
+    assert(condition: u.nickname == nil)
+    assert(condition: u.alias == nil)
+    let h = Holder(value: 3)
+    assert(condition: h.extra == nil)
+}

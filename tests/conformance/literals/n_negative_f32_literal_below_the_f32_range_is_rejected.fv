@@ -1,0 +1,7 @@
+// expect: reject InvalidNumber
+// -1e39 is below the smallest finite F32. The check for the range
+// applies to a negative literal too.
+
+pub fn f() -> F32 {
+    -1e39F32
+}

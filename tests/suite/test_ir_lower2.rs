@@ -413,7 +413,7 @@ fn test_lower_field_access() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get_x() -> I32 { self.x }
+            fn get_x(self) -> I32 { self.x }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -451,8 +451,8 @@ fn test_lower_method_call() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Counter { count: I32 = 0 }
         impl Counter {
-            fn increment() -> I32 { self.count + 1 }
-            fn double_increment() -> I32 { self.increment() }
+            fn increment(self) -> I32 { self.count + 1 }
+            fn double_increment(self) -> I32 { self.increment() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -489,7 +489,7 @@ fn test_lower_self_reference_in_impl() -> Result<(), Box<dyn std::error::Error>>
     let source = r"
         struct Counter { count: I32 = 0 }
         impl Counter {
-            fn doubled() -> I32 { self.count * 2 }
+            fn doubled(self) -> I32 { self.count * 2 }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -525,7 +525,7 @@ fn test_lower_bare_self_in_impl() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Widget { value: I32 = 0 }
         impl Widget {
-            fn identity() -> Widget { self }
+            fn identity(self) -> Widget { self }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -837,7 +837,7 @@ fn test_lower_module_with_impl() -> Result<(), Box<dyn std::error::Error>> {
         mod geometry {
             struct Circle { radius: I32 }
             impl Circle {
-                fn area() -> I32 { self.radius }
+                fn area(self) -> I32 { self.radius }
             }
         }
     ";
@@ -986,8 +986,8 @@ fn test_lower_method_call_static_dispatch() -> Result<(), Box<dyn std::error::Er
     let source = r"
         struct Counter { count: I32 = 0 }
         impl Counter {
-            fn bump() -> I32 { self.count + 1 }
-            fn bump_twice() -> I32 { self.bump() }
+            fn bump(self) -> I32 { self.count + 1 }
+            fn bump_twice(self) -> I32 { self.bump() }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile: {e:?}"))?;
@@ -1027,7 +1027,7 @@ fn test_lower_method_call_static_dispatch_on_struct_instance(
     let source = r"
         struct Counter { count: I32 = 0 }
         impl Counter {
-            fn bump() -> I32 { self.count + 1 }
+            fn bump(self) -> I32 { self.count + 1 }
         }
         pub fn entry() -> I32 {
             Counter().bump()

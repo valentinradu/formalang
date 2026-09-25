@@ -1,0 +1,4 @@
+// expect: reject ParseError
+// docs/user/types.md: the parameter list is always parenthesised, even
+// with one parameter.
+pub let f: I32 -> I32 = (x) -> x

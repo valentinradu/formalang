@@ -1,0 +1,5 @@
+// expect: reject ImplOnPrimitive
+// docs/user/traits.md: a primitive type takes only an extern impl.
+impl String {
+    fn twice(self) -> String { self + self }
+}

@@ -1,0 +1,10 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/moves/ (value moved in previous iteration of loop).
+// The body of a `for` runs once per element. A sink of an outer binding
+// in the body sinks it on the second pass again.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    for i in [1, 2, 3] { take(s: s) }.fold(initial: 0, f: (a, b) -> a + b)
+}

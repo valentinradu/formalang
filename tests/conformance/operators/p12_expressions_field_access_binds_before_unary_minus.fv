@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `.` binds before a unary operator, so
+// `-s.len()` is `-(s.len())`.
+pub fn run_checks() {
+    let s = "abc"
+    assert(condition: -s.len() == -3)
+    assert(condition: !s.is_empty())
+}

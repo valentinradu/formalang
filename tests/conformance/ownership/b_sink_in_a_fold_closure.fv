@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/moves/arc-consumed-in-looped-closure.rs
+// The closure of `fold` runs once per element, and it sinks its capture.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    for i in [1, 2, 3] { i }.fold(initial: 0, f: (a, b) -> a + take(s: s))
+}

@@ -1,0 +1,8 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: the rule reaches inside containers. A generic
+// argument of a field type names the private type.
+struct Hidden { x: I32 }
+
+pub struct Box<T> { v: T }
+
+pub struct S { b: Box<[Hidden]> }

@@ -1,0 +1,7 @@
+// expect: reject SeqNotConsumed
+// docs/user/control-flow.md: a sequence is consumed at least once. The
+// right side of `&&` does not run when the left is false.
+pub fn f(c: Boolean) -> Boolean {
+    let s = for x in [1, 2] { x }
+    c && s.any(f: (v) -> v > 1)
+}

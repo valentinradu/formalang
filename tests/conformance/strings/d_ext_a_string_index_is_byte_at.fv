@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/extern.md: `s[i]` desugars to `s.byte_at(i)`.
+pub fn run_checks() {
+    let s = "hello"
+    let i = 4
+    assert(condition: s[i] == s.byte_at(i: i))
+    assert(condition: s[0] == 104)
+}

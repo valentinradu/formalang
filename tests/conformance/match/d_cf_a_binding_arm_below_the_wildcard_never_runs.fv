@@ -1,0 +1,12 @@
+// expect: reject UnreachableMatchArm
+// docs/user/control-flow.md: a `_` arm takes every value the arms above
+// it did not, so nothing below it can run.
+pub enum E { a(n: I32), b }
+
+fn f(e: E) -> I32 {
+    match e {
+        .b: 2,
+        _: 0,
+        .a(n): n
+    }
+}

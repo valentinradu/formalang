@@ -10,12 +10,14 @@ use super::{IrFunction, IrGenericParam, IrTraitRef};
 /// `Primitive(PrimitiveType)` is reserved for `extern impl <Primitive> { ... }`
 /// blocks (e.g., the compiler-shipped prelude's `extern impl String`),
 /// where the language injects host-provided behaviour onto a primitive
-/// receiver type. Non-extern impls on primitives are not allowed today.
+/// receiver type. The semantic pass rejects a non-extern impl on a
+/// primitive with [`crate::CompilerError::ImplOnPrimitive`].
 #[expect(
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImplTarget {
     /// Impl for a struct
     Struct(StructId),
@@ -26,10 +28,12 @@ pub enum ImplTarget {
     /// extern impls on primitives are rejected at semantic time.
     Primitive(PrimitiveType),
 }
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// An impl block in the IR.
 ///
-/// Impl blocks provide methods for a struct or enum. Backends that need to
+/// Impl blocks provide methods for a struct, an enum or a primitive. Backends that need to
 /// emit trait-conformance declarations (e.g. `TypeScript` / Kotlin
 /// `implements`) can read `trait_id` to learn which trait the block
 /// implements; it is `None` for inherent impls. `is_extern` mirrors the
@@ -39,16 +43,16 @@ pub enum ImplTarget {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrImpl {
     /// The struct or enum this impl is for
     pub target: ImplTarget,
 
     /// `Some(IrTraitRef { trait_id, args })` for `impl Trait for Type`
     /// or `impl Trait<X> for Type`; `None` for inherent impls. The
-    /// args slot is empty for non-generic traits; Phase C of the
-    /// generic-traits work added it so monomorphisation can
-    /// specialise generic-trait impls.
+    /// args slot is empty for non-generic traits. It lets
+    /// monomorphisation specialise generic-trait impls.
     pub trait_ref: Option<IrTraitRef>,
 
     /// Whether this is an `extern impl` block (all methods `is_extern = true`).
@@ -62,7 +66,7 @@ pub struct IrImpl {
     pub functions: Vec<IrFunction>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
 

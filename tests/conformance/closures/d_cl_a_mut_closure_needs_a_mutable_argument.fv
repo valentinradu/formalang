@@ -1,0 +1,8 @@
+// expect: reject MutabilityMismatch
+// docs/user/closures.md: `scale(y)` with an immutable `y` is an error.
+pub fn run_checks() {
+    let scale: (mut I32) -> I32 = (mut n) -> n
+    let y: I32 = 5
+    let s: I32 = scale(y)
+    assert(condition: s == 5)
+}

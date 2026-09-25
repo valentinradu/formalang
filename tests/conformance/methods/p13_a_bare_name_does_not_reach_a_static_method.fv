@@ -1,0 +1,16 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: a bare name names a function, not a method. Inside
+// the impl, write `Counter.zero()`.
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn zero() -> Counter {
+        Counter(value: 0)
+    }
+
+    fn reset(self) -> Counter {
+        zero()
+    }
+}

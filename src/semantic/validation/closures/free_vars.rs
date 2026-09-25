@@ -158,7 +158,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Self::check_captures_rec(body, outer_params, consumed, errors, inner_scopes);
                 inner_scopes.pop();
             }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall { receiver, args, .. }
+            | Expr::Call {
+                callee: receiver,
+                args,
+                ..
+            } => {
                 Self::check_captures_rec(receiver, outer_params, consumed, errors, inner_scopes);
                 for (_, e) in args {
                     Self::check_captures_rec(e, outer_params, consumed, errors, inner_scopes);
@@ -387,7 +392,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 Self::collect_free_vars_rec(body, outer_params, inner_scopes, captures);
                 inner_scopes.pop();
             }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall { receiver, args, .. }
+            | Expr::Call {
+                callee: receiver,
+                args,
+                ..
+            } => {
                 Self::collect_free_vars_rec(receiver, outer_params, inner_scopes, captures);
                 for (_, e) in args {
                     Self::collect_free_vars_rec(e, outer_params, inner_scopes, captures);

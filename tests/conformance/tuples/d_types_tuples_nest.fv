@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: tuples can be nested.
+pub fn run_checks() {
+    let n = (user: (first: "John", last: "Doe"), active: true)
+    assert(condition: n.user.last == "Doe")
+    assert(condition: n.active)
+}

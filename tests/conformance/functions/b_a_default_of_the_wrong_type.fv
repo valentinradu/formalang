@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// A default value has the parameter's type.
+fn f(x: I32 = "zero") -> I32 { x }

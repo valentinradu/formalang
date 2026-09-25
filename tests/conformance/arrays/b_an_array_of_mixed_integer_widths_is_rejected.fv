@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+// docs/user/expressions.md: there is no implicit conversion between
+// types. The elements of one array have one type.
+pub let xs = [1, 2I64]

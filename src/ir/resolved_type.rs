@@ -15,7 +15,8 @@ use super::{EnumId, ImportedKind, IrModule, StructId, TraitId};
     clippy::exhaustive_enums,
     reason = "every generic target is a struct, enum, or trait; other kinds have their own ResolvedType variants"
 )]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GenericBase {
     /// A generic struct base, e.g. `Box` in `Box<T>`.
     Struct(StructId),
@@ -34,7 +35,8 @@ pub enum GenericBase {
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ResolvedType {
     /// Primitive type (String, I32, I64, F32, F64, Boolean, Never)
     Primitive(PrimitiveType),

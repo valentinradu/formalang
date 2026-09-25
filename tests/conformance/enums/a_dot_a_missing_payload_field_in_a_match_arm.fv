@@ -1,0 +1,22 @@
+// expect: reject MissingField
+// The leading-dot form gets its enum from the arm of a `match` that answers the return type.
+// The variant `rect` needs the field `h`. The full form `Shape.rect(w: 1)` reports MissingField, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub enum Pick {
+    first,
+    second
+}
+
+pub fn make(p: Pick, n: I32) -> Shape {
+    match p {
+        .first: .rect(w: 1),
+        .second: .empty
+    }
+}

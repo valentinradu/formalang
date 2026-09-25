@@ -1,0 +1,7 @@
+// expect: reject AssignmentToElement
+// docs/user/types.md: `s[0] = 65` is error E143.
+pub fn run_checks() {
+    let mut s: String = "ab"
+    s[0] = 65
+    assert(condition: true)
+}

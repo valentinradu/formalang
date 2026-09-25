@@ -1,0 +1,8 @@
+// expect: reject RequiredParamAfterDefault
+// docs/user/functions.md: every parameter after a defaulted one must also
+// have a default (`self` is not counted).
+pub struct S { n: I32 }
+
+impl S {
+    fn f(self, x: I32 = 0, y: I32) -> I32 { x + y }
+}

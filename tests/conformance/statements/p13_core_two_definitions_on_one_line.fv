@@ -1,0 +1,4 @@
+// expect: reject ParseError
+// docs/user/core.md: one statement per line applies at module level
+// too. Two definitions on one line are a parse error.
+pub let a: I32 = 1 pub let b: I32 = 2

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/enums.md: a comma separates two variants. A line break
+// alone does not. PLAN.md phase 2, item 1 (FD4).
+pub enum Option<T> {
+  some(value: T)
+  none
+}

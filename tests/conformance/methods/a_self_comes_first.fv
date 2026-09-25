@@ -1,0 +1,6 @@
+// expect: reject ParseError
+// from: rust tests/ui/ (self must be the first parameter).
+pub struct S { v: I32 }
+impl S {
+    fn f(a: I32, self) -> I32 { a }
+}

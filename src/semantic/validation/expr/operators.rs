@@ -66,6 +66,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             BinaryOperator::Eq | BinaryOperator::Ne => {
                 if Self::compares_against_nil(&left_sem, &right_sem) {
                     true
+                } else if is_dot_variant(left) || is_dot_variant(right) {
+                    // The dot side took its enum from the other side,
+                    // and its own check reported a wrong variant.
+                    let other = if is_dot_variant(left) {
+                        &right_sem
+                    } else {
+                        &left_sem
+                    };
+                    Self::expected_enum_name(other)
+                        .is_some_and(|name| self.symbols.get_enum_qualified(&name).is_some())
                 } else {
                     left_type == right_type && self.is_equatable(&left_sem)
                 }
@@ -84,6 +94,60 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 span,
             });
         }
+    }
+
+    /// Check the operand of a unary operator: `-` takes a number, and
+    /// `!` takes a `Boolean`.
+    pub(super) fn validate_unary_operand(
+        &mut self,
+        op: crate::ast::UnaryOperator,
+        operand: &Expr,
+        file: &File,
+    ) {
+        use crate::ast::{PrimitiveType, UnaryOperator};
+        let operand_sem = self.infer_type_sem(operand, file);
+        if operand_sem.is_indeterminate() {
+            return;
+        }
+        let (fits, expected) = match op {
+            UnaryOperator::Neg => (
+                matches!(
+                    operand_sem,
+                    SemType::Primitive(
+                        PrimitiveType::I32
+                            | PrimitiveType::I64
+                            | PrimitiveType::F32
+                            | PrimitiveType::F64
+                    )
+                ),
+                "a number",
+            ),
+            UnaryOperator::Not => (
+                operand_sem == SemType::Primitive(PrimitiveType::Boolean),
+                "Boolean",
+            ),
+        };
+        if !fits {
+            self.errors.push(CompilerError::TypeMismatch {
+                expected: expected.to_string(),
+                found: operand_sem.display(),
+                span: operand.span(),
+            });
+        }
+    }
+
+    /// The expected type of each operand of a binary operator. A
+    /// leading-dot variant takes the type of the other operand.
+    pub(super) fn operand_expectations(
+        &self,
+        left: &Expr,
+        right: &Expr,
+        file: &File,
+    ) -> (Option<SemType>, Option<SemType>) {
+        let other = |dot: &Expr, other: &Expr| {
+            is_dot_variant(dot).then(|| self.infer_type_sem(other, file))
+        };
+        (other(left, right), other(right, left))
     }
 
     /// Whether this comparison is an optional against `nil`.
@@ -214,6 +278,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         file: &File,
     ) {
         let value_sem = self.infer_type_sem(value, file);
+        self.check_pattern_names_are_unique(pattern);
 
         // Skip destructuring validation when value type is unknown (field access, etc.)
         if value_sem.is_unknown() {
@@ -268,7 +333,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     | SemType::InferredEnum
                     | SemType::Nil => None,
                 };
-                if let Some(struct_info) = lookup_name.and_then(|n| self.symbols.get_struct(n)) {
+                // The prelude declares its carriers (`Range`, `Seq`, ...)
+                // as structs, but their fields are not the program's to
+                // take apart.
+                let is_carrier = lookup_name.is_some_and(|n| {
+                    matches!(n, "Array" | "Dictionary" | "Optional" | "Range" | "Seq")
+                });
+                if let Some(struct_info) = lookup_name
+                    .filter(|_| !is_carrier)
+                    .and_then(|n| self.symbols.get_struct(n))
+                {
                     let field_names: Vec<&str> =
                         struct_info.fields.iter().map(|f| f.name.as_str()).collect();
                     for field in fields {
@@ -290,21 +364,39 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 }
             }
             BindingPattern::Tuple { elements, .. } => {
-                // Validate tuple pattern arity against tuple type "(x: T, y: U, ...)"
-                if let SemType::Tuple(fields) = &value_sem {
-                    let field_count = fields.len();
-                    let pattern_count = elements.len();
-                    if pattern_count > field_count && field_count > 0 {
-                        self.errors.push(CompilerError::TypeMismatch {
-                            expected: format!("tuple with {field_count} field(s)"),
-                            found: value_sem.display(),
-                            span,
-                        });
-                    }
+                // A tuple pattern takes a tuple with as many fields as it
+                // has names. An enum value is not a tuple: its payload is
+                // read with `match` or `if let` (PLAN FD3).
+                let fits = if let SemType::Tuple(fields) = &value_sem {
+                    elements.len() == fields.len()
+                } else {
+                    value_sem.is_indeterminate()
+                };
+                if !fits {
+                    self.errors.push(CompilerError::TypeMismatch {
+                        expected: format!("tuple with {} field(s)", elements.len()),
+                        found: value_sem.display(),
+                        span,
+                    });
                 }
             }
             BindingPattern::Simple(_) => {
                 // Simple patterns don't require type validation here
+            }
+        }
+    }
+
+    /// Report a name that a destructuring pattern binds twice.
+    fn check_pattern_names_are_unique(&mut self, pattern: &BindingPattern) {
+        let mut names: Vec<&crate::ast::Ident> = Vec::new();
+        collect_pattern_names(pattern, &mut names);
+        let mut seen = std::collections::HashSet::new();
+        for ident in names {
+            if !seen.insert(ident.name.as_str()) {
+                self.errors.push(CompilerError::DuplicateDefinition {
+                    name: ident.name.clone(),
+                    span: ident.span,
+                });
             }
         }
     }
@@ -329,6 +421,43 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 actual: condition_sem.display(),
                 span,
             });
+        }
+    }
+}
+
+/// True when `expr` is a leading-dot variant, maybe in parentheses.
+fn is_dot_variant(expr: &Expr) -> bool {
+    if let Expr::Group { expr, .. } = expr {
+        return is_dot_variant(expr);
+    }
+    matches!(expr, Expr::InferredEnumInstantiation { .. })
+}
+
+/// Each name that `pattern` binds, in source order.
+fn collect_pattern_names<'p>(pattern: &'p BindingPattern, out: &mut Vec<&'p crate::ast::Ident>) {
+    match pattern {
+        BindingPattern::Simple(ident) => out.push(ident),
+        BindingPattern::Array { elements, .. } => {
+            for element in elements {
+                match element {
+                    crate::ast::ArrayPatternElement::Binding(inner) => {
+                        collect_pattern_names(inner, out);
+                    }
+                    crate::ast::ArrayPatternElement::Rest(Some(ident)) => out.push(ident),
+                    crate::ast::ArrayPatternElement::Rest(None)
+                    | crate::ast::ArrayPatternElement::Wildcard => {}
+                }
+            }
+        }
+        BindingPattern::Struct { fields, .. } => {
+            for field in fields {
+                out.push(field.alias.as_ref().unwrap_or(&field.name));
+            }
+        }
+        BindingPattern::Tuple { elements, .. } => {
+            for element in elements {
+                collect_pattern_names(element, out);
+            }
         }
     }
 }

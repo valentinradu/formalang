@@ -1,0 +1,7 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/ (E0424). A method with no `self` parameter
+// cannot read `self`.
+pub struct Counter { value: I32 }
+impl Counter {
+    fn get() -> I32 { self.value }
+}

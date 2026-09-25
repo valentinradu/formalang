@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/closures.md: the declared return type gives the type of the
+// result, so the closure parameter needs no type.
+fn make() -> (I32) -> I32 {
+    (x) -> x * 2
+}
+
+pub fn run_checks() {
+    let g = make()
+    assert(condition: g(4) == 8)
+}

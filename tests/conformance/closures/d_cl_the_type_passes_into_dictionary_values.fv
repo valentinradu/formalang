@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/closures.md: the type goes through the elements of a
+// dictionary.
+pub fn run_checks() {
+    let d: [String: (I32) -> I32] = ["inc": (x) -> x + 1]
+    let r = if let f = d["inc"] { f(1) } else { 0 }
+    assert(condition: r == 2)
+}

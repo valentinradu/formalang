@@ -1,0 +1,7 @@
+// expect: reject SeqUsedTwice
+// A sequence holds no elements, so there is nothing to compare. A `==`
+// would read it.
+pub fn f() -> Boolean {
+    let a = for x in [1] { x }
+    a == a
+}

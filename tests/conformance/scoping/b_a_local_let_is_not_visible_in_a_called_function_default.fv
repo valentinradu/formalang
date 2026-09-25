@@ -1,0 +1,9 @@
+// expect: reject UndefinedReference
+// A default value is in the scope of the callee's definition, not the
+// caller's body.
+fn f(x: I32 = hidden) -> I32 { x }
+
+pub fn g() -> I32 {
+    let hidden: I32 = 1
+    f()
+}

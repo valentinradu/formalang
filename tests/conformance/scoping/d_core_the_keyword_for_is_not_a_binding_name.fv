@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `for` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let for = 1
+    assert(condition: for == 1)
+}

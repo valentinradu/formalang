@@ -1,0 +1,3 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: each name appears once.
+trait T { x: I32, x: I32 }

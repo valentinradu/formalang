@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// from: go test/ (operator - not defined on string).
+pub fn f() -> String { -"a" }

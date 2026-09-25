@@ -1,0 +1,4 @@
+// expect: reject NotATrait
+// docs/user/generics.md: constraints must reference existing traits.
+pub struct Plain { n: I32 }
+pub struct Wrapper<T: Plain> { item: T }

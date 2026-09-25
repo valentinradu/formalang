@@ -1,7 +1,7 @@
 //! Reachability walkers used by the DCE pass.
 //!
 //! The walkers traverse [`crate::ir::ResolvedType`] and [`IrExpr`] values,
-//! marking any [`StructId`], [`TraitId`], or [`EnumId`] they encounter as
+//! marking any [`crate::ir::StructId`], [`crate::ir::TraitId`], or [`crate::ir::EnumId`] they encounter as
 //! live in the parent [`super::DeadCodeEliminator`].
 
 use crate::ir::IrExpr;

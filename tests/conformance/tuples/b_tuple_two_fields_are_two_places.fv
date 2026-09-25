@@ -1,0 +1,8 @@
+// expect: compile
+// docs/user/functions.md: two different fields are two places.
+fn swap(mut a: I32, mut b: I32) { }
+
+pub fn f() {
+    let mut t = (x: 1, y: 2)
+    swap(a: t.x, b: t.y)
+}

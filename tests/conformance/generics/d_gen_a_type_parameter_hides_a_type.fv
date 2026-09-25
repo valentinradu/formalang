@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/generics.md: a type parameter hides a type with the same name
+// inside its definition.
+pub struct Item { n: I32 }
+
+fn same<Item>(x: Item) -> Item { x }
+
+pub fn run_checks() {
+    assert(condition: same(x: 3) == 3)
+    assert(condition: same(x: "a") == "a")
+}

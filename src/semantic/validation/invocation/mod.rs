@@ -2,8 +2,10 @@
 //! overload resolution), closure-binding calls, and the `mod::item` module
 //! visibility check used at every qualified call/reference site.
 
+mod call_shape;
 mod functions;
 pub(in crate::semantic) mod overloads;
+mod resolution;
 mod structs;
 
 use std::borrow::Cow;
@@ -65,7 +67,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ///
     /// Returns true if access is allowed, false if a `VisibilityViolation`
     /// was emitted.
-    pub(in crate::semantic::validation) fn check_module_visibility(
+    pub(in crate::semantic) fn check_module_visibility(
         &mut self,
         path: &[crate::ast::Ident],
         span: Span,
@@ -143,7 +145,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .join("::");
 
         let expected = self.invocation_argument_types(&name, type_args, args, file);
-        for ((_, arg_expr), arg_expected) in args.iter().zip(expected) {
+        for ((_, arg_expr), arg_expected) in args.iter().zip(expected.iter().cloned()) {
             self.validate_expr_expecting(arg_expr, arg_expected, file);
         }
         for type_arg in type_args {
@@ -159,7 +161,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if is_struct {
             self.validate_expr_invocation_struct(&name, type_args, args, span, file);
         } else {
-            self.validate_expr_invocation_function(&name, type_args, args, span, file);
+            self.validate_expr_invocation_function(&name, type_args, args, &expected, span, file);
         }
     }
 }

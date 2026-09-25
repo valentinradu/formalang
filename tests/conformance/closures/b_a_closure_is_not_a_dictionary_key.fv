@@ -1,0 +1,7 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: the key types are String, I32, I64, Boolean, a
+// struct, or an enum. A closure has no equality, so it cannot be a key.
+pub fn g() -> I32 {
+    let d: [(I32) -> I32: I32] = [:]
+    d.len()
+}

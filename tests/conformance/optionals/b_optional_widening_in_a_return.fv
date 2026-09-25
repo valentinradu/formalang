@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/types.md: a value wraps into an optional wherever one is
+// declared, and this reaches inside a container.
+fn f() -> [I32?] { [1, 2] }
+
+pub fn run_checks() {
+    let xs = f()
+    assert(condition: xs.len() == 2)
+    // The index gives an `I32?`, and `if let` unwraps it to an `I32`.
+    if let v = xs[0] { assert(condition: v == 1) } else { assert(condition: false) }
+}

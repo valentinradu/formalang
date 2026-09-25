@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: a type that holds a closure is not equatable.
+pub fn g() -> Boolean {
+    let a: [String: (I32) -> I32] = ["id": (x) -> x]
+    a == a
+}

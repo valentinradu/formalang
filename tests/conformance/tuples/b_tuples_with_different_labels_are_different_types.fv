@@ -1,0 +1,6 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/types.md: all tuple fields are named. The names are part of
+// the type, so `(x: I32, y: I32)` is not `(a: I32, b: I32)`.
+pub fn f() -> (x: I32, y: I32) {
+    (a: 1, b: 2)
+}

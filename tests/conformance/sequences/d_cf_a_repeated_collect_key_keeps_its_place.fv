@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/control-flow.md: when two elements give the same key, the
+// later value replaces the earlier one, and the entry keeps its place.
+pub fn run_checks() {
+    let d: [I32: String] = for p in [(k: 1, v: "a"), (k: 2, v: "b"), (k: 1, v: "c")] { p }
+        .collect(key: (p) -> p.k, value: (p) -> p.v)
+    assert(condition: d.len() == 2)
+    let v: String = if let s = d[1] { s } else { "" }
+    assert(condition: v == "c")
+}

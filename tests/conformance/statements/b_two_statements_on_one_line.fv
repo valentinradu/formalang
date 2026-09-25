@@ -1,0 +1,8 @@
+// expect: reject ParseError
+// from: swift test/stmt/ (consecutive statements on a line must be
+// separated). The statements of a block are separated by line breaks. Two `let`s on
+// one line with nothing between them are not two statements.
+pub fn f() -> I32 {
+    let a = 1 let b = 2
+    a + b
+}

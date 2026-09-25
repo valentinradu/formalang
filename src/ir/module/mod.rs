@@ -33,13 +33,16 @@ mod prelude;
 /// let struct_def = module.get_struct(struct_id).expect("struct exists");
 /// assert_eq!(struct_def.name, "User");
 /// ```
-/// **Serde note:** the private name→id index maps (`struct_names`,
-/// `trait_names`, `enum_names`, `function_names`, `let_names`) are marked
-/// `#[serde(skip)]` so round-tripped modules don't carry stale entries.
-/// After deserialising, callers must call [`IrModule::rebuild_indices`]
-/// before any `struct_id` / `trait_id` / `get_function` lookups, or those
-/// helpers will return `None`.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+/// **Serde note:** the `serde` feature derives `serde::Serialize` and
+/// `serde::Deserialize` on `IrModule` and on every type in it. The
+/// feature is off by default. The JSON form is not a stable format.
+/// Serde skips the private name→id index maps (`struct_names`,
+/// `trait_names`, `enum_names`, `function_names`, `let_names`), so a
+/// read module has no stale entries. After you read a module, call
+/// [`IrModule::rebuild_indices`] before any `struct_id` / `trait_id` /
+/// `get_function` lookup. If you do not, those helpers return `None`.
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrModule {
     /// All struct definitions, indexed by `StructId`
     pub structs: Vec<IrStruct>,
@@ -69,7 +72,10 @@ pub struct IrModule {
     /// modules. The flat per-type vectors (`structs`, `traits`, etc.)
     /// remain authoritative; this tree is an *index* on top of them
     /// for backends that need to preserve module hierarchy.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub modules: Vec<IrModuleNode>,
 
     /// Source-file table indexed by [`crate::ir::FileId`]. Index 0 is
@@ -81,25 +87,28 @@ pub struct IrModule {
     /// Backends emit DWARF `DW_AT_decl_file` / source-map `sources`
     /// entries by walking this table; per-IR-node spans carry the
     /// `FileId` that indexes into it.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub file_table: Vec<std::path::PathBuf>,
 
     /// Mapping from struct names to IDs for lookup during lowering.
     /// Skipped during serde round-trips; rebuilt on load via
     /// `rebuild_indices`.
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     struct_names: HashMap<String, StructId>,
 
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     trait_names: HashMap<String, TraitId>,
 
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     enum_names: HashMap<String, EnumId>,
 
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     function_names: HashMap<String, FunctionId>,
 
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     let_names: HashMap<String, usize>,
 }
 
@@ -117,7 +126,8 @@ pub struct IrModule {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrModuleNode {
     /// Module name as written in source (the unqualified segment, e.g.
     /// `"shapes"` for `mod shapes { ... }`).
@@ -125,18 +135,33 @@ pub struct IrModuleNode {
 
     /// IDs of structs declared directly in this module (not in nested
     /// sub-modules).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub structs: Vec<StructId>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub traits: Vec<TraitId>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub enums: Vec<EnumId>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub functions: Vec<FunctionId>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub modules: Vec<Self>,
 }

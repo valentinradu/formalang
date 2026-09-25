@@ -25,10 +25,15 @@ pub enum Type {
         params: Vec<(ParamConvention, Type)>,
         ret: Box<Type>,
     },
-    Never,                           // Never type (!)
-    TypeParameter(Ident),            // Reference to type parameter
 }
 ```
+
+The parser gives `Type::Ident` for every name that is not a primitive:
+a struct, an enum, a trait, and a type parameter such as `T`. A path
+such as `shapes::Point` is one `Ident` with the segments joined by
+`::`. The
+semantic pass decides what the name means. The type `Never` is
+`Type::Primitive(PrimitiveType::Never)`.
 
 ## PrimitiveType
 
@@ -40,8 +45,7 @@ pub enum PrimitiveType {
     F32,
     F64,
     Boolean,
-    /// Uninhabited type: has no values.
-    Never,
+    Never,  // Uninhabited type: has no values
 }
 ```
 

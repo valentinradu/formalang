@@ -1,0 +1,7 @@
+// expect: reject ArrayDestructuringNotArray
+// docs/user/types.md: no destructuring support for dictionaries.
+pub fn f() -> I32 {
+    let d: [String: I32] = ["a": 1]
+    let [a] = d
+    0
+}

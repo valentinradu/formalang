@@ -1,0 +1,9 @@
+// expect: reject UseAfterSink
+// A field that was sunk cannot be read again. A tuple field is a field.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let t = (s: "x", n: 1)
+    let a = take(s: t.s)
+    a + t.s.len()
+}

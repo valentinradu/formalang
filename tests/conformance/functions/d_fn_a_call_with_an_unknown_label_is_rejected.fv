@@ -1,0 +1,6 @@
+// expect: reject NoMatchingOverload
+// docs/user/functions.md: calling with an unknown label set is a
+// compile error.
+fn one(a: I32) -> I32 { a }
+
+pub let r: I32 = one(b: 1)

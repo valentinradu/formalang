@@ -1,0 +1,6 @@
+// expect: reject UnknownEnumVariant
+// The parameter type `() -> S` gives the closure its return type, so
+// `.nope` names a variant of S that does not exist.
+pub enum S { a, b }
+fn call(f: () -> S) -> S { f() }
+pub let s: S = call(f: () -> .nope)

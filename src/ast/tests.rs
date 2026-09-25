@@ -107,10 +107,10 @@ fn test_expr_span_invocation() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_file_new_sets_format_version() -> Result<(), Box<dyn std::error::Error>> {
+fn test_file_new_has_no_doc() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::new(vec![], Span::default());
-    if file.format_version != FORMAT_VERSION {
-        return Err(format!("expected {FORMAT_VERSION}, got {}", file.format_version).into());
+    if file.doc.is_some() || !file.statements.is_empty() {
+        return Err(format!("expected an empty file, got {file:?}").into());
     }
     Ok(())
 }

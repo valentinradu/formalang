@@ -430,6 +430,7 @@ fn test_dictionary_literal_parsing() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::ClosureExpr { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected DictLiteral, got {expr:?}").into()),
     }
     Ok(())
@@ -466,6 +467,7 @@ fn test_empty_dictionary_literal() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::ClosureExpr { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected DictLiteral, got {expr:?}").into()),
     }
     Ok(())
@@ -515,6 +517,7 @@ fn test_dictionary_access_parsing() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::ClosureExpr { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
     }
     Ok(())
@@ -589,6 +592,7 @@ fn test_chained_dictionary_access() -> Result<(), Box<dyn std::error::Error>> {
                         | Expr::ClosureExpr { .. }
                         | Expr::LetExpr { .. }
                         | Expr::MethodCall { .. }
+                        | Expr::Call { .. }
                         | Expr::Block { .. } => return Err("Expected reference 'data'".into()),
                     }
                 }
@@ -610,6 +614,7 @@ fn test_chained_dictionary_access() -> Result<(), Box<dyn std::error::Error>> {
                 | Expr::ClosureExpr { .. }
                 | Expr::LetExpr { .. }
                 | Expr::MethodCall { .. }
+                | Expr::Call { .. }
                 | Expr::Block { .. } => return Err("Expected inner DictAccess".into()),
             }
         }
@@ -631,6 +636,7 @@ fn test_chained_dictionary_access() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::ClosureExpr { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
     }
     Ok(())
@@ -679,6 +685,7 @@ fn test_dictionary_with_expression_key() -> Result<(), Box<dyn std::error::Error
         | Expr::ClosureExpr { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected DictAccess, got {expr:?}").into()),
     }
     Ok(())
@@ -893,6 +900,7 @@ fn test_closure_expr_no_params() -> Result<(), Box<dyn std::error::Error>> {
                 | Expr::ClosureExpr { .. }
                 | Expr::LetExpr { .. }
                 | Expr::MethodCall { .. }
+                | Expr::Call { .. }
                 | Expr::Block { .. } => {
                     return Err(format!("Expected InferredEnumInstantiation, got {body:?}").into())
                 }
@@ -916,6 +924,7 @@ fn test_closure_expr_no_params() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected ClosureExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -959,6 +968,7 @@ fn test_closure_expr_single_param() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected ClosureExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1003,6 +1013,7 @@ fn test_closure_expr_multi_params() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected ClosureExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1047,6 +1058,7 @@ fn test_closure_expr_with_type_annotation() -> Result<(), Box<dyn std::error::Er
         | Expr::FieldAccess { .. }
         | Expr::LetExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected ClosureExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1132,6 +1144,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
                 | Expr::ClosureExpr { .. }
                 | Expr::LetExpr { .. }
                 | Expr::MethodCall { .. }
+                | Expr::Call { .. }
                 | Expr::Block { .. } => return Err("Expected number literal".into()),
             }
             match *body {
@@ -1159,6 +1172,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
                 | Expr::ClosureExpr { .. }
                 | Expr::LetExpr { .. }
                 | Expr::MethodCall { .. }
+                | Expr::Call { .. }
                 | Expr::Block { .. } => return Err("Expected reference in body".into()),
             }
         }
@@ -1180,6 +1194,7 @@ fn test_let_expr_basic() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::ClosureExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1227,6 +1242,7 @@ fn test_let_expr_with_type() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::ClosureExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1275,6 +1291,7 @@ fn test_let_expr_mutable() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::ClosureExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1349,6 +1366,7 @@ fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
                 | Expr::FieldAccess { .. }
                 | Expr::ClosureExpr { .. }
                 | Expr::MethodCall { .. }
+                | Expr::Call { .. }
                 | Expr::Block { .. } => return Err("Expected nested LetExpr".into()),
             }
         }
@@ -1370,6 +1388,7 @@ fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
         | Expr::FieldAccess { .. }
         | Expr::ClosureExpr { .. }
         | Expr::MethodCall { .. }
+        | Expr::Call { .. }
         | Expr::Block { .. } => return Err(format!("Expected LetExpr, got {expr:?}").into()),
     }
     Ok(())
@@ -1377,16 +1396,24 @@ fn test_nested_let_exprs() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_block_expr_simple() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_expr_from_let("{ let x = 1 x }");
+    let result = parse_expr_from_let("{\n    let x = 1\n    x\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block: {result:?}").into());
     }
     Ok(())
 }
 
+/// A line break separates two statements. Two statements on one line
+/// are an error, not two statements.
+#[test]
+fn test_block_expr_two_statements_on_one_line_is_an_error() {
+    assert!(parse_expr_from_let("{ let x = 1 x }").is_err());
+    assert!(parse_expr_from_let("{ let a = 1 let b = 2\n    a + b\n}").is_err());
+}
+
 #[test]
 fn test_block_expr_with_call() -> Result<(), Box<dyn std::error::Error>> {
-    let result = parse_expr_from_let("{ let v = foo.bar(1) Result(value: v) }");
+    let result = parse_expr_from_let("{\n    let v = foo.bar(1)\n    Result(value: v)\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block with call: : {result:?}").into());
     }
@@ -1406,7 +1433,7 @@ fn test_block_expr_no_let() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_block_expr_let_simple_then_call() -> Result<(), Box<dyn std::error::Error>> {
     // Block with let binding a literal, then a call
-    let result = parse_expr_from_let("{ let v = 1 Result(value: v) }");
+    let result = parse_expr_from_let("{\n    let v = 1\n    Result(value: v)\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block let simple then call: : {result:?}").into());
     }
@@ -1416,7 +1443,7 @@ fn test_block_expr_let_simple_then_call() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn test_block_expr_let_field_access() -> Result<(), Box<dyn std::error::Error>> {
     // Block with let binding field access, then a reference
-    let result = parse_expr_from_let("{ let v = foo.bar v }");
+    let result = parse_expr_from_let("{\n    let v = foo.bar\n    v\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block let field access: : {result:?}").into());
     }
@@ -1426,7 +1453,7 @@ fn test_block_expr_let_field_access() -> Result<(), Box<dyn std::error::Error>> 
 #[test]
 fn test_block_expr_let_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
     // Block with let binding a call, then a reference
-    let result = parse_expr_from_let("{ let v = foo(1) v }");
+    let result = parse_expr_from_let("{\n    let v = foo(1)\n    v\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block let call then ref: : {result:?}").into());
     }
@@ -1436,7 +1463,7 @@ fn test_block_expr_let_call_then_ref() -> Result<(), Box<dyn std::error::Error>>
 #[test]
 fn test_block_expr_let_method_call_then_ref() -> Result<(), Box<dyn std::error::Error>> {
     // Block with let binding a method call, then a reference
-    let result = parse_expr_from_let("{ let v = foo.bar(1) v }");
+    let result = parse_expr_from_let("{\n    let v = foo.bar(1)\n    v\n}");
     if result.is_err() {
         return Err(format!("Failed to parse block let method call then ref: : {result:?}").into());
     }

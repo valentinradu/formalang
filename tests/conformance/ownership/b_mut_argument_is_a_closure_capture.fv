@@ -1,0 +1,14 @@
+// expect: reject MutabilityMismatch
+// from: rust tests/ui/closures/ (a closure that mutates a capture).
+// Closures are pure. A closure body cannot pass a captured binding to a
+// `mut` parameter, as this changes the outer binding.
+fn bump(mut n: I32) -> I32 {
+    n = n + 1
+    n
+}
+
+pub fn f() -> I32 {
+    let mut x: I32 = 1
+    let g: () -> I32 = () -> bump(n: x)
+    g()
+}

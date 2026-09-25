@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/types.md: a literal takes its declared type. A parameter
+// declares the type of its argument.
+fn half(n: I64) -> I64 { n / 2I64 }
+
+pub fn run_checks() {
+    assert(condition: half(n: 3000000000) == 1500000000I64)
+}

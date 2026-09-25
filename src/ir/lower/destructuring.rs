@@ -34,7 +34,7 @@ impl IrLowerer<'_> {
                 ty,
                 value: access,
                 doc: let_binding.doc.clone(),
-                span: self.current_ir_span(),
+                span: self.ir_span(let_binding.span),
             });
         }
     }

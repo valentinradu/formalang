@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// The keys of one dictionary have one type.
+pub let d = ["a": 1, 2: 2]

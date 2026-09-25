@@ -1,0 +1,10 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: a float has no usable equality, so it is not a key.
+// A struct that holds a float compares that float, and has the same
+// problem.
+pub struct K { x: F64 }
+
+pub fn f() -> I32 {
+    let d: [K: I32] = [:]
+    d.len()
+}

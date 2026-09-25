@@ -1,0 +1,6 @@
+// expect: run
+// A key is compared by equality, and "a" is not "A".
+pub fn run_checks() {
+    let d: [String: I32] = ["a": 1, "A": 2]
+    assert(condition: d.len() == 2)
+}

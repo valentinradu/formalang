@@ -1,0 +1,5 @@
+// expect: run
+// `skip` with a count below zero skips nothing.
+pub fn run_checks() {
+    assert(condition: for x in [1, 2, 3] { x }.skip(count: -1).count() == 3)
+}

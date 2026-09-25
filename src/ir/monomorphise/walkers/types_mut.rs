@@ -205,9 +205,18 @@ fn walk_expr_types_mut_inner(expr: &mut IrExpr, visit: &mut impl FnMut(&mut Reso
             }
         }
         IrExpr::MethodCall {
-            receiver, args, ty, ..
+            receiver,
+            args,
+            ty,
+            dispatch,
+            ..
         } => {
             visit(ty);
+            if let crate::ir::DispatchKind::Virtual { trait_args, .. } = dispatch {
+                for t in trait_args {
+                    visit(t);
+                }
+            }
             walk_expr_types_mut_inner(receiver, visit);
             for (_, a) in args {
                 walk_expr_types_mut_inner(a, visit);

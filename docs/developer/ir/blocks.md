@@ -20,7 +20,9 @@ pub struct IrMatchArm {
     /// Whether this is a wildcard (`_`).
     pub is_wildcard: bool,
 
-    /// Bindings for associated data: `(name, binding_id, type)`. Each
+    /// Bindings for associated data: `(name, binding_id, type)`. A
+    /// binding takes the payload field at its position, not the field
+    /// with its name: `.some(v)` binds `v` to the first field. Each
     /// `binding_id` is a fresh per-function id introduced by the arm;
     /// backends key on it to reach the slot the arm writes the payload
     /// into. Lowering emits `BindingId(0)` and `ResolveReferencesPass`
@@ -48,14 +50,17 @@ pub enum IrBlockStatement {
         mutable: bool,
         ty: Option<ResolvedType>,
         value: IrExpr,
+        span: IrSpan,
     },
     /// Assignment: `x = expr`.
     Assign {
         /// Variable or field path being written.
         target: IrExpr,
         value: IrExpr,
+        span: IrSpan,
     },
-    /// Expression evaluated for its side effects.
+    /// Expression evaluated for its side effects. The expression
+    /// carries its own span.
     Expr(IrExpr),
 }
 ```

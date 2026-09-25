@@ -35,6 +35,7 @@ pub struct LetBinding {
     pub pattern: BindingPattern,
     pub type_annotation: Option<Type>,  // Optional: let x: String = "hello"
     pub value: Expr,
+    pub doc: Option<String>,            // Joined `///` lines before the binding
     pub span: Span,
 }
 ```

@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/functions.md, Mode A: the overloads differ in the type of
+// one label. A Boolean argument picks the Boolean overload.
+fn tag(v: I32) -> I32 { 1 }
+fn tag(v: Boolean) -> I32 { 2 }
+pub fn run_checks() {
+    assert(condition: tag(v: true) == 2)
+    assert(condition: tag(v: 5) == 1)
+}

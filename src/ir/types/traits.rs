@@ -5,6 +5,8 @@ use crate::ast::{FunctionAttribute, Visibility};
 use crate::ir::{IrSpan, ResolvedType, TraitId};
 
 use super::{IrField, IrFunctionParam, IrGenericParam};
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// A trait definition in the IR.
 ///
@@ -13,7 +15,8 @@ use super::{IrField, IrFunctionParam, IrGenericParam};
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrTrait {
     /// The trait name
     pub name: String,
@@ -34,11 +37,14 @@ pub struct IrTrait {
     pub generic_params: Vec<IrGenericParam>,
 
     /// Joined `///` doc comments preceding this trait.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub doc: Option<String>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
 
@@ -58,7 +64,8 @@ pub struct IrTrait {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrFunctionSig {
     /// Function name
     pub name: String,
@@ -73,10 +80,13 @@ pub struct IrFunctionSig {
     /// declared on the trait method signature. Empty when none are
     /// present. Round-trips serialised IR while remaining backwards-
     /// compatible with documents that predate this field.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub attributes: Vec<FunctionAttribute>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }

@@ -1,0 +1,14 @@
+// expect: run
+// docs/user/modules.md: use a nested enum with a namespace path.
+mod alignment {
+    pub enum Vertical { top, center, bottom }
+    pub enum Horizontal { left, center, right }
+}
+
+pub let vertical: alignment::Vertical = .top
+pub let horizontal: alignment::Horizontal = .center
+
+pub fn run_checks() {
+    assert(condition: vertical == alignment::Vertical.top)
+    assert(condition: horizontal != alignment::Horizontal.left)
+}

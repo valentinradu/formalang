@@ -1,0 +1,4 @@
+// expect: reject PublicClosureField
+// docs/user/closures.md: a `pub enum` variant field cannot have a closure
+// type.
+pub enum Event { handler(f: (I32) -> I32) }

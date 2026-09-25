@@ -1,0 +1,4 @@
+// expect: reject CircularDependency
+// from: go test/initloop.go (initialization cycle).
+let A: I32 = B + 1
+let B: I32 = A + 1

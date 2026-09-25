@@ -1,0 +1,35 @@
+// expect: run
+// docs/user/traits.md: `Type.method(...)` calls a static method, a
+// method with no `self`. The call works inside the impl, in a closure,
+// in a module `let` and at the top level.
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn zero() -> Counter {
+        Counter(value: 0)
+    }
+
+    fn starting(at: I32) -> Counter {
+        Counter(value: at)
+    }
+
+    fn reset(self) -> Counter {
+        Counter.zero()
+    }
+}
+
+pub let origin: Counter = Counter.zero()
+
+fn later() -> () -> Counter {
+    () -> Counter.starting(at: 9)
+}
+
+pub fn run_checks() {
+    assert(condition: Counter.zero().value == 0)
+    assert(condition: Counter.starting(at: 5).value == 5)
+    assert(condition: Counter(value: 3).reset().value == 0)
+    assert(condition: later()().value == 9)
+    assert(condition: origin.value == 0)
+}

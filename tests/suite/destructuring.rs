@@ -64,7 +64,7 @@ fn test_array_destructuring_first_and_last() -> Result<(), Box<dyn std::error::E
 fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
     // Basic struct destructuring: let {name, age} = user
     let source = r#"
-        struct User { name: String, age: I32 }
+        pub struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name, age} = user
     "#;
@@ -76,7 +76,7 @@ fn test_struct_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> 
 fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Error>> {
     // Rename during destructuring: let {name as username} = user
     let source = r#"
-        struct User { name: String, age: I32 }
+        pub struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name as username} = user
     "#;
@@ -88,7 +88,7 @@ fn test_struct_destructuring_with_rename() -> Result<(), Box<dyn std::error::Err
 fn test_struct_destructuring_partial() -> Result<(), Box<dyn std::error::Error>> {
     // Partial destructuring: let {name} = user (only extract some fields)
     let source = r#"
-        struct User { name: String, age: I32 }
+        pub struct User { name: String, age: I32 }
         pub let user = User(name: "Alice", age: 30)
         pub let {name} = user
     "#;
@@ -102,25 +102,45 @@ fn test_struct_destructuring_partial() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn test_enum_destructuring_simple() -> Result<(), Box<dyn std::error::Error>> {
-    // Enum destructuring: let (permissions, articles) = account
+    // Enum destructuring is refused: let (permissions, articles) = account
     let source = r#"
         enum AccountType { admin, user(permissions: [String], articles: [String]) }
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let (permissions, articles) = account
     "#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    // Decided (PLAN FD3): an enum value is not destructured. The payload
+    // is read with `match` or `if let`.
+    let errors = compile(source)
+        .err()
+        .ok_or("enum destructuring must be refused")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {errors:?}").into());
+    }
     Ok(())
 }
 
 #[test]
 fn test_enum_destructuring_nested() -> Result<(), Box<dyn std::error::Error>> {
-    // Nested destructuring with enums: let ([firstPerm, ...], articles) = account
+    // Nested enum destructuring is refused too
     let source = r#"
         enum AccountType { admin, user(permissions: [String], articles: [String]) }
         pub let account = AccountType.user(permissions: ["read", "write"], articles: ["article1", "article2"])
         pub let ([firstPerm, ...], articles) = account
     "#;
-    compile(source).map_err(|e| format!("{e:?}"))?;
+    // Decided (PLAN FD3): an enum value is not destructured. The payload
+    // is read with `match` or `if let`.
+    let errors = compile(source)
+        .err()
+        .ok_or("enum destructuring must be refused")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::TypeMismatch { .. }))
+    {
+        return Err(format!("expected TypeMismatch, got {errors:?}").into());
+    }
     Ok(())
 }
 

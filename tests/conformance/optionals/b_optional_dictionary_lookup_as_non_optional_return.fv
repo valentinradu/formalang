@@ -1,0 +1,3 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/expressions.md: a lookup gives `T?`, not `T`.
+pub fn f(d: [String: I32]) -> I32 { d["a"] }

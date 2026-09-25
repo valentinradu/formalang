@@ -1,0 +1,7 @@
+// expect: reject UnreachableMatchArm
+// docs/user/control-flow.md: an arm below `_` never runs.
+pub enum E { a, b }
+
+pub fn f(e: E) -> I32 {
+    match e { _: 0, _: 1 }
+}

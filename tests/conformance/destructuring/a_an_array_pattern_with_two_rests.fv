@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// from: rust tests/ui/pattern/rest-pat-*.rs. An array pattern holds at
+// most one rest, or the split is ambiguous.
+pub fn f(xs: [I32]) -> I32 {
+    let [...a, x, ...b] = xs
+    x
+}

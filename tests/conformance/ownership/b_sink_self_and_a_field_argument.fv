@@ -1,0 +1,13 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a `sink` argument needs sole access to the
+// value, and the receiver counts as an argument.
+pub struct C { n: I32 }
+
+impl C {
+    fn eat(sink self, k: I32) -> I32 { self.n + k }
+}
+
+pub fn f() -> I32 {
+    let c = C(n: 1)
+    c.eat(k: c.n)
+}

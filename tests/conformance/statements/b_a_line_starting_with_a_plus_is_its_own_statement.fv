@@ -1,0 +1,8 @@
+// expect: reject ParseError
+// A line that starts with `+` is not a continuation. `+ 2` alone is not
+// an expression, since there is no unary `+`.
+pub fn f() -> I32 {
+    let v = 1
+    + 2
+    v
+}

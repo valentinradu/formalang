@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `== nil` answers what `.is_none()` answers.
+pub fn run_checks() {
+    let held: String? = "a"
+    let empty: String? = nil
+    assert(condition: (held == nil) == held.is_none())
+    assert(condition: (empty != nil) == empty.is_some())
+}

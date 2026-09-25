@@ -1,0 +1,7 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: a sequence runs once. The `fold` closure runs
+// once per element.
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    for i in [1, 2, 3] { i }.fold(initial: 0, f: (a, b) -> a + s.count())
+}

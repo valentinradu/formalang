@@ -17,9 +17,15 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: Span,
         file: &File,
     ) {
-        let named_args: Vec<(crate::ast::Ident, Expr)> = args
+        // A field may be given once.
+        if !self.check_repeated_labels(args) {
+            return;
+        }
+        // The arguments are borrowed, not cloned: the analyzer records
+        // facts about an expression node by its address.
+        let named_args: Vec<(&crate::ast::Ident, &Expr)> = args
             .iter()
-            .filter_map(|(name_opt, expr)| name_opt.as_ref().map(|n| (n.clone(), expr.clone())))
+            .filter_map(|(name_opt, expr)| name_opt.as_ref().map(|n| (n, expr)))
             .collect();
 
         for (i, (name_opt, arg_expr)) in args.iter().enumerate() {
@@ -40,9 +46,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for (type_arg, generic_param) in type_args.iter().zip(expected_params.iter()) {
                     for constraint in &generic_param.constraints {
                         let crate::ast::GenericConstraint::Trait {
-                            name: trait_ref, ..
+                            name: trait_ref,
+                            args: trait_args,
                         } = constraint;
-                        if !self.type_satisfies_trait_constraint(type_arg, &trait_ref.name) {
+                        if !self.type_satisfies_trait_constraint(
+                            type_arg,
+                            &trait_ref.name,
+                            trait_args,
+                        ) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(type_arg),
                                 constraint: trait_ref.name.clone(),
@@ -79,7 +90,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             });
         }
 
-        self.validate_struct_fields(name, &named_args, span, file);
+        self.validate_struct_fields(name, type_args, &named_args, span, file);
         self.validate_struct_mutability(name, &named_args, file, span);
     }
 }

@@ -1,0 +1,16 @@
+// expect: run
+// docs/user/generics.md: `Box(value: 3).map(f: (v) -> v > 2)` is a
+// `Box<Boolean>`.
+pub struct Box<T> { value: T }
+
+impl Box<T> {
+    fn map<U>(self, f: (T) -> U) -> Box<U> {
+        Box(value: f(self.value))
+    }
+}
+
+pub fn run_checks() {
+    let flag = Box(value: 3).map(f: (v) -> v > 2)
+    let b: Boolean = flag.value
+    assert(condition: b)
+}

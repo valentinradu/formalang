@@ -1,0 +1,10 @@
+// expect: compile
+// docs/user/types.md: a `mut` parameter may be assigned. `mut self` is a
+// `mut` parameter.
+pub struct P { x: I32 }
+
+impl P {
+    fn reset(mut self) {
+        self = P(x: 0)
+    }
+}

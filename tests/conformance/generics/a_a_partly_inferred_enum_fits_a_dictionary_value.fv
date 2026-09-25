@@ -1,0 +1,13 @@
+// expect: run
+// The payload gives one type argument of Result, and the context gives
+// the other. A value of the right type must be accepted.
+
+pub enum Result<T, E> {
+    ok(value: T),
+    error(err: E)
+}
+
+pub fn run_checks() {
+    let d: [String: Result<String, I32>] = ["a": Result.ok(value: "s")]
+    assert(condition: d.len() == 1)
+}

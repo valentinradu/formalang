@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+// docs/user/control-flow.md: the loop variable is scoped to the body.
+pub fn run_checks() {
+    let n: I32 = for x in [1] { x }.count()
+    assert(condition: x == n)
+}

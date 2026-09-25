@@ -1,0 +1,8 @@
+// expect: reject UseAfterSink
+// docs/user/functions.md: defaults are re-evaluated on every call. A
+// default that sinks a module value sinks it on each call.
+let S: String = "x"
+
+fn take(sink s: String) -> I32 { s.len() }
+
+fn f(n: I32 = take(s: S)) -> I32 { n }

@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/types.md: under value semantics `let ys = xs` is a copy. A
+// new value in `ys` does not reach `xs`.
+pub fn run_checks() {
+    let mut xs: [I32] = [1, 2]
+    let mut ys = xs
+    ys = [7]
+    assert(condition: xs.len() == 2)
+    assert(condition: ys.len() == 1)
+}

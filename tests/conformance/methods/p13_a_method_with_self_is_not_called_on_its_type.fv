@@ -1,0 +1,16 @@
+// expect: reject NotAStaticMethod
+// docs/user/traits.md: a call on the type reaches only a static method.
+// `get` takes `self`, so it needs a value.
+pub struct Counter {
+    value: I32
+}
+
+impl Counter {
+    fn get(self) -> I32 {
+        self.value
+    }
+}
+
+pub fn f() -> I32 {
+    Counter.get()
+}

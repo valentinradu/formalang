@@ -1,0 +1,10 @@
+// expect: run
+// from: rust tests/ui/borrowck/ (`s = f(s)` moves and then reinitializes).
+// A `let mut` binding that is sunk and given the result is whole again.
+fn pass(sink s: String) -> String { s + "!" }
+
+pub fn run_checks() {
+    let mut s: String = "a"
+    s = pass(s: s)
+    assert(condition: s == "a!")
+}

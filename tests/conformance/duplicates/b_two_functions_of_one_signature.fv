@@ -1,0 +1,5 @@
+// expect: reject DuplicateDefinition
+// docs/user/functions.md: overloads are allowed when their signatures
+// differ. Two of the same signature are a duplicate.
+fn f(x: I32) -> I32 { 1 }
+fn f(x: I32) -> I32 { 2 }

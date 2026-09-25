@@ -1,0 +1,8 @@
+// expect: reject UseAfterSink
+// The condition runs before the branch.
+fn take(sink s: String) -> Boolean { s.len() > 0 }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    if take(s: s) { s.len() } else { 0 }
+}

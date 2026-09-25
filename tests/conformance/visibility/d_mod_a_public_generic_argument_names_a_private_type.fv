@@ -1,0 +1,7 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: a `pub` definition may not name a private type
+// (E141). The rule reaches inside containers.
+struct Hidden { x: I32 }
+
+pub struct Box<T> { v: T }
+pub fn g(b: Box<Hidden>) -> I32 { 1 }

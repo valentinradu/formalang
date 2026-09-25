@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+// docs/user/expressions.md: there is no implicit conversion between
+// types. The offset is an `I32`, as the prelude `byte_at` says.
+pub fn f() -> I32 { "abc"[0I64] }

@@ -1,0 +1,4 @@
+// expect: compile
+// docs/user/traits.md: a line break separates two members of a trait,
+// and a comma is also allowed.
+pub trait Shape { color: String, fn area(self) -> I32, fn perimeter(self) -> I32 }

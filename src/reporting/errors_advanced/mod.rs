@@ -36,10 +36,10 @@ pub(in crate::reporting) use generics::{
     uninferable_method_type_parameter,
 };
 pub(in crate::reporting) use misc::{
-    closure_capture_escapes_local_binding, expression_depth_exceeded, float_dictionary_key,
-    internal_error, not_indexable, private_type_in_public, public_closure_field,
-    seq_invalid_position, seq_not_consumed, seq_used_twice, too_many_definitions,
-    unreachable_match_arm, visibility_violation,
+    expression_depth_exceeded, instantiation_depth_exceeded, internal_error,
+    invalid_dictionary_key, labelled_closure_argument, not_a_static_method, not_indexable,
+    private_type_in_public, public_closure_field, seq_invalid_position, seq_not_consumed,
+    seq_used_twice, too_many_definitions, unreachable_match_arm, visibility_violation,
 };
 pub(in crate::reporting) use mutability::{
     mutability_mismatch, overlapping_arguments, use_after_sink,

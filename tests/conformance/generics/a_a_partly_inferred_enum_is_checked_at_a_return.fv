@@ -1,0 +1,14 @@
+// expect: reject TypeMismatch
+// The payload gives one type argument of Result, and nothing gives the
+// other. The check must still compare the one that the payload gives.
+// With one type parameter the check works: see
+// enums/generic_payload_checked_against_the_annotation.fv.
+
+pub enum Result<T, E> {
+    ok(value: T),
+    error(err: E)
+}
+
+pub fn f() -> Result<String, I32> {
+    Result.ok(value: 1)
+}

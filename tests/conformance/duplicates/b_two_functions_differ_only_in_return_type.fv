@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// docs/user/functions.md: overloads are distinguished by their label
+// sets, or the first positional type. The return type does not count, so
+// these two have one signature.
+fn f(x: I32) -> I32 { 1 }
+fn f(x: I32) -> String { "a" }

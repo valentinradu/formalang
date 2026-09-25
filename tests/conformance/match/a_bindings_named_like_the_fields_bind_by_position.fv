@@ -1,0 +1,14 @@
+// expect: run
+// Decided (docs/user/control-flow.md): a match arm binds the payload by
+// position, not by name. Here the names are the field names in another
+// order: `h` binds the first field (the width), and `w` binds the second
+// (the height).
+pub enum E { rect(w: I32, h: I32) }
+pub fn second(e: E) -> I32 {
+    match e {
+        .rect(h, w): w
+    }
+}
+pub fn run_checks() {
+    assert(condition: second(e: E.rect(w: 3, h: 7)) == 7)
+}

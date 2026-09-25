@@ -392,14 +392,13 @@ fn test_error_struct_as_trait_constraint() -> Result<(), Box<dyn std::error::Err
         struct NotATrait { x: String }
         struct Bad<T: NotATrait> { x: T }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected UndefinedTrait error")?;
+    // A struct used as a bound is a struct, not an unknown trait.
+    let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
         .iter()
-        .any(|e| matches!(e, CompilerError::UndefinedTrait { name, .. } if name == "NotATrait"));
+        .any(|e| matches!(e, CompilerError::NotATrait { name, .. } if name == "NotATrait"));
     if !has_error {
-        return Err(format!("expected UndefinedTrait for 'NotATrait', got: {errors:?}").into());
+        return Err(format!("expected NotATrait for 'NotATrait', got: {errors:?}").into());
     }
     Ok(())
 }
@@ -969,14 +968,13 @@ fn test_error_generic_constraint_is_struct() -> Result<(), Box<dyn std::error::E
         struct NotATrait { x: String }
         struct Wrapper<T: NotATrait> { item: T }
     ";
-    let errors = compile(source)
-        .err()
-        .ok_or("expected UndefinedTrait error")?;
+    // A struct used as a bound is a struct, not an unknown trait.
+    let errors = compile(source).err().ok_or("expected NotATrait error")?;
     let has_error = errors
         .iter()
-        .any(|e| matches!(e, CompilerError::UndefinedTrait { .. }));
+        .any(|e| matches!(e, CompilerError::NotATrait { .. }));
     if !has_error {
-        return Err(format!("expected UndefinedTrait, got: {errors:?}").into());
+        return Err(format!("expected NotATrait, got: {errors:?}").into());
     }
     Ok(())
 }

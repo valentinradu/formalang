@@ -8,12 +8,37 @@ use crate::ir::{GenericBase, IrGenericParam, IrModule, ResolvedType};
 use super::specialise::Instantiation;
 use super::walkers::walk_module_types;
 
+/// A set of instantiations that keeps the order in which they were
+/// first found.
+///
+/// The worklist makes the specialisations in this order, and each one
+/// takes the next free id. A `HashSet` gave a new order on each run, so
+/// one source gave a different module each time.
+#[derive(Default)]
+pub(super) struct Found {
+    seen: HashSet<Instantiation>,
+    order: Vec<Instantiation>,
+}
+
+impl Found {
+    fn insert(&mut self, inst: Instantiation) {
+        if self.seen.insert(inst.clone()) {
+            self.order.push(inst);
+        }
+    }
+
+    /// The instantiations, in the order they were first found.
+    pub(super) fn into_vec(self) -> Vec<Instantiation> {
+        self.order
+    }
+}
+
 /// Walk every type slot in the module and gather `(base, type_args)` keys
 /// for every generic instantiation. Generic-trait constraints and impl
 /// trait references aren't reached by the type walker, so they're added
 /// in a separate pass at the bottom.
-pub(super) fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantiation> {
-    let mut out = HashSet::new();
+pub(super) fn collect_all_instantiations(module: &IrModule) -> Vec<Instantiation> {
+    let mut out = Found::default();
     let mut collector = |ty: &ResolvedType| collect_from_type(ty, &mut out);
     walk_module_types(module, &mut collector);
 
@@ -46,10 +71,10 @@ pub(super) fn collect_all_instantiations(module: &IrModule) -> HashSet<Instantia
     for f in &module.functions {
         collect_constraints(&f.generic_params, &mut out);
     }
-    out
+    out.into_vec()
 }
 
-fn collect_constraints(params: &[IrGenericParam], out: &mut HashSet<Instantiation>) {
+fn collect_constraints(params: &[IrGenericParam], out: &mut Found) {
     for p in params {
         for c in &p.constraints {
             if !c.args.is_empty() {
@@ -62,7 +87,7 @@ fn collect_constraints(params: &[IrGenericParam], out: &mut HashSet<Instantiatio
     }
 }
 
-pub(super) fn collect_from_type(ty: &ResolvedType, out: &mut HashSet<Instantiation>) {
+pub(super) fn collect_from_type(ty: &ResolvedType, out: &mut Found) {
     match ty {
         ResolvedType::Generic { base, args } => {
             for a in args {

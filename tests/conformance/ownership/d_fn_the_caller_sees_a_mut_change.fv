@@ -1,0 +1,14 @@
+// expect: compile
+// docs/user/functions.md: `mut` is not a private copy. The caller sees the
+// change.
+fn bump(mut score: I32) -> I32 {
+    score = score + 1
+    score
+}
+
+pub fn run_checks() {
+    let mut n: I32 = 0
+    let r = bump(score: n)
+    assert(condition: r == 1)
+    assert(condition: n == 1)
+}

@@ -1,0 +1,8 @@
+// expect: run
+// The two arguments are independent values. The closure gets them in
+// its declared order.
+pub fn run_checks() {
+    let sub: (I32, I32) -> I32 = (a, b) -> a - b
+    assert(condition: sub(10, 3) == 7)
+    assert(condition: sub(3, 10) == -7)
+}

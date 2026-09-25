@@ -2,8 +2,9 @@
 //!
 //! The AST's [`crate::location::Span`] is single-file (byte / line /
 //! column only). The IR can hold definitions and expressions that
-//! originate from multiple source files (after cross-module
-//! inlining), so it wraps the AST span with a `FileId` indexing into
+//! originate from multiple source files (the linker copies each
+//! imported module into the module that imports it), so it wraps the
+//! AST span with a `FileId` indexing into
 //! [`crate::ir::IrModule::file_table`].
 //!
 //! `FileId(0)` is reserved for synthetic / unknown nodes — closure-
@@ -11,12 +12,11 @@
 //! IR constructed without a known source file (e.g. test fixtures
 //! using `IrSpan::default()`). Real source files start at `FileId(1)`.
 
-use serde::{Deserialize, Serialize};
-
 /// Index into [`crate::ir::IrModule::file_table`]. `FileId(0)` is
 /// reserved for synthetic / unknown nodes.
 #[expect(clippy::exhaustive_structs, reason = "public id wrapper")]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FileId(pub u32);
 
 impl FileId {
@@ -35,7 +35,8 @@ impl FileId {
 /// Backends emit DWARF / source-map entries by reading the `span` (byte range
 /// + line / column) and resolving `file` against `IrModule.file_table`.
 #[expect(clippy::exhaustive_structs, reason = "public IR shape")]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrSpan {
     /// Byte range + line / column within the source file.
     pub span: crate::location::Span,
@@ -53,10 +54,19 @@ impl IrSpan {
 
     /// True when both the AST span and the file id are at their
     /// defaults — i.e. the IR node was constructed without a known
-    /// source location. Serde uses this as the `skip_serializing_if`
-    /// predicate so default-spanned IR doesn't bloat round-trips.
+    /// source location. With the `serde` feature, serde leaves out a
+    /// span that is at its default (see `no_span`).
     #[must_use]
     pub fn is_default(&self) -> bool {
         self.span == crate::location::Span::default() && self.file.is_synthetic()
     }
+}
+
+/// The `skip_serializing_if` predicate of each IR `span` field. Serde
+/// leaves out a span that is at its default, so synthetic IR does not
+/// make the JSON larger. The short name keeps each attribute on one
+/// line.
+#[cfg(feature = "serde")]
+pub(crate) fn no_span(span: &IrSpan) -> bool {
+    span.is_default()
 }

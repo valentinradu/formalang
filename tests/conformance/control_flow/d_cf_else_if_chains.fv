@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/control-flow.md: chained conditions with `else if`.
+fn size(x: I32) -> String {
+    if x > 100 { "large" } else if x > 50 { "medium" } else { "small" }
+}
+
+pub fn run_checks() {
+    assert(condition: size(x: 101) == "large")
+    assert(condition: size(x: 51) == "medium")
+    assert(condition: size(x: 50) == "small")
+}

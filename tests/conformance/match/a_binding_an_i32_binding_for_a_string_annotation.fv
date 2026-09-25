@@ -1,0 +1,30 @@
+// expect: reject TypeMismatch
+// A match arm binds each payload field with the type of that field.
+// `r` is an I32, and the annotation says String.
+// See PLAN.md, item 2.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    label(text: String),
+    flag(on: Boolean),
+    empty
+}
+
+pub fn take_string(s: String) -> I32 {
+    0
+}
+
+pub struct Box {
+    v: String
+}
+
+pub fn f(s: Shape) -> I32 {
+    match s {
+        .circle(r): {
+            let t: String = r
+            0
+        },
+        _: 0
+    }
+}

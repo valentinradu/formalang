@@ -1,0 +1,5 @@
+// expect: reject ArgumentCountMismatch
+// docs/user/closures.md: `f(1, 2)` for a one-parameter closure is E138.
+fn wrong(f: (I32) -> I32) -> I32 {
+    f(1, 2)
+}

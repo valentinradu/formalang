@@ -92,8 +92,14 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-formalang = "0.0.8-beta"
+formalang = "0.0.9-beta"
 ```
+
+To serialize the IR, turn on the `serde` feature:
+`formalang = { version = "0.0.9-beta", features = ["serde"] }`. Then
+`IrModule` and every type in it derive `serde::Serialize` and
+`serde::Deserialize`. The JSON form of the IR is not a stable format.
+The AST has no serialized form.
 
 Compile a source string:
 
@@ -108,33 +114,43 @@ let source = r#"
 "#;
 
 let module = compile_to_ir(source).unwrap();
-println!("{}", module.structs[0].name); // User
+let user = module.user_structs().next().unwrap();
+println!("{}", user.name); // User
 ```
 
 ---
 
 ## Language Tour
 
+Each block below is a complete program. The test suite compiles each
+one, and runs its `run_checks()` when it has one.
+
 ### Primitives
 
-```rust
-let text: String = "hello"
-let count: I32 = 42
-let big: I64 = 9_223_372_036_854_775_807
-let ratio: F64 = 3.14
-let small: F32 = 0.5F32          // type-suffix pins literal precision
-let flag: Boolean = true
-let nothing: String? = nil       // optional; any type can be made optional with ?
+```formalang
+pub let text: String = "hello"
+pub let count: I32 = 42
+pub let big: I64 = 9_223_372_036_854_775_807
+pub let ratio: F64 = 3.14
+pub let small: F32 = 0.5              // the annotation gives F32
+pub let tagged = 0.5F32               // a suffix gives the type too
+pub let flag: Boolean = true
+pub let nothing: String? = nil        // optional; any type can be made optional with ?
 ```
 
-Numeric primitives are width-tagged: `I32`, `I64`, `F32`, `F64`. Unsuffixed
-integer literals default to `I32`; unsuffixed float literals default to
-`F64`. Suffix syntax is uppercase and adjacent to the digits (`42I64`,
-`3.14F32`).
+Numeric primitives are width-tagged: `I32`, `I64`, `F32`, `F64`. An
+unsuffixed literal takes its type from its position: an annotation, a
+parameter, a field or a return type. Where no position gives a type,
+an integer literal is an `I32` and a float literal is an `F64`. A
+suffix is uppercase and adjacent to the digits (`42I64`, `3.14F32`).
+An operator does not give its type to the other operand: with
+`n: I64`, write `n + 1I64`.
 
 ### Structs
 
-```rust
+A comma separates two fields.
+
+```formalang
 pub struct Point {
     x: I32,
     y: I32
@@ -144,19 +160,24 @@ pub struct User {
     name: String,
     email: String,
     nickname: String?,       // optional field
-    score: I32
+    score: I32 = 0           // field with a default
 }
 
 // Instantiate with named arguments
-let p = Point(x: 10, y: 20)
-let u = User(name: "Alice", email: "alice@example.com", nickname: nil, score: 0)
-// Mutability is a property of the binding, not the field; to mutate any
-// field of `u` you bind it with `let mut u = User(...)`.
+pub let p = Point(x: 10, y: 20)
+pub let u = User(name: "Alice", email: "alice@example.com", nickname: nil)
+
+// Mutability is a property of the binding, not the field.
+pub fn run_checks() {
+    let mut moved = p
+    moved.x = 11
+    assert(condition: moved.x == 11 && u.score == 0)
+}
 ```
 
 ### Methods (impl blocks)
 
-```rust
+```formalang
 pub struct Counter {
     value: I32
 }
@@ -172,19 +193,23 @@ impl Counter {
 }
 ```
 
+`self` exists only in a method that declares it, as its first
+parameter. A method without `self` is static.
+
 ### Parameter Conventions
 
-Every function parameter has a convention controlling how the argument is received. The call site always looks the same as `f(x)`; only the function declaration changes.
+Every function parameter has a convention controlling how the argument is received. The call site always looks the same as `f(x: v)`; only the function declaration changes.
 
-```rust
+```formalang
 // default: immutable; the callee reads the value
 fn area(radius: I32) -> I32 {
     radius * radius
 }
 
-// mut: callee may mutate; argument binding must be let mut
-fn bump(mut n: I32) -> I32 {
-    n
+// mut: callee may change it, and the caller sees the change;
+// the argument binding must be let mut
+fn bump(mut n: I32) {
+    n = n + 1
 }
 
 // sink: ownership transfer; caller cannot use the binding after the call
@@ -192,10 +217,20 @@ fn consume(sink label: String) -> String {
     label
 }
 
+pub struct Counter { value: I32 }
+
 // Self conventions work the same way
 impl Counter {
-    fn view(self) -> I32 { self.value }         // default (immutable self)
-    fn increment(mut self) -> I32 { self.value } // mut self
+    fn view(self) -> I32 { self.value }            // default (immutable self)
+    fn increment(mut self) { self.value = self.value + 1 }  // mut self
+}
+
+pub fn run_checks() {
+    let mut n: I32 = 1
+    bump(n: n)
+    let mut c = Counter(value: 0)
+    c.increment()
+    assert(condition: n == 2 && c.view() == 1)
 }
 ```
 
@@ -203,7 +238,7 @@ impl Counter {
 
 Traits declare field and method requirements. Any struct that satisfies all of them can declare conformance.
 
-```rust
+```formalang
 pub trait Named {
     name: String
 }
@@ -213,22 +248,30 @@ pub trait Shape {
     fn area(self) -> I32
 }
 
-// Declare conformance
-pub struct Circle {
+pub struct Square {
     name: String,
     color: String,
-    radius: I32
+    side: I32
 }
 
-impl Named for Circle {}            // fields checked against struct definition
-
-impl Shape for Circle {
-    fn area(self) -> I32 {
-        self.radius * self.radius   // simplified
-    }
+pub struct Rectangle {
+    name: String,
+    color: String,
+    width: I32,
+    height: I32
 }
 
-// Trait composition
+impl Named for Square {}            // fields checked against struct definition
+
+impl Shape for Square {
+    fn area(self) -> I32 { self.side * self.side }
+}
+
+impl Shape for Rectangle {
+    fn area(self) -> I32 { self.width * self.height }
+}
+
+// Trait composition: each trait in the chain needs its own impl block
 pub trait NamedShape: Named + Shape {
     label: String
 }
@@ -257,92 +300,132 @@ fn area(kind: I32, side: I32, w: I32, h: I32) -> I32 {
         .rectangle(value): value.area()
     }
 }
+
+pub fn run_checks() {
+    assert(condition: area(kind: 0, side: 3, w: 0, h: 0) == 9)
+    assert(condition: area_of(shape: Rectangle(name: "r", color: "c", width: 2, height: 5)) == 10)
+}
 ```
 
 ### Enums
 
-```rust
+A comma separates two variants.
+
+```formalang
 pub enum Status {
-    pending
-    active
+    pending,
+    active,
     done
 }
 
 pub enum Message {
-    text(content: String)
-    image(url: String, size: I32)
+    text(content: String),
+    image(url: String, size: I32),
     quit
 }
 
-// Instantiate with leading dot
-let s: Status = .active
-let m: Message = .text(content: "hello")
+// Instantiate with a leading dot; the annotation gives the enum
+pub let s: Status = .active
+pub let m: Message = .text(content: "hello")
+
+// Or name the enum
+pub let q = Message.quit
 ```
 
 ### Let bindings
 
-```rust
-let x = 42
-let name: String = "Alice"
+```formalang
+pub let x = 42
+pub let name: String = "Alice"
 pub let MAX: I32 = 100
-let mut counter: I32 = 0    // mutable binding
+
+pub fn run_checks() {
+    let mut counter: I32 = 0    // mutable binding
+    counter = counter + 1
+    assert(condition: counter == 1)
+}
 ```
+
+In a body, a line break ends a statement. Two statements on one line
+are an error.
 
 ### Arrays, Dictionaries, Tuples
 
-```rust
-// Arrays
-let tags: [String] = ["a", "b", "c"]
-let matrix: [[I32]] = [[1, 2], [3, 4]]
+```formalang
+pub fn run_checks() {
+    // Arrays
+    let tags: [String] = ["a", "b", "c"]
+    let matrix: [[I32]] = [[1, 2], [3, 4]]
 
-// Dictionaries
-let config: [String: I32] = ["timeout": 30, "retries": 3]
-let empty: [String: Boolean] = [:]
+    // Dictionaries
+    let config: [String: I32] = ["timeout": 30, "retries": 3]
+    let empty: [String: Boolean] = [:]
 
-// Tuples (all fields must be named)
-let point = (x: 10, y: 20)
-let name = point.x
+    // Tuples (all fields must be named)
+    let point = (x: 10, y: 20)
+    let x = point.x
 
-// Indexing returns an Optional. The bound may be out of range or the
-// key absent, so `xs[i]` and `d[k]` yield `T?` / `V?`. Use `if let` to
-// consume the inner value.
-let timeout: I32? = config["timeout"]
-let first: String? = tags[0]
+    // Indexing returns an Optional. The bound may be out of range or the
+    // key absent, so `xs[i]` and `d[k]` yield `T?` / `V?`. Use `if let` to
+    // consume the inner value.
+    let timeout: I32? = config["timeout"]
+    let first: String? = tags[0]
+
+    assert(condition: matrix.len() == 2 && empty.is_empty() && x == 10)
+    assert(condition: if let t = timeout { t == 30 } else { false })
+    assert(condition: first != nil)
+}
 ```
 
 ### Control Flow
 
-```rust
-// if: branches on a Boolean.
-if user.score > 0 {
-    greet(name: user.name)
-} else {
-    welcome()
+```formalang
+pub struct Item { score: I32 }
+pub struct User { name: String, nickname: String?, score: I32 }
+
+pub enum Message {
+    text(content: String),
+    image(url: String, size: I32),
+    quit
 }
 
-// if let: Rust-style optional unwrap. Both branches required.
-if let nickname = user.nickname {
-    greet(name: nickname)        // nickname is bound to the unwrapped value
-} else {
-    greet(name: user.name)
-}
+fn greet(name: String) -> String { "Hi, " + name }
 
-// for: yields a lazy sequence. Nothing runs until a terminal
-// combinator consumes it, so a pipeline is one pass with no
-// intermediate array.
-let total: I32 = for item in items { item.score }
-    .filter(f: (s) -> s > 0)
-    .fold(initial: 0, f: (a, b) -> a + b)
+pub fn tour(user: User, items: [Item], message: Message) -> I32 {
+    // if: branches on a Boolean.
+    let score = if user.score > 0 {
+        user.score
+    } else {
+        0
+    }
 
-// `.collect()` for an array, `.run()` for effects alone. A sequence is
-// consumed exactly once: dropping one, or reading it twice, is an error.
-let scores: [I32] = for item in items { item.score }.collect()
+    // if let: Rust-style optional unwrap. Both branches required.
+    let hello = if let nickname = user.nickname {
+        greet(name: nickname)        // nickname is bound to the unwrapped value
+    } else {
+        greet(name: user.name)
+    }
 
-// match: exhaustive, on enums (and on Optional, treated as .some / .none)
-match message {
-    .text(content): display(value: content),
-    .image(url, size): showImage(src: url),
-    .quit: stop()
+    // for: yields a lazy sequence. Nothing runs until a terminal
+    // combinator consumes it, so a pipeline is one pass with no
+    // intermediate array.
+    let total: I32 = for item in items { item.score }
+        .filter(f: (s) -> s > 0)
+        .fold(initial: 0, f: (a, b) -> a + b)
+
+    // `.collect()` for an array, `.run()` for effects alone. A sequence is
+    // consumed exactly once: dropping one, or reading it twice, is an error.
+    let scores: [I32] = for item in items { item.score }.collect()
+
+    // match: exhaustive, on enums (and on Optional, as .some / .none).
+    // The names bind the associated values by position.
+    let weight = match message {
+        .text(content): content.len(),
+        .image(url, size): size,
+        .quit: 0
+    }
+
+    score + hello.len() + total + scores.len() + weight
 }
 ```
 
@@ -350,60 +433,76 @@ match message {
 
 Closure types describe a callable shape; closure expressions construct one. Both wrap their parameter list in parentheses so every `->` in the language is preceded by `)`.
 
-```rust
+```formalang
 pub enum Event {
     pressed,
     textChanged(value: String),
     resized(width: I32, height: I32)
 }
 
-pub struct Button<E> {
+struct Button<E> {
     onPress:  () -> E,                  // no parameters
     onChange: (String) -> E,            // single parameter
     onResize: (I32, I32) -> E,          // multiple parameters
     onSubmit: ((String) -> E)?          // optional closure
 }
-```
 
-Closure expressions wrap their parameter list in parentheses — even
-for a single parameter — so every `->` in the language is preceded by
-`)`:
-
-```rust
-// Untyped — parameter types come from the binding annotation or call context
-let onPress  = () -> .pressed
-let onChange = (x) -> .textChanged(value: x)
-let onResize = (w, h) -> .resized(width: w, height: h)
-
-// Typed parameters — annotate inline with `name: Type`
-let increment = (n: I32) -> n + 1
-let combine   = (x: I32, y: I32) -> x + y
-```
-
-Closures capture values from their surrounding scope. The `ClosureConversionPass` lifts each closure into a top-level function plus a synthetic env struct, so backends only ever consume named functions.
-
-```rust
-fn make_adder(sink n: I32) -> (I32) -> I32 {
-    (x: I32) -> x + n          // captures n
+fn make_button() -> Button<Event> {
+    // The field types give the closures their parameter types
+    Button<Event>(
+        onPress: () -> .pressed,
+        onChange: (x) -> .textChanged(value: x),
+        onResize: (w, h) -> .resized(width: w, height: h),
+        onSubmit: nil
+    )
 }
 
-let add5 = make_adder(n: 5)
+pub fn run_checks() {
+    // With no declared type around it, a parameter needs its type
+    let increment = (n: I32) -> n + 1
+    let combine = (x: I32, y: I32) -> x + y
+    assert(condition: combine(increment(1), 3) == 5)   // a closure call takes no labels
+}
 ```
 
-Closure parameters carry the same conventions as regular function parameters (`mut`, `sink`). The convention constrains the **caller of the closure**:
+A closure field cannot be part of a `pub struct` or a `pub enum`:
+closures stay inside their module.
 
-```rust
-pub struct Form<E> {
+A closure captures by value, so a returned closure may capture any
+binding: a parameter, a local `let` or a module `let`. The
+`ClosureConversionPass` lifts each closure into a top-level
+function plus a synthetic env struct, so backends only ever consume
+named functions.
+
+```formalang
+fn make_adder(n: I32) -> (I32) -> I32 {
+    (x: I32) -> x + n          // captures a copy of n
+}
+
+pub fn run_checks() {
+    let add5 = make_adder(n: 5)
+    assert(condition: add5(1) == 6)
+}
+```
+
+Closure parameters carry the same conventions as regular function
+parameters (`mut`, `sink`). The convention constrains the **caller of
+the closure**:
+
+```formalang
+struct Form<E> {
     onScale:   (mut I32) -> E,    // caller must pass a mutable binding
     onConsume: (sink String) -> E // caller's binding is moved
 }
 ```
 
-Closures are pure and single-expression: no statements, no side effects in the language itself. Effects live in the host runtime, reached through `extern` declarations.
+A closure body is one expression; a block `{ ... }` counts as one.
+Effects live in the host runtime, reached through `extern`
+declarations.
 
 ### Generics
 
-```rust
+```formalang
 pub struct Box<T> {
     value: T
 }
@@ -421,59 +520,79 @@ pub struct Container<T: Layout> {   // constrained type parameter
 }
 
 pub enum Result<T, E> {
-    ok(value: T)
+    ok(value: T),
     error(err: E)
 }
 
-let b = Box<String>(value: "hello")
-let r: Result<String, I32> = .ok(value: "success")
+pub let b = Box<String>(value: "hello")
+pub let r: Result<String, I32> = .ok(value: "success")
 
 // Type-argument inference: when every generic parameter shows up in a
 // field position, the type args can be omitted at the call site.
-let inferred = Box(value: 42)        // Box<I32>
-let pair = Pair(first: 10, second: true)  // Pair<I32, Boolean>
+pub let inferred = Box(value: 42)              // Box<I32>
+pub let pair = Pair(first: 10, second: true)   // Pair<I32, Boolean>
 ```
 
 ### Destructuring
 
-```rust
-// Arrays
-let [first, second, ...rest] = items
-let [_, second, ...] = items    // skip with _
+```formalang
+pub struct User { name: String, age: I32 }
 
-// Structs (by field name)
-let {name, age} = user
-let {name as username} = user   // rename
+pub enum Message { text(content: String), quit }
 
-// Enums (extract associated data)
-let (content) = some_text_message
+pub fn run_checks() {
+    let items = ["a", "b", "c", "d"]
+    let user = User(name: "Ada", age: 36)
+
+    // Arrays
+    let [first, second, ...rest] = items
+    let [_, again, ...] = items    // skip with _
+
+    // Structs (by field name)
+    let {name, age} = user
+    let {name as username} = user  // rename
+
+    // An enum value is not destructured: use match (or if let)
+    let m: Message = .text(content: "hi")
+    let content = match m {
+        .text(c): c,
+        .quit: ""
+    }
+
+    assert(condition: second == again && rest.len() == 2)
+    assert(condition: name == username && age == 36 && content == "hi")
+    assert(condition: first == "a")
+}
 ```
 
 ### Modules
 
-```rust
+```formalang
 // Inline module
 pub mod geometry {
     pub struct Point { x: I32, y: I32 }
     pub enum Direction { north, south, east, west }
 }
 
-let p: geometry::Point = geometry::Point(x: 0, y: 0)
+pub let p: geometry::Point = geometry::Point(x: 0, y: 0)
 
-// Import from other .fv files
-use geometry::Point
-use ui::{Button, Text}
-use data::models::User
+// Import an item of an inline module
+use geometry::Direction
+
+pub let d: Direction = .north
 ```
 
-Files map to module paths: `use geometry::shapes::Circle` resolves to `geometry/shapes.fv`.
-Only `pub` items can be imported. Circular imports are a compile error.
+Files map to module paths: `use geometry::shapes::Circle` resolves to
+`geometry/shapes.fv`, and `use ui::{Button, Text}` resolves to `ui.fv`.
+Only `pub` items can be imported, and `pub use` exports an imported
+item again. An imported type brings its impl blocks, trait impls
+included. Circular imports are a compile error.
 
 ### Extern declarations
 
 Describe functions and method surfaces provided by the host runtime; they have no FormaLang body. There is no `extern type`; host-provided types are declared as regular structs and given an `extern impl` so their methods are resolved by the host.
 
-```rust
+```formalang
 pub struct Canvas {}
 pub struct Connection {}
 
@@ -490,13 +609,21 @@ extern impl Canvas {
 
 ### Function overloading
 
-```rust
+```formalang
 fn format(value: I32) -> String { "number" }
 fn format(value: String) -> String { "string" }
 fn format(value: I32, precision: I32) -> String { "precise" }
+
+pub fn run_checks() {
+    assert(condition: format(value: 1) == "number")
+    assert(condition: format(value: "a") == "string")
+    assert(condition: format(value: 1, precision: 2) == "precise")
+}
 ```
 
-The compiler resolves overloads by the named-argument label set. Ambiguous or unresolvable calls are compile errors.
+The compiler picks an overload by the labels of the call, the number of
+arguments, and the argument types. Ambiguous or unresolvable calls are
+compile errors.
 
 ---
 

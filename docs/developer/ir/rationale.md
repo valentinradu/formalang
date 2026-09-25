@@ -8,8 +8,9 @@ resolved, ID-keyed representation is used for code generation.
 
 - **Clean separation**: AST preserves source fidelity, IR optimises for
   codegen.
-- **No syntax noise**: IR omits spans, comments, use statements,
-  parentheses, grouping.
+- **No syntax noise**: IR omits comments, parentheses and grouping.
+  It keeps the spans for debug information, and it keeps the names
+  of the `use` imports only as `IrModule.imports`.
 - **Different consumers**: Linters and LSPs use AST, code generators use IR.
 
 ## Why ID-Based References?
@@ -17,7 +18,9 @@ resolved, ID-keyed representation is used for code generation.
 - **Copyable**: IDs are `Copy`, no lifetime complexity.
 - **Cheap**: O(1) `Vec` lookup by index.
 - **Type-safe**: `StructId` cannot be used where a `TraitId` is expected.
-- **Stable**: IDs don't change when other definitions are added.
+- **Stable**: an ID does not change when a definition is appended. A
+  pass that removes definitions renumbers the IDs after them, and
+  rewrites each reference to them.
 
 ## Why Type on Every Expression?
 
@@ -38,5 +41,5 @@ resolved, ID-keyed representation is used for code generation.
 - [Architecture Overview](../architecture/design.md): overall compiler
   design
 - [Built-in Passes](../architecture/passes.md):
-  `MonomorphisePass`, `ResolveReferencesPass`, `DeadCodeEliminationPass`,
-  `ConstantFoldingPass`
+  `MonomorphisePass`, `ResolveReferencesPass`, `ClosureConversionPass`,
+  `DefunctionalisePass`, `DeadCodeEliminationPass`, `ConstantFoldingPass`

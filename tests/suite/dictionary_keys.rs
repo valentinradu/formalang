@@ -28,9 +28,9 @@ fn assert_rejected(key: &str) {
     assert!(
         errors.iter().any(|e| matches!(
             e,
-            CompilerError::FloatDictionaryKey { key_type, .. } if key_type == key
+            CompilerError::InvalidDictionaryKey { key_type, .. } if key_type == key
         )),
-        "expected FloatDictionaryKey for {key}, got {errors:?}"
+        "expected InvalidDictionaryKey for {key}, got {errors:?}"
     );
 }
 
@@ -58,8 +58,8 @@ fn rejects_a_float_key_nested_in_a_container() {
     assert!(
         errors
             .iter()
-            .any(|e| matches!(e, CompilerError::FloatDictionaryKey { .. })),
-        "expected FloatDictionaryKey, got {errors:?}"
+            .any(|e| matches!(e, CompilerError::InvalidDictionaryKey { .. })),
+        "expected InvalidDictionaryKey, got {errors:?}"
     );
 }
 
@@ -70,8 +70,8 @@ fn rejects_a_float_key_in_a_struct_field() {
     assert!(
         errors
             .iter()
-            .any(|e| matches!(e, CompilerError::FloatDictionaryKey { .. })),
-        "expected FloatDictionaryKey, got {errors:?}"
+            .any(|e| matches!(e, CompilerError::InvalidDictionaryKey { .. })),
+        "expected InvalidDictionaryKey, got {errors:?}"
     );
 }
 
@@ -115,12 +115,12 @@ fn accepts_a_float_value() {
     );
 }
 
-/// How many `FloatDictionaryKey` errors `source` reports.
+/// How many `InvalidDictionaryKey` errors `source` reports.
 fn float_key_errors(source: &str) -> usize {
     compile_to_ir(source)
         .expect_err("a float key must be rejected")
         .iter()
-        .filter(|e| matches!(e, CompilerError::FloatDictionaryKey { .. }))
+        .filter(|e| matches!(e, CompilerError::InvalidDictionaryKey { .. }))
         .count()
 }
 

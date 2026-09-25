@@ -2,7 +2,8 @@
 //! module under a qualified name and rewrite every cross-module reference
 //! to point at the local clone.
 //!
-//! Phase ordering (driven by [`super::mod::Monomorphiser::run`]):
+//! Phase ordering (driven by the `run` of [`super::MonomorphisePass`]
+//! when it has an import map; see [`super::MonomorphisePass::with_imports`]):
 //! - **1a** [`specialise::specialise_external_instantiations`] — clone each
 //!   imported generic `External` type with substituted type arguments.
 //! - **1b** [`inline::inline_imported_functions`] — copy every imported

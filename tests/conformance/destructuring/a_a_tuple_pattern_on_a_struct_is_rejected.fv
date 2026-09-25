@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// A struct is destructured by field name with braces. A tuple pattern
+// on a struct is an error the user can act on, not an internal error.
+pub struct P { x: I32, y: I32 }
+pub fn f(p: P) -> I32 {
+    let (a, b) = p
+    a
+}

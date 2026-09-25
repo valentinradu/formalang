@@ -1,0 +1,3 @@
+// expect: reject RequiredParamAfterDefault
+// docs/user/functions.md: defaults must be positional from the right.
+fn f(x: I32 = 0, y: I32) -> I32 { x + y }

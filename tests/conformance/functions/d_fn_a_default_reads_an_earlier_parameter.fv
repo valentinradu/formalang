@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/functions.md: `fn f(x: I32, y: I32 = x + 1)` is valid, and the
+// default sees the value passed.
+fn f(x: I32, y: I32 = x + 1) -> I32 { y }
+
+pub fn run_checks() {
+    assert(condition: f(x: 5) == 6)
+    assert(condition: f(x: 5, y: 0) == 0)
+}

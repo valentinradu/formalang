@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/structs.md: a later `let` of the same name hides the first.
+pub fn run_checks() {
+    let a = 1
+    let a = 2
+    assert(condition: a == 2)
+}

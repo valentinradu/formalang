@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/functions.md: a default sees the actual passed value. A
+// binding in the caller with the parameter's name must not change it.
+fn f(x: I32, y: I32 = x + 1) -> I32 { y }
+
+pub fn run_checks() {
+    let x: I32 = 100
+    assert(condition: f(x: 5) == 6)
+}

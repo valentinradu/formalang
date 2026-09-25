@@ -1,0 +1,7 @@
+// expect: run
+// `all` over nothing is true, and `any` over nothing is false.
+pub fn run_checks() {
+    let xs: [I32] = []
+    assert(condition: for x in xs { x }.all(f: (v) -> false))
+    assert(condition: for x in xs { x }.any(f: (v) -> true) == false)
+}

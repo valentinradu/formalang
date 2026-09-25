@@ -1,0 +1,4 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: reading a sequence twice is E136, and a
+// parameter is a binding too.
+fn twice(sink s: Seq<I32>) -> I32 { s.count() + s.count() }

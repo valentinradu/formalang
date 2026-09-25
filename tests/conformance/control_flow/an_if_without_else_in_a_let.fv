@@ -1,4 +1,4 @@
-// expect: reject TypeMismatch
+// expect: reject OptionalUsedAsNonOptional
 pub fn f(n: I32) -> I32 {
     let v: I32 = if n > 0 { 1 }
     v

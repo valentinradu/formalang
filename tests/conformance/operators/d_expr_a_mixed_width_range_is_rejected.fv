@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: the two operands must have the same type.
+pub fn run_checks() {
+    let n: I32 = for i in 0I32..3I64 { i }.count()
+    assert(condition: n == 3)
+}

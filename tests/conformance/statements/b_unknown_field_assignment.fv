@@ -1,0 +1,8 @@
+// expect: reject UnknownField
+// A struct has only the fields it declares.
+pub struct U { nick: String }
+
+pub fn f() {
+    let mut u = U(nick: "a")
+    u.name = "b"
+}

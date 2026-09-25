@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: equality is structural.
+pub fn run_checks() {
+    let a: String = "ab"
+    let b: String = "a" + "b"
+    assert(condition: a == b)
+    assert(condition: "é" == "é")
+    assert(condition: "a" != "A")
+}

@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/expressions.md: array destructuring is positional.
+pub fn run_checks() {
+    let [a, b] = [[1, 2], [3]]
+    assert(condition: a.len() == 2)
+    assert(condition: b.len() == 1)
+}

@@ -30,7 +30,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             return;
         }
         if path.first().is_some_and(|p| p.name == "self") {
-            if self.current_impl_struct.is_none() {
+            // `self` exists only in a method that declares a `self`
+            // parameter. A method without one is a static method.
+            if self.current_impl_struct.is_none() || !self.local_let_bindings.contains_key("self") {
                 self.errors.push(CompilerError::UndefinedReference {
                     name: "self".to_string(),
                     span,
@@ -83,9 +85,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             // Root must be something we can infer a type for. Both module-level
             // lets and local bindings carry a structural `SemType`; render with
             // `display()` so the chain validator sees a uniform name shape.
-            let root_type = if let Some(ty) = self.symbols.get_let_type(&first.name) {
-                ty.clone()
+            let root_type = if let Some(ty) = self.pattern_or_loop_binding_type(&first.name) {
+                ty
             } else if let Some((ty, _)) = self.local_let_bindings.get(&first.name) {
+                // A parameter or a local `let` hides a module `let`.
+                ty.clone()
+            } else if let Some(ty) = self.symbols.get_let_type(&first.name) {
                 ty.clone()
             } else {
                 // A root with no known type can still be in scope, for
@@ -103,6 +108,43 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 self.validate_field_chain(&root_type, rest, span);
             }
         }
+    }
+
+    /// The type of `name` when a match arm, an `if let` or a `for` loop
+    /// binds it. The innermost binding wins, as in inference.
+    fn pattern_or_loop_binding_type(&self, name: &str) -> Option<SemType> {
+        let from_pattern = self
+            .inference_scope_stack
+            .borrow()
+            .iter()
+            .rev()
+            .find_map(|frame| frame.get(name).cloned());
+        from_pattern.or_else(|| {
+            self.loop_var_scopes
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(name).cloned())
+        })
+    }
+
+    /// The type of the field `field` that one of the traits in
+    /// `bounds`, or a trait that one of them composes, declares.
+    fn bound_field_type(&self, bounds: &[String], field: &str) -> Option<SemType> {
+        let mut pending: Vec<String> = bounds.to_vec();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(name) = pending.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            let Some(info) = self.symbols.get_trait(&name) else {
+                continue;
+            };
+            if let Some(found) = info.fields.iter().find(|f| f.name == field) {
+                return Some(SemType::from_ast(&found.ty));
+            }
+            pending.extend(info.composed_traits.iter().cloned());
+        }
+        None
     }
 
     /// True when `name` is a binding, a field of the current impl's
@@ -149,8 +191,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         let mut current = root_type.clone();
         for seg in rest {
-            // An optional is unwrapped elsewhere; here it only stands
-            // between the walk and the fields underneath.
+            // A field read of an optional struct needs an unwrap first,
+            // as for a field access on any other expression.
+            if let SemType::Optional(inner) = &current {
+                let base = inner.display();
+                if !inner.is_indeterminate() && self.symbols.get_struct(&base).is_some() {
+                    self.errors.push(CompilerError::OptionalUsedAsNonOptional {
+                        actual: current.display(),
+                        expected: base,
+                        span,
+                    });
+                    return;
+                }
+            }
+            // Any other optional is unwrapped elsewhere; here it only
+            // stands between the walk and the fields underneath.
             if let SemType::Optional(inner) = current {
                 current = *inner;
             }
@@ -175,7 +230,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 | SemType::Unknown
                 | SemType::InferredEnum => {
                     let owner = Self::field_owner_name(&current);
-                    let Some(struct_info) = self.symbols.get_struct(&owner) else {
+                    // A type parameter has the fields of the traits of
+                    // its bounds, and no other.
+                    if let Some(bounds) = self.get_type_parameter_constraints(&owner) {
+                        let Some(field) = self.bound_field_type(&bounds, &seg.name) else {
+                            self.errors.push(CompilerError::UnknownField {
+                                field: seg.name.clone(),
+                                type_name: owner,
+                                span,
+                            });
+                            return;
+                        };
+                        current = field;
+                        continue;
+                    }
+                    let Some(struct_info) = self.symbols.get_struct_qualified(&owner) else {
                         // An enum value carries no fields: a payload
                         // is read by a `match` arm. Any other
                         // unresolved name may be an import, so the
@@ -189,11 +258,27 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         }
                         return;
                     };
+                    // The struct's type parameters read as the receiver's
+                    // type arguments: `value` of `Box<Box<T>>` is a
+                    // `Box<T>`, not the struct's own `T`.
+                    let args: &[SemType] = if let SemType::Generic { args, .. } = &current {
+                        args
+                    } else {
+                        &[]
+                    };
                     struct_info
                         .fields
                         .iter()
                         .find(|f| f.name == seg.name)
-                        .map(|f| SemType::from_ast(&f.ty))
+                        .map(|f| {
+                            struct_info
+                                .generics
+                                .iter()
+                                .zip(args)
+                                .fold(SemType::from_ast(&f.ty), |acc, (g, arg)| {
+                                    acc.substitute_named(&g.name.name, arg)
+                                })
+                        })
                 }
             };
 

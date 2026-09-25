@@ -1,0 +1,15 @@
+// expect: reject TypeMismatch
+// The leading-dot form gets its enum from an optional annotation.
+// The field `r` holds an I32, not a String. The full form `Shape.circle(r: "x")` reports TypeMismatch, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub fn make(n: I32) -> Shape? {
+    let v: Shape? = .circle(r: "x")
+    v
+}

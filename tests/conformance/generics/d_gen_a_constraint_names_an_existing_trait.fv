@@ -1,0 +1,3 @@
+// expect: reject UndefinedTrait
+// docs/user/generics.md: constraints must reference existing traits.
+pub struct Wrapper<T: Missing> { item: T }

@@ -12,7 +12,8 @@ use super::{IrField, IrGenericParam};
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrEnum {
     /// The enum name
     pub name: String,
@@ -27,20 +28,26 @@ pub struct IrEnum {
     pub generic_params: Vec<IrGenericParam>,
 
     /// Joined `///` doc comments preceding this enum.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub doc: Option<String>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// An enum variant.
 #[expect(
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrEnumVariant {
     /// The variant name
     pub name: String,
@@ -49,6 +56,6 @@ pub struct IrEnumVariant {
     pub fields: Vec<IrField>,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }

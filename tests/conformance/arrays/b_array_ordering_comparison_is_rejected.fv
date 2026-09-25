@@ -1,0 +1,3 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `<` takes two numbers of one type.
+pub fn f() -> Boolean { [1] < [2] }

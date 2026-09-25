@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: the escapes `\"`, `\\`, `\n`, `\t`, `\r`.
+pub fn run_checks() {
+    assert(condition: "\"".len() == 1)
+    assert(condition: "\\".len() == 1)
+    assert(condition: "\n".byte_at(i: 0) == 10)
+    assert(condition: "\t".byte_at(i: 0) == 9)
+    assert(condition: "\r".byte_at(i: 0) == 13)
+}

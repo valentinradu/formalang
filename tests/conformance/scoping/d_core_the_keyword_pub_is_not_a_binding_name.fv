@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `pub` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let pub = 1
+    assert(condition: pub == 1)
+}

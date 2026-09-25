@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `in` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let in = 1
+    assert(condition: in == 1)
+}

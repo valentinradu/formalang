@@ -102,7 +102,17 @@ impl IrLowerer<'_> {
             .or_else(|| expected_return_ty.clone());
 
         let body_expected = self.current_function_return_type.clone();
-        let body_ir = self.lower_with_expected_value(body, body_expected.as_ref());
+        let mut body_ir = self.lower_with_expected_value(body, body_expected.as_ref());
+        // A closure body has no `self` of its own. A read of
+        // `self.field` becomes a field read of a captured `self`, so
+        // the capture list names `self` and the lifted function reads
+        // it from its environment.
+        if let Some(impl_name) = self.current_impl_struct.clone() {
+            if self.lookup_local_binding("self").is_some() {
+                let self_ty = self.resolve_impl_self_type(&impl_name);
+                read_self_fields_through_self(&mut body_ir, &self_ty);
+            }
+        }
 
         self.current_function_return_type = saved_return_type;
         // prefer the declared return type when
@@ -178,6 +188,35 @@ impl IrLowerer<'_> {
     }
 }
 
+/// Replace each `SelfFieldRef` in `expr` with a `FieldAccess` on a
+/// `Reference` to `self`.
+fn read_self_fields_through_self(expr: &mut IrExpr, self_ty: &ResolvedType) {
+    if let IrExpr::SelfFieldRef {
+        field,
+        field_idx,
+        ty,
+        span,
+    } = expr
+    {
+        *expr = IrExpr::FieldAccess {
+            object: Box::new(IrExpr::Reference {
+                path: vec!["self".to_string()],
+                target: crate::ir::ReferenceTarget::Unresolved,
+                ty: self_ty.clone(),
+                span: *span,
+            }),
+            field: std::mem::take(field),
+            field_idx: *field_idx,
+            ty: ty.clone(),
+            span: *span,
+        };
+        return;
+    }
+    crate::ir::walk_expr_children_mut(expr, &mut |child| {
+        read_self_fields_through_self(child, self_ty);
+    });
+}
+
 /// Walk `expr` and collect every single-name `Reference` whose name is not
 /// bound inside the expression itself — i.e. the closure's free variables.
 ///
@@ -195,7 +234,13 @@ fn collect_free_refs(
     seen: &mut std::collections::HashSet<String>,
 ) {
     match expr {
-        IrExpr::Reference { path, ty, .. } => {
+        IrExpr::Reference {
+            path, ty, target, ..
+        } => {
+            // `Counter` in `Counter.zero()` names a type, not a value.
+            if matches!(target, crate::ir::ReferenceTarget::Struct(_)) {
+                return;
+            }
             if let [name] = path.as_slice() {
                 if !bound.contains(name) && seen.insert(name.clone()) {
                     out.push((name.clone(), ty.clone()));

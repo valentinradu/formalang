@@ -1,0 +1,4 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a function return type
+// (E137).
+fn make() -> Seq<I32> { for x in [1, 2] { x } }

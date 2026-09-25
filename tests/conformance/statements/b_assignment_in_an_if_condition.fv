@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// from: go test/ (assignment used as value). `if a = 2` is a mistake for
+// `if a == 2`.
+pub fn f() -> I32 {
+    let mut a = 1
+    if a = 2 { 1 } else { 0 }
+}

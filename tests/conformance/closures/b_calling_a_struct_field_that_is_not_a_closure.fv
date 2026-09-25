@@ -1,0 +1,8 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/typeck/ (call of a non-function field).
+pub struct P { x: I32 }
+
+pub fn f() -> I32 {
+    let p = P(x: 1)
+    p.x(2)
+}

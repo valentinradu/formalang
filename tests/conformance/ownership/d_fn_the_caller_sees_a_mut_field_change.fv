@@ -1,0 +1,14 @@
+// expect: compile
+// docs/user/functions.md: every change a `mut` callee makes is visible to
+// the caller when the call returns.
+pub struct P { x: I32 }
+
+fn set(mut p: P) {
+    p.x = 9
+}
+
+pub fn run_checks() {
+    let mut p = P(x: 1)
+    set(p: p)
+    assert(condition: p.x == 9)
+}

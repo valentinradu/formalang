@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// A binding keeps its type across assignments.
+pub fn f() -> I32 {
+    let mut a = 1
+    a = "x"
+    0
+}

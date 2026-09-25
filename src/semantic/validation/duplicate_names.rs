@@ -24,11 +24,73 @@ use crate::ast::{Definition, EnumDef, File, FnParam, Ident, Statement, StructDef
 use crate::error::CompilerError;
 use std::collections::HashSet;
 
+/// A signature as the duplicate check compares it: the label and the
+/// type of each parameter, in order.
+type Signature = Vec<(String, String)>;
+
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
     pub(in crate::semantic) fn validate_duplicate_names(&mut self, file: &File) {
-        for statement in &file.statements {
-            if let Statement::Definition(def) = statement {
-                self.check_definition_for_duplicates(def);
+        let definitions: Vec<&Definition> = file
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Statement::Definition(def) => Some(&**def),
+                Statement::Use(_) | Statement::Let(_) => None,
+            })
+            .collect();
+        self.check_function_signatures_are_unique(&definitions);
+        for def in definitions {
+            self.check_definition_for_duplicates(def);
+        }
+    }
+
+    /// Report two free functions of one scope with the same signature.
+    /// Overloads of one name are legal, but no call can choose between
+    /// two with the same labels and types.
+    fn check_function_signatures_are_unique(&mut self, definitions: &[&Definition]) {
+        let functions = definitions.iter().filter_map(|def| {
+            if let Definition::Function(f) = def {
+                Some((&f.name, f.params.as_slice()))
+            } else {
+                None
+            }
+        });
+        self.check_signatures_are_unique(functions);
+    }
+
+    /// Report each later function in `functions` whose name and
+    /// signature equal those of an earlier one.
+    fn check_signatures_are_unique<'f>(
+        &mut self,
+        functions: impl Iterator<Item = (&'f Ident, &'f [FnParam])>,
+    ) {
+        let mut seen: HashSet<(String, Signature)> = HashSet::new();
+        for (name, params) in functions {
+            let signature = params
+                .iter()
+                .filter(|p| p.name.name != "self")
+                .map(|p| {
+                    // A type-only parameter, `fn g(I32)`, has a name that
+                    // the parser makes from its offset (`_arg<offset>`).
+                    // A call cannot give that name, so it is no label.
+                    let synthesised = p.external_label.is_none()
+                        && p.name.name.strip_prefix("_arg").is_some_and(|rest| {
+                            !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit())
+                        });
+                    let label = if synthesised {
+                        String::new()
+                    } else {
+                        p.external_label.as_ref().unwrap_or(&p.name).name.clone()
+                    };
+                    let ty = p.ty.as_ref().map_or_else(String::new, Self::type_to_string);
+                    (label, ty)
+                })
+                .collect();
+            if !seen.insert((name.name.clone(), signature)) {
+                self.errors.push(CompilerError::DuplicateDefinition {
+                    name: format!("function '{}' with the same signature", name.name),
+                    span: name.span,
+                });
             }
         }
     }
@@ -47,11 +109,21 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for func in &impl_def.functions {
                     self.check_params_are_unique(&func.name, &func.params);
                 }
+                // Two with the same shape are a duplicate: no call can
+                // choose between them.
+                self.check_signatures_are_unique(
+                    impl_def
+                        .functions
+                        .iter()
+                        .map(|f| (&f.name, f.params.as_slice())),
+                );
             }
             Definition::Trait(trait_def) => self.check_trait_is_unique(trait_def),
             Definition::Module(m) => {
-                for nested in &m.definitions {
-                    self.check_definition_for_duplicates(nested);
+                let nested: Vec<&Definition> = m.definitions.iter().collect();
+                self.check_function_signatures_are_unique(&nested);
+                for def in nested {
+                    self.check_definition_for_duplicates(def);
                 }
             }
         }
@@ -105,6 +177,12 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         for method in &trait_def.methods {
             self.check_params_are_unique(&method.name, &method.params);
         }
+        self.check_signatures_are_unique(
+            trait_def
+                .methods
+                .iter()
+                .map(|m| (&m.name, m.params.as_slice())),
+        );
     }
 
     fn check_params_are_unique(&mut self, owner: &Ident, params: &[FnParam]) {

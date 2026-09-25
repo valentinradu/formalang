@@ -1,0 +1,11 @@
+// expect: run
+// The statements of a block run in order.
+pub fn run_checks() {
+    let mut a: I32 = 1
+    let mut b: I32 = 2
+    let t = a
+    a = b
+    b = t
+    assert(condition: a == 2)
+    assert(condition: b == 1)
+}

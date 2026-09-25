@@ -57,10 +57,10 @@ const TESTS: &str = "tests/suite";
 const ALLOWED: &[(&str, usize)] = &[
     ("cross_module.rs", 1),
     ("default_parameters.rs", 1),
-    ("destructuring.rs", 9),
+    ("destructuring.rs", 7),
     ("error_paths.rs", 21),
-    ("integration.rs", 64),
-    ("ir_spans.rs", 2),
+    ("integration.rs", 63),
+    ("ir_spans.rs", 1),
     ("lexer_correctness.rs", 3),
     ("metamorphic.rs", 1),
     ("parser_edge_cases.rs", 70),
@@ -71,16 +71,16 @@ const ALLOWED: &[(&str, usize)] = &[
     ("test_ast_and_token_helpers.rs", 85),
     ("test_dce_visitor.rs", 2),
     ("test_extern.rs", 7),
-    ("test_gaps.rs", 17),
+    ("test_gaps.rs", 16),
     ("test_impl_trait.rs", 5),
     ("test_no_ui.rs", 4),
     ("test_overloading.rs", 4),
     ("test_param_conventions.rs", 16),
-    ("test_semantic_coverage.rs", 57),
+    ("test_semantic_coverage.rs", 56),
     ("test_semantic_coverage2.rs", 41),
     ("test_semantic_coverage3.rs", 33),
     ("test_semantic_coverage4.rs", 6),
-    ("test_trait_methods.rs", 8),
+    ("test_trait_methods.rs", 7),
 ];
 
 /// Text that means the test looked at what it compiled.

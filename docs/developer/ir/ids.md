@@ -14,7 +14,9 @@ pub struct TraitId(pub u32);
 pub struct EnumId(pub u32);
 ```
 
-IDs index into the corresponding `Vec` in `IrModule`:
+IDs index into the corresponding `Vec` in `IrModule`. The prelude
+definitions come first, so the first user struct is not `StructId(0)`.
+Look a definition up by name:
 
 ```rust
 // Use helper method (returns Option)
@@ -48,17 +50,21 @@ let trait_id = TraitId(0);
 
 ## Other typed IDs
 
-Beyond the four definition-level IDs above, several expression-level
-typed IDs flow through the IR after `ResolveReferencesPass` rewrites
-name-keyed references:
+Beyond the three definition-level IDs above, these typed IDs flow
+through the IR. The lowering sets `FunctionId` on a call and `ImplId`
+in a `DispatchKind::Static`. `ResolveReferencesPass` sets the others:
 
 - `BindingId`: function-local `let` bindings, parameters, loop variables
 - `FieldIdx`: index into the matching struct/enum variant's `fields`
 - `VariantIdx`: index into the matching enum's `variants`
-- `MethodIdx`: index into the matching impl's or trait's `methods`
+- `MethodIdx`: index into the matching impl's `functions` or trait's `methods`
 - `LetId`: module-level `let` bindings
 - `ImplId`: impl blocks
-- `FunctionId`: standalone or impl-method functions
+- `FunctionId`: index into `IrModule.functions`
+
+A pass that removes or reorders definitions changes the ids of the
+definitions after them. Each built-in pass rewrites every id that it
+changes, so the ids in its result are consistent.
 
 These appear on [`IrExpr`](expressions.md), [`IrMatchArm`](blocks.md),
 and [`IrBlockStatement`](blocks.md).

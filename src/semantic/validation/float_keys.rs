@@ -121,27 +121,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
-    /// Push `FloatDictionaryKey` when `key_ty` is `F32` or `F64`.
+    /// Push `InvalidDictionaryKey` when `key_ty` cannot be a key.
     fn report_float_key(&mut self, key_ty: &SemType, span: Span) {
-        let key_type = match key_ty {
-            SemType::Primitive(PrimitiveType::F32) => "F32",
-            SemType::Primitive(PrimitiveType::F64) => "F64",
-            SemType::Primitive(_)
-            | SemType::Named(_)
-            | SemType::Array(_)
-            | SemType::Optional(_)
-            | SemType::Tuple(_)
-            | SemType::Generic { .. }
-            | SemType::Dictionary { .. }
-            | SemType::Closure { .. }
-            | SemType::Unknown
-            | SemType::InferredEnum
-            | SemType::Nil => return,
-        };
-        self.errors.push(CompilerError::FloatDictionaryKey {
-            key_type: key_type.to_string(),
-            span,
-        });
+        if !self.is_key_type(key_ty) {
+            self.errors.push(CompilerError::InvalidDictionaryKey {
+                key_type: key_ty.display(),
+                span,
+            });
+        }
     }
 }
 

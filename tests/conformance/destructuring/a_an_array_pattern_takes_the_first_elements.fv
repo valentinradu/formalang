@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/expressions.md: `let [a, b] = items` takes the first two
+// elements. Here the array holds exactly two.
+pub fn f(xs: [I32]) -> I32 {
+    let [a, b] = xs
+    a * 10 + b
+}
+pub fn run_checks() {
+    assert(condition: f(xs: [4, 2]) == 42)
+}

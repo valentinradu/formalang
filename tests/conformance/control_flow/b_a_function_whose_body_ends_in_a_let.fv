@@ -1,0 +1,6 @@
+// expect: reject FunctionReturnTypeMismatch
+// from: go test/ (missing return). A body that ends in a `let` gives no
+// value.
+fn f() -> I32 {
+    let x: I32 = 1
+}

@@ -1,0 +1,10 @@
+// expect: run
+// A block gives the value of its last expression.
+pub fn run_checks() {
+    let v = {
+        let a = 1
+        let b = 2
+        a + b
+    }
+    assert(condition: v == 3)
+}

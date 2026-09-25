@@ -1,0 +1,7 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/closures/ (a closure cannot name itself).
+// A `let` binding is not in scope in its own initializer.
+pub fn f() -> I32 {
+    let g: (I32) -> I32 = (x) -> if x == 0 { 0 } else { g(x - 1) }
+    g(3)
+}

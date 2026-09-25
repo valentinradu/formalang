@@ -1,0 +1,17 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts associated data
+// in parameter order. PLAN.md item 3.
+pub enum AccountType {
+    admin,
+    user(permissions: [String], articles: [String])
+}
+
+pub let account: AccountType = .user(permissions: ["read", "write"], articles: ["a1"])
+pub let (permissions, articles) = account
+
+pub fn run_checks() {
+    assert(condition: permissions.len() == 2)
+    assert(condition: articles.len() == 1)
+}

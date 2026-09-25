@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/expressions.md: a rest pattern can sit anywhere. The names
+// after it take the last elements.
+pub fn f(xs: [I32]) -> I32 {
+    let [a, ...mid, z] = xs
+    a * 100 + mid.len() * 10 + z
+}
+pub fn run_checks() {
+    assert(condition: f(xs: [1, 7, 7, 7, 9]) == 139)
+}

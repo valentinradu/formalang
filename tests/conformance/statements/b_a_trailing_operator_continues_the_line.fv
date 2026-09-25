@@ -1,0 +1,8 @@
+// expect: run
+// An operator at the end of a line continues the expression.
+pub fn run_checks() {
+    let v = 1 +
+        2 *
+        3
+    assert(condition: v == 7)
+}

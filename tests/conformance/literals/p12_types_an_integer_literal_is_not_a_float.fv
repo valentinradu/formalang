@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: an integer literal never becomes a float.
+pub let f: F64 = 1

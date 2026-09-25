@@ -1,0 +1,11 @@
+// expect: run
+// from: swift test/expr/closure/ (capture semantics).
+// A closure captures the value of a binding when it is made. Under value
+// semantics a later assignment to the binding does not change what the
+// closure holds. If captures share the place, `g()` gives 2.
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let g: () -> I32 = () -> x
+    x = 2
+    assert(condition: g() == 1)
+}

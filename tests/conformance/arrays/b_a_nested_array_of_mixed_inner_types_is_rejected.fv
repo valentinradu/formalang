@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// The elements of one array have one type, at every depth.
+pub let xs = [[1], ["a"]]

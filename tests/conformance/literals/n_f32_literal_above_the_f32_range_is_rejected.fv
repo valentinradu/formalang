@@ -1,0 +1,9 @@
+// expect: reject InvalidNumber
+// The largest finite F32 is about 3.4028235e38. The value 3.5e38 does
+// not fit in an F32. docs/user/types.md says that a literal that does
+// not fit its suffixed type is a compile error. `1e400` for an F64
+// gives InvalidNumber, so the F32 case gives the same error.
+
+pub fn f() -> F32 {
+    3.5e38F32
+}

@@ -1,0 +1,8 @@
+// expect: compile
+// docs/user/control-flow.md: an `extern fn` may return a sequence; the
+// host produces the elements.
+extern fn rows() -> Seq<I32>
+
+pub fn count_rows() -> I32 {
+    for r in rows() { r }.count()
+}

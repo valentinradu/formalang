@@ -1,0 +1,6 @@
+// expect: reject ForLoopNotArray
+// docs/user/control-flow.md: the source is an array, a range, or another
+// sequence. An optional array is none of these.
+pub fn f(xs: [I32]?) -> I32 {
+    for x in xs { x }.count()
+}

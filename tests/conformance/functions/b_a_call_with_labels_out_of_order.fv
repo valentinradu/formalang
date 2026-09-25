@@ -1,0 +1,8 @@
+// expect: run
+// Named arguments bind by label. The order of the labels in the call
+// does not change which parameter gets which value.
+fn f(a: I32, b: I32) -> I32 { a - b }
+
+pub fn run_checks() {
+    assert(condition: f(b: 1, a: 10) == 9)
+}

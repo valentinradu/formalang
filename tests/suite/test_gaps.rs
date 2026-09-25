@@ -835,56 +835,47 @@ fn test_module_tree_preserves_two_level_nesting() -> Result<(), Box<dyn std::err
 }
 
 // =============================================================================
-// Tier-1 escape analysis extension: a closure that captures a function-
-// local binding cannot escape the function frame even when wrapped in
-// an aggregate (struct, enum, tuple, array, dict).
+// A closure captures by value, so a closure that leaves its function or
+// its block can capture a function-local binding. That holds when an
+// aggregate (struct, tuple) wraps the closure too.
 // =============================================================================
 
 #[test]
-fn test_struct_returned_with_closure_capturing_local_rejected(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_struct_returned_with_closure_capturing_local_allowed() {
+    assert!(runs_its_checks(
+        r"
         struct Box { callback: () -> I32 }
         fn make() -> Box {
             let local: I32 = 1
             Box(callback: () -> local)
         }
-    ";
-    let result = compile(source);
-    let errors = result
-        .err()
-        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
-    if !errors
-        .iter()
-        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
-    {
-        return Err(format!(
-            "expected ClosureCaptureEscapesLocalBinding when struct-wrapped closure captures \
-             a function-local; got {errors:?}"
-        )
-        .into());
-    }
-    Ok(())
+        pub fn run_checks() {
+            assert(condition: make().callback() == 1)
+        }
+    "
+    ));
 }
 
 #[test]
-fn test_struct_returned_with_closure_capturing_module_let_ok(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_struct_returned_with_closure_capturing_module_let_ok() {
+    assert!(runs_its_checks(
+        r"
         let factor: I32 = 2
         struct Box { callback: () -> I32 }
         fn make() -> Box {
             Box(callback: () -> factor)
         }
-    ";
-    compile(source).map_err(|e| format!("expected success: {e:?}"))?;
-    Ok(())
+        pub fn run_checks() {
+            assert(condition: make().callback() == 2)
+        }
+    "
+    ));
 }
 
 #[test]
-fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_closure_assigned_to_outer_mut_binding_capturing_local_allowed() {
+    assert!(runs_its_checks(
+        r"
         fn outer() -> I32 {
             let mut f: () -> I32 = () -> 0
             {
@@ -893,47 +884,36 @@ fn test_closure_assigned_to_outer_mut_binding_capturing_local_rejected(
             }
             f()
         }
-    ";
-    let result = compile(source);
-    let errors = result
-        .err()
-        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
-    if !errors
-        .iter()
-        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
-    {
-        return Err(format!(
-            "expected ClosureCaptureEscapesLocalBinding when closure assigned to outer mut \
-             binding captures inner-scope local; got {errors:?}"
-        )
-        .into());
-    }
-    Ok(())
+        pub fn run_checks() {
+            assert(condition: outer() == 5)
+        }
+    "
+    ));
 }
 
 #[test]
-fn test_tuple_returned_with_closure_capturing_local_rejected(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let source = r"
+fn test_tuple_returned_with_closure_capturing_local_allowed() {
+    assert!(runs_its_checks(
+        r"
         fn make() -> (n: I32, f: () -> I32) {
             let local: I32 = 7
             (n: 0, f: () -> local)
         }
-    ";
-    let result = compile(source);
-    let errors = result
-        .err()
-        .ok_or("expected ClosureCaptureEscapesLocalBinding")?;
-    if !errors
-        .iter()
-        .any(|e| matches!(e, CompilerError::ClosureCaptureEscapesLocalBinding { .. }))
-    {
-        return Err(format!(
-            "expected ClosureCaptureEscapesLocalBinding for tuple-wrapped escape; got {errors:?}"
-        )
-        .into());
-    }
-    Ok(())
+        pub fn run_checks() {
+            assert(condition: make().f() == 7)
+        }
+    "
+    ));
+}
+
+/// Compile `source`, run its `run_checks()` in the reference
+/// interpreter, and return whether each assert passed.
+fn runs_its_checks(source: &str) -> bool {
+    let Ok(module) = compile_to_ir(source) else {
+        return false;
+    };
+    let mut interpreter = crate::common::interpreter::Interpreter::new(&module);
+    interpreter.run("run_checks").is_ok() && interpreter.asserts_passed > 0
 }
 
 // =============================================================================
@@ -1076,7 +1056,7 @@ fn walk_for_dispatch(
 fn test_monomorphise_devirtualises_trait_bounded_call() -> Result<(), Box<dyn std::error::Error>> {
     use formalang::ir::MonomorphisePass;
     let source = r"
-        trait Drawable { fn area(self) -> I32 }
+        pub trait Drawable { fn area(self) -> I32 }
         struct Circle { r: I32 }
         impl Drawable for Circle {
             fn area(self) -> I32 { self.r }

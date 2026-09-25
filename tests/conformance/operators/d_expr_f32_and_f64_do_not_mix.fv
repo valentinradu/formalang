@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: there is no implicit conversion between
+// types.
+pub let x = 1.0F32 * 2.0F64

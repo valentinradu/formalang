@@ -1,0 +1,4 @@
+// expect: reject UndefinedReference
+// docs/user/extern.md: the prelude declares the String methods. Any
+// other method on a String is unknown, and the error must name it.
+pub fn f(s: String) -> I32 { s.zz_len() }

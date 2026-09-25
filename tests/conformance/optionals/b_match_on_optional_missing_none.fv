@@ -1,0 +1,6 @@
+// expect: reject NonExhaustiveMatch
+// docs/user/types.md: `Optional<T>` behaves like a two-variant enum. A
+// match must cover both.
+pub fn f(a: I32?) -> I32 {
+    match a { .some(v): v }
+}

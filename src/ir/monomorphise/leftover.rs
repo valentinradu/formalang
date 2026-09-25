@@ -4,6 +4,8 @@
 //! finding is surfaced as an `InternalError`; anything later is dropped
 //! to keep the diagnostic short.
 
+use std::collections::HashSet;
+
 use crate::ir::{GenericBase, IrExpr, IrModule, ResolvedType};
 
 use super::expr_walk::walk_expr;
@@ -27,23 +29,31 @@ impl LeftoverScanner {
             .map(|s| format!("monomorphise: leftover after pass — {s}"))
     }
 
+    /// Note each generic trait that survived compaction.
+    fn note_generic_traits(&mut self, module: &IrModule) {
+        for t in module
+            .traits
+            .iter()
+            .filter(|t| !t.generic_params.is_empty())
+        {
+            self.note(format!(
+                "generic trait `{}` survived compaction (rewrite_trait_refs missed a reference)",
+                t.name
+            ));
+        }
+    }
+
     pub(super) fn scan(&mut self, module: &IrModule) {
         // Phase F: generic traits are now compacted alongside generic
         // structs and enums; a survivor here means the rewrite/remap
         // chain dropped a reference somewhere. Prelude-shipped generic
-        // built-ins (`Optional`, `Array`, `Dictionary`, `Range`) are
+        // built-ins (`Optional`, `Array`, `Seq`, `Dictionary`, `Range`) are
         // exempt — they're carriers, not specialisable templates.
-        for t in &module.traits {
-            if !t.generic_params.is_empty() {
-                self.note(format!(
-                    "generic trait `{}` survived compaction (rewrite_trait_refs missed a reference)",
-                    t.name
-                ));
-            }
-        }
+        self.note_generic_traits(module);
 
         let is_prelude_builtin =
             |name: &str| super::compact::is_prelude_struct_name(name) || name == "Optional";
+        let carriers = super::compact::prelude_carrier_bases(module);
 
         // Each survivor is reported with the definition it sits in.
         // Without that the report is a bare "unresolved TypeParam(`T`)"
@@ -51,7 +61,7 @@ impl LeftoverScanner {
         // but not which definition to look at.
         let mut found: Vec<String> = Vec::new();
         let note_own = |found: &mut Vec<String>, ty: &ResolvedType, place: &str, own: &[String]| {
-            if let Some(sample) = first_leftover(ty, module, own) {
+            if let Some(sample) = first_leftover(ty, &carriers, own) {
                 found.push(format!("{sample} in {place}"));
             }
         };
@@ -217,20 +227,17 @@ fn extern_type_params(f: &crate::ir::IrFunction) -> Vec<String> {
 /// The first leftover in `ty`. A `TypeParam` named in `own` is not one:
 /// it is a type parameter of the extern method whose signature holds
 /// `ty`.
-fn first_leftover(ty: &ResolvedType, module: &IrModule, own: &[String]) -> Option<String> {
+fn first_leftover(
+    ty: &ResolvedType,
+    carriers: &HashSet<GenericBase>,
+    own: &[String],
+) -> Option<String> {
     // Lowering never emits `TypeParam` as a placeholder, so a survivor here
     // is a real monomorphisation gap — report it. Generic instantiations
     // of the prelude-shipped built-in carriers (`Optional`, `Array`,
-    // `Dictionary`, `Range`) are the canonical post-pass shape and
+    // `Seq`, `Dictionary`, `Range`) are the canonical post-pass shape and
     // never get specialised, so they're allowed.
-    let prelude_ids = [
-        module.prelude_array_id().map(GenericBase::Struct),
-        module.prelude_dictionary_id().map(GenericBase::Struct),
-        module.prelude_range_id().map(GenericBase::Struct),
-        module.prelude_optional_id().map(GenericBase::Enum),
-    ];
-    let is_prelude_builtin =
-        |base: &GenericBase| prelude_ids.iter().any(|p| p.as_ref() == Some(base));
+    let is_prelude_builtin = |base: &GenericBase| carriers.contains(base);
     match ty {
         ResolvedType::TypeParam(name) if own.contains(name) => None,
         ResolvedType::TypeParam(name) => Some(format!("unresolved TypeParam(`{name}`)")),
@@ -239,7 +246,7 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule, own: &[String]) -> Optio
             // specialised: `U` is the method's own, and each call
             // carries the concrete type.
             if is_prelude_builtin(base) || args.iter().any(|a| mentions_any(a, own)) {
-                return args.iter().find_map(|a| first_leftover(a, module, own));
+                return args.iter().find_map(|a| first_leftover(a, carriers, own));
             }
             let (kind, id) = match base {
                 GenericBase::Struct(s) => ("struct", s.0),
@@ -253,17 +260,17 @@ fn first_leftover(ty: &ResolvedType, module: &IrModule, own: &[String]) -> Optio
         }
         ResolvedType::Tuple(fields) => fields
             .iter()
-            .find_map(|(_, t)| first_leftover(t, module, own)),
+            .find_map(|(_, t)| first_leftover(t, carriers, own)),
         ResolvedType::Closure {
             param_tys,
             return_ty,
         } => param_tys
             .iter()
-            .find_map(|(_, t)| first_leftover(t, module, own))
-            .or_else(|| first_leftover(return_ty, module, own)),
+            .find_map(|(_, t)| first_leftover(t, carriers, own))
+            .or_else(|| first_leftover(return_ty, carriers, own)),
         ResolvedType::External { type_args, .. } => type_args
             .iter()
-            .find_map(|a| first_leftover(a, module, own)),
+            .find_map(|a| first_leftover(a, carriers, own)),
         // `Error` shouldn't reach monomorphisation under normal compilation
         // (upstream `CompilerError`s would have aborted before passes run);
         // surface it explicitly when an externally-loaded IR contains one.

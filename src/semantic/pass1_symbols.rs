@@ -153,9 +153,41 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         }
     }
 
+    /// DP-5: defaults are positional from the right. Once a parameter
+    /// has a default, every later non-self parameter needs one too, so
+    /// call-site arity resolution is unambiguous. A `mut` parameter
+    /// takes no default: the caller must give a binding that it sees
+    /// change, and a default is no binding.
+    fn check_param_defaults(&mut self, function: &str, params: &[crate::ast::FnParam]) {
+        let mut seen_default = false;
+        for p in params {
+            if p.name.name == "self" {
+                continue;
+            }
+            if p.default.is_some() {
+                seen_default = true;
+                if p.convention == crate::ast::ParamConvention::Mut {
+                    self.errors.push(CompilerError::MutabilityMismatch {
+                        param: p.name.name.clone(),
+                        span: p.span,
+                    });
+                }
+            } else if seen_default {
+                self.errors.push(CompilerError::RequiredParamAfterDefault {
+                    function: function.to_string(),
+                    param: p.name.name.clone(),
+                    span: p.span,
+                });
+            }
+        }
+    }
+
     fn collect_definition_impl(&mut self, impl_def: &crate::ast::ImplDef) {
         use symbol_table::ImplInfo;
 
+        for func in &impl_def.functions {
+            self.check_param_defaults(&func.name.name, &func.params);
+        }
         // Validate function bodies vs extern status
         for func in &impl_def.functions {
             if impl_def.is_extern && func.body.is_some() {
@@ -192,6 +224,30 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // they declare are reachable through the IR module's own
         // `impls` vector at lowering time.
         if crate::semantic::sem_type::primitive_from_name(&impl_def.name.name).is_some() {
+            // Only an `extern impl` adds methods to a primitive. The IR
+            // has no other impl on a primitive (see `ImplTarget`).
+            if !impl_def.is_extern {
+                self.errors.push(CompilerError::ImplOnPrimitive {
+                    name: impl_def.name.name.clone(),
+                    span: impl_def.name.span,
+                });
+                return;
+            }
+            // An extern trait impl on a primitive records the
+            // conformance, so a bound on the trait accepts the primitive.
+            if let Some(trait_ident) = &impl_def.trait_name {
+                self.symbols
+                    .trait_impls
+                    .entry(impl_def.name.name.clone())
+                    .or_default()
+                    .push(crate::semantic::symbol_table::TraitImplInfo {
+                        trait_name: trait_ident.name.clone(),
+                        struct_name: impl_def.name.name.clone(),
+                        generics: impl_def.generics.clone(),
+                        trait_args: impl_def.trait_args.clone(),
+                        span: impl_def.span,
+                    });
+            }
             return;
         }
 
@@ -208,6 +264,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 trait_ident.name.clone(),
                 impl_def.name.name.clone(),
                 impl_def.generics.clone(),
+                impl_def.trait_args.clone(),
                 impl_def.span,
             ) {
                 self.errors.push(CompilerError::DuplicateDefinition {
@@ -377,21 +434,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         // also have a default (or be defaulted by reference). Reject
         // at definition time so call-site arity resolution is
         // unambiguous.
-        let mut seen_default = false;
-        for p in &func_def.params {
-            if p.name.name == "self" {
-                continue;
-            }
-            if p.default.is_some() {
-                seen_default = true;
-            } else if seen_default {
-                self.errors.push(CompilerError::RequiredParamAfterDefault {
-                    function: func_def.name.name.clone(),
-                    param: p.name.name.clone(),
-                    span: p.span,
-                });
-            }
-        }
+        self.check_param_defaults(&func_def.name.name, &func_def.params);
 
         if let Some((kind, _)) = self.symbols.define_function(
             func_def.name.name.clone(),

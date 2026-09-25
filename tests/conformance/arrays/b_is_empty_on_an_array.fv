@@ -1,0 +1,7 @@
+// expect: run
+// `is_empty` is true exactly when `len` is zero.
+pub fn run_checks() {
+    let a: [I32] = []
+    assert(condition: a.is_empty())
+    assert(condition: [0].is_empty() == false)
+}

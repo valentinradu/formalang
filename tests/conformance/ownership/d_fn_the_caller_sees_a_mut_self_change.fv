@@ -1,0 +1,17 @@
+// expect: compile
+// docs/user/functions.md: the same conventions apply to `self`.
+pub struct Counter { count: I32 }
+
+impl Counter {
+    fn increment(mut self) -> I32 {
+        self.count = self.count + 1
+        self.count
+    }
+}
+
+pub fn run_checks() {
+    let mut c = Counter(count: 0)
+    let r = c.increment()
+    assert(condition: r == 1)
+    assert(condition: c.count == 1)
+}

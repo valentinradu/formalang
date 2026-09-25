@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// A plain parameter does not take nil, as a default or otherwise.
+fn f(x: I32 = nil) -> I32 { x }

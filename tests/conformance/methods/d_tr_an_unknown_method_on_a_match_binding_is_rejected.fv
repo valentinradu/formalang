@@ -1,0 +1,13 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: impl blocks and the prelude declare the methods
+// of a type. A method that none of them declares is unknown, and the
+// error must name it, not report an internal error.
+
+pub enum Message { text(content: String), empty }
+
+pub fn f(m: Message) -> I32 {
+    match m {
+        .text(content): content.zz_len(),
+        .empty: 0
+    }
+}

@@ -1,0 +1,7 @@
+// expect: reject PrivateTypeInPublic
+// from: rust tests/ui/privacy/ (private type in public interface).
+// docs/user/modules.md: a public definition names public types only.
+mod m {
+    struct Hidden { x: I32 }
+    pub struct Shown { h: Hidden }
+}

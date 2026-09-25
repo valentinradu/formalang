@@ -1,0 +1,5 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/resolve/ (a name defined twice in one namespace).
+let f: I32 = 1
+
+fn f() -> I32 { 2 }

@@ -1,0 +1,7 @@
+// expect: compile
+// A definition that ends in `>` ends at the line break when the next
+// line starts a definition. `>` is also an operator, so the lexer keeps
+// this line break only before a definition.
+pub struct Box<T> { value: T }
+extern fn make() -> Box<I32>
+pub let a: I32 = 1

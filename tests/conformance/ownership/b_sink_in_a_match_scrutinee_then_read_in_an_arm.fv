@@ -1,0 +1,8 @@
+// expect: reject UseAfterSink
+// The scrutinee runs before the arms.
+fn take(sink s: String) -> I32? { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    match take(s: s) { .some(v): v + s.len(), .none: 0 }
+}

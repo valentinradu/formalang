@@ -1,9 +1,12 @@
 mod callbacks;
+mod strings;
 
 use callbacks::{
-    parse_doc_comment, parse_inner_doc_comment, parse_multiline_string, parse_number, parse_string,
-    skip_block_comment,
+    parse_doc_comment, parse_inner_doc_comment, parse_number, skip_block_comment, skip_line_comment,
 };
+use strings::{lex_multiline_string, lex_string};
+
+pub(super) use strings::BadEscape;
 
 use logos::Logos;
 
@@ -14,18 +17,19 @@ use logos::Logos;
 ///
 /// - `unterminated_block_comments` — byte ranges of `/* … */` comments
 ///   that run to end-of-input.
-/// - `invalid_unicode_escapes` — `(literal_start, literal_end, bad_hex)`
-///   for each `\uXXXX` escape inside a string literal whose hex digits do
-///   not denote a valid Unicode scalar value. The literal
-///   span is used as the diagnostic span; the bad hex is reported as the
-///   error's `value`.
+/// - `bad_escapes` — `(literal_start, literal_end, escape)` for each
+///   wrong escape inside a string literal. The literal span is the
+///   diagnostic span.
+/// - `bidi_controls` — `(start, end, character)` for each
+///   bidirectional control character in a comment or a string literal.
 ///
-/// The wrapping [`Lexer`](super::Lexer) drains both vectors into real
+/// The wrapping [`Lexer`](super::Lexer) drains these vectors into real
 /// [`CompilerError`](crate::CompilerError) values after tokenisation.
 #[derive(Default, Debug)]
 pub struct LexerExtras {
     pub unterminated_block_comments: Vec<(usize, usize)>,
-    pub invalid_unicode_escapes: Vec<(usize, usize, String)>,
+    pub(crate) bad_escapes: Vec<(usize, usize, BadEscape)>,
+    pub bidi_controls: Vec<(usize, usize, char)>,
 }
 
 /// Token types for `FormaLang` lexer
@@ -39,12 +43,10 @@ pub struct LexerExtras {
 // Skip horizontal whitespace. A newline is *not* skipped: it can end a
 // statement, and `Lexer::tokenize_all_with_errors` decides which ones
 // do. See `Token::Newline`.
-// Skip plain line comments. Requires the third character to NOT be `/`
-// or `!` so `///` (item doc comment) and `//!` (module/parent doc
-// comment) reach their dedicated variants below. The `|//[/!]?$`
-// alternation handles the edge cases of a bare `//`, `///`, or `//!`
-// at end of input — those carry no content and are skipped.
-#[logos(skip r"//([^/!\n][^\n]*)?|//[/!][\n]")]
+// Skip a `///` or `//!` that has no text before the line break. A
+// plain line comment is skipped by `Token::LineComment`, which checks
+// its text first.
+#[logos(skip r"//[/!][\n]")]
 pub enum Token {
     /// A newline.
     ///
@@ -71,6 +73,13 @@ pub enum Token {
     #[token("/*", skip_block_comment)]
     BlockComment,
 
+    /// Phantom variant: a plain line comment. The third character is
+    /// not `/` or `!`, so `///` and `//!` reach their own variants
+    /// below. The `skip_line_comment` callback checks the text and
+    /// returns `Skip`, so this variant is never emitted either.
+    #[regex(r"//([^/!\n][^\n]*)?", skip_line_comment)]
+    LineComment,
+
     /// Item doc comment: `/// text` attaches to the following definition.
     /// Captured trimmed (leading `/// ` stripped, trailing whitespace
     /// removed). Multiple consecutive doc-comment lines are joined by
@@ -78,9 +87,9 @@ pub enum Token {
     #[regex(r"///[^\n]*", parse_doc_comment)]
     DocComment(String),
 
-    /// Module/parent doc comment: `//! text` attaches to the enclosing
-    /// definition or file. Captured the same way as `DocComment`.
-    ///
+    /// Module/parent doc comment: `//! text` documents the enclosing
+    /// file or `mod`. Captured the same way as `DocComment`. The parser
+    /// accepts it only at the start of the file or of a `mod` body.
     #[regex(r"//![^\n]*", parse_inner_doc_comment)]
     InnerDocComment(String),
 
@@ -146,18 +155,12 @@ pub enum Token {
 
     // Literals
     //
-    // Single-line string: `"..."` with escape sequences from the spec:
-    //   \"  \\  \n  \t  \r  \uXXXX
-    // No raw newlines allowed.
-    #[regex(r#""([^"\\\n]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""#, parse_string)]
-    // Multi-line string: `"""..."""` — raw newlines, tabs and carriage returns
-    // are permitted. Logos' regex engine does not match `\n`/`\r`/`\t` inside
-    // negated character classes by default, so they are enumerated explicitly.
-    // The regex greedily matches to the final `"""` delimiter.
-    #[regex(
-        r#""""([^"\\\n\r\t]|\n|\r|\t|"[^"]|""[^"]|\\["\\ntr]|\\u[0-9a-fA-F]{4})*""""#,
-        parse_multiline_string
-    )]
+    // Single-line string: `"..."`, with no raw line break. Multi-line
+    // string: `"""..."""`. A callback scans each one, because a regular
+    // expression cannot report a wrong escape and overflows the stack
+    // on a long literal. See `strings.rs` for the escapes.
+    #[token("\"", lex_string)]
+    #[token("\"\"\"", lex_multiline_string)]
     String(String),
 
     // Number literal supporting underscores, scientific notation, and an
@@ -341,9 +344,10 @@ impl Token {
             | Self::Ident(_)
             | Self::DocComment(_)
             | Self::InnerDocComment(_) => "<complex token>",
-            // Phantom variant — `skip_block_comment` returns Skip so the
-            // lexer never emits it. See `BlockComment` doc comment.
+            // Phantom variants — their callbacks return Skip, so the
+            // lexer never emits them. See their doc comments.
             Self::BlockComment => "<block comment>",
+            Self::LineComment => "<line comment>",
         }
     }
 }
@@ -414,7 +418,8 @@ impl std::fmt::Display for Token {
             | Self::RBrace
             | Self::LBracket
             | Self::RBracket
-            | Self::BlockComment => write!(f, "'{}'", self.as_str()),
+            | Self::BlockComment
+            | Self::LineComment => write!(f, "'{}'", self.as_str()),
         }
     }
 }

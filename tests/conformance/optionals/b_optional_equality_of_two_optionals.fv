@@ -1,0 +1,14 @@
+// expect: run
+// docs/user/expressions.md: equality is structural. Two optionals are
+// equal when both are nil, or both hold equal values.
+pub fn run_checks() {
+    let a: I32? = 1
+    let b: I32? = 1
+    let c: I32? = 2
+    let n: I32? = nil
+    let m: I32? = nil
+    assert(condition: a == b)
+    assert(condition: a != c)
+    assert(condition: n == m)
+    assert(condition: a != n)
+}

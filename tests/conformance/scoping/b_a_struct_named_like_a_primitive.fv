@@ -1,0 +1,3 @@
+// expect: reject PrimitiveRedefinition
+// A struct may not take the name of a primitive type.
+struct I64 { x: I32 }

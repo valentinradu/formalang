@@ -1,0 +1,9 @@
+// expect: reject TypeMismatch
+// from: TypeScript conformance/types/typeParameters. Through the bound
+// `T: Comparable<I32>`, the parameter `other` of `compare` is an I32.
+pub trait Comparable<T> {
+    fn compare(self, other: T) -> I32
+}
+fn check<T: Comparable<I32>>(a: T) -> I32 {
+    a.compare(other: "x")
+}

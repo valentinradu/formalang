@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+// A closure parameter is scoped to the closure body.
+pub fn f() -> I32 {
+    let g: (I32) -> I32 = (p) -> p
+    g(1) + p
+}

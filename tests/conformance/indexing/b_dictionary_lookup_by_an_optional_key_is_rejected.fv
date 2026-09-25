@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// The key of `[String: I32]` is a `String`, not a `String?`.
+pub fn f(d: [String: I32], k: String?) -> I32? { d[k] }

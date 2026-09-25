@@ -1,0 +1,8 @@
+// expect: run
+// The loop variable hides the outer binding in the body only.
+pub fn run_checks() {
+    let i: I32 = 100
+    let s: I32 = for i in [1, 2] { i }.fold(initial: 0, f: (a, b) -> a + b)
+    assert(condition: s == 3)
+    assert(condition: i == 100)
+}

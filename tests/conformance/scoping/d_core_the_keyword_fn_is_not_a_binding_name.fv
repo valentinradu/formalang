@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `fn` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let fn = 1
+    assert(condition: fn == 1)
+}

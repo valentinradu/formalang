@@ -1,0 +1,4 @@
+// expect: reject FunctionReturnTypeMismatch
+// from: swift test/Constraints/optional.swift (return nil from a
+// non-optional function).
+pub fn f() -> I32 { nil }

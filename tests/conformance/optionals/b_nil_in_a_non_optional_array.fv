@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// A `[I32]` has no room for `nil`.
+pub let xs: [I32] = [1, nil]

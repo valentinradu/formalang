@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/enums.md: the full form `Status.pending` names the enum, so
+// a `let` with no annotation takes it.
+pub enum Status { pending, active }
+
+pub fn run_checks() {
+    let s = Status.pending
+    assert(condition: s != Status.active)
+}

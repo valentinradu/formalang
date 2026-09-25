@@ -1,0 +1,9 @@
+// expect: reject GenericConstraintViolation
+// docs/user/generics.md: a constraint holds when the type argument is
+// written at the call site: `total<Square>(item: s)`.
+pub trait Shape { fn area(self) -> I32 }
+pub struct Plain { n: I32 }
+
+fn total<T: Shape>(item: T) -> I32 { item.area() }
+
+pub let b: I32 = total<Plain>(item: Plain(n: 1))

@@ -1,0 +1,14 @@
+// expect: run
+// from: rust tests/ui/pattern/. A binding hides a parameter of the same
+// name in its arm, and only there.
+pub enum E { a(n: I32), b }
+pub fn f(e: E, n: I32) -> I32 {
+    match e {
+        .a(n): n,
+        .b: n
+    }
+}
+pub fn run_checks() {
+    assert(condition: f(e: E.a(n: 1), n: 5) == 1)
+    assert(condition: f(e: E.b, n: 5) == 5)
+}

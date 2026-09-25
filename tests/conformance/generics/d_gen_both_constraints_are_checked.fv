@@ -1,0 +1,13 @@
+// expect: reject GenericConstraintViolation
+// docs/user/generics.md: multiple constraints use `+`: `<T: A + B>`.
+pub trait Renderable { fn render(self) -> Boolean }
+pub trait Clickable { fn click(self) -> Boolean }
+pub struct Only { n: I32 }
+
+impl Renderable for Only {
+    fn render(self) -> Boolean { true }
+}
+
+fn use_it<T: Renderable + Clickable>(t: T) -> Boolean { t.click() }
+
+pub let b = use_it(t: Only(n: 1))

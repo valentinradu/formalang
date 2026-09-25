@@ -1,0 +1,6 @@
+// expect: compile
+// docs/user/modules.md: the rule is about the types a signature names. A
+// default value is not a type, and its type here is `I32`.
+struct Hidden { x: I32 }
+
+pub fn f(n: I32 = Hidden(x: 1).x) -> I32 { n }

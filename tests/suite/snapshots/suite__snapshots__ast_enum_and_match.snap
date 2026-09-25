@@ -3,7 +3,7 @@ source: tests/suite/snapshots.rs
 expression: file
 ---
 File {
-    format_version: 1,
+    doc: None,
     statements: [
         Definition(
             Enum(
@@ -829,13 +829,13 @@ File {
                                         span: Span {
                                             start: Location {
                                                 offset: 2186,
-                                                line: 0,
-                                                column: 0,
+                                                line: 57,
+                                                column: 12,
                                             },
                                             end: Location {
                                                 offset: 2187,
-                                                line: 0,
-                                                column: 0,
+                                                line: 57,
+                                                column: 13,
                                             },
                                         },
                                     },
@@ -843,13 +843,13 @@ File {
                                     span: Span {
                                         start: Location {
                                             offset: 2186,
-                                            line: 0,
-                                            column: 0,
+                                            line: 57,
+                                            column: 12,
                                         },
                                         end: Location {
                                             offset: 2187,
-                                            line: 0,
-                                            column: 0,
+                                            line: 57,
+                                            column: 13,
                                         },
                                     },
                                 },
@@ -1631,13 +1631,13 @@ File {
                                         span: Span {
                                             start: Location {
                                                 offset: 2776,
-                                                line: 0,
-                                                column: 0,
+                                                line: 69,
+                                                column: 16,
                                             },
                                             end: Location {
                                                 offset: 2777,
-                                                line: 0,
-                                                column: 0,
+                                                line: 69,
+                                                column: 17,
                                             },
                                         },
                                     },
@@ -1645,13 +1645,13 @@ File {
                                     span: Span {
                                         start: Location {
                                             offset: 2776,
-                                            line: 0,
-                                            column: 0,
+                                            line: 69,
+                                            column: 16,
                                         },
                                         end: Location {
                                             offset: 2777,
-                                            line: 0,
-                                            column: 0,
+                                            line: 69,
+                                            column: 17,
                                         },
                                     },
                                 },
@@ -1661,13 +1661,13 @@ File {
                                         span: Span {
                                             start: Location {
                                                 offset: 2779,
-                                                line: 0,
-                                                column: 0,
+                                                line: 69,
+                                                column: 19,
                                             },
                                             end: Location {
                                                 offset: 2780,
-                                                line: 0,
-                                                column: 0,
+                                                line: 69,
+                                                column: 20,
                                             },
                                         },
                                     },
@@ -1675,13 +1675,13 @@ File {
                                     span: Span {
                                         start: Location {
                                             offset: 2779,
-                                            line: 0,
-                                            column: 0,
+                                            line: 69,
+                                            column: 19,
                                         },
                                         end: Location {
                                             offset: 2780,
-                                            line: 0,
-                                            column: 0,
+                                            line: 69,
+                                            column: 20,
                                         },
                                     },
                                 },
@@ -2021,13 +2021,13 @@ File {
                                         span: Span {
                                             start: Location {
                                                 offset: 2946,
-                                                line: 0,
-                                                column: 0,
+                                                line: 72,
+                                                column: 13,
                                             },
                                             end: Location {
                                                 offset: 2947,
-                                                line: 0,
-                                                column: 0,
+                                                line: 72,
+                                                column: 14,
                                             },
                                         },
                                     },
@@ -2035,13 +2035,13 @@ File {
                                     span: Span {
                                         start: Location {
                                             offset: 2946,
-                                            line: 0,
-                                            column: 0,
+                                            line: 72,
+                                            column: 13,
                                         },
                                         end: Location {
                                             offset: 2947,
-                                            line: 0,
-                                            column: 0,
+                                            line: 72,
+                                            column: 14,
                                         },
                                     },
                                 },

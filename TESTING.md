@@ -7,8 +7,8 @@ and where a new test belongs.
 
 | Command | Runs | Speed |
 | --- | --- | --- |
-| `cargo test` | unit + integration + doctests | ~1 min |
-| `cargo test -- --ignored` | repros for open defects and unfinished features | seconds |
+| `cargo test` | unit + integration + doctests | ~4 min |
+| `cargo test -- --ignored` | repros for open defects and unfinished features (none exist today) | seconds |
 | `PROPTEST_CASES=N cargo test --release --test suite differential::` | generated programs against an oracle | seconds to minutes |
 | `PROPTEST_CASES=N cargo test --release --test suite proptest_frontend::` | property tests with a bigger budget | seconds to minutes |
 | `cargo bench` | the divan benchmark suite | ~5 min |
@@ -38,7 +38,7 @@ and where a new test belongs.
 | `tests/suite/closure_captures.rs` | Capture analysis, one case per expression form |
 | `tests/suite/cli.rs` | The `fvc` binary, end to end |
 | `tests/suite/cross_module.rs` | Compiling through a resolver, and the gaps that remain |
-| `tests/suite/ast_serde_depth.rs` | How deep an AST can nest and still be read back |
+| `tests/suite/test_serde_stability.rs` | An `IrModule` survives a JSON round trip (the `serde` feature) |
 | `tests/suite/run_examples.rs` | Every example's `run_checks()`, executed |
 | `tests/suite/conformance.rs` + `tests/conformance/**.fv` | One rule per file, run or rejected |
 | `tests/suite/type_matrix.rs` | Every context x type pair, as a snapshot |
@@ -52,9 +52,35 @@ and where a new test belongs.
 | `tests/suite/optimised_answers.rs` | Every optimising pass, run and compared against the unoptimised answer |
 | `tests/suite/no_internal_errors.rs` | No wrong program earns an internal error |
 | `tests/suite/differential.rs` | Generated programs against an independent oracle |
-| `tests/suite/known_issues.rs` | One `#[ignore]` repro per open defect |
+| `tests/suite/common/verifier.rs` | The IR type contract. The interpreter checks every module with it before a run |
+| `tests/suite/ir_verifier.rs` | The verifier over every corpus, after each pass |
+| `tests/suite/type_agreement.rs` | The semantic pass and the IR give one expression the same type |
+| `tests/suite/fold_width.rs`, `tests/suite/numeric_semantics.rs` | Constant folding at the declared width, and the WebAssembly arithmetic tables |
+| `tests/suite/docs_examples.rs` | Every `formalang` block in `docs/` is a complete program. It compiles, or it fails with the variant of its `reject=` tag |
+| `tests/suite/near_miss.rs` | One-edit mutants of valid programs are rejected |
+| `tests/suite/depth_ladder.rs` | Deep nesting compiles or returns an error, in a child process, and does not abort |
+| `tests/suite/pathological_inputs.rs` | Linear time, clean spans and odd characters. See [Timing tests](#timing-tests) |
+| `tests/suite/frontend_invariants.rs` | Broken forms of the corpus give no internal error |
+| `tests/suite/pass_adversarial.rs`, `tests/suite/pass_contracts.rs` | The stated contract of each pass, over adversarial programs |
+| `tests/suite/cross_module_adversarial.rs`, `tests/suite/mined_modules.rs` | Programs over several files, through a resolver |
+| `tests/suite/api_contracts.rs` | The claims in the public API documentation |
+| `tests/suite/unary_operands.rs` | A unary operator checks its operand |
 
 All of these run in `cargo test`.
+
+#### The `serde` feature
+
+The IR serde is the optional `serde` feature, and it is off by
+default. Many tests write the IR as JSON: a round trip, or a canonical
+form to compare two modules. `Cargo.toml` has a dev-dependency on the
+crate itself with the feature, so a test build always has the feature.
+Plain `cargo test` runs these tests, and `cargo test --all-features`
+runs the same set.
+
+A test target always turns the feature on. To check the build without
+the feature, use `cargo build --no-default-features` or
+`cargo clippy --lib --bins --no-default-features`. Do not add
+`--all-targets`, because a test target turns the feature on again.
 
 #### One binary, many files
 
@@ -94,6 +120,17 @@ inspecting the IR's shape can check.
 
 Before it existed, the twenty example programs ended in a `run_checks()`
 holding 93 `assert(condition: ...)` calls that nothing ever executed.
+
+The interpreter looks things up by name, but a backend uses the ids.
+So a wrong id can give the right answer here and the wrong answer in a
+backend. To stop this, `Interpreter::new` runs the IR verifier
+(`tests/suite/common/verifier.rs`) over the module. When the verifier
+finds a problem, `Interpreter::run` evaluates nothing and returns
+`Fault::IllFormed`. Each run in each suite thus also checks the IR
+type contract: each expression carries its resolved type, and each id
+names something that exists. `tests/suite/ir_verifier.rs` runs the
+same verifier over every corpus after each pass. After
+`ResolveReferencesPass`, `verify_resolved` also checks the indices.
 
 #### The conformance corpus
 
@@ -150,8 +187,14 @@ an obvious thing to try, and each turned out to be a real hole.
 #### The type matrix
 
 `tests/suite/type_matrix.rs` generates every (context, declared type, value
-type) triple — fourteen contexts by sixteen types by sixteen types —
-compiles each, and snapshots the accept/reject grid.
+type) triple — fourteen contexts by sixteen declared types by eighteen
+value types — compiles each, and snapshots the accept/reject grid.
+
+The two extra value columns, `I32 typed` (`1I32`) and `F64 typed`
+(`1.5F64`), have a fixed type. An unsuffixed literal takes its type
+from the context, so the `I32` column (`1`) fits an `I64` row. The
+typed columns keep the check that a value of one numeric type does
+not fit a declaration of another.
 
 The snapshot is not an oracle; it records what the compiler does today,
 so any change to the type checker arrives as a reviewable diff over the
@@ -271,13 +314,13 @@ Counting the three snapshot matrices:
 
 | | cells | accepted | rejected |
 | --- | --- | --- | --- |
-| `type_matrix` | 3586 | 277 | 3309 |
-| `operator_matrix` | 3586 | 72 | 3514 |
-| `method_matrix` | 257 | 26 | 231 |
-| **total** | **7429** | **375** | **7054** |
+| `type_matrix` | 4032 | 350 | 3682 |
+| `operator_matrix` | 3584 | 71 | 3513 |
+| `method_matrix` | 255 | 25 | 230 |
+| **total** | **7871** | **446** | **7425** |
 
 For a rejected cell, "does this compile?" is the whole question —
-there is nothing to run. For the 375 that accept there is: each
+there is nothing to run. For the 446 that accept there is: each
 compiles to a program that produces a value, and for a long time none
 of them was ever asked what that value was.
 
@@ -371,12 +414,55 @@ every such walk fixed it, and
   properties that only make sense over source that compiles.
 
 `PROPTEST_CASES=N` changes the case count. When proptest shrinks a
-counterexample it writes a `tests/*.proptest-regressions` file; commit
+counterexample it writes a `tests/suite/*.proptest-regressions` file; commit
 it alongside the fix, so every future run replays it first.
+
+#### Timing tests
+
+Each phase must take time that grows with the length of the input at
+a linear rate. `tests/suite/pathological_inputs.rs` checks this with
+the `linear!` tests. Each one times a phase over an input of size n
+and over an input of size 16n:
+
+- a linear phase takes about 16 times as long, and a quadratic phase
+  about 256 times;
+- the test fails when the large input takes more than 48 times as
+  long as the small one, plus 40 milliseconds;
+- the test runs each size 25 times, in turns of five, and keeps the
+  fastest run of each size. Load from other tests then falls on both
+  sizes;
+- one lock lets only one timing test measure at a time.
+
+The gap between 48 and 256 is wide. Load from other processes does not
+make a linear phase fail, and a quadratic phase still fails by a wide
+margin. Do not make the bound tighter to catch a smaller growth: use
+`cargo bench --bench scaling` for that.
+
+#### Deep nesting
+
+A stack overflow does not return an error: it aborts the process. For
+an editor that holds the compiler, that is a crash of the editor. So
+`tests/suite/depth_ladder.rs` runs each probe in a child process, on a
+thread with a stack of 8 megabytes. It nests each construct at depths
+of 64 and 256, which must compile, and at 1024, 10 000 and 100 000,
+which must return an error. No probe may abort or hang.
+
+Two limits make this hold:
+
+- the parser computes a nesting score from the tokens before it
+  parses. Above a score of 1024 it returns a `ParseError`. Below it,
+  the parser runs on a thread of its own, with a stack that grows with
+  the score (`src/parser/nesting.rs`);
+- the semantic pass refuses an expression deeper than 500 with
+  `ExpressionDepthExceeded`.
 
 ### Concurrency
 
-The compiler is single-threaded. Its callers are not: a build tool
+Two calls of the compiler share only the prelude, which the library
+parses and lowers once per process, in a `OnceLock`. One call uses one
+thread, with one exception: the parser runs on a thread of its own,
+with a stack that fits the nesting of the program, and the call waits
+for it. The callers of the compiler use many threads: a build tool
 compiles many files at once, and an editor runs the analyser on a
 worker.
 
@@ -385,8 +471,9 @@ the public types are `Send` and `Sync`, compiling on eight threads
 gives what compiling on one gives, and rendering a diagnostic on eight
 threads produces a report on each.
 
-`src/bin/fvc.rs` holds the only atomic state in the tree: the shutdown
-flag that `fvc watch` shares with its Ctrl+C handler. `WatchState`
+`src/bin/fvc.rs` holds the only atomics in the tree: the two flags
+that `fvc watch` shares with its Ctrl+C handler, the shutdown request
+and the result of the last check. `WatchState`
 exists as its own type so that protocol can be model-checked without
 the filesystem polling around it. Run the model with:
 
@@ -408,7 +495,7 @@ toolchain and `cargo install cargo-fuzz --locked`.
 | Target | Input | What it guards |
 | --- | --- | --- |
 | `lex` | `&str` | The lexer never panics; every span it reports is a real byte range with one-based positions |
-| `parse` | `&str` | The parser never panics; a failure always carries an error; a parsed AST round-trips through JSON |
+| `parse` | `&str` | The parser never panics; a failure always carries an error |
 | `compile` | `&str` | Lex, parse, semantic analysis and lowering over text no grammar generator would write |
 | `program` | `Arbitrary` program | The deep phases. Renders a generated program to source, then checks IR JSON stability and pipeline idempotence |
 | `ir_json` | `&[u8]` | The IR decode surface. A backend reading an `IrModule` another tool wrote is reading untrusted input |
@@ -427,8 +514,11 @@ scripts/fuzz.sh program 600  # one target, 600 s
 ```
 
 The script passes `-timeout=10`, so a slow input is a reported finding
-rather than a hang. That matters here: parse time is exponential in
-nesting depth (FL-1), so a timeout is a defect.
+rather than a hang. Each phase must take time that grows with the
+length of the input, so a timeout is a defect. The parser was
+exponential in nesting depth once (FL-1, and later unclosed `if`
+blocks), and the fuzzer found both as timeouts. `depth_ladder` and
+the `linear!` tests in `pathological_inputs` now guard them.
 
 The live corpus under `fuzz/corpus/` is not checked in. The curated
 seeds under `fuzz/seeds/text/` are, and the script passes `examples/` as an
@@ -457,35 +547,27 @@ is a defect.
 
 ### Open defects and unfinished features
 
-Every `#[ignore]` test fails today, and its reason says why.
+An `#[ignore]` test fails today, and its reason says why. No such
+test exists today: every test in the tree passes. This command runs
+them when they exist:
 
 ```sh
 cargo test --no-fail-fast -- --ignored
 ```
 
-They sit in two places:
-
-- `tests/suite/known_issues.rs` — open defects, one repro each, with the
-  file that holds the cause.
-- `tests/suite/cross_module.rs` — shapes the cross-module inline pass has
-  not reached: an imported type in a function signature, an imported
-  return type, a generic import, and an imported trait's conformance.
-  Each reports a `CompilerError::InternalError` rather than emitting a
-  module a backend cannot use.
-
-Drop the attribute when the defect is fixed or the feature lands, and
-the test becomes its regression guard.
-
-When you find a defect you are not fixing now, add a repro the same
-way: a test that fails, `#[ignore]`d, with a reason that names the
-cause and the file that holds it.
+When you find a defect that you do not fix now, add a repro: a test
+that fails, with `#[ignore]` and a reason that names the cause and the
+file that holds it. Put it in the file of its feature area. Remove the
+attribute when the defect is fixed or the feature lands, and the test
+becomes its regression guard.
 
 ## Adding a new test
 
 - **Module-local invariant?** Add `#[cfg(test)] mod tests` in the
   source file.
-- **A feature that crosses phases?** Add or extend a file in `tests/`,
-  named after what it guards.
+- **A feature that crosses phases?** Add or extend a file in
+  `tests/suite/`, named after what it guards, and add its `mod` line to
+  `tests/suite/main.rs`.
 - **A property that must hold over any program?** Add it to
   `tests/suite/metamorphic.rs` if it holds over the example corpus, or to
   `tests/suite/proptest_frontend.rs` if it needs generated input.
@@ -503,8 +585,11 @@ cause and the file that holds it.
   and sweep every offset rather than probing a few.
 - **A language rule?** Add a file to `tests/conformance/`. That is
   the cheapest surface and the one to reach for first.
-- **A defect you are not fixing now?** Add a repro to
-  `tests/suite/known_issues.rs` with `#[ignore]`, and name the cause.
+- **A defect you are not fixing now?** Add a repro with `#[ignore]` to
+  the file of its feature area, and name the cause.
+- **A claim in the documentation?** Write the example as a complete
+  ```` ```formalang ```` block; `docs_examples` compiles it. Put a claim
+  about what a program means in a `d_` conformance case.
 
 ## Assertions must actually run
 
@@ -525,7 +610,8 @@ for (name, source) in examples() {
 }
 ```
 
-Twenty-one loops use it today. Any new corpus-driven test should.
+The suite calls `Checked::new` 68 times today, in 22 files. Any new
+corpus-driven test should use it.
 
 ## Are the tests actually testing anything?
 
@@ -547,11 +633,11 @@ Two checks answer the question properly.
 
 `tests/suite/tests_assert_something.rs` reads the test sources and counts the
 test functions that compile a program and then ask nothing of the
-result. There are 615 of them across 26 files, and the count per file
+result. There are 610 of them across 26 files, and the count per file
 is a ratchet: a new one has to displace an old one or assert
 something.
 
-Those 615 are not worthless — on a valid program, "this compiles" is
+Those 610 are not worthless — on a valid program, "this compiles" is
 the assertion that it is not falsely rejected, and the parser suites
 rest almost entirely on it. But such a test cannot tell a working
 feature from a missing one, which is exactly how the first example
@@ -575,7 +661,7 @@ scripts/mutate.sh src/semantic     # a directory or a file
 `--in-diff` is the everyday command. It writes `git diff` against
 `origin/main` — your commits and your working tree — and keeps only the
 mutants that fall on a line the diff touches. A sweep of the whole
-project tests 2621 mutants, nearly all of them unchanged since the last
+project tests 3564 mutants, nearly all of them unchanged since the last
 sweep; a sweep of one change tests tens. Give it another base as an
 argument: `scripts/mutate.sh --in-diff HEAD~3`. A file that git does
 not track yet is not in the diff, so `git add -N <file>` first.
@@ -602,24 +688,26 @@ showed that:
   what decided. `methods/overloads_differ_by_label.fv` and its two
   neighbours exist because of those three.
 
-The whole tree is 2621 mutants and each needs a build and a test run,
+The whole tree is 3564 mutants and each needs a build and a test run,
 so a full pass takes hours. Run `--in-diff`, or a directory at a time.
 
 ## What is left
 
-Nothing is parked: no `#[ignore]`, no `KNOWN_WRONG` cell, no `TODO`.
-The two behaviours this section used to list as undecided are decided
-and implemented — a value wraps into an optional inside a container,
-and an optional compares to `nil`. See
-[Types / Optional Elements](docs/user/types.md) and
-[Expressions](docs/user/expressions.md).
+A bug hunt on 2026-09-24 added the files at the end of the taxonomy
+table, and conformance cases that failed. The defects that these tests
+found are fixed. Every test passes today, and so do all 1290
+conformance cases. No test carries `#[ignore]`, and `KNOWN_WRONG` in
+`type_matrix` is empty.
 
-What is unfinished is the mutation sweep. `scripts/mutate.sh` has been
-run over one file — 20 of about 2600 mutants — and it found a real gap
-there within minutes: `ir::overload::defaults_fired` decides which
-overload a call means, and nothing noticed when it always answered
-zero. On that evidence a full pass will find more, and
-`src/semantic/validation` alone holds 191 mutants. A full pass is still
-an overnight job; `--in-diff` keeps each change covered in the
-meantime.
+These things are not done:
 
+- **The mutation sweep.** `scripts/mutate.sh` ran over one file only,
+  and the fixes added code: the tree now holds 3564 mutants, 813 of
+  them in `src/semantic/validation` alone. Run `--in-diff` for each
+  change. Run the full sweep one directory at a time.
+- **The fuzzers after the fixes.** The parser and the semantic pass
+  changed a lot. Run `scripts/fuzz.sh` for each target, and add each
+  finding as a test and as a seed.
+- **The bigger budgets.** `differential` and `proptest_frontend` run
+  few cases in `cargo test`. Run them with a large `PROPTEST_CASES` in
+  a release build from time to time.

@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/control-flow.md: a parameter can take a sequence only with
+// the `sink` convention.
+fn total(sink s: Seq<I32>) -> I32 {
+    s.fold(initial: 0, f: (a, b) -> a + b)
+}
+
+pub fn run_checks() {
+    assert(condition: total(s: for x in [1, 2, 3] { x }) == 6)
+}

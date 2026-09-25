@@ -1,0 +1,6 @@
+// expect: reject StructDestructuringNotStruct
+// docs/user/expressions.md: struct destructuring takes a struct.
+pub fn f() -> I32 {
+    let {x} = 5
+    0
+}

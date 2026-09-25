@@ -1,0 +1,3 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be an enum payload (E137).
+pub enum E { items(s: Seq<I32>) }

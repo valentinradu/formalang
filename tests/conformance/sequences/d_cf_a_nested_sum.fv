@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/control-flow.md: the nested `for` over a matrix.
+pub fn run_checks() {
+    let matrix = [[1, 2], [3, 4]]
+    let sum: I32 = for row in matrix {
+        for cell in row { cell }.fold(initial: 0, f: (a, b) -> a + b)
+    }.fold(initial: 0, f: (a, b) -> a + b)
+    assert(condition: sum == 10)
+}

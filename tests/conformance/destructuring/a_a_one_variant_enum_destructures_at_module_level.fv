@@ -1,0 +1,12 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// docs/user/expressions.md: enum destructuring extracts the associated
+// data in parameter order, at module level too.
+pub enum Point { at(x: I32, y: I32) }
+pub let p: Point = .at(x: 2, y: 5)
+pub let (px, py) = p
+pub fn run_checks() {
+    assert(condition: px == 2)
+    assert(condition: py == 5)
+}

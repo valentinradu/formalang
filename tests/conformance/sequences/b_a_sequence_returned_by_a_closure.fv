@@ -1,0 +1,7 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence cannot be a function return type.
+// A closure return type is one too.
+pub fn f() -> I32 {
+    let g: () -> Seq<I32> = () -> for x in [1] { x }
+    g().count()
+}

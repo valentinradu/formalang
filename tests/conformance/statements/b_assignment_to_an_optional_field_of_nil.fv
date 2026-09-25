@@ -1,0 +1,8 @@
+// expect: compile
+// docs/user/types.md: an optional field takes nil.
+pub struct U { nick: String? }
+
+pub fn f() {
+    let mut u = U(nick: "a")
+    u.nick = nil
+}

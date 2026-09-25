@@ -71,7 +71,7 @@ fn struct_destructuring_threads_closure_annotation() -> TestResult {
     let module = compile_to_ir(
         r"
         struct Wrap { f: (I32) -> I32 }
-        pub let {f}: Wrap = Wrap(f: (x) -> x)
+        let {f}: Wrap = Wrap(f: (x) -> x)
         ",
     )
     .map_err(|e| format!("{e:?}"))?;

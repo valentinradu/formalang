@@ -1,0 +1,11 @@
+// expect: reject AssignmentToImmutable
+// from: rust tests/ui/ (E0070, invalid left-hand side of assignment).
+// A field of a call result is a field of a temporary value, not a place.
+pub struct P { x: I32 }
+
+fn g() -> P { P(x: 1) }
+
+pub fn f() -> I32 {
+    g().x = 2
+    0
+}

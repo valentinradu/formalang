@@ -1,0 +1,11 @@
+// expect: run
+// A closure captures a parameter that took its default value.
+fn f(k: I32 = 3) -> I32 {
+    let g: () -> I32 = () -> k * 2
+    g()
+}
+
+pub fn run_checks() {
+    assert(condition: f() == 6)
+    assert(condition: f(k: 5) == 10)
+}

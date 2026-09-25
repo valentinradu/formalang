@@ -1,0 +1,6 @@
+// expect: reject GenericTraitMethod
+// docs/user/generics.md: a trait method cannot declare type parameters
+// (E146).
+pub trait T {
+    fn f<U>(self, u: U) -> U
+}

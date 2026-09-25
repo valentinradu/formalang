@@ -1,0 +1,8 @@
+// expect: reject TypeMismatch
+// A plain field does not take nil.
+pub struct U { nick: String }
+
+pub fn f() {
+    let mut u = U(nick: "a")
+    u.nick = nil
+}

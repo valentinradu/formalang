@@ -103,11 +103,11 @@ pub(in crate::reporting) fn uninferable_method_type_parameter<'a>(
 ) -> ReportBuilder<'a> {
     report(filename, span, "E147")
         .with_message(format!(
-            "Type parameter '{param}' of method '{method}' appears in no required parameter"
+            "Type parameter '{param}' of '{method}' gets no type from the arguments"
         ))
         .with_label(label(filename, span).with_message(format!(
             "no argument can give '{}' a type",
             param.fg(Color::Red)
         )))
-        .with_help("A method call takes no <...>. Use the type parameter in the type of a parameter with no default, or remove it")
+        .with_help("Use the type parameter in the type of a parameter with no default, or remove it. A function call can also give the type in <...>")
 }

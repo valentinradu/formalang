@@ -1,0 +1,7 @@
+// expect: reject UninferableMethodTypeParameter
+// docs/user/generics.md: a parameter with a default gives no type (E147).
+pub struct B { n: I32 }
+
+impl B {
+    fn make<U>(self, u: U? = nil) -> I32 { self.n }
+}

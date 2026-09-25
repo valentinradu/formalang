@@ -1,0 +1,20 @@
+// expect: run
+// docs/user/generics.md: generic enum instantiation.
+pub enum Result<T, E> {
+    ok(value: T),
+    error(err: E)
+}
+
+fn code(r: Result<String, I32>) -> I32 {
+    match r {
+        .ok(value): value.len(),
+        .error(err): err
+    }
+}
+
+pub fn run_checks() {
+    let success: Result<String, I32> = .ok(value: "success")
+    let failure: Result<String, I32> = .error(err: 404)
+    assert(condition: code(r: success) == 7)
+    assert(condition: code(r: failure) == 404)
+}

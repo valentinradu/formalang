@@ -291,6 +291,36 @@ fn walk_ids(value: &serde_json::Value, counts: &[(&str, usize)], out: &mut Vec<S
     }
 }
 
+/// The two resolver entry points give the same program. Both run
+/// `MonomorphisePass`, so neither result keeps a generic user function.
+#[test]
+fn both_resolver_entry_points_monomorphise() {
+    let entry = "use generic::{Box, wrap}\n\npub fn f() -> I32 {\n    wrap(v: 1).value\n}\n";
+    let plain = compile(entry, &[("generic", GENERIC)]);
+    let with_path = match compile_to_ir_with_path_and_resolver(
+        entry,
+        PathBuf::from("main.fv"),
+        MemResolver::with(&[("generic", GENERIC)]),
+    ) {
+        Ok(module) => module,
+        Err(errors) => panic!("the fixture must compile: {errors:?}"),
+    };
+    let generic_functions = |module: &IrModule| -> Vec<String> {
+        module
+            .functions
+            .iter()
+            .filter(|f| !f.generic_params.is_empty())
+            .map(|f| f.name.clone())
+            .collect()
+    };
+    assert_eq!(generic_functions(&plain), Vec::<String>::new());
+    assert_eq!(generic_functions(&with_path), Vec::<String>::new());
+    let names = |module: &IrModule| -> Vec<String> {
+        module.functions.iter().map(|f| f.name.clone()).collect()
+    };
+    assert_eq!(names(&plain), names(&with_path));
+}
+
 /// Every span's file id indexes the host's file table.
 ///
 /// An inlined definition's spans arrive numbered against its own

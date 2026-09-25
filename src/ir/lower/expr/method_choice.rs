@@ -23,6 +23,8 @@ impl IrLowerer<'_> {
     ) -> crate::ir::MethodIdx {
         let labels: Vec<Option<String>> =
             call_args.iter().map(|(label, _)| label.clone()).collect();
+        let arg_types: Vec<ResolvedType> =
+            call_args.iter().map(|(_, arg)| arg.ty().clone()).collect();
 
         #[expect(
             clippy::cast_possible_truncation,
@@ -40,7 +42,7 @@ impl IrLowerer<'_> {
                         |f| f.params.as_slice(),
                         method_name,
                         &labels,
-                        call_args.len(),
+                        &arg_types,
                     )
                 })
                 .unwrap_or(0) as u32,
@@ -54,7 +56,7 @@ impl IrLowerer<'_> {
                             |m| m.params.as_slice(),
                             method_name,
                             &labels,
-                            call_args.len(),
+                            &arg_types,
                         )
                     })
                     .unwrap_or(0) as u32
@@ -90,6 +92,26 @@ impl IrLowerer<'_> {
         )
         .and_then(|index| named.get(index).copied())
         .or_else(|| named.first().copied())
+    }
+
+    /// The method of `impl_block` that a call with these lowered
+    /// arguments means: the labels, the count and the argument types
+    /// decide, by the rule of `crate::ir::overload::method_index`.
+    pub(super) fn method_for_typed_call<'b>(
+        impl_block: &'b crate::ir::IrImpl,
+        method_name: &str,
+        labels: &[Option<String>],
+        arg_types: &[ResolvedType],
+    ) -> Option<&'b crate::ir::IrFunction> {
+        crate::ir::overload::method_index(
+            &impl_block.functions,
+            |f| f.name.as_str(),
+            |f| f.params.as_slice(),
+            method_name,
+            labels,
+            arg_types,
+        )
+        .and_then(|index| impl_block.functions.get(index))
     }
 
     /// The signature of the impl method that a call on `receiver_ty`

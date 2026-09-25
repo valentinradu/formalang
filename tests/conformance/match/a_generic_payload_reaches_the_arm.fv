@@ -1,0 +1,13 @@
+// expect: run
+// The payload of a generic enum reaches the arm with its value.
+pub enum Option<T> { some(value: T), none }
+pub fn f(o: Option<I32>) -> I32 {
+    match o {
+        .some(value): value + 1,
+        .none: 0
+    }
+}
+pub fn run_checks() {
+    assert(condition: f(o: Option.some(value: 41)) == 42)
+    assert(condition: f(o: Option.none) == 0)
+}

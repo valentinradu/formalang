@@ -1,0 +1,9 @@
+// expect: reject NotIndexable
+// docs/user/types.md: `p[0]` is error E139.
+pub struct Point { x: I32 }
+
+pub fn run_checks() {
+    let p = Point(x: 1)
+    let e = p[0]
+    assert(condition: e == 1)
+}

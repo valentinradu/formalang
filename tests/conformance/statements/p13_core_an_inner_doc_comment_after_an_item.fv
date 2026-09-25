@@ -1,0 +1,6 @@
+// expect: reject ParseError
+// docs/user/core.md: a `//!` comment is valid only at the start of the
+// file or of a `mod` body.
+pub let a: I32 = 1
+//! Too late: this documents nothing.
+pub let b: I32 = 2

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: there is no `return` in the language, so `return` is
+// a name and the rest of its line is a second statement on the same
+// line.
+pub fn f() -> I32 {
+    return 1
+}

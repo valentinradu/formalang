@@ -1,0 +1,12 @@
+// expect: run
+// docs/user/closures.md: the type goes through the branches of `match`.
+pub enum Dir { up, down }
+
+pub fn run_checks() {
+    let d: Dir = .down
+    let f: (I32) -> I32 = match d {
+        .up: (x) -> x + 1,
+        .down: (x) -> x - 1
+    }
+    assert(condition: f(1) == 0)
+}

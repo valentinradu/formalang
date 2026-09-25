@@ -1,0 +1,8 @@
+// expect: run
+// The prelude declares `len` on `Range`. It agrees with the count of the
+// loop over the range, and a reversed range has no elements.
+pub fn run_checks() {
+    assert(condition: (0..10).len() == 10)
+    assert(condition: (5..1).len() == 0)
+    assert(condition: (5..1).is_empty())
+}

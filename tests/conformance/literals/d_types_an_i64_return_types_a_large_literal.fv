@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/types.md: a literal takes its declared type. The return
+// type of a function declares the type of its body.
+fn big() -> I64 { 3000000000 }
+
+pub fn run_checks() {
+    assert(condition: big() == 3000000000I64)
+}

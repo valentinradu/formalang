@@ -1,0 +1,18 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: impl blocks and the prelude declare the methods
+// of a type. A method that none of them declares is unknown, and the
+// error must name it, not report an internal error.
+
+pub struct Sq { s: I32 }
+
+impl Sq {
+    fn area(self) -> I32 { self.s * self.s }
+}
+
+pub enum Shape { square(value: Sq) }
+
+pub fn f(shape: Shape) -> I32 {
+    match shape {
+        .square(value): value.zz_area()
+    }
+}

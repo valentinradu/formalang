@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/expressions.md: `\u0000` is a Unicode escape. U+0000 is one
+// byte.
+pub fn run_checks() {
+    assert(condition: "\u0000".len() == 1)
+}

@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `nil` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let nil = 1
+    assert(condition: nil == 1)
+}

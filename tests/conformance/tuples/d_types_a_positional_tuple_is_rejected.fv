@@ -1,0 +1,4 @@
+// expect: reject ParseError
+// docs/user/types.md: all fields must be named. There are no
+// positional tuples.
+pub let p = (1, 2)

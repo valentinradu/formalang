@@ -1,0 +1,7 @@
+// expect: reject PrivateTypeInPublic
+// from: rust tests/ui/privacy/ (E0445, private trait in public interface).
+// docs/user/modules.md: a public definition names public types only. A
+// bound names a trait that the reader must know to call the function.
+trait Hidden { x: I32 }
+
+pub fn f<T: Hidden>(t: T) -> I32 { t.x }

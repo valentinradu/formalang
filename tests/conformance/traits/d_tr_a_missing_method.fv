@@ -1,0 +1,12 @@
+// expect: reject MissingTraitMethod
+// docs/user/traits.md: all `fn` signatures in the trait must be implemented.
+pub trait Shape {
+    fn area(self) -> I32
+    fn perimeter(self) -> I32
+}
+
+pub struct Sq { s: I32 }
+
+impl Shape for Sq {
+    fn area(self) -> I32 { self.s * self.s }
+}

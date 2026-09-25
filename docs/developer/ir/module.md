@@ -48,12 +48,19 @@ IrModule (root)
 |
 +-- impls: Vec<IrImpl>
 |   |
-|   +-- target: ImplTarget ----------> ImplTarget::Struct(StructId) or ImplTarget::Enum(EnumId)
+|   +-- target: ImplTarget ----------> Struct(StructId), Enum(EnumId) or Primitive(PrimitiveType)
+|   +-- trait_ref: Option<IrTraitRef>
 |   +-- functions: Vec<IrFunction>
 |
-+-- lets: Vec<IrLet>        // Module-level let bindings
++-- lets: Vec<IrLet>                // Module-level let bindings
 |
-+-- functions: Vec<IrFunction>  // Standalone function definitions
++-- functions: Vec<IrFunction>      // Standalone function definitions
+|
++-- imports: Vec<IrImport>          // What the `use` statements import
+|
++-- modules: Vec<IrModuleNode>      // Source `mod` tree and imported modules
+|
++-- file_table: Vec<PathBuf>        // Source files, indexed by FileId
 ```
 
 ## IrModule
@@ -64,10 +71,12 @@ pub struct IrModule {
     pub traits: Vec<IrTrait>,
     pub enums: Vec<IrEnum>,
     pub impls: Vec<IrImpl>,
-    pub lets: Vec<IrLet>,            // Module-level let bindings
-    pub functions: Vec<IrFunction>,  // Standalone function definitions
-    pub imports: Vec<IrImport>,      // External module imports
-    pub modules: Vec<IrModuleNode>,  // Source `mod foo { ... }` hierarchy
+    pub lets: Vec<IrLet>,               // Module-level let bindings
+    pub functions: Vec<IrFunction>,     // Standalone function definitions
+    pub imports: Vec<IrImport>,         // What the `use` statements import
+    pub modules: Vec<IrModuleNode>,     // Source `mod foo { ... }` hierarchy
+    pub file_table: Vec<PathBuf>,       // Source files, indexed by FileId
+    // private name-to-id indexes, skipped by serde
 }
 ```
 
@@ -76,60 +85,59 @@ lives in the appropriate slot regardless of source nesting. The
 `modules` tree is an *index* on top of those flat vectors, opt-in
 for backends that need to emit code into namespaces.
 
+The vectors start with the prelude. `Array`, `Seq`, `Dictionary` and
+`Range` are the first four structs, `Optional` is the first enum, the
+prelude's extern impl blocks are the first impls, and `assert` is the
+first function. See [Resolved Types](types.md#the-built-in-compound-types)
+for the accessors that find them.
+
 ### Lookup Methods
 
 ```rust
 impl IrModule {
-    /// Look up a struct by ID. Returns None if out of bounds.
+    /// Look up a definition by ID. Returns None if out of bounds.
     pub fn get_struct(&self, id: StructId) -> Option<&IrStruct>;
-
-    /// Look up a trait by ID. Returns None if out of bounds.
     pub fn get_trait(&self, id: TraitId) -> Option<&IrTrait>;
-
-    /// Look up an enum by ID. Returns None if out of bounds.
     pub fn get_enum(&self, id: EnumId) -> Option<&IrEnum>;
-
-    /// Look up a function by ID. Returns None if out of bounds.
     pub fn get_function(&self, id: FunctionId) -> Option<&IrFunction>;
 
-    /// Look up a struct ID by name.
+    /// Look up an ID by name.
     pub fn struct_id(&self, name: &str) -> Option<StructId>;
-
-    /// Look up a trait ID by name.
     pub fn trait_id(&self, name: &str) -> Option<TraitId>;
-
-    /// Look up an enum ID by name.
     pub fn enum_id(&self, name: &str) -> Option<EnumId>;
-
-    /// Look up a function ID by name.
+    /// For an overloaded name, the id of the first overload.
     pub fn function_id(&self, name: &str) -> Option<FunctionId>;
+
+    /// Look up a module-level let binding by name.
+    pub fn get_let(&self, name: &str) -> Option<&IrLet>;
+    pub fn has_let(&self, name: &str) -> bool;
+
+    /// The source path of a FileId. None for FileId(0).
+    pub fn file_path(&self, file: FileId) -> Option<&PathBuf>;
+    /// Add a path to `file_table`, or find it there, and return its id.
+    pub fn register_file(&mut self, path: PathBuf) -> FileId;
 
     /// Rebuild the internal name-to-ID indices after mutating the module.
     ///
-    /// Call this after adding or removing definitions from `structs`, `traits`,
-    /// `enums`, or `functions` so that the `*_id()` lookup methods stay
-    /// consistent.
+    /// Call this after adding, removing or reordering definitions in
+    /// `structs`, `traits`, `enums`, `functions` or `lets` so that the
+    /// `*_id()` lookup methods stay consistent. Serde skips the
+    /// indices: call it after you deserialise a module, too.
     pub fn rebuild_indices(&mut self);
 }
 ```
 
-## External Imports
+## Imports
 
-When a module uses types from other modules via `use` statements, those
-types are represented as `External` variants in `ResolvedType`. The
-`imports` field tracks which external types are used.
+`imports` records what the `use` statements of the entry module
+import. A backend can use it to emit import statements.
 
-> **Direction A inline pass:** `compile_to_ir_with_resolver` runs
-> `MonomorphisePass` with the analyzer's `imported_ir_modules()`
-> populated, which inlines every imported struct / enum / trait /
-> function / impl / pub-let into the entry `IrModule` under
-> qualified `module::path::name` form, then rewrites `External`
-> references to point at the cloned local definitions. After the
-> pass, **`ResolvedType::External` is a transient artifact that
-> doesn't reach the backend**: backends consume one flat `IrModule`
-> regardless of how many source files contributed to it. See
-> `tests/suite/cross_module.rs` for what the pass covers today and the per-phase
-> commit history.
+The public entry points link each imported module into the result (see
+[Programs over several files](obtaining.md#programs-over-several-files)).
+The imported definitions are then local definitions under a qualified
+name, such as `geom::Point`, and each reference to them uses a local
+id. So `imports` only records names. A backend does not need the IR of
+another module.
 
 ### IrImport
 
@@ -139,6 +147,8 @@ pub struct IrImport {
     pub module_path: Vec<String>,
     /// Items imported from this module
     pub items: Vec<IrImportItem>,
+    /// Filesystem path to the source module file
+    pub source_file: PathBuf,
 }
 ```
 
@@ -146,9 +156,9 @@ pub struct IrImport {
 
 ```rust
 pub struct IrImportItem {
-    /// Name of the imported type
+    /// Name of the imported item, as the `use` wrote it
     pub name: String,
-    /// Kind of type (struct, trait, or enum)
+    /// Kind of the item
     pub kind: ImportedKind,
 }
 ```
@@ -160,56 +170,31 @@ pub enum ImportedKind {
     Struct,
     Trait,
     Enum,
+    Function,   // use other::compute
+    ModuleLet,  // use other::CONST
 }
 ```
 
 ### Using Imports in Code Generators
 
-Code generators can use the imports to emit proper import statements:
+A generator that emits one output file for each source module can
+read `imports` for the import statements, and the
+[module tree](#irmodulenode-source-mod-hierarchy) for the items of
+each imported module:
 
 ```rust
-fn generate_typescript(module: &IrModule) -> String {
+fn generate_typescript_imports(module: &IrModule) -> String {
     let mut output = String::new();
-
-    // Generate import statements from the imports list
     for import in &module.imports {
         let path = import.module_path.join("/");
-        let items: Vec<_> = import.items.iter().map(|i| &i.name).collect();
+        let items: Vec<&str> = import.items.iter().map(|i| i.name.as_str()).collect();
         output.push_str(&format!(
-            "import {{ {} }} from '{}';\n",
+            "import {{ {} }} from './{}';\n",
             items.join(", "),
             path
         ));
     }
-
-    // Generate local definitions
-    for struct_def in &module.structs {
-        // ... generate struct
-    }
-
     output
-}
-```
-
-When generating type references, handle `External` separately:
-
-```rust
-fn type_to_typescript(ty: &ResolvedType, module: &IrModule) -> String {
-    match ty {
-        ResolvedType::Struct(id) => module.get_struct(*id).name.clone(),
-        ResolvedType::External { name, type_args, .. } => {
-            if type_args.is_empty() {
-                name.clone()
-            } else {
-                let args: Vec<_> = type_args
-                    .iter()
-                    .map(|t| type_to_typescript(t, module))
-                    .collect();
-                format!("{}<{}>", name, args.join(", "))
-            }
-        }
-        // ... other cases
-    }
 }
 ```
 
@@ -246,5 +231,9 @@ pub struct IrModuleNode {
 }
 ```
 
-Top-level (non-`mod`) definitions are not mirrored in the tree;
-backends iterate the flat vectors for those.
+Top-level (non-`mod`) definitions of the entry module are not
+mirrored in the tree; backends iterate the flat vectors for those.
+
+The tree also holds one node for each imported module, at the path
+that the `use` wrote. For `use lib::util::one`, the node `lib` holds
+the node `util`, and that node lists the id of `lib::util::one`.

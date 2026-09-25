@@ -1,0 +1,5 @@
+// expect: reject MatchNotEnum
+// docs/user/control-flow.md: pattern matching is on enums.
+pub fn f(n: I32) -> I32 {
+    match n { _: 0 }
+}

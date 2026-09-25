@@ -1,6 +1,6 @@
 # FormaLang Documentation
 
-**Last Updated**: 2026-09-22
+**Last Updated**: 2026-09-25
 
 FormaLang is a declarative DSL compiler frontend written in Rust. It parses
 `.fv` source files, performs semantic analysis, and produces a type-resolved

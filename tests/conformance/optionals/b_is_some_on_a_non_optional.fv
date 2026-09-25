@@ -1,0 +1,3 @@
+// expect: reject UndefinedReference
+// The prelude declares `is_some` on `Optional<T>` only.
+pub fn f(a: I32) -> Boolean { a.is_some() }

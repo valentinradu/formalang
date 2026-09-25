@@ -1,0 +1,10 @@
+// expect: reject StructDestructuringNotStruct
+// docs/user/expressions.md: struct destructuring takes a struct, and the
+// compiler has StructDestructuringNotStruct for other types. A tuple is
+// not a struct. Either answer is a verdict, but an internal error is not.
+pub fn run_checks() {
+    let t = (a: 1, b: 2)
+    let {a, b} = t
+    assert(condition: a == 1)
+    assert(condition: b == 2)
+}

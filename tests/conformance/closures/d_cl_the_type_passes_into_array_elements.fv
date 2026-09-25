@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/closures.md: the type goes through the elements of an array.
+pub fn run_checks() {
+    let fs: [(I32) -> I32] = [(x) -> x + 1, (x) -> x * 2]
+    assert(condition: fs.len() == 2)
+    let g = if let f = fs[1] { f(5) } else { 0 }
+    assert(condition: g == 10)
+}

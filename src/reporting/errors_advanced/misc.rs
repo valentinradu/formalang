@@ -18,6 +18,36 @@ pub(in crate::reporting) fn expression_depth_exceeded(
         .with_help("Simplify the expression by extracting sub-expressions into let bindings")
 }
 
+pub(in crate::reporting) fn instantiation_depth_exceeded<'a>(
+    filename: &'a str,
+    span: Span,
+    name: &str,
+    limit: usize,
+    written: bool,
+) -> ReportBuilder<'a> {
+    if written {
+        return report(filename, span, "E148")
+            .with_message(format!(
+                "A written type nests the type arguments of '{name}' too deep"
+            ))
+            .with_label(label(filename, span).with_message(format!(
+                "a type of '{name}' in the program nests its type arguments more than {limit} levels deep"
+            )))
+            .with_help(format!("Nest the type arguments at most {limit} levels deep, or wrap the inner levels in a non-generic type"));
+    }
+    report(filename, span, "E148")
+        .with_message(format!(
+            "Generic '{name}' has no finite set of instantiations"
+        ))
+        .with_label(label(filename, span).with_message(format!(
+            "this call gives '{name}' a larger type argument than its own, {limit} levels deep"
+        )))
+        .with_help(
+            "A generic that calls itself must call itself with the same type arguments. \
+             Wrap the growing value in a non-generic type, or give it a fixed type",
+        )
+}
+
 pub(in crate::reporting) fn too_many_definitions<'a>(
     filename: &'a str,
     span: Span,
@@ -63,22 +93,40 @@ pub(in crate::reporting) fn public_closure_field<'a>(
         )
 }
 
-pub(in crate::reporting) fn closure_capture_escapes_local_binding<'a>(
+pub(in crate::reporting) fn labelled_closure_argument<'a>(
     filename: &'a str,
     span: Span,
-    binding: &'a str,
+    label_name: &'a str,
 ) -> ReportBuilder<'a> {
-    report(filename, span, "E132")
+    report(filename, span, "E150")
         .with_message(format!(
-            "Returned closure captures '{binding}' which does not outlive the function"
+            "A closure call takes no argument labels, but it has the label '{label_name}'"
+        ))
+        .with_label(
+            label(filename, span)
+                .with_message(format!("remove the label '{}'", label_name.fg(Color::Red))),
+        )
+        .with_help("a closure type has no parameter names, so its arguments go by position")
+}
+
+pub(in crate::reporting) fn not_a_static_method<'a>(
+    filename: &'a str,
+    span: Span,
+    method: &'a str,
+    type_name: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E151")
+        .with_message(format!(
+            "Method '{method}' of '{type_name}' takes 'self', so a call needs a value"
         ))
         .with_label(label(filename, span).with_message(format!(
-            "'{}' dies when the function returns, leaving a dangling capture",
-            binding.fg(Color::Red)
+            "'{}' needs a value of '{}'",
+            method.fg(Color::Red),
+            type_name
         )))
-        .with_help(
-            "Only `sink` parameters and outer-scope bindings may be captured by a closure that escapes the function; consider taking ownership via a `sink` parameter",
-        )
+        .with_help(format!(
+            "call it through a value, as 'value.{method}(...)', or remove 'self' to make it a static method"
+        ))
 }
 
 /// Internal compiler error fallback. The `detail` push sites use
@@ -99,21 +147,21 @@ pub(in crate::reporting) fn internal_error<'a>(
         )
 }
 
-pub(in crate::reporting) fn float_dictionary_key<'a>(
+pub(in crate::reporting) fn invalid_dictionary_key<'a>(
     filename: &'a str,
     span: Span,
     key_type: &'a str,
 ) -> ReportBuilder<'a> {
     report(filename, span, "E134")
         .with_message(format!("'{key_type}' cannot be a dictionary key"))
-        .with_label(label(filename, span).with_message(format!(
-            "'{}' has no usable equality",
-            key_type.fg(Color::Red)
-        )))
+        .with_label(
+            label(filename, span)
+                .with_message(format!("'{}' is not a key type", key_type.fg(Color::Red))),
+        )
         .with_help(
-            "a float compares badly: NaN is not equal to itself, and 0.0 equals -0.0, \
-             so two keys can look different and collide, or look the same and miss. \
-             Use 'String', 'I32', 'I64', 'Boolean', a struct, or an enum",
+            "a key type is 'String', 'I32', 'I64', 'Boolean', or a struct or an enum \
+             whose fields are all key types. A float, an optional, an array, a tuple, \
+             a dictionary and a closure are not key types",
         )
 }
 

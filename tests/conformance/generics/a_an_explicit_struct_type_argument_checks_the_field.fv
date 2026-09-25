@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+// The explicit argument makes `value` an I32.
+pub struct Box<T> { value: T }
+pub let b = Box<I32>(value: "x")

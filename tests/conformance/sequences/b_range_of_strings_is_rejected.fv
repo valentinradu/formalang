@@ -1,0 +1,5 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `..` takes two integers.
+pub fn f() -> I32 {
+    for i in "a".."z" { 1 }.count()
+}

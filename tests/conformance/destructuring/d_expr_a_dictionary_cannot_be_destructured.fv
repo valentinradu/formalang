@@ -1,0 +1,6 @@
+// expect: reject ArrayDestructuringNotArray
+// docs/user/expressions.md: dictionaries do not support destructuring.
+pub fn run_checks() {
+    let [a] = ["k": 1]
+    assert(condition: a == 1)
+}

@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/functions.md: defaults may reference earlier parameters. An
+// earlier parameter with its own default gives that default.
+fn f(a: I32 = 3, b: I32 = a + 1) -> I32 { a * 10 + b }
+
+pub fn run_checks() {
+    assert(condition: f() == 34)
+    assert(condition: f(a: 5) == 56)
+    assert(condition: f(a: 5, b: 0) == 50)
+}

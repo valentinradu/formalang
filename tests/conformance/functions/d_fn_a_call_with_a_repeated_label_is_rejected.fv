@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// docs/user/functions.md: two arguments of one label leave no answer to
+// which value the parameter takes.
+fn one(a: I32) -> I32 { a }
+
+pub let r: I32 = one(a: 1, a: 2)

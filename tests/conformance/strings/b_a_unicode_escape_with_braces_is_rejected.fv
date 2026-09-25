@@ -1,0 +1,4 @@
+// expect: reject InvalidUnicodeEscape
+// docs/user/expressions.md: the Unicode escape is `\uXXXX`, four hex
+// digits. The brace form of Rust and Swift is not in the list.
+pub let s: String = "\u{41}"

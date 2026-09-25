@@ -548,18 +548,11 @@ fn test_type_parameter_satisfies_its_own_constraint() -> Result<(), Box<dyn std:
         struct Box<T: Named> { item: T }
         struct Wrapper<U: Named> { inner: Box<U> }
     ";
+    // `U: Named` satisfies the bound `T: Named` of `Box`: the bound of
+    // a type parameter in scope counts.
     let result = compile(source);
-    // U: Named does not satisfy Box<T: Named>'s constraint in this context — produces error
-    if result.is_ok() {
-        return Err(format!(
-            "expected GenericConstraintViolation for type param constraint: {:?}",
-            result.ok()
-        )
-        .into());
-    }
-    let err = format!("{:?}", result.err());
-    if !err.contains("GenericConstraintViolation") {
-        return Err(format!("wrong error: {err}").into());
+    if let Err(err) = result {
+        return Err(format!("a type parameter must meet its own bound: {err:?}").into());
     }
     Ok(())
 }

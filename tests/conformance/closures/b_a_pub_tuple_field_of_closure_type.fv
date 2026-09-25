@@ -1,0 +1,4 @@
+// expect: reject PublicClosureField
+// docs/user/closures.md: a `pub struct` field cannot have a closure type.
+// A tuple around the closure does not hide it.
+pub struct S { t: (f: (I32) -> I32, n: I32) }

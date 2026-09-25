@@ -322,7 +322,7 @@ fn test_fold_float_eq_signed_zero() -> Result<(), Box<dyn std::error::Error>> {
     let ir_module = IrModule::new();
     let _ = &ir_module;
     let folder = ConstantFolder::new();
-    let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
+    let number_ty = ResolvedType::Primitive(PrimitiveType::F64);
     let expression = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(0.0.into()),
@@ -356,7 +356,7 @@ fn test_fold_float_eq_nan() -> Result<(), Box<dyn std::error::Error>> {
     let ir_module = IrModule::new();
     let _ = &ir_module;
     let folder = ConstantFolder::new();
-    let number_ty = ResolvedType::Primitive(PrimitiveType::I32);
+    let number_ty = ResolvedType::Primitive(PrimitiveType::F64);
     let expression = IrExpr::BinaryOp {
         left: Box::new(IrExpr::Literal {
             value: Literal::Number(f64::NAN.into()),

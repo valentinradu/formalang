@@ -1,0 +1,10 @@
+// expect: reject VisibilityViolation
+// from: rust tests/ui/privacy/ (E0603, enum is private).
+mod m {
+    enum E { a, b }
+}
+
+pub fn f() -> I32 {
+    let e: m::E = .a
+    0
+}

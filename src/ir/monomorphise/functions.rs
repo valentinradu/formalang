@@ -1,4 +1,4 @@
-//! Phase 2e: specialise every generic function for which a concrete call
+//! Phase 2d: specialise every generic function for which a concrete call
 //! site exists, then rewrite those call sites to point at the cloned
 //! per-arg-tuple specialisations.
 //!
@@ -19,7 +19,9 @@ use crate::location::Span;
 
 use super::expr_walk::{for_each_module_expr_mut, walk_expr};
 use super::methods::{self, MethodSpec};
+use super::origins::{Origins, MAX_INSTANTIATION_DEPTH};
 use super::specialise::{substitute_expr_types, substitute_type, type_suffix};
+use super::unify::{contains_type_param, unify_types, Conflict};
 
 /// `(function_name, type_arg_tuple)` — the unique key for a generic
 /// function specialisation. Mirrors the struct/enum
@@ -30,13 +32,24 @@ use super::specialise::{substitute_expr_types, substitute_type, type_suffix};
 type FunctionSpec = (String, Vec<ResolvedType>);
 
 /// One copy that the worklist makes: of a generic function, or of a
-/// generic method with a body.
+/// generic method with a body. `TooDeep` is a call whose type
+/// arguments nest deeper than [`MAX_INSTANTIATION_DEPTH`]; it makes no
+/// copy and becomes an error.
 enum Spec {
     Function(FunctionSpec),
     Method(MethodSpec),
+    TooDeep {
+        name: String,
+        span: Span,
+    },
+    /// A call whose arguments bind one type parameter to two types.
+    Conflict {
+        detail: String,
+        span: Span,
+    },
 }
 
-/// Phase 2e entry point: specialise every generic function and every
+/// Phase 2d entry point: specialise every generic function and every
 /// generic method for which a concrete call site exists, rewrite those
 /// call sites, and recurse until the worklist is empty.
 ///
@@ -44,6 +57,7 @@ enum Spec {
 /// a copy of either can hold the first concrete call of both.
 pub(super) fn specialise_generic_functions(
     module: &mut IrModule,
+    origins: &Origins,
 ) -> Result<(), Vec<CompilerError>> {
     // Map from `(original_name, type_arg_tuple)` to the specialised
     // function's name. Used both as the "already specialised" set and
@@ -69,7 +83,8 @@ pub(super) fn specialise_generic_functions(
     // Worklist of copies to make. Each newly-cloned body may discover
     // further specialisations.
     let mut worklist: Vec<Spec> = Vec::new();
-    collect_generic_fn_call_specs(module, &generic_fn_names, &mut worklist);
+    let mut too_deep: HashSet<String> = HashSet::new();
+    collect_generic_fn_call_specs(module, &generic_fn_names, origins, &mut worklist);
 
     while let Some(spec) = worklist.pop() {
         match spec {
@@ -84,12 +99,27 @@ pub(super) fn specialise_generic_functions(
                             .and_then(|id| module.functions.get(id.0 as usize))
                             .and_then(|f| f.body.as_ref());
                         if let Some(body) = body {
-                            discover(module, &generic_fn_names, body, &mut worklist);
+                            discover(module, &generic_fn_names, origins, body, &mut worklist);
                         }
                         fn_mapping.insert(spec, mangled_name);
                     }
                     Err(e) => errors.push(e),
                 }
+            }
+            Spec::TooDeep { name, span } => {
+                // One error for each generic, at the first call that
+                // passes the limit.
+                if too_deep.insert(name.clone()) {
+                    errors.push(CompilerError::InstantiationDepthExceeded {
+                        name,
+                        limit: MAX_INSTANTIATION_DEPTH,
+                        written: false,
+                        span,
+                    });
+                }
+            }
+            Spec::Conflict { detail, span } => {
+                errors.push(CompilerError::InternalError { detail, span });
             }
             Spec::Method(spec) => {
                 if method_mapping.contains_key(&spec) {
@@ -103,7 +133,7 @@ pub(super) fn specialise_generic_functions(
                             .and_then(|imp| imp.functions.get(index as usize))
                             .and_then(|f| f.body.as_ref());
                         if let Some(body) = body {
-                            discover(module, &generic_fn_names, body, &mut worklist);
+                            discover(module, &generic_fn_names, origins, body, &mut worklist);
                         }
                         method_mapping.insert(spec, index);
                     }
@@ -114,8 +144,8 @@ pub(super) fn specialise_generic_functions(
     }
 
     // Rewrite every call site that resolved to a generic-fn name.
-    rewrite_function_call_paths(module, &fn_mapping, &generic_fn_names);
-    if let Err(mut e) = methods::rewrite_method_calls(module, &method_mapping) {
+    rewrite_function_call_paths(module, &fn_mapping, &generic_fn_names, origins);
+    if let Err(mut e) = methods::rewrite_method_calls(module, &method_mapping, origins) {
         errors.append(&mut e);
     }
 
@@ -131,21 +161,60 @@ pub(super) fn specialise_generic_functions(
 fn discover(
     module: &IrModule,
     generic_fn_names: &HashSet<String>,
+    origins: &Origins,
     expr: &IrExpr,
     out: &mut Vec<Spec>,
 ) {
+    let too_deep = |args: &[ResolvedType]| {
+        args.iter()
+            .any(|a| origins.depth(a) > MAX_INSTANTIATION_DEPTH)
+    };
     walk_expr(expr, &mut |e| {
-        if let IrExpr::FunctionCall { path, args, .. } = e {
+        if let IrExpr::FunctionCall {
+            path, args, span, ..
+        } = e
+        {
             if let Some(name) = matching_generic_name(path, generic_fn_names) {
                 if let Some(func) = module.functions.iter().find(|f| f.name == name) {
-                    if let Some(type_args) = infer_call_type_args(func, args) {
-                        out.push(Spec::Function((name, type_args)));
+                    match infer_call_type_args(func, args, origins) {
+                        Err(conflict) => out.push(Spec::Conflict {
+                            detail: conflict.detail(&name),
+                            span: span.span,
+                        }),
+                        Ok(None) => {}
+                        Ok(Some(type_args)) => out.push(if too_deep(&type_args) {
+                            Spec::TooDeep {
+                                name,
+                                span: span.span,
+                            }
+                        } else {
+                            Spec::Function((name, type_args))
+                        }),
                     }
                 }
             }
         }
-        if let Some(spec) = methods::method_call_spec(&module.impls, e) {
-            out.push(Spec::Method(spec));
+        let spec = match methods::method_call_spec(&module.impls, e, origins) {
+            Ok(spec) => spec,
+            Err(conflict) => {
+                if let IrExpr::MethodCall { method, span, .. } = e {
+                    out.push(Spec::Conflict {
+                        detail: conflict.detail(method),
+                        span: span.span,
+                    });
+                }
+                None
+            }
+        };
+        if let Some(spec) = spec {
+            if let (true, IrExpr::MethodCall { method, span, .. }) = (too_deep(&spec.2), e) {
+                out.push(Spec::TooDeep {
+                    name: method.clone(),
+                    span: span.span,
+                });
+            } else {
+                out.push(Spec::Method(spec));
+            }
         }
     });
 }
@@ -179,6 +248,7 @@ fn matching_generic_name(path: &[String], generic_fn_names: &HashSet<String>) ->
 fn collect_generic_fn_call_specs(
     module: &IrModule,
     generic_fn_names: &HashSet<String>,
+    origins: &Origins,
     out: &mut Vec<Spec>,
 ) {
     let functions = module
@@ -187,11 +257,11 @@ fn collect_generic_fn_call_specs(
         .chain(module.impls.iter().flat_map(|imp| &imp.functions));
     for f in functions {
         if let Some(body) = &f.body {
-            discover(module, generic_fn_names, body, out);
+            discover(module, generic_fn_names, origins, body, out);
         }
     }
     for l in &module.lets {
-        discover(module, generic_fn_names, &l.value, out);
+        discover(module, generic_fn_names, origins, &l.value, out);
     }
 }
 
@@ -201,98 +271,42 @@ fn collect_generic_fn_call_specs(
 /// `Some(args_in_param_order)` when every generic param was inferred
 /// to a concrete type; `None` otherwise (typically because the call
 /// site sits inside an uninstantiated generic context).
+///
+/// # Errors
+///
+/// Returns the [`Conflict`] when the arguments bind one type parameter
+/// to two concrete types.
 fn infer_call_type_args(
     func: &IrFunction,
     call_args: &[(Option<String>, IrExpr)],
-) -> Option<Vec<ResolvedType>> {
+    origins: &Origins,
+) -> Result<Option<Vec<ResolvedType>>, Box<Conflict>> {
     let mut subs: HashMap<String, ResolvedType> = HashMap::new();
     for (i, param) in func.params.iter().enumerate() {
         let Some(declared) = &param.ty else { continue };
         // Match args by name when the call is named; otherwise by
         // position. Keeps the inference robust against label-style
         // calls (`f(x: 1, y: 2)`) used elsewhere in the lowerer.
-        let arg_expr = call_args
+        let Some(arg_expr) = call_args
             .iter()
             .find_map(|(n, e)| n.as_ref().filter(|name| **name == param.name).map(|_| e))
-            .or_else(|| call_args.get(i).map(|(_, e)| e))?;
-        unify_types(declared, arg_expr.ty(), &mut subs);
+            .or_else(|| call_args.get(i).map(|(_, e)| e))
+        else {
+            return Ok(None);
+        };
+        unify_types(declared, arg_expr.ty(), &mut subs, origins)?;
     }
     let mut out = Vec::with_capacity(func.generic_params.len());
     for gp in &func.generic_params {
-        let concrete = subs.get(&gp.name)?;
+        let Some(concrete) = subs.get(&gp.name) else {
+            return Ok(None);
+        };
         if contains_type_param(concrete) {
-            return None;
+            return Ok(None);
         }
         out.push(concrete.clone());
     }
-    Some(out)
-}
-
-/// Structural unification: walk `param` and `arg` in parallel; when a
-/// `TypeParam(P)` appears on the param side, bind `P → arg`. Conflicts
-/// (P bound to two different concrete types) are silently dropped —
-/// semantic should have caught those, and the resulting partial map
-/// merely fails the `infer_call_type_args` post-check.
-pub(super) fn unify_types(
-    param: &ResolvedType,
-    arg: &ResolvedType,
-    subs: &mut HashMap<String, ResolvedType>,
-) {
-    match (param, arg) {
-        (ResolvedType::TypeParam(name), concrete) => {
-            subs.entry(name.clone()).or_insert_with(|| concrete.clone());
-        }
-        (ResolvedType::Tuple(ps), ResolvedType::Tuple(as_)) => {
-            for ((_, p), (_, a)) in ps.iter().zip(as_.iter()) {
-                unify_types(p, a, subs);
-            }
-        }
-        (
-            ResolvedType::Closure {
-                param_tys: pp,
-                return_ty: pr,
-            },
-            ResolvedType::Closure {
-                param_tys: ap,
-                return_ty: ar,
-            },
-        ) => {
-            for ((_, p), (_, a)) in pp.iter().zip(ap.iter()) {
-                unify_types(p, a, subs);
-            }
-            unify_types(pr, ar, subs);
-        }
-        (
-            ResolvedType::Generic { base: pb, args: pa },
-            ResolvedType::Generic { base: ab, args: aa },
-        ) if pb == ab => {
-            for (p, a) in pa.iter().zip(aa.iter()) {
-                unify_types(p, a, subs);
-            }
-        }
-        // Concrete-vs-concrete or shape-mismatch: nothing to bind.
-        _ => {}
-    }
-}
-
-pub(super) fn contains_type_param(ty: &ResolvedType) -> bool {
-    match ty {
-        ResolvedType::TypeParam(_) => true,
-        ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| contains_type_param(t)),
-        ResolvedType::Closure {
-            param_tys,
-            return_ty,
-        } => {
-            param_tys.iter().any(|(_, t)| contains_type_param(t)) || contains_type_param(return_ty)
-        }
-        ResolvedType::Generic { args, .. } => args.iter().any(contains_type_param),
-        ResolvedType::External { type_args, .. } => type_args.iter().any(contains_type_param),
-        ResolvedType::Primitive(_)
-        | ResolvedType::Struct(_)
-        | ResolvedType::Trait(_)
-        | ResolvedType::Enum(_)
-        | ResolvedType::Error => false,
-    }
+    Ok(Some(out))
 }
 
 /// Clone a generic function for one concrete arg-tuple. Returns the
@@ -387,12 +401,13 @@ fn rewrite_function_call_paths(
     module: &mut IrModule,
     fn_mapping: &HashMap<FunctionSpec, String>,
     generic_fn_names: &HashSet<String>,
+    origins: &Origins,
 ) {
     // Snapshot the function map so we can read declared param types
     // while mutating expressions inside the same function vector.
     let snapshot: Vec<IrFunction> = module.functions.clone();
     for_each_module_expr_mut(module, &mut |expr| {
-        rewrite_call_path_node(expr, fn_mapping, generic_fn_names, &snapshot);
+        rewrite_call_path_node(expr, fn_mapping, generic_fn_names, &snapshot, origins);
     });
 }
 
@@ -401,6 +416,7 @@ fn rewrite_call_path_node(
     fn_mapping: &HashMap<FunctionSpec, String>,
     generic_fn_names: &HashSet<String>,
     snapshot: &[IrFunction],
+    origins: &Origins,
 ) {
     if let IrExpr::FunctionCall {
         path,
@@ -416,7 +432,8 @@ fn rewrite_call_path_node(
         let Some(callee) = snapshot.iter().find(|f| f.name == name) else {
             return;
         };
-        let Some(type_args) = infer_call_type_args(callee, args) else {
+        // `discover` reports a conflict; here it rewrites nothing.
+        let Ok(Some(type_args)) = infer_call_type_args(callee, args, origins) else {
             return;
         };
         if let Some(specialised) = fn_mapping.get(&(name, type_args.clone())) {

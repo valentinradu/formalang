@@ -1,0 +1,3 @@
+// expect: compile
+// docs/user/types.md: `extern fn abort() -> Never`.
+extern fn abort() -> Never

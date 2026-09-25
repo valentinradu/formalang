@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `else` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let else = 1
+    assert(condition: else == 1)
+}

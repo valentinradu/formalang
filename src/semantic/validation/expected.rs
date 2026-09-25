@@ -223,6 +223,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     name: f.name.as_str(),
                     external_label: None,
                     ty: Some(&f.ty),
+                    has_default: false,
                 })
                 .collect();
             return for_views(&views);

@@ -1,0 +1,9 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: a type that holds a closure is not
+// equatable.
+enum Op { apply(f: (I32) -> I32) }
+
+pub fn run_checks() {
+    let a: Op = .apply(f: (x) -> x)
+    assert(condition: a == a)
+}

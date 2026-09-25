@@ -1,0 +1,6 @@
+// expect: reject NoMatchingOverload
+// docs/user/functions.md: an unresolvable call site gives
+// NoMatchingOverload. No overload takes a Boolean.
+fn format(value: I32) -> String { "number" }
+fn format(value: String) -> String { "string" }
+pub let s: String = format(value: true)

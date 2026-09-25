@@ -1,0 +1,11 @@
+// expect: run
+// from: swift test/expr/closure/closures.swift, rust tests/ui/closures/.
+// A call is an expression. When its value is a closure, a second pair of
+// parentheses calls that closure.
+fn make() -> (I32) -> I32 {
+    (x) -> x * 2
+}
+
+pub fn run_checks() {
+    assert(condition: make()(4) == 8)
+}

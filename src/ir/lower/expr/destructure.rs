@@ -60,18 +60,24 @@ impl IrLowerer<'_> {
                 format!("array-destructuring receiver lowered to non-array type {bad_recv:?}"),
             )
         });
+        // A rest element takes the elements between the names before
+        // it and the names after it. A name after the rest reads its
+        // index from the end: `value[value.len() - k]`.
+        let rest_at = elements
+            .iter()
+            .position(|e| matches!(e, ast::ArrayPatternElement::Rest(_)));
+        let after_rest = rest_at.map_or(0, |r| elements.len().saturating_sub(r).saturating_sub(1));
         let mut out = Vec::new();
         for (i, element) in elements.iter().enumerate() {
             match element {
                 ast::ArrayPatternElement::Binding(inner) => {
-                    #[expect(
-                        clippy::cast_precision_loss,
-                        reason = "array destructuring indices are small source positions that fit in f64 mantissa"
-                    )]
-                    let key = IrExpr::Literal {
-                        value: Literal::Number((i as f64).into()),
-                        ty: ResolvedType::Primitive(PrimitiveType::I32),
-                        span: self.current_ir_span(),
+                    let key = match rest_at {
+                        Some(r) if i > r => {
+                            let from_end = elements.len().saturating_sub(i);
+                            let key = self.len_minus(from_end);
+                            self.lower_over_source(value, &key)
+                        }
+                        _ => self.index_literal(i),
                     };
                     let access = IrExpr::DictAccess {
                         dict: Box::new(value.clone()),
@@ -82,13 +88,27 @@ impl IrLowerer<'_> {
                     out.extend(self.destructure(inner, access));
                 }
                 ast::ArrayPatternElement::Rest(Some(ident)) => {
-                    let rest = self.lower_rest(value, i);
+                    let rest = self.lower_rest(value, i, after_rest);
                     out.push((ident.name.clone(), rest.ty().clone(), rest));
                 }
                 ast::ArrayPatternElement::Rest(None) | ast::ArrayPatternElement::Wildcard => {}
             }
         }
         out
+    }
+
+    /// An `I32` literal for the array index `i`.
+    fn index_literal(&self, i: usize) -> IrExpr {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "array destructuring indices are small source positions that fit in f64 mantissa"
+        )]
+        let value = Literal::Number((i as f64).into());
+        IrExpr::Literal {
+            value,
+            ty: ResolvedType::Primitive(PrimitiveType::I32),
+            span: self.current_ir_span(),
+        }
     }
 
     fn destructure_tuple(
@@ -133,11 +153,41 @@ impl IrLowerer<'_> {
         out
     }
 
-    /// The elements of the array `value` after the first `skip`:
-    /// `{ let source = value; for e in source { e }.skip(count: skip).collect() }`.
-    fn lower_rest(&mut self, value: &IrExpr, skip: usize) -> IrExpr {
-        // Names a program cannot write, so they shadow nothing.
-        const SOURCE: &str = "rest#source";
+    /// The name that holds the array while a rest or an index from the
+    /// end is computed. A program cannot write it, so it hides nothing.
+    const SOURCE: &'static str = "rest#source";
+
+    /// The AST of `source.len() - k`, where `source` is the array.
+    fn len_minus(&self, k: usize) -> ast::Expr {
+        let span = self.current_span;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "array destructuring indices are small source positions that fit in f64 mantissa"
+        )]
+        let count = ast::Expr::Literal {
+            value: Literal::Number((k as f64).into()),
+            span,
+        };
+        ast::Expr::BinaryOp {
+            left: Box::new(ast::Expr::MethodCall {
+                receiver: Box::new(ast::Expr::Reference {
+                    path: vec![ast::Ident::new(Self::SOURCE, span)],
+                    span,
+                }),
+                method: ast::Ident::new("len", span),
+                args: Vec::new(),
+                span,
+            }),
+            op: ast::BinaryOperator::Sub,
+            right: Box::new(count),
+            span,
+        }
+    }
+
+    /// The elements of the array `value` after the first `skip`, less
+    /// the last `keep_last`:
+    /// `for e in source { e }.skip(count: skip).take(count: source.len() - (skip + keep_last)).collect()`.
+    fn lower_rest(&mut self, value: &IrExpr, skip: usize, keep_last: usize) -> IrExpr {
         const ELEMENT: &str = "rest#element";
         let span = self.current_span;
         let ident = |name: &str| ast::Ident::new(name, span);
@@ -153,36 +203,54 @@ impl IrLowerer<'_> {
             value: Literal::Number((skip as f64).into()),
             span,
         };
-        let pipeline = ast::Expr::MethodCall {
-            receiver: Box::new(ast::Expr::MethodCall {
-                receiver: Box::new(ast::Expr::ForExpr {
-                    var: ident(ELEMENT),
-                    collection: Box::new(reference(SOURCE)),
-                    body: Box::new(reference(ELEMENT)),
-                    span,
-                }),
-                method: ident("skip"),
-                args: vec![(Some(ident("count")), count)],
+        let mut sequence = ast::Expr::MethodCall {
+            receiver: Box::new(ast::Expr::ForExpr {
+                var: ident(ELEMENT),
+                collection: Box::new(reference(Self::SOURCE)),
+                body: Box::new(reference(ELEMENT)),
                 span,
             }),
+            method: ident("skip"),
+            args: vec![(Some(ident("count")), count)],
+            span,
+        };
+        if keep_last > 0 {
+            sequence = ast::Expr::MethodCall {
+                receiver: Box::new(sequence),
+                method: ident("take"),
+                args: vec![(
+                    Some(ident("count")),
+                    self.len_minus(skip.saturating_add(keep_last)),
+                )],
+                span,
+            };
+        }
+        let pipeline = ast::Expr::MethodCall {
+            receiver: Box::new(sequence),
             method: ident("collect"),
             args: Vec::new(),
             span,
         };
+        self.lower_over_source(value, &pipeline)
+    }
+
+    /// Lower `expr` in a block that first binds the array `value` to
+    /// the source name: `{ let source = value; expr }`.
+    fn lower_over_source(&mut self, value: &IrExpr, expr: &ast::Expr) -> IrExpr {
         let source_ty = value.ty().clone();
         let mut frame = std::collections::HashMap::new();
         frame.insert(
-            SOURCE.to_string(),
+            Self::SOURCE.to_string(),
             (ast::ParamConvention::Let, source_ty.clone()),
         );
         self.local_binding_scopes.push(frame);
-        let lowered = self.lower_expr(&pipeline);
+        let lowered = self.lower_expr(expr);
         self.local_binding_scopes.pop();
         let ty = lowered.ty().clone();
         IrExpr::Block {
             statements: vec![IrBlockStatement::Let {
                 binding_id: crate::ir::BindingId(0),
-                name: SOURCE.to_string(),
+                name: Self::SOURCE.to_string(),
                 mutable: false,
                 ty: Some(source_ty),
                 value: value.clone(),

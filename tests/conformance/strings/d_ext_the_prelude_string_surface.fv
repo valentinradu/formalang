@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/extern.md: the prelude declares `len`, `is_empty`, `slice`,
+// `starts_with`, `contains`, `byte_at`.
+pub fn run_checks() {
+    let s = "hello"
+    assert(condition: s.len() == 5)
+    assert(condition: !s.is_empty())
+    assert(condition: "".is_empty())
+    assert(condition: s.slice(start: 1, end: 3) == "el")
+    assert(condition: s.starts_with(prefix: "he"))
+    assert(condition: s.contains(needle: "ll"))
+    assert(condition: s.byte_at(i: 1) == 101)
+}

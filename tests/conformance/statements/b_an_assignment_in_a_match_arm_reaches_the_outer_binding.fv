@@ -1,0 +1,15 @@
+// expect: run
+// docs/user/types.md: you may assign a whole `let mut` binding.
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let o: I32? = 7
+    let r = match o {
+        .some(v): {
+            x = v
+            1
+        },
+        .none: 0
+    }
+    assert(condition: r == 1)
+    assert(condition: x == 7)
+}

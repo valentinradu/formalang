@@ -1,13 +1,16 @@
 //! Block-level IR statement types: `IrBlockStatement` and `IrMatchArm`.
 
-use super::{expr::IrExpr, BindingId, ResolvedType, VariantIdx};
+use super::{expr::IrExpr, BindingId, IrSpan, ResolvedType, VariantIdx};
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// A statement within a block expression.
 #[expect(
     clippy::exhaustive_enums,
     reason = "IR types are matched exhaustively by code generators"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IrBlockStatement {
     /// Let binding: `let x = expr` or `let mut x = expr`
     Let {
@@ -24,8 +27,8 @@ pub enum IrBlockStatement {
         /// Value expression
         value: IrExpr,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
     /// Assignment: `x = expr`
     Assign {
@@ -34,8 +37,8 @@ pub enum IrBlockStatement {
         /// Value expression
         value: IrExpr,
         /// Source span for DWARF / source-map emission.
-        #[serde(default, skip_serializing_if = "super::IrSpan::is_default")]
-        span: super::IrSpan,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
+        span: IrSpan,
     },
     /// Expression statement (evaluated for side effects).
     /// The wrapped `IrExpr` carries its own span; no statement-level
@@ -81,12 +84,13 @@ impl IrBlockStatement {
     }
 }
 
-/// A match arm: `Variant(bindings) => body` or `_ => body`
+/// A match arm: `.variant(bindings): body` or `_: body`
 #[expect(
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrMatchArm {
     /// Variant name being matched (empty string for wildcard); preserved
     /// alongside [`Self::variant_idx`] for diagnostics.

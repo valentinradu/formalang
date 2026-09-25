@@ -1,0 +1,8 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: a sequence has at most one reader.
+fn total(s: Seq<I32>) -> I32 { s.count() }
+
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    total(s: s) + s.count()
+}

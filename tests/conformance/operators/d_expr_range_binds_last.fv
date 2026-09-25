@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/expressions.md: the range is the lowest-precedence binary
+// operator, so `0..1 + 2` is `0..3`.
+pub fn run_checks() {
+    let n: I32 = for i in 0..1 + 2 { i }.count()
+    assert(condition: n == 3)
+}

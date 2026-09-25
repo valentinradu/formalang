@@ -1,0 +1,4 @@
+// expect: reject UndefinedReference
+// docs/user/functions.md: defaults may reference earlier parameters. A
+// later parameter is not in scope yet.
+fn f(x: I32 = y, y: I32 = 1) -> I32 { x + y }

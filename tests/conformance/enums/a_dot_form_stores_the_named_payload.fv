@@ -1,0 +1,14 @@
+// expect: run
+// The dot form stores the payload that it names. A return type gives
+// the enum.
+pub enum Shape { circle(r: I32), rect(w: I32, h: I32) }
+pub fn make() -> Shape { .rect(w: 3, h: 4) }
+pub fn area(s: Shape) -> I32 {
+    match s {
+        .circle(r): r,
+        .rect(w, h): w * h
+    }
+}
+pub fn run_checks() {
+    assert(condition: area(s: make()) == 12)
+}

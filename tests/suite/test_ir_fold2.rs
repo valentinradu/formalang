@@ -603,8 +603,8 @@ fn test_fold_constants_inside_method_call_arg() -> Result<(), Box<dyn std::error
     let source = r"
         struct Vec2 { x: I32, y: I32 }
         impl Vec2 {
-            fn scale(factor: I32) -> I32 { self.x }
-            fn compute() -> I32 { self.scale(factor: 2 + 3) }
+            fn scale(self, factor: I32) -> I32 { self.x }
+            fn compute(self) -> I32 { self.scale(factor: 2 + 3) }
         }
     ";
     let module = compile_to_ir(source).map_err(|e| format!("compile failed: {e:?}"))?;
@@ -744,7 +744,7 @@ fn test_fold_field_access_object() -> Result<(), Box<dyn std::error::Error>> {
     let source = r"
         struct Point { x: I32 = 0, y: I32 = 0 }
         impl Point {
-            fn get() -> I32 { self.x }
+            fn get(self) -> I32 { self.x }
         }
         struct Config {
             p: Point = Point(x: 1 + 2, y: 0)

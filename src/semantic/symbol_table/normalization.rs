@@ -26,7 +26,14 @@ pub(super) fn param_signature(params: &[ParamInfo]) -> String {
     out
 }
 
-fn ty_shape(ty: &Type) -> String {
+/// Normalised, span-free text for a list of trait arguments. Two impls of
+/// one trait with the same text are duplicates.
+pub(super) fn trait_args_signature(args: &[Type]) -> String {
+    args.iter().map(ty_shape).collect::<Vec<_>>().join(",")
+}
+
+/// Normalised, span-free text for one type.
+pub(crate) fn ty_shape(ty: &Type) -> String {
     match ty {
         Type::Primitive(p) => format!("{p:?}"),
         Type::Ident(i) => i.name.clone(),

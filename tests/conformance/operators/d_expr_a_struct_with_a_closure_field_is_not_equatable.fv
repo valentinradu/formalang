@@ -1,0 +1,9 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: a struct with a closure field is not
+// equatable.
+struct Holder { f: (I32) -> I32 }
+
+pub fn run_checks() {
+    let h = Holder(f: (x) -> x)
+    assert(condition: h == h)
+}

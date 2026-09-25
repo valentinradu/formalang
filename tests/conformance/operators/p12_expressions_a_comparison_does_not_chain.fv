@@ -1,0 +1,3 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: `1 < 2 < 3` compares a Boolean with a number.
+pub let b = 1 < 2 < 3

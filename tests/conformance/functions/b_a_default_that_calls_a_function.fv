@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/functions.md: defaults are re-evaluated on every call.
+fn base() -> I32 { 4 }
+fn f(x: I32 = base() * 2) -> I32 { x }
+
+pub fn run_checks() {
+    assert(condition: f() == 8)
+    assert(condition: f(x: 1) == 1)
+}

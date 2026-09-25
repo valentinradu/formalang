@@ -1,0 +1,6 @@
+// expect: reject FunctionReturnTypeMismatch
+// from: go test/ (missing return). An assignment is not an `I32`.
+fn f() -> I32 {
+    let mut x: I32 = 1
+    x = 2
+}

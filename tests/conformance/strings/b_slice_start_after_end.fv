@@ -1,0 +1,7 @@
+// expect: run
+// from: go test/ (slice bounds out of range). A slice whose start is
+// after its end holds nothing. The prelude gives a `String`, not an
+// optional, so the answer must be the empty string.
+pub fn run_checks() {
+    assert(condition: "abcd".slice(start: 3, end: 1).len() == 0)
+}

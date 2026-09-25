@@ -1,0 +1,8 @@
+// expect: reject UseAfterSink
+// The source of a `for` runs before its body.
+fn take(sink s: String) -> [I32] { [s.len()] }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    for x in take(s: s) { x + s.len() }.count()
+}

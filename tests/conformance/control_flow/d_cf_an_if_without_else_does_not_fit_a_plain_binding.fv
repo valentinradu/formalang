@@ -1,0 +1,7 @@
+// expect: reject OptionalUsedAsNonOptional
+// docs/user/control-flow.md: `let b: I32 = if isAdmin { 1 }` is an error.
+pub fn run_checks() {
+    let isAdmin = true
+    let b: I32 = if isAdmin { 1 }
+    assert(condition: b == 1)
+}

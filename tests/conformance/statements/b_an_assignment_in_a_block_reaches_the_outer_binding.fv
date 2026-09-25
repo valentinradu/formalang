@@ -1,0 +1,12 @@
+// expect: run
+// docs/user/types.md: you may assign a whole `let mut` binding. An inner
+// block that assigns it changes the one binding.
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let r = {
+        x = 5
+        x + 1
+    }
+    assert(condition: r == 6)
+    assert(condition: x == 5)
+}

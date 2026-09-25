@@ -1,0 +1,10 @@
+// expect: run
+// The I32 range is -2147483648 to 2147483647 (docs/user/types.md: a
+// 32-bit signed integer). A program must be able to write the lowest
+// value as a literal. Rust, Go, Swift and C# all accept this form.
+
+pub fn run_checks() {
+    let lowest: I32 = -2147483648
+    assert(condition: lowest == -2147483647 - 1)
+    assert(condition: lowest < -2147483647)
+}

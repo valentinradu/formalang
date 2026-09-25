@@ -1,0 +1,7 @@
+// expect: run
+// A closure made in an `if let` branch captures the unwrapped value.
+pub fn run_checks() {
+    let o: I32? = 4
+    let g: () -> I32 = if let v = o { () -> v * 2 } else { () -> 0 }
+    assert(condition: g() == 8)
+}

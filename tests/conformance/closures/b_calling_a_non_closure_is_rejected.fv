@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/typeck/ (call of a non-function, E0618).
+pub fn f() -> I32 {
+    let x: I32 = 1
+    x(2)
+}

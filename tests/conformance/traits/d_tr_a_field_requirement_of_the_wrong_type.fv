@@ -1,0 +1,7 @@
+// expect: reject TraitFieldTypeMismatch
+// docs/user/traits.md: a type satisfies a trait by providing all required
+// fields.
+pub trait Named { name: String }
+pub struct Circle { name: I32 }
+
+impl Named for Circle {}

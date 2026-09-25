@@ -1,0 +1,5 @@
+// expect: reject ParseError
+// A block may not end in an operator with no right operand.
+pub fn f() -> I32 {
+    1 +
+}

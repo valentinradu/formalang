@@ -259,48 +259,78 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Check if a type satisfies a trait constraint
     ///
     /// A type satisfies a trait constraint if:
-    /// 1. It's a struct that implements the trait (via : Trait or impl Trait for Struct)
-    /// 2. It's an enum that implements the trait
-    /// 3. It's a type parameter that has the constraint in scope
+    /// 1. It's a struct, an enum or a primitive that implements the
+    ///    trait, with the trait arguments that the constraint gives;
+    /// 2. It's a type parameter that has the constraint in scope.
     pub(in crate::semantic) fn type_satisfies_trait_constraint(
         &self,
         ty: &Type,
         trait_name: &str,
+        trait_args: &[Type],
     ) -> bool {
-        match ty {
-            Type::Ident(ident) => {
-                // Check trait impls (impl Trait for Struct)
-                let all_traits = self.symbols.get_all_traits_for_struct(&ident.name);
-                if all_traits.contains(&trait_name.to_string()) {
-                    return true;
-                }
-                // Check if enum implements the trait
-                let enum_traits = self.symbols.get_all_traits_for_enum(&ident.name);
-                if enum_traits.contains(&trait_name.to_string()) {
-                    return true;
-                }
-                false
-            }
-            Type::Generic { name, .. } => {
-                // For generic types, check if the base type (struct or enum)
-                // implements the trait. Generic arg bounds are validated at
-                // their respective definition site.
-                let trait_key = trait_name.to_string();
-                let struct_traits = self.symbols.get_all_traits_for_struct(&name.name);
-                if struct_traits.contains(&trait_key) {
-                    return true;
-                }
-                let enum_traits = self.symbols.get_all_traits_for_enum(&name.name);
-                enum_traits.contains(&trait_key)
-            }
-            // Primitives, arrays, optionals, tuples, etc. don't implement user-defined traits
-            Type::Primitive(_)
-            | Type::Array(_)
+        let name = match ty {
+            Type::Ident(ident) => ident.name.clone(),
+            Type::Generic { name, .. } => name.name.clone(),
+            Type::Primitive(p) => format!("{p:?}"),
+            // Arrays, optionals, tuples, etc. don't implement user-defined traits
+            Type::Array(_)
             | Type::Optional(_)
             | Type::Tuple(_)
             | Type::Dictionary { .. }
-            | Type::Closure { .. } => false,
+            | Type::Closure { .. } => return false,
+        };
+        self.implements_trait(&name, trait_name, trait_args)
+    }
+
+    /// True when the type `type_name` implements `trait_name` with the
+    /// trait arguments `trait_args`. Empty `trait_args` accept any
+    /// arguments. A type parameter in scope implements the traits of
+    /// its bounds.
+    pub(in crate::semantic) fn implements_trait(
+        &self,
+        type_name: &str,
+        trait_name: &str,
+        trait_args: &[Type],
+    ) -> bool {
+        if self
+            .generic_scopes
+            .iter()
+            .filter_map(|scope| scope.params.get(type_name))
+            .any(|constraints| constraints.iter().any(|c| c == trait_name))
+        {
+            return true;
         }
+        let by_impl = self
+            .symbols
+            .trait_impls
+            .get(type_name)
+            .is_some_and(|impls| {
+                impls.iter().any(|i| {
+                    i.trait_name == trait_name && self.trait_args_fit(&i.trait_args, trait_args)
+                })
+            });
+        // `enum E: Trait` declares a trait with no arguments.
+        by_impl
+            || (trait_args.is_empty()
+                && self
+                    .symbols
+                    .get_all_traits_for_enum(type_name)
+                    .iter()
+                    .any(|t| t == trait_name))
+    }
+
+    /// True when the trait arguments of an impl fit the arguments that a
+    /// bound asks for. A bound argument that is a type parameter in
+    /// scope fits any argument.
+    fn trait_args_fit(&self, implemented: &[Type], wanted: &[Type]) -> bool {
+        if wanted.is_empty() {
+            return true;
+        }
+        implemented.len() == wanted.len()
+            && implemented.iter().zip(wanted).all(|(have, want)| {
+                matches!(want, Type::Ident(i) if self.is_type_parameter(&i.name))
+                    || Self::types_match(have, want)
+            })
     }
 }
 

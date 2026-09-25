@@ -1,0 +1,10 @@
+// expect: run
+// The lowest I32 is a valid argument value.
+
+fn keep(v: I32) -> I32 {
+    v
+}
+
+pub fn run_checks() {
+    assert(condition: keep(v: -2147483648) < 0)
+}

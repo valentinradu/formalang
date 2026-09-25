@@ -1,0 +1,5 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: a public definition names public types only.
+struct Hidden { x: I32 }
+
+pub extern fn host(h: Hidden) -> I32

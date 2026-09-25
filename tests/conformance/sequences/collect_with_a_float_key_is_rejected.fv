@@ -1,4 +1,4 @@
-// expect: reject FloatDictionaryKey
+// expect: reject InvalidDictionaryKey
 pub fn size() -> I32 {
     for i in 0..3 { i }.collect(key: (i) -> 1.5, value: (i) -> i).len()
 }

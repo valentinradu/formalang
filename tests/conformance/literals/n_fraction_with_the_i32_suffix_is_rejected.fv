@@ -1,0 +1,6 @@
+// expect: reject InvalidNumber
+// 0.25 is not an integer, so it does not fit in an I32.
+
+pub fn f() -> I32 {
+    0.25I32
+}

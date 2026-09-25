@@ -180,10 +180,14 @@ impl IrLowerer<'_> {
         // the declare pass lowered every signature first.
         let labels: Vec<Option<String>> =
             call_args.iter().map(|(label, _)| label.clone()).collect();
+        let arg_types: Vec<ResolvedType> =
+            call_args.iter().map(|(_, arg)| arg.ty().clone()).collect();
         if let ResolvedType::Struct(struct_id) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.struct_id() == Some(*struct_id) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
+                    if let Some(func) =
+                        Self::method_for_typed_call(impl_block, method_name, &labels, &arg_types)
+                    {
                         {
                             return func
                                 .return_type
@@ -221,7 +225,9 @@ impl IrLowerer<'_> {
                 .iter()
                 .chain(&self.declared_impls)
                 .filter(|b| Some(b.target) == target)
-                .find_map(|b| Self::method_for_call(b, method_name, &labels).map(|f| (b, f)));
+                .find_map(|b| {
+                    Self::method_for_typed_call(b, method_name, &labels, &arg_types).map(|f| (b, f))
+                });
             if let Some((impl_block, func)) = found {
                 let mut ret = func
                     .return_type
@@ -239,7 +245,9 @@ impl IrLowerer<'_> {
         if let ResolvedType::Primitive(prim) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if matches!(impl_block.target, crate::ir::ImplTarget::Primitive(p) if p == *prim) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
+                    if let Some(func) =
+                        Self::method_for_typed_call(impl_block, method_name, &labels, &arg_types)
+                    {
                         {
                             return func
                                 .return_type
@@ -257,7 +265,9 @@ impl IrLowerer<'_> {
         if let ResolvedType::Enum(enum_id) = receiver_ty {
             for impl_block in self.module.impls.iter().chain(&self.declared_impls) {
                 if impl_block.enum_id() == Some(*enum_id) {
-                    if let Some(func) = Self::method_for_call(impl_block, method_name, &labels) {
+                    if let Some(func) =
+                        Self::method_for_typed_call(impl_block, method_name, &labels, &arg_types)
+                    {
                         {
                             return func
                                 .return_type
@@ -285,10 +295,24 @@ impl IrLowerer<'_> {
             if let Some(trait_id) = self.find_trait_for_method(name, method_name) {
                 if let Some(trait_def) = self.module.get_trait(trait_id) {
                     if let Some(sig) = trait_def.methods.iter().find(|m| m.name == method_name) {
-                        return sig
+                        let mut ret = sig
                             .return_type
                             .clone()
                             .unwrap_or(ResolvedType::Primitive(PrimitiveType::Never));
+                        // A bound on a generic trait, `<T: Container<I32>>`,
+                        // gives the trait's own parameters their types.
+                        // Without this, the `T` of `Container<T>` stays a
+                        // type parameter, and the `T` of the function
+                        // replaces it later.
+                        let args = self.bound_trait_args(name, trait_id);
+                        let subs: std::collections::HashMap<String, ResolvedType> = trait_def
+                            .generic_params
+                            .iter()
+                            .zip(args)
+                            .map(|(p, a)| (p.name.clone(), a))
+                            .collect();
+                        super::type_params::substitute_typeparam_in_resolved(&mut ret, &subs);
+                        return ret;
                     }
                 }
             }

@@ -15,10 +15,16 @@ until a terminal combinator consumes it, and consuming it drives the
 whole chain in a single pass.
 
 ```formalang
-// One pass, no allocation. The intermediate stages never exist.
-let total: I32 = for x in xs { x * 2 }
-  .filter(f: (v) -> v > 10)
-  .fold(initial: 0, f: (a, b) -> a + b)
+pub fn total(xs: [I32]) -> I32 {
+  // One pass, no allocation. The intermediate stages never exist.
+  for x in xs { x * 2 }
+    .filter(f: (v) -> v > 10)
+    .fold(initial: 0, f: (a, b) -> a + b)
+}
+
+pub fn run_checks() {
+  assert(condition: total(xs: [1, 6, 10]) == 32)
+}
 ```
 
 Had a loop produced an array, the same three stages over one million
@@ -29,7 +35,9 @@ to produce one number.
 and it is visible on the line that asks for it:
 
 ```formalang
-let doubled: [I32] = for x in xs { x * 2 }.collect()
+pub fn doubled(xs: [I32]) -> [I32] {
+  for x in xs { x * 2 }.collect()
+}
 ```
 
 ## Where the data lives
@@ -59,9 +67,15 @@ Put together, a program that filters ten million rows holds a working
 set of one row:
 
 ```formalang
+pub struct Row { id: I32, score: I32 }
+
+extern fn rows() -> Seq<Row>
+extern fn emit(id: I32)
+
 pub fn process() {
   for row in rows() { row }
     .filter(f: (r) -> r.score > 0)
+    .map(f: (r) -> emit(id: r.id))
     .run()
 }
 ```
@@ -80,8 +94,12 @@ quietly allocates.
 **At least once** is what stops a loop that never runs from looking
 like work:
 
-```formalang
-for x in xs { emit(id: x) }        // E135: the calls never happen
+```formalang,reject=SeqNotConsumed
+extern fn emit(id: I32)
+
+pub fn send(xs: [I32]) {
+  for x in xs { emit(id: x) }        // E135: the calls never happen
+}
 ```
 
 Add `.run()` and the intent is on the page.

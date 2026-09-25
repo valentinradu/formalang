@@ -1,0 +1,5 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/structs/ (E0062, field specified more than once).
+pub enum E { a(x: I32) }
+
+pub let e: E = E.a(x: 1, x: 2)

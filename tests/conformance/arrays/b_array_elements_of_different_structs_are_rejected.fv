@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// The elements of one array have one type.
+pub struct A { x: I32 }
+pub struct B { x: I32 }
+
+pub let xs = [A(x: 1), B(x: 1)]

@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/types.md: a string is indexed by byte. `\u{1F600}` does not
+// fit `\uXXXX`, so the source writes the emoji as it is: four bytes.
+pub fn run_checks() {
+    assert(condition: "😀".len() == 4)
+}

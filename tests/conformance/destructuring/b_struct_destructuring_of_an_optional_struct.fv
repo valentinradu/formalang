@@ -1,0 +1,8 @@
+// expect: reject StructDestructuringNotStruct
+// An optional struct must be unwrapped before its fields are read.
+pub struct P { x: I32 }
+
+pub fn f(p: P?) -> I32 {
+    let {x} = p
+    x
+}

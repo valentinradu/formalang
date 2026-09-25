@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/traits.md: `Name.member()` with parentheses is a call. On a
+// value named with an uppercase letter it calls a method, also with no
+// arguments.
+pub let G: String = "abc"
+
+pub fn run_checks() {
+    assert(condition: G.len() == 3)
+    assert(condition: G.slice(start: 0, end: 1) == "a")
+}

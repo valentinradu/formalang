@@ -9,6 +9,9 @@
 #[path = "interpreter.rs"]
 pub mod interpreter;
 
+#[path = "verifier.rs"]
+pub mod verifier;
+
 #[path = "matrix.rs"]
 pub mod matrix;
 

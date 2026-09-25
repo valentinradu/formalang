@@ -33,6 +33,7 @@ mod expr;
 mod fold;
 mod ids;
 mod imports;
+pub(crate) mod link;
 mod lower;
 mod module;
 mod monomorphise;
@@ -56,6 +57,7 @@ pub use ids::{
     VariantIdx,
 };
 pub use imports::{ImportedKind, IrImport, IrImportItem};
+pub(crate) use lower::{lower_linked, LinkedLowering};
 pub use lower::{lower_to_ir, lower_to_ir_with_path};
 pub use module::{IrModule, IrModuleNode};
 pub(crate) use monomorphise::walkers::walk_expr_children_mut;

@@ -2,14 +2,14 @@
 //! distinct `(base, args)` instantiation, and provide the substitution and
 //! name-mangling helpers reused by every other phase.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::ast::PrimitiveType;
 use crate::error::CompilerError;
 use crate::ir::{EnumId, GenericBase, IrExpr, IrModule, ResolvedType, StructId, TraitId};
 use crate::location::Span;
 
-use super::collect::collect_from_type;
+use super::collect::{collect_from_type, Found};
 use super::walkers::walk_expr_types_mut;
 
 /// A single generic instantiation key: `(base, type_args)`.
@@ -82,16 +82,13 @@ fn specialise_struct(
         }
     }
 
-    let mut discovered: HashSet<Instantiation> = HashSet::new();
+    let mut discovered = Found::default();
     for field in &spec.fields {
         collect_from_type(&field.ty, &mut discovered);
     }
 
     let new_id = module.add_struct(mangled, spec)?;
-    Ok((
-        GenericBase::Struct(new_id),
-        discovered.into_iter().collect(),
-    ))
+    Ok((GenericBase::Struct(new_id), discovered.into_vec()))
 }
 
 #[expect(
@@ -142,7 +139,7 @@ fn specialise_enum(
         }
     }
 
-    let mut discovered: HashSet<Instantiation> = HashSet::new();
+    let mut discovered = Found::default();
     for variant in &spec.variants {
         for field in &variant.fields {
             collect_from_type(&field.ty, &mut discovered);
@@ -150,7 +147,7 @@ fn specialise_enum(
     }
 
     let new_id = module.add_enum(mangled, spec)?;
-    Ok((GenericBase::Enum(new_id), discovered.into_iter().collect()))
+    Ok((GenericBase::Enum(new_id), discovered.into_vec()))
 }
 
 #[expect(
@@ -209,7 +206,7 @@ fn specialise_trait(
         }
     }
 
-    let mut discovered: HashSet<Instantiation> = HashSet::new();
+    let mut discovered = Found::default();
     for field in &spec.fields {
         collect_from_type(&field.ty, &mut discovered);
     }
@@ -225,7 +222,7 @@ fn specialise_trait(
     }
 
     let new_id = module.add_trait(mangled, spec)?;
-    Ok((GenericBase::Trait(new_id), discovered.into_iter().collect()))
+    Ok((GenericBase::Trait(new_id), discovered.into_vec()))
 }
 
 /// Build a stable mangled name for a specialisation. Collisions with

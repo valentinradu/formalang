@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/control-flow.md: an `if` with no `else` returns nil when the
+// condition is false.
+pub fn run_checks() {
+    let a: I32? = if false { 1 }
+    let b: I32? = if true { 1 }
+    assert(condition: a == nil)
+    assert(condition: b != nil)
+}

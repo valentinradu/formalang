@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// from: go test/ (operator - not defined on bool).
+pub fn f() -> Boolean { -true }

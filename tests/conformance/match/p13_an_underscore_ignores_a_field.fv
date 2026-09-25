@@ -1,0 +1,21 @@
+// expect: run
+// docs/user/control-flow.md: `_` in place of a name ignores that value.
+pub enum Message {
+    text(content: String),
+    image(url: String, size: I32),
+    pair(a: I32, b: I32)
+}
+
+pub fn size(message: Message) -> I32 {
+    match message {
+        .text(_): 0,
+        .image(_, s): s,
+        .pair(_, _): 1
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: size(message: .text(content: "hey")) == 0)
+    assert(condition: size(message: .image(url: "/a", size: 10)) == 10)
+    assert(condition: size(message: .pair(a: 1, b: 2)) == 1)
+}

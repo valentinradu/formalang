@@ -17,5 +17,8 @@
 
         pub fn run_checks() {
 
-assert(condition: pick(e: E.v0) == 0)            assert(condition: pick(e: E.v1) == 1)            assert(condition: pick(e: E.v2) == 2)            assert(condition: pick(e: E.v3) == 3)
+            assert(condition: pick(e: E.v0) == 0)
+            assert(condition: pick(e: E.v1) == 1)
+            assert(condition: pick(e: E.v2) == 2)
+            assert(condition: pick(e: E.v3) == 3)
         }

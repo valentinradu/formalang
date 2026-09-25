@@ -1,0 +1,11 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: a field is part of its struct, in either order.
+pub struct Point { x: I32, y: I32 }
+
+fn put(mut a: I32, b: Point) -> I32 { a }
+
+pub fn run_checks() {
+    let mut p: Point = Point(x: 1, y: 2)
+    let r = put(a: p.x, b: p)
+    assert(condition: r == 1)
+}

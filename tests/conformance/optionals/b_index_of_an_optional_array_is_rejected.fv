@@ -1,0 +1,4 @@
+// expect: reject NotIndexable
+// from: swift test/Constraints/optional.swift (value of optional type
+// must be unwrapped).
+pub fn f(xs: [I32]?) -> I32? { xs[0] }

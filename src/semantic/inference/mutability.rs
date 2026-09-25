@@ -69,7 +69,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::DictLiteral { .. }
             | Expr::DictAccess { .. }
             | Expr::ClosureExpr { .. }
-            | Expr::MethodCall { .. } => false,
+            | Expr::MethodCall { .. }
+            | Expr::Call { .. } => false,
 
             // Grouped expressions delegate to inner expression
             Expr::Group { expr, .. } => self.is_expr_mutable(expr, file),
@@ -125,7 +126,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             | Expr::MatchExpr { .. }
             | Expr::DictLiteral { .. }
             | Expr::ClosureExpr { .. }
-            | Expr::MethodCall { .. } => false,
+            | Expr::MethodCall { .. }
+            | Expr::Call { .. } => false,
         }
     }
 

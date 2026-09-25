@@ -1,0 +1,16 @@
+// expect: reject InvalidBinaryOp
+// `if let` is a match on `.some(v)` and `.none`, so `v` has the type
+// inside the optional. `v` is the I32 inside `o`, so `v + true` adds an I32 and a Boolean.
+// See docs/user/control-flow.md, `if let`.
+
+pub fn take_string(s: String) -> I32 {
+    0
+}
+
+pub fn f(o: I32?) -> I32 {
+    if let v = o {
+        v + true
+    } else {
+        0
+    }
+}

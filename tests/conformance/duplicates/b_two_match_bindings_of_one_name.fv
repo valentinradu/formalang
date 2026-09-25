@@ -1,0 +1,7 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/pattern/ (E0416).
+pub enum E { p(x: I32, y: I32) }
+
+pub fn f(e: E) -> I32 {
+    match e { .p(v, v): v }
+}

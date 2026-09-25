@@ -1,0 +1,7 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence inside another type, such as
+// `[Seq<I32>]`, is refused.
+pub fn f() -> I32 {
+    let a: [Seq<I32>] = []
+    0
+}

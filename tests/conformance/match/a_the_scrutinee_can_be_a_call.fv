@@ -1,0 +1,16 @@
+// expect: run
+// The scrutinee can be a call.
+pub enum E { a(v: I32), b }
+pub fn make(k: I32) -> E {
+    if k > 0 { E.a(v: k) } else { E.b }
+}
+pub fn f(k: I32) -> I32 {
+    match make(k: k) {
+        .a(v): v * 2,
+        .b: -1
+    }
+}
+pub fn run_checks() {
+    assert(condition: f(k: 4) == 8)
+    assert(condition: f(k: 0) == -1)
+}

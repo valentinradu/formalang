@@ -1,0 +1,9 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: the float-key rule also applies to a key type that
+// the compiler infers through a generic call.
+fn single<K>(k: K) -> [K: I32] { [k: 1] }
+
+pub fn run_checks() {
+    let d = single(k: 1.5)
+    assert(condition: d.len() == 1)
+}

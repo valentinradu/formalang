@@ -1,0 +1,7 @@
+// expect: reject UndefinedReference
+// from: rust tests/ui/resolve/ (a binding is not in scope in its own
+// initializer).
+pub fn f() -> I32 {
+    let x: I32 = x + 1
+    x
+}

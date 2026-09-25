@@ -1,0 +1,14 @@
+// expect: run
+// A closure in a method captures a field of `self`.
+pub struct C { n: I32 }
+
+impl C {
+    fn adder(self) -> I32 {
+        let g: (I32) -> I32 = (x) -> x + self.n
+        g(1)
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: C(n: 5).adder() == 6)
+}

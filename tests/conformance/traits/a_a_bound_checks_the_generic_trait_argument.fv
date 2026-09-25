@@ -1,0 +1,7 @@
+// expect: reject GenericConstraintViolation
+// Box conforms to Container<I32>, not Container<String>.
+pub trait Container<T> { fn get(self) -> T }
+pub struct Box { value: I32 }
+impl Container<I32> for Box { fn get(self) -> I32 { self.value } }
+fn read<T: Container<String>>(b: T) -> I32 { 0 }
+pub let r: I32 = read(b: Box(value: 1))

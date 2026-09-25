@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: a dictionary takes an index by key, and the key has
+// the key type.
+pub fn f(d: [String: I32]) -> I32? { d[1] }

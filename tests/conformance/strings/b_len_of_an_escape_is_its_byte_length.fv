@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `\n` is one escape, one byte.
+pub fn run_checks() {
+    assert(condition: "a\nb".len() == 3)
+    assert(condition: "\\".len() == 1)
+    assert(condition: "\"".len() == 1)
+    assert(condition: "\t\r".len() == 2)
+}

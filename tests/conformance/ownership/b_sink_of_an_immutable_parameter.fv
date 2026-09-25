@@ -1,0 +1,11 @@
+// expect: reject MutabilityMismatch
+// docs/user/functions.md: a default argument goes by pointer, and the
+// callee reads only. from: rust tests/ui/borrowck/ (cannot move out of a
+// borrow).
+// A plain parameter is borrowed from the caller. The callee does not own
+// it, so it cannot give it away with `sink`.
+fn take(sink s: String) -> I32 { s.len() }
+
+fn f(s: String) -> I32 {
+    take(s: s)
+}

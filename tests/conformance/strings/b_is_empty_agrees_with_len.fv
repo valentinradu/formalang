@@ -1,0 +1,7 @@
+// expect: run
+// `is_empty` is true exactly when `len` is zero.
+pub fn run_checks() {
+    assert(condition: "".is_empty())
+    assert(condition: "a".is_empty() == false)
+    assert(condition: "\u0000".is_empty() == false)
+}

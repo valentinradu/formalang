@@ -1,0 +1,9 @@
+// expect: reject UndefinedReference
+// docs/user/traits.md: `Type.method(...)` must name a method of the type.
+pub struct Counter {
+    value: I32
+}
+
+pub fn f() -> Counter {
+    Counter.missing()
+}

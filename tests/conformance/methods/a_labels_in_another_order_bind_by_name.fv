@@ -1,0 +1,12 @@
+// expect: run
+// The labels name the parameters, so their order at the call does not
+// matter: `b: 1, a: 2` gives a = 2 and b = 1.
+pub struct S { n: I32 }
+impl S {
+    fn scale(self, by: I32) -> I32 { self.n * by }
+    fn two(self, a: I32, b: I32) -> I32 { a - b }
+}
+
+pub fn run_checks() {
+    assert(condition: S(n: 1).two(b: 1, a: 2) == 1)
+}

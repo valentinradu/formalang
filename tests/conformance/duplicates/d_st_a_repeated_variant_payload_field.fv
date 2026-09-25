@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// docs/user/structs.md: the payload fields of an enum variant may not
+// repeat a name.
+pub enum E { v(a: I32, a: I32) }

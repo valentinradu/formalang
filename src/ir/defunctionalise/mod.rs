@@ -52,6 +52,10 @@
 //! becomes a `FunctionCall` to `__call_Fn<K>`, and every occurrence of
 //! the closure type becomes the enum type.
 //!
+//! `K` counts from 0. The pass skips each `K` for which the module
+//! already has an enum `__Fn<K>` or a function `__call_Fn<K>`, so a
+//! user function called `__call_Fn0` keeps its name and its calls.
+//!
 //! # Closed world
 //!
 //! The pass has to see every closure of a shape before it can build

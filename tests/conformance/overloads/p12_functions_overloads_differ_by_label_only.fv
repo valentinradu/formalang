@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/functions.md: overloads with the same parameter types and
+// different labels are two signatures.
+fn f(a: I32) -> I32 { 1 }
+fn f(b: I32) -> I32 { 2 }
+
+pub fn run_checks() {
+    assert(condition: f(a: 0) == 1)
+    assert(condition: f(b: 0) == 2)
+}

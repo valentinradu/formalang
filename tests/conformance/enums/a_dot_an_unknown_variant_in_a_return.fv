@@ -1,0 +1,14 @@
+// expect: reject UnknownEnumVariant
+// The leading-dot form gets its enum from the return type of a function.
+// The enum has no variant `nope`. The full form `Shape.nope` reports UnknownEnumVariant, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub fn make(n: I32) -> Shape {
+    .nope
+}

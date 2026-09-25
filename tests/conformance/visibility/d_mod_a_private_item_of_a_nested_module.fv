@@ -1,0 +1,7 @@
+// expect: reject VisibilityViolation
+// docs/user/modules.md: only `pub` items leave a module.
+mod inner {
+    struct Hidden { x: I32 }
+}
+
+fn f() -> I32 { inner::Hidden(x: 1).x }

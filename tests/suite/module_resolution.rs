@@ -931,7 +931,7 @@ pub struct Modal {
 }
 
 impl Modal {
-  fn title() -> String {
+  fn title(self) -> String {
     if self.isOpen { "open" } else { "closed" }
   }
 }
@@ -954,7 +954,7 @@ pub struct Modal {
 }
 
 impl Modal {
-  fn getTitle() -> String {
+  fn getTitle(self) -> String {
     self.title
   }
 }
@@ -977,7 +977,7 @@ pub struct Modal {
 }
 
 impl Modal {
-  fn isModalOpen() -> Boolean {
+  fn isModalOpen(self) -> Boolean {
     self.isOpen
   }
 }

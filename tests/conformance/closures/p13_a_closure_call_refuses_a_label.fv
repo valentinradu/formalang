@@ -1,0 +1,6 @@
+// expect: reject LabelledClosureArgument
+// docs/user/closures.md: a closure type has no parameter names, so a
+// call of a closure takes its arguments by position, with no label.
+fn apply(f: (I32) -> I32) -> I32 {
+    f(x: 1)
+}

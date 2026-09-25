@@ -1,0 +1,7 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: a public definition names public types only.
+struct Hidden { x: I32 }
+
+pub trait T {
+    fn get(self) -> Hidden
+}

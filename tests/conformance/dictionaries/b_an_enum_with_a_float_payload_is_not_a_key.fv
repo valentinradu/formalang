@@ -1,0 +1,9 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: a float has no usable equality. An enum payload that
+// holds a float gives the enum the same problem.
+pub enum K { a(x: F32), b }
+
+pub fn f() -> I32 {
+    let d: [K: I32] = [:]
+    d.len()
+}

@@ -5,7 +5,6 @@
 //! parses it, builds its symbol table, runs all later passes against that
 //! cached table, and lowers it to IR for downstream backends.
 
-use super::helpers::{collect_bindings_from_pattern, is_primitive_name};
 use super::module_resolver::{ModuleError, ModuleResolver};
 use super::symbol_table::SymbolTable;
 use super::SemanticAnalyzer;
@@ -18,9 +17,114 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// Pass 0: Module resolution
     /// Resolve all use statements, load imported modules, and check for circular dependencies
     pub(super) fn resolve_modules(&mut self, file: &File) {
+        let inline = inline_module_names(file);
         for statement in &file.statements {
             if let Statement::Use(use_stmt) = statement {
-                self.process_use_statement(use_stmt);
+                match use_stmt.path.first() {
+                    // A `use` of an inline module resolves after pass 1,
+                    // when the module's symbols are known.
+                    Some(first) if inline.contains(first.name.as_str()) => {
+                        if self.names_a_module_file(use_stmt) {
+                            self.errors.push(CompilerError::AmbiguousModulePath {
+                                name: first.name.clone(),
+                                span: use_stmt.span,
+                            });
+                        }
+                    }
+                    _ => self.process_use_statement(use_stmt),
+                }
+            }
+        }
+    }
+
+    /// True when the resolver finds a module file for the path of
+    /// `use_stmt`.
+    fn names_a_module_file(&self, use_stmt: &UseStmt) -> bool {
+        let path: Vec<String> = use_stmt.path.iter().map(|i| i.name.clone()).collect();
+        self.resolver
+            .resolve(&path, self.current_file.as_ref())
+            .is_ok()
+    }
+
+    /// Resolve each `use` of an item of an inline module of `file`.
+    /// Runs after pass 1, so the inline modules' symbols are known.
+    ///
+    /// Each name gets the item's information under the short name, and
+    /// the symbol table records the qualified name for the lowering.
+    pub(super) fn resolve_local_uses(&mut self, file: &File) {
+        let inline = inline_module_names(file);
+        for statement in &file.statements {
+            let Statement::Use(use_stmt) = statement else {
+                continue;
+            };
+            let Some(first) = use_stmt.path.first() else {
+                continue;
+            };
+            if !inline.contains(first.name.as_str()) || self.names_a_module_file(use_stmt) {
+                continue;
+            }
+            self.import_local_use(use_stmt);
+        }
+    }
+
+    fn import_local_use(&mut self, use_stmt: &UseStmt) {
+        let mut table = &self.symbols;
+        for (depth, segment) in use_stmt.path.iter().enumerate() {
+            let Some(info) = table.modules.get(&segment.name) else {
+                self.errors.push(CompilerError::ModuleNotFound {
+                    name: segment.name.clone(),
+                    span: use_stmt.span,
+                });
+                return;
+            };
+            // The file's own inline module is open to the file; a module
+            // inside it must be `pub`.
+            if depth > 0 && info.visibility != crate::ast::Visibility::Public {
+                self.errors.push(CompilerError::PrivateImport {
+                    name: segment.name.clone(),
+                    span: use_stmt.span,
+                });
+                return;
+            }
+            table = &info.symbols;
+        }
+        let table = table.clone();
+        let prefix: Vec<&str> = use_stmt.path.iter().map(|i| i.name.as_str()).collect();
+        let names: Vec<String> = match &use_stmt.items {
+            UseItems::Single(ident) => vec![ident.name.clone()],
+            UseItems::Multiple(idents) => idents.iter().map(|i| i.name.clone()).collect(),
+            UseItems::Glob => table.all_public_symbols(),
+        };
+        for name in names {
+            if let Some(kind) = self.symbols.get_symbol_kind(&name) {
+                self.errors.push(CompilerError::DuplicateDefinition {
+                    name: format!("{name} (already defined as {})", kind.as_str()),
+                    span: use_stmt.span,
+                });
+                continue;
+            }
+            let qualified = format!("{}::{name}", prefix.join("::"));
+            if let Err(error) = self.symbols.alias_local(&name, &table, qualified) {
+                let error = match error {
+                    super::symbol_table::ImportError::PrivateItem { name, .. } => {
+                        ModuleError::PrivateItem {
+                            item: name,
+                            module: prefix.join("::"),
+                        }
+                    }
+                    super::symbol_table::ImportError::ItemNotFound { name, available } => {
+                        ModuleError::ItemNotFound {
+                            item: name,
+                            module: prefix.join("::"),
+                            available,
+                        }
+                    }
+                };
+                self.errors.push(Self::module_error_to_compiler_error(
+                    error,
+                    use_stmt.span,
+                    true,
+                ));
             }
         }
     }
@@ -45,6 +149,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         };
 
+        if let Err(error) = self
+            .module_links
+            .register(&module_path, &path_segments, use_stmt.span)
+        {
+            self.errors.push(error);
+            return;
+        }
         if !self.check_and_register_import(&module_path, use_stmt.span) {
             return;
         }
@@ -61,55 +172,40 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             }
         };
 
-        self.import_use_items(
-            &use_stmt.items,
-            &module_symbols,
-            &module_path,
-            &path_segments,
-            use_stmt.span,
-        );
+        self.import_use_items(use_stmt, &module_symbols, &module_path, &path_segments);
     }
 
     /// Dispatch symbol imports for all `UseItems` variants in `process_use_statement`
     fn import_use_items(
         &mut self,
-        items: &UseItems,
+        use_stmt: &UseStmt,
         module_symbols: &SymbolTable,
         module_path: &std::path::Path,
         path_segments: &[String],
-        span: Span,
     ) {
-        match items {
-            UseItems::Single(ident) => {
-                self.import_symbol(
-                    &ident.name,
-                    module_symbols,
-                    module_path,
-                    path_segments.to_vec(),
-                    span,
-                );
+        let names: Vec<(String, bool)> = match &use_stmt.items {
+            UseItems::Single(ident) => vec![(ident.name.clone(), false)],
+            UseItems::Multiple(idents) => idents.iter().map(|i| (i.name.clone(), false)).collect(),
+            UseItems::Glob => module_symbols
+                .all_public_symbols()
+                .into_iter()
+                .map(|name| (name, true))
+                .collect(),
+        };
+        for (name, glob) in names {
+            // A glob does not bring a name that the module has already.
+            if glob && self.symbols.get_symbol_kind(&name).is_some() {
+                continue;
             }
-            UseItems::Multiple(idents) => {
-                for ident in idents {
-                    self.import_symbol(
-                        &ident.name,
-                        module_symbols,
-                        module_path,
-                        path_segments.to_vec(),
-                        span,
-                    );
-                }
-            }
-            UseItems::Glob => {
-                for name in module_symbols.all_public_symbols() {
-                    self.import_symbol(
-                        &name,
-                        module_symbols,
-                        module_path,
-                        path_segments.to_vec(),
-                        span,
-                    );
-                }
+            self.import_symbol(
+                &name,
+                module_symbols,
+                module_path,
+                path_segments.to_vec(),
+                use_stmt.span,
+            );
+            if use_stmt.visibility == crate::ast::Visibility::Public {
+                self.symbols.mark_reexport(&name);
             }
         }
     }
@@ -199,151 +295,108 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         true
     }
 
-    /// Parse and analyze a module, returning its symbol table
+    /// Parse and analyse the module in `module_path`, and lower it on
+    /// top of the modules that it imports. Returns its symbol table.
+    ///
+    /// The module gets the prelude, as the entry module does, and a
+    /// new analyzer of its own: no state of the importing module leaks
+    /// into it. The two analyzers share the resolver and the caches of
+    /// the modules.
     fn parse_and_analyze_module(
         &mut self,
         source: &str,
         module_path: &Path,
     ) -> Result<SymbolTable, Vec<CompilerError>> {
-        // Parse the module
-        use crate::lexer::Lexer;
-        use crate::parser;
-
-        let tokens = Lexer::tokenize_all(source);
-
-        let mut file = match parser::parse_file_with_source(&tokens, source) {
-            Ok(file) => file,
-            Err(errors) => {
-                // Convert parse errors to compiler errors
-                let compiler_errors: Vec<CompilerError> = errors
+        let (tokens, lex_errors) = crate::lexer::Lexer::tokenize_all_with_errors(source);
+        if !lex_errors.is_empty() {
+            return Err(lex_errors);
+        }
+        let mut file =
+            crate::parser::parse_file_with_source(&tokens, source).map_err(|errors| {
+                errors
                     .into_iter()
                     .map(|(message, span)| CompilerError::ParseError {
                         message: format!("In module {}: {}", module_path.display(), message),
                         span,
                     })
-                    .collect();
-                return Err(compiler_errors);
-            }
-        };
+                    .collect::<Vec<_>>()
+            })?;
+        let prelude = crate::parse_prelude_file()?;
+        let prelude_len = prelude.statements.len();
+        let mut statements = prelude.statements;
+        statements.append(&mut file.statements);
+        file.statements = statements;
 
-        // Create a new analyzer for the module with the same resolver
-        // Note: We need to temporarily take ownership of the resolver
-        // This is a design challenge - we may need to refactor to use &R or Rc<R>
-        // Build the symbol table directly without a full recursive analysis
-        let mut module_symbols = SymbolTable::new();
-        let mut module_errors = Vec::new();
+        let resolver: &dyn ModuleResolver = &self.resolver;
+        let mut module =
+            SemanticAnalyzer::<&dyn ModuleResolver>::new_with_file(resolver, module_path.into());
+        module.module_cache = std::mem::take(&mut self.module_cache);
+        module.module_ir_cache = std::mem::take(&mut self.module_ir_cache);
+        module.import_graph = std::mem::take(&mut self.import_graph);
+        module.module_links = std::mem::take(&mut self.module_links);
+        module.module_links.depth = module.module_links.depth.saturating_add(1);
 
-        // Pass 1: Build symbol table for the module's own definitions
-        for statement in &file.statements {
+        module.run_passes(&mut file);
+
+        module.module_links.depth = module.module_links.depth.saturating_sub(1);
+        self.module_cache = std::mem::take(&mut module.module_cache);
+        self.module_ir_cache = std::mem::take(&mut module.module_ir_cache);
+        self.import_graph = std::mem::take(&mut module.import_graph);
+        self.module_links = std::mem::take(&mut module.module_links);
+        let errors = SemanticAnalyzer::<&dyn ModuleResolver>::deduplicated(&module.errors);
+        let symbols = module.symbols;
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        let linked = self.module_links.lower(
+            &file,
+            prelude_len,
+            &symbols,
+            Some(module_path),
+            Some(module_path.to_path_buf()),
+        )?;
+        self.module_links.store(module_path, linked);
+        if let Some(view) = self.module_links.view(module_path) {
+            self.module_ir_cache.insert(module_path.to_path_buf(), view);
+        }
+        self.module_cache
+            .insert(module_path.to_path_buf(), (file, symbols.clone()));
+        Ok(symbols)
+    }
+
+    /// Lower the entry module `ast` on top of every module that it
+    /// imports, and give the imported items their final names.
+    ///
+    /// # Errors
+    ///
+    /// The errors of the lowering.
+    pub(crate) fn lower_entry(
+        &self,
+        ast: &File,
+        prelude_len: usize,
+        path: Option<std::path::PathBuf>,
+    ) -> Result<crate::ir::IrModule, Vec<CompilerError>> {
+        let linked = self
+            .module_links
+            .lower(ast, prelude_len, &self.symbols, None, path)?;
+        let mut module = linked.ir;
+        crate::ir::link::finish_entry(&mut module, self.module_links.logical_paths());
+        Ok(module)
+    }
+}
+
+/// The names of the top-level inline modules of `file`.
+fn inline_module_names(file: &File) -> std::collections::HashSet<&str> {
+    file.statements
+        .iter()
+        .filter_map(|statement| {
             if let Statement::Definition(def) = statement {
-                Self::collect_definition_into(&mut module_symbols, &mut module_errors, def);
-            } else if let Statement::Let(let_binding) = statement {
-                // Register all bindings from the pattern (simple, array, struct, tuple)
-                for binding in collect_bindings_from_pattern(&let_binding.pattern) {
-                    if is_primitive_name(&binding.name) {
-                        module_errors.push(CompilerError::PrimitiveRedefinition {
-                            name: binding.name.clone(),
-                            span: binding.span,
-                        });
-                        continue;
-                    }
-                    if let Some((kind, _)) = module_symbols.define_let(
-                        binding.name.clone(),
-                        let_binding.visibility,
-                        let_binding.span,
-                        let_binding.doc.clone(),
-                    ) {
-                        module_errors.push(CompilerError::DuplicateDefinition {
-                            name: format!(
-                                "{} (already defined as {})",
-                                binding.name,
-                                kind.as_str()
-                            ),
-                            span: binding.span,
-                        });
-                    }
+                if let crate::ast::Definition::Module(m) = &**def {
+                    return Some(m.name.name.as_str());
                 }
             }
-        }
-
-        if !module_errors.is_empty() {
-            return Err(module_errors);
-        }
-
-        // Cache the module first (with just definitions) to prevent infinite
-        // recursion during use-statement processing if two modules pub-use
-        // each other.
-        self.module_cache.insert(
-            module_path.to_path_buf(),
-            (file.clone(), module_symbols.clone()),
-        );
-
-        // Run the remaining analysis passes on the module with its own
-        // symbol table temporarily installed as `self.symbols`. This covers:
-        //   Pass 0  — use-statement resolution (both pub and private)
-        //   Pass 1.5 — validate_generic_parameters
-        //   Pass 1.6 — infer_let_types
-        //   Pass 2  — resolve_types
-        //   Pass 3  — validate_expressions
-        //   Pass 4  — validate_trait_implementations
-        //   Pass 5  — detect_circular_dependencies
-        let saved_current_file = self.current_file.take();
-        self.current_file = Some(module_path.to_path_buf());
-        let saved_symbols = std::mem::replace(&mut self.symbols, module_symbols);
-        let saved_errors = std::mem::take(&mut self.errors);
-        let saved_impl_struct = self.current_impl_struct.take();
-        let saved_generic_scopes = std::mem::take(&mut self.generic_scopes);
-        let saved_loop_var_scopes = std::mem::take(&mut self.loop_var_scopes);
-        let saved_closure_param_scopes = std::mem::take(&mut self.closure_param_scopes);
-        let saved_local_let_bindings = std::mem::take(&mut self.local_let_bindings);
-        let saved_consumed_bindings = std::mem::take(&mut self.consumed_bindings);
-
-        self.resolve_modules(&file);
-        super::value_paths::rewrite_value_paths(&mut file, &self.symbols);
-        self.validate_generic_parameters(&file);
-        self.infer_let_types(&file);
-        self.register_module_closure_captures(&file);
-        self.resolve_types(&file);
-        self.validate_expressions(&file);
-        self.validate_trait_implementations(&file);
-        self.detect_circular_dependencies(&file);
-
-        module_symbols = std::mem::replace(&mut self.symbols, saved_symbols);
-        let pass_errors = std::mem::replace(&mut self.errors, saved_errors);
-        module_errors.extend(pass_errors);
-        self.current_impl_struct = saved_impl_struct;
-        self.generic_scopes = saved_generic_scopes;
-        self.loop_var_scopes = saved_loop_var_scopes;
-        self.closure_param_scopes = saved_closure_param_scopes;
-        self.local_let_bindings = saved_local_let_bindings;
-        self.consumed_bindings = saved_consumed_bindings;
-        self.current_file = saved_current_file;
-
-        // Update the cache with the final symbol table (post-passes).
-        self.module_cache.insert(
-            module_path.to_path_buf(),
-            (file.clone(), module_symbols.clone()),
-        );
-
-        if !module_errors.is_empty() {
-            return Err(module_errors);
-        }
-
-        // Lower the module to IR and cache it for codegen backends
-        // This enables generating impl blocks from imported types
-        // Lower with the imported module's own path so its `file_table`
-        // is populated. Phase 2b of `MonomorphisePass` reads this table
-        // when remapping cloned items' `IrSpan.file` into the entry's
-        // id-space.
-        if let Ok(ir_module) =
-            crate::ir::lower_to_ir_with_path(&file, &module_symbols, module_path.to_path_buf())
-        {
-            self.module_ir_cache
-                .insert(module_path.to_path_buf(), ir_module);
-        }
-        // Note: If IR lowering fails, we still return the symbol table successfully
-        // since semantic analysis passed. IR errors would be caught during main file lowering.
-
-        Ok(module_symbols)
-    }
+            None
+        })
+        .collect()
 }

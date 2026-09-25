@@ -1,4 +1,4 @@
-// expect: reject FloatDictionaryKey
+// expect: reject InvalidDictionaryKey
 // No type is written here: the key type comes from the keys.
 
 pub fn size(x: F64) -> I32 {

@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/expressions.md: equality is structural.
+pub enum E { v(n: I32), w }
+
+pub fn run_checks() {
+    let a: E = .v(n: 1)
+    let b: E = .v(n: 1)
+    let c: E = .v(n: 2)
+    let d: E = .w
+    assert(condition: a == b)
+    assert(condition: a != c)
+    assert(condition: a != d)
+}

@@ -1,0 +1,8 @@
+// expect: reject TraitMethodSignatureMismatch
+// docs/user/traits.md: method signatures must match exactly.
+pub trait Shape { fn scale(self, k: I32) -> I32 }
+pub struct Sq { s: I32 }
+
+impl Shape for Sq {
+    fn scale(self, k: String) -> I32 { self.s }
+}

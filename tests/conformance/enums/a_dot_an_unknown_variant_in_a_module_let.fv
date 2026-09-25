@@ -1,0 +1,13 @@
+// expect: reject UnknownEnumVariant
+// The leading-dot form gets its enum from the annotation of a module-level `let`.
+// The enum has no variant `nope`. The full form `Shape.nope` reports UnknownEnumVariant, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub let n: I32 = 2
+pub let v: Shape = .nope

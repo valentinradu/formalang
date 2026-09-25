@@ -1,0 +1,7 @@
+// expect: reject OptionalUsedAsNonOptional
+// from: swift test/Constraints/optional.swift.
+pub struct U { nick: String? }
+
+fn greet(name: String) -> String { name }
+
+pub fn f(u: U) -> String { greet(name: u.nick) }

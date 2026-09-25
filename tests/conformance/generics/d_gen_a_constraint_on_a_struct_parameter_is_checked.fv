@@ -1,0 +1,7 @@
+// expect: reject GenericConstraintViolation
+// docs/user/generics.md: constraints use `:` syntax, and a constraint
+// holds wherever the type argument comes from.
+pub trait Named { name: String }
+pub struct Wrapper<T: Named> { item: T }
+
+pub let w = Wrapper(item: 1)

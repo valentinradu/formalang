@@ -1,0 +1,18 @@
+// expect: reject UnknownField
+// The leading-dot form gets its enum from the type of a parameter, at a call.
+// The variant `circle` has no field `q`. The full form `Shape.circle(r: 1, q: 2)` reports UnknownField, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub fn take(s: Shape) -> I32 {
+    0
+}
+
+pub fn make(n: I32) -> I32 {
+    take(s: .circle(r: 1, q: 2))
+}

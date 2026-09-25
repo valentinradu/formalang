@@ -1,0 +1,12 @@
+// expect: reject UseAfterSink
+// A field initializer that sinks a binding, and a second field that reads
+// it.
+pub struct P { a: I32, b: I32 }
+
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    let p = P(a: take(s: s), b: s.len())
+    p.a
+}

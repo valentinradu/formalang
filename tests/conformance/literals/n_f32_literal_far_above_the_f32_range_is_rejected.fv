@@ -1,0 +1,8 @@
+// expect: reject InvalidNumber
+// 1e39 is far above the largest finite F32. As an F32 it becomes an
+// infinity. docs/user/types.md says that a literal that does not fit
+// its suffixed type is a compile error.
+
+pub fn f() -> F32 {
+    1e39F32
+}

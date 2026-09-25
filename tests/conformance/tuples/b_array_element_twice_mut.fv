@@ -1,0 +1,9 @@
+// expect: reject MutabilityMismatch
+// docs/user/types.md: an index reads; it never writes. An element is not
+// a place, so it cannot go to a `mut` parameter.
+fn bump(mut a: I32?) { }
+
+pub fn f() {
+    let mut xs: [I32] = [1, 2]
+    bump(a: xs[0])
+}

@@ -1,0 +1,8 @@
+// expect: reject ArgumentCountMismatch
+// docs/user/functions.md: calling with an unknown label set is a
+// compile error. The call gives three arguments to a function of two
+// parameters, so the count is the first error, as for a method
+// (methods/call_with_too_many_arguments.fv).
+fn add(a: I32, b: I32) -> I32 { a + b }
+
+pub let r: I32 = add(a: 1, b: 2, c: 3)

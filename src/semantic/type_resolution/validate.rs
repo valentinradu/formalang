@@ -22,6 +22,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             Type::Array(element_ty) => self.validate_type(element_ty, span),
             Type::Optional(inner_ty) => self.validate_type(inner_ty, span),
             Type::Tuple(fields) => {
+                // A label may appear once in a tuple type.
+                let mut seen = std::collections::HashSet::new();
+                for field in fields {
+                    if !seen.insert(field.name.name.as_str()) {
+                        self.errors.push(CompilerError::DuplicateDefinition {
+                            name: format!("tuple label '{}'", field.name.name),
+                            span: field.span,
+                        });
+                    }
+                }
                 for field in fields {
                     self.validate_type(&field.ty, field.span);
                 }
@@ -52,23 +62,17 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// collide. Rust refuses the same thing, because `f64` is not
     /// `Eq`. Every other key type has a total equality the backend can
     /// hash.
+    ///
+    /// The same rule reaches every type that cannot be a key: see
+    /// `key_types`.
     fn validate_dictionary_key(&mut self, key: &Type, span: Span) {
-        let key_type = match key {
-            Type::Primitive(crate::ast::PrimitiveType::F32) => "F32",
-            Type::Primitive(crate::ast::PrimitiveType::F64) => "F64",
-            Type::Primitive(_)
-            | Type::Ident(_)
-            | Type::Generic { .. }
-            | Type::Array(_)
-            | Type::Optional(_)
-            | Type::Tuple(_)
-            | Type::Dictionary { .. }
-            | Type::Closure { .. } => return,
-        };
-        self.errors.push(CompilerError::FloatDictionaryKey {
-            key_type: key_type.to_string(),
-            span,
-        });
+        let key_sem = SemType::from_ast(key);
+        if !self.is_key_type(&key_sem) {
+            self.errors.push(CompilerError::InvalidDictionaryKey {
+                key_type: key_sem.display(),
+                span,
+            });
+        }
     }
 
     /// Validate a simple identifier type (handles module paths and plain names).
@@ -81,6 +85,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                         name: error_msg,
                         span: ident.span,
                     });
+                } else {
+                    // A private type of a module is not visible outside
+                    // it, as a private value is not.
+                    let path: Vec<crate::ast::Ident> = parts
+                        .iter()
+                        .map(|part| crate::ast::Ident::new(*part, ident.span))
+                        .collect();
+                    self.check_module_visibility(&path, ident.span);
                 }
             } else {
                 self.errors.push(CompilerError::UndefinedType {
@@ -165,9 +177,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 if let Some(param) = expected_params.get(i) {
                     for constraint in &param.constraints {
                         let crate::ast::GenericConstraint::Trait {
-                            name: trait_ref, ..
+                            name: trait_ref,
+                            args: trait_args,
                         } = constraint;
-                        if !self.type_satisfies_trait_constraint(arg, &trait_ref.name) {
+                        if !self.type_satisfies_trait_constraint(arg, &trait_ref.name, trait_args) {
                             self.errors.push(CompilerError::GenericConstraintViolation {
                                 arg: Self::type_to_string(arg),
                                 constraint: trait_ref.name.clone(),
@@ -241,14 +254,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     /// and closure parameter/return types.
     pub(in crate::semantic) fn add_type_dependencies(graph: &mut TypeGraph, from: &str, ty: &Type) {
         match ty {
-            Type::Primitive(_) => {}
             Type::Ident(ident) => {
                 graph.add_dependency(from.to_string(), ident.name.clone());
             }
-            Type::Array(element_ty) => {
-                // Arrays don't break cycles, so [Node] still creates Node -> Node.
-                Self::add_type_dependencies(graph, from, element_ty);
-            }
+            // An array and a dictionary hold their elements out of line,
+            // so they break a cycle: `node(kids: [Tree])` has a finite
+            // size. An optional holds its value inline, so `next: Node?`
+            // is still a cycle.
+            Type::Primitive(_) | Type::Array(_) | Type::Dictionary { .. } => {}
             Type::Optional(inner_ty) => {
                 Self::add_type_dependencies(graph, from, inner_ty);
             }
@@ -262,10 +275,6 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                 for arg in args {
                     Self::add_type_dependencies(graph, from, arg);
                 }
-            }
-            Type::Dictionary { key, value } => {
-                Self::add_type_dependencies(graph, from, key);
-                Self::add_type_dependencies(graph, from, value);
             }
             Type::Closure { params, ret } => {
                 for (_, param) in params {

@@ -1,0 +1,10 @@
+// expect: reject AssignmentToElement
+// docs/user/types.md: `h.xs[0] = 9` reports E143, because the write
+// still passes through the index.
+pub struct Holder { xs: [I32] }
+
+pub fn run_checks() {
+    let mut h = Holder(xs: [1, 2])
+    h.xs[0] = 9
+    assert(condition: true)
+}

@@ -1,0 +1,5 @@
+// expect: reject TypeMismatch
+// docs/user/control-flow.md: the result type unifies the two branches.
+pub fn f(a: I32?) -> I32 {
+    if let v = a { v } else { "none" }
+}

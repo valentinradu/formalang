@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/modules.md: nested items can also be imported with `use`.
+mod alignment {
+    pub enum Vertical { top, center, bottom }
+}
+
+use alignment::Vertical
+
+pub let v: Vertical = .bottom
+
+pub fn run_checks() {
+    assert(condition: v == Vertical.bottom)
+}

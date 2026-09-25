@@ -1,0 +1,22 @@
+// expect: reject EnumVariantWithoutData
+// The leading-dot form gets its enum from the arm of a `match` that answers the return type.
+// The variant `empty` holds no data. The full form `Shape.empty(r: 1)` reports EnumVariantWithoutData, so the
+// dot form must report it too. See PLAN.md, item 1.
+
+pub enum Shape {
+    circle(r: I32),
+    rect(w: I32, h: I64),
+    empty
+}
+
+pub enum Pick {
+    first,
+    second
+}
+
+pub fn make(p: Pick, n: I32) -> Shape {
+    match p {
+        .first: .empty(r: 1),
+        .second: .empty
+    }
+}

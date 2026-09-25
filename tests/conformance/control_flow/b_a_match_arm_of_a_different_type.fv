@@ -1,0 +1,5 @@
+// expect: reject TypeMismatch
+// docs/user/control-flow.md: each form is an expression with one type.
+pub fn f(o: I32?) -> I32 {
+    match o { .some(v): v, .none: "none" }
+}

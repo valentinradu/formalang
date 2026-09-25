@@ -1,0 +1,11 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: `put(a: p, b: p.x)` is E144.
+pub struct Point { x: I32, y: I32 }
+
+fn put(mut a: Point, b: I32) -> I32 { b }
+
+pub fn run_checks() {
+    let mut p: Point = Point(x: 1, y: 2)
+    let r = put(a: p, b: p.x)
+    assert(condition: r == 1)
+}

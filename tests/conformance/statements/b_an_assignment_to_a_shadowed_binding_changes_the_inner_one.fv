@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/structs.md: a later `let` hides the first. An assignment
+// after it changes the second binding, and the first keeps its value.
+pub fn run_checks() {
+    let mut x: I32 = 1
+    let r = {
+        let mut x: I32 = 10
+        x = 20
+        x
+    }
+    assert(condition: r == 20)
+    assert(condition: x == 1)
+}

@@ -1,0 +1,7 @@
+// expect: run
+// 16777217 has no exact F32 form. As an F32 it rounds to 16777216, so
+// the two literals are the same F32 value.
+
+pub fn run_checks() {
+    assert(condition: 16777217.0F32 == 16777216.0F32)
+}

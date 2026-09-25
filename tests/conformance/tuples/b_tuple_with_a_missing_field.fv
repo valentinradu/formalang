@@ -1,0 +1,5 @@
+// expect: reject FunctionReturnTypeMismatch
+// A tuple literal must give each field of its declared type.
+pub fn f() -> (x: I32, y: I32) {
+    (x: 1)
+}

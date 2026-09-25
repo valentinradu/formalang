@@ -1,0 +1,7 @@
+// expect: reject ClosureParameterNeedsType
+// docs/user/closures.md: the compiler does not infer a parameter type from
+// a later call.
+pub fn run_checks() {
+    let f = (x) -> x
+    assert(condition: f(1) == 1)
+}

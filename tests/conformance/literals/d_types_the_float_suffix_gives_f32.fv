@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: `3.14F32` is an F32.
+pub fn run_checks() {
+    let d = 3.14F32
+    let e: F32 = d
+    assert(condition: e > 3.0F32)
+}

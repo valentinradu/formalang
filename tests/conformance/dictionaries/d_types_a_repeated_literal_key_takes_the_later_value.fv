@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/types.md: `["a": 1, "a": 2]` holds one entry, `"a": 2`.
+pub fn run_checks() {
+    let d: [String: I32] = ["a": 1, "a": 2]
+    assert(condition: d.len() == 1)
+    let v: I32 = if let n = d["a"] { n } else { 0 }
+    assert(condition: v == 2)
+}

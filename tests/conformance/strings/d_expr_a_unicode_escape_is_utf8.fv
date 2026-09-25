@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/extern.md: `len` and `byte_at` count bytes. `\u00e9` is
+// two bytes in UTF-8.
+pub fn run_checks() {
+    assert(condition: "\u00e9".len() == 2)
+    assert(condition: "\u00e9".byte_at(i: 0) == 195)
+}

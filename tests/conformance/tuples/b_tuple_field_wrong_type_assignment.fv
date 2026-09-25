@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// A field keeps its type.
+pub fn f() -> I32 {
+    let mut t = (x: 1, y: 2)
+    t.x = "a"
+    0
+}

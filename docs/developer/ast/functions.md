@@ -12,13 +12,20 @@ Function definition inside an impl block.
 ```rust
 pub struct FnDef {
     pub name: Ident,
+    pub generics: Vec<GenericParam>,  // The method's own type parameters
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     pub body: Option<Expr>,           // None for extern fn / extern impl methods
     pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold prefixes
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```
+
+`generics` holds the type parameters of the method itself: `U` in
+`fn map<U>(self, f: (T) -> U) -> [U]`. The type parameters of the impl
+block are on `ImplDef.generics`. Serialisation omits an empty
+`generics`.
 
 `attributes` carries codegen-hint keyword prefixes parsed before
 `fn`: `inline fn foo() { ... }`, `cold fn rare() { ... }`. The
@@ -33,6 +40,7 @@ declarations.
 ```rust
 pub struct FnSig {
     pub name: Ident,
+    pub generics: Vec<GenericParam>,  // A trait method may declare none: GenericTraitMethod
     pub params: Vec<FnParam>,
     pub return_type: Option<Type>,
     pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold
@@ -114,6 +122,7 @@ pub struct FunctionDef {
     pub body: Option<Expr>,           // None for `extern fn` declarations
     pub extern_abi: Option<ExternAbi>, // Some(_) for `extern fn`; None otherwise
     pub attributes: Vec<AttributeAnnotation>,  // inline / no_inline / cold
+    pub doc: Option<String>,
     pub span: Span,
 }
 ```

@@ -1,0 +1,15 @@
+// expect: reject DuplicateDefinition
+// docs/user/traits.md: separate impl blocks for inherited traits; only
+// provide methods declared in that trait.
+pub trait Base { fn id(self) -> I32 }
+pub trait Extended: Base { fn name(self) -> String }
+pub struct Item { value: I32 }
+
+impl Base for Item {
+    fn id(self) -> I32 { self.value }
+}
+
+impl Extended for Item {
+    fn name(self) -> String { "item" }
+    fn id(self) -> I32 { 0 }
+}

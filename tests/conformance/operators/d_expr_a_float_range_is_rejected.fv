@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: both bounds of `..` must be integers.
+pub fn run_checks() {
+    let n: I32 = for v in 0.0..2.0 { v }.count()
+    assert(condition: n == 2)
+}

@@ -1,0 +1,6 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: the rule reaches inside containers. Also
+// docs/user/closures.md: a pub struct field cannot have a closure type.
+struct Hidden { x: I32 }
+
+pub struct S { g: [() -> Hidden] }

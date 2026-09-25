@@ -451,7 +451,7 @@ fn test_impl_trait_for_struct_in_module_loading() -> Result<(), Box<dyn std::err
 pub trait Drawable { area: I32 }
 pub struct Circle { area: I32 }
 impl Circle {
-    fn compute() -> I32 { self.area }
+    fn compute(self) -> I32 { self.area }
 }
 ",
     );
@@ -628,7 +628,7 @@ fn test_impl_fn_with_type_param_return() -> Result<(), Box<dyn std::error::Error
     let source = r"
         struct Box<T> { value: T }
         impl Box<T> {
-            fn get_val() -> T { self.value }
+            fn get_val(self) -> T { self.value }
         }
     ";
     compile(source).map_err(|e| format!("impl fn with type param return should compile: {e:?}"))?;

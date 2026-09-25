@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: field access is above multiplication.
+pub struct P { x: I32 }
+
+pub fn run_checks() {
+    let p = P(x: 4)
+    assert(condition: p.x * 2 == 8)
+    assert(condition: 2 * p.x == 8)
+}

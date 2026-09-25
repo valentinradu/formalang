@@ -43,21 +43,52 @@ let settings: [String: I32] = ["timeout": 30, "maxRetries": 3]
 let emptyDict: [String: Boolean] = [:]
 ```
 
-**Escape sequences** (strings): `\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`
+An unsuffixed number takes its type from the position where it stands.
+The comments above give the type where no position gives one. See
+[Type System / The type of a literal](types.md#the-type-of-a-literal).
+
+A plain string stays on one line: a line break in it is the error
+`UnterminatedString`. A `"""` string can hold line breaks.
+
+**Escape sequences** (strings): `\"`, `\\`, `\n`, `\t`, `\r`, `\uXXXX`.
+The Unicode escape takes exactly four hex digits, and it must name a
+Unicode scalar value. A backslash before any other character is the
+error `InvalidEscape`. A wrong `\u` escape is the error
+`InvalidUnicodeEscape`: fewer than four digits, a character that is not
+a hex digit, a surrogate such as `\uD800`, or the brace form `\u{41}`.
+
+```formalang
+pub fn run_checks() {
+  assert(condition: "\u0041" == "A")
+  assert(condition: "\u00E9".len() == 2)   // two bytes of UTF-8
+  assert(condition: "a\tb".len() == 3)     // one byte for each escape
+}
+```
 
 ## Field Access
 
+A `.` reads a field of a struct or a tuple. The reads chain:
+
 ```formalang
-user.name                   // Access field
-point.x                     // Access coordinate
-config.timeout              // Access config field
-user.profile.avatar         // Nested access
-theme.colors.primary        // Multiple levels
+pub struct Profile { avatar: String }
+pub struct User { name: String, profile: Profile }
+
+pub fn run_checks() {
+  let user = User(name: "Ada", profile: Profile(avatar: "ada.png"))
+  let point = (x: 1, y: 2)
+
+  assert(condition: user.name == "Ada")                 // a field
+  assert(condition: point.x == 1)                       // a tuple field
+  assert(condition: user.profile.avatar == "ada.png")   // nested access
+}
 ```
+
+A field that the type does not have is the error `UnknownField`. An
+enum, a number, an array and a closure have no fields.
 
 ## Destructuring
 
-Extract values from arrays, structs, and enums:
+Extract values from arrays, tuples and structs:
 
 ```formalang
 // Array destructuring (positional)
@@ -66,32 +97,56 @@ pub let [a, b] = items              // a="first", b="second"
 pub let [x, ...rest] = items        // x="first", rest=["second", "third", "fourth"]
 pub let [_, second, ...] = items    // Skip first, get second, ignore rest
 
+// Tuple destructuring (by position)
+pub let pair = (x: 3, y: 4)
+pub let (px, py) = pair             // px=3, py=4
+
 // Struct destructuring (by field name)
 pub struct User { name: String, age: I32 }
 pub let user = User(name: "Alice", age: 30)
 pub let {name, age} = user          // name="Alice", age=30
 pub let {name as username} = user   // Rename: username="Alice"
 
-// Enum destructuring (extract associated data)
+// Enum data: use `match`, not a destructuring pattern
 pub enum AccountType {
-  admin
+  admin,
   user(permissions: [String], articles: [String])
 }
 
-pub let account: AccountType = .user(
-  permissions: ["read", "write"],
-  articles: ["article1", "article2"]
-)
+pub fn article_count(account: AccountType) -> I32 {
+  match account {
+    .user(permissions, articles): articles.len(),
+    .admin: 0
+  }
+}
+```
 
-// Destructure enum to extract associated data
-pub let (permissions, articles) = account
+An enum value is one of several variants, and each variant has its own
+data, or none. So a destructuring pattern cannot take an enum value. To
+read the data of a variant, use `match`, or `if let` for an optional.
+A tuple pattern on an enum value is a type mismatch:
+
+```formalang,reject=TypeMismatch
+pub enum AccountType {
+  admin,
+  user(permissions: [String], articles: [String])
+}
+
+pub let account: AccountType = .admin
+pub let (permissions, articles) = account   // error: not a tuple
 ```
 
 **Rules**:
 
 - Array destructuring is positional (order matters)
-- Struct destructuring is by field name
-- Enum destructuring extracts associated data in parameter order
+- Tuple destructuring is positional too, and the pattern needs one
+  name for each field of the tuple
+- Struct destructuring is by field name. A name that is not a field is
+  the error `UnknownField`
+- An array pattern on another type is the error
+  `ArrayDestructuringNotArray`. A struct pattern on another type, a
+  tuple included, is the error `StructDestructuringNotStruct`
+- An enum value cannot be destructured: use `match`
 - Use `as` to rename fields during destructuring
 - Use `_` to skip array elements
 - Use `...` for rest pattern (can appear anywhere in array destructuring)
@@ -129,35 +184,65 @@ let complex = (10 + 20) * 3
 let condition = (5 > 3) && (10 < 20)
 ```
 
+## Unary Operators
+
+`-` negates a number, and `!` negates a `Boolean`. The operand is
+checked: `-"text"` and `-true` are a `TypeMismatch`, and so is `!1`.
+
+```formalang
+pub fn run_checks() {
+  let n: I32 = 5
+  let s = "abc"
+  assert(condition: -n == 0 - 5)
+  assert(condition: !(n > 10))
+  assert(condition: -s.len() == -3)     // `.` binds before `-`
+}
+```
+
 ## Operator Precedence
 
 From highest to lowest:
 
 1. **Parentheses**: `( )`
-2. **Field access**: `.`
-3. **Multiplicative**: `*`, `/`, `%`
-4. **Additive**: `+`, `-`
-5. **Comparison**: `<`, `>`, `<=`, `>=`
-6. **Equality**: `==`, `!=`
-7. **Logical AND**: `&&`
-8. **Logical OR**: `||`
-9. **Range**: `..`
+2. **Field access, call and index**: `.`, `f(...)`, `xs[i]`
+3. **Unary**: `-`, `!`
+4. **Multiplicative**: `*`, `/`, `%`
+5. **Additive**: `+`, `-`
+6. **Comparison**: `<`, `>`, `<=`, `>=`
+7. **Equality**: `==`, `!=`
+8. **Logical AND**: `&&`
+9. **Logical OR**: `||`
+10. **Range**: `..`
+
+A comparison does not chain: `1 < 2 < 3` compares a `Boolean` with a
+number, which is an `InvalidBinaryOp`.
 
 Examples:
 
 ```formalang
-10 + 20 * 3              // 70 (multiplication first)
-(10 + 20) * 3            // 90 (parentheses override)
-x > 5 && y < 10          // Comparison before AND
-true || false && false   // true (AND before OR)
-user.age > 18 && user.verified  // Field access → comparison → AND
+pub struct User { age: I32, verified: Boolean }
+
+pub fn run_checks() {
+  let x = 7
+  let y = 3
+  let user = User(age: 30, verified: true)
+
+  assert(condition: 10 + 20 * 3 == 70)            // multiplication first
+  assert(condition: (10 + 20) * 3 == 90)          // parentheses override
+  assert(condition: x > 5 && y < 10)              // comparison before AND
+  assert(condition: true || false && false)       // AND before OR
+  assert(condition: user.age > 18 && user.verified)  // field access, comparison, AND
+  assert(condition: -2 * 3 == -6)                 // unary before multiplication
+}
 ```
 
 ### Operand Types
 
 Each operator group accepts a limited set of operands. There is no
 implicit conversion between types, so the two operands must have the
-same type.
+same type. An unsuffixed numeric literal takes its type from the other
+operand: in `n + 1` with `n: I64`, the `1` is an `I64`. See
+[the type of a literal](types.md#the-type-of-a-literal).
 
 | Group | Operands |
 | --- | --- |
@@ -172,17 +257,25 @@ An optional compares to `nil`, which is the plainest way to ask
 whether it holds anything. Either side may be the `nil`:
 
 ```formalang
-let held: I32? = 5
-let empty: I32? = nil
+pub fn run_checks() {
+  let held: I32? = 5
+  let empty: I32? = nil
 
-held == nil      // false
-empty == nil     // true
-nil == empty     // true, the same question
-held != nil      // true
+  assert(condition: !(held == nil))
+  assert(condition: empty == nil)
+  assert(condition: nil == empty)       // the same question
+  assert(condition: held != nil)
+}
 ```
 
 This answers exactly what `.is_some()` and `.is_none()` answer; pick
 whichever reads better where it sits.
+
+Two optionals of one type compare too: they are equal when both are
+`nil`, or when both hold equal values. An optional and a plain value do
+not compare, because they are two types: `held == 5` is an
+`InvalidBinaryOp`. Unwrap the optional with `if let` first. The
+language has no `??` operator and no `?.` chaining.
 
 Equality is structural: it compares each field of a struct and each
 element of a container. A closure has no structure to compare, so a
@@ -197,16 +290,28 @@ the key may be absent from a dictionary, so the result is wrapped in an
 optional and the caller is responsible for handling the `nil` case.
 
 ```formalang
-let xs: [I32] = [1, 2, 3]
-let first: I32? = xs[0]      // I32?, not I32
+pub fn run_checks() {
+  let xs: [I32] = [1, 2, 3]
+  let first: I32? = xs[0]      // I32?, not I32
 
-let cfg: [String: I32] = ["timeout": 30]
-let t: I32? = cfg["timeout"] // same shape
+  let cfg: [String: I32] = ["timeout": 30]
+  let t: I32? = cfg["timeout"] // same shape
+
+  // Unwrap with `if let`, and give the value for the nil case
+  let timeout: I32 = if let v = t { v } else { 60 }
+  assert(condition: timeout == 30)
+  assert(condition: first != nil)
+  assert(condition: xs[3] == nil)
+}
 ```
 
-If you need a non-optional value, supply a fallback at the call site
-(e.g. via a host helper that yields a default) or pin the type at the
-boundary so the optional is part of the public signature.
+To get a plain value, unwrap the optional with `if let` and give a
+fallback for the `nil` case, or `match` on `.some` and `.none`. See
+[Control Flow](control-flow.md#if-expressions).
+
+The type of the index is checked: an array takes an `I32` position,
+and a dictionary takes a key of its key type. See
+[Type System / Indexing](types.md#indexing).
 
 An index reads; it never writes. `xs[0] = 9` is an error, and `let mut`
 does not make it legal. See
@@ -222,13 +327,23 @@ A range counts in steps of one, so both bounds must be integers
 (`I32` or `I64`). To iterate floats, put them in an array.
 
 ```formalang
-// A simple range
-let digits = 0..10
+pub fn run_checks() {
+  let n = 4
+  let start = 2
+  let length = 3
 
-// Iterating over a range. A `for` yields a lazy sequence, so a
-// terminal combinator ends the pipeline.
-let count: I32 = for i in 0..n { i }.count()
+  // A simple range
+  let digits = 0..10
 
-// Range with arithmetic on the bounds
-let window = start..(start + length)
+  // Iterating over a range. A `for` yields a lazy sequence, so a
+  // terminal combinator ends the pipeline.
+  let count: I32 = for i in 0..n { i }.count()
+
+  // Range with arithmetic on the bounds
+  let window = start..(start + length)
+
+  assert(condition: digits.len() == 10)
+  assert(condition: count == 4)
+  assert(condition: for i in window { i }.fold(initial: 0, f: (a, b) -> a + b) == 9)
+}
 ```

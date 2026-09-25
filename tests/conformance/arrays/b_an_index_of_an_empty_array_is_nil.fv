@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/expressions.md: an index that is out of range gives nil.
+pub fn run_checks() {
+    let xs: [I32] = []
+    assert(condition: xs[0] == nil)
+}

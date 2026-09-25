@@ -1,0 +1,15 @@
+// expect: run
+// from: rust tests/ui/ (a `Vec<Self>` field) and swift (an `[Self]` field
+// needs no `indirect`). An array holds its elements behind a reference,
+// so an enum can hold an array of itself.
+pub enum Tree { leaf(v: I32), node(kids: [Tree]) }
+pub fn first(t: Tree) -> I32 {
+    match t {
+        .leaf(v): v,
+        .node(kids): 0
+    }
+}
+pub fn run_checks() {
+    assert(condition: first(t: Tree.leaf(v: 4)) == 4)
+    assert(condition: first(t: Tree.node(kids: [Tree.leaf(v: 1)])) == 0)
+}

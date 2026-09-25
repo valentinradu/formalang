@@ -1,0 +1,8 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: a public `let` whose inferred type is private
+// hands the reader a value they cannot name.
+struct Hidden { x: I32 }
+
+fn make() -> [Hidden] { [Hidden(x: 1)] }
+
+pub let L = make()

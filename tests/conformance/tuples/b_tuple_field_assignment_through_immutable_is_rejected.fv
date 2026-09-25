@@ -1,0 +1,7 @@
+// expect: reject AssignmentToImmutable
+// A field of an immutable binding is immutable.
+pub fn f() -> I32 {
+    let t = (x: 1, y: 2)
+    t.x = 5
+    t.x
+}

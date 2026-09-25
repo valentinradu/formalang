@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/types.md: match against `.some(x)` / `.none` arms directly.
+fn or_zero(o: I32?) -> I32 {
+    match o {
+        .some(x): x,
+        .none: 0
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: or_zero(o: 4) == 4)
+    assert(condition: or_zero(o: nil) == 0)
+}

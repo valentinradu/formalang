@@ -1,0 +1,8 @@
+// expect: reject ParseError
+// docs/user/control-flow.md: `if let` requires both a `then` and an
+// `else` branch.
+pub fn run_checks() {
+    let o: I32? = 1
+    let v = if let n = o { n }
+    assert(condition: v == 1)
+}

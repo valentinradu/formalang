@@ -1,0 +1,9 @@
+// expect: compile
+// docs/user/types.md: `p.x = 9` through a mut binding is ok.
+pub struct Point { x: I32 }
+
+pub fn run_checks() {
+    let mut p: Point = Point(x: 1)
+    p.x = 9
+    assert(condition: p.x == 9)
+}

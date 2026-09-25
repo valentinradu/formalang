@@ -1,0 +1,7 @@
+// expect: reject NoMatchingOverload
+// docs/user/functions.md: calling with an unknown label set is a compile
+// error.
+fn format(value: I32) -> String { "number" }
+fn format(value: String) -> String { "string" }
+
+pub let s = format(width: 1)

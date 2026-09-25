@@ -1,0 +1,5 @@
+// expect: reject UndefinedReference
+// A match binding is scoped to its own arm.
+pub fn f(o: I32?) -> I32 {
+    match o { .some(v): v, .none: v }
+}

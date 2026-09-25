@@ -1,0 +1,14 @@
+// expect: run
+// docs/user/functions.md: a method overloads the same way a free function
+// does.
+pub struct Formatter { tag: I32 }
+
+impl Formatter {
+    fn format(self, text: String) -> String { text }
+    fn format(self, value: I32, prefix: String) -> String { prefix }
+}
+
+pub fn run_checks() {
+    assert(condition: Formatter(tag: 1).format(text: "x") == "x")
+    assert(condition: Formatter(tag: 1).format(value: 2, prefix: "p") == "p")
+}

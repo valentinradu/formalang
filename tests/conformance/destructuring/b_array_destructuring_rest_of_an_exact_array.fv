@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/expressions.md: `rest` holds what the other names do not
+// take. When they take all, it is empty.
+pub fn run_checks() {
+    let [a, b, ...rest] = [1, 2]
+    assert(condition: rest.len() == 0)
+    assert(condition: a + b == 3)
+}

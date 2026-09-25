@@ -1,0 +1,7 @@
+// expect: run
+// docs/user/types.md: keys can be an I64.
+pub fn run_checks() {
+    let d: [I64: I32] = [5I64: 1, 6I64: 2]
+    let v: I32 = if let n = d[6I64] { n } else { 0 }
+    assert(condition: v == 2)
+}

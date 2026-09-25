@@ -1,5 +1,6 @@
-// expect: reject FunctionReturnTypeMismatch
-// And in return position.
+// expect: reject TypeMismatch
+// And in return position. The return type gives `T` the type `I32`,
+// so the payload is the error, as for a non-generic enum.
 
 pub enum Maybe<T> {
     some(v: T),

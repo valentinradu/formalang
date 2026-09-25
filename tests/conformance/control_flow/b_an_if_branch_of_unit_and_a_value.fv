@@ -1,0 +1,8 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/control-flow.md: the result type unifies the two branches.
+// Unit and I32 do not unify.
+fn g() { }
+
+pub fn f(c: Boolean) -> I32 {
+    if c { g() } else { 1 }
+}

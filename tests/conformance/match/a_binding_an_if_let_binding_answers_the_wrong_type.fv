@@ -1,0 +1,16 @@
+// expect: reject TypeMismatch
+// `if let` is a match on `.some(v)` and `.none`, so `v` has the type
+// inside the optional. `v` is the String inside `o`, and the function answers an I32.
+// See docs/user/control-flow.md, `if let`.
+
+pub fn take_string(s: String) -> I32 {
+    0
+}
+
+pub fn f(o: String?) -> I32 {
+    if let v = o {
+        v
+    } else {
+        0
+    }
+}

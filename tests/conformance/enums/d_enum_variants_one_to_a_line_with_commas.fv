@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/enums.md: a comma separates two variants, and a line break
+// after the comma is optional.
+pub enum Status {
+  pending,
+  active,
+  completed
+}
+
+pub fn run_checks() {
+    let s: Status = .active
+    assert(condition: s == Status.active)
+}

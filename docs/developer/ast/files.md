@@ -45,15 +45,17 @@ The root node representing a complete `.fv` source file.
 
 ```rust
 pub struct File {
-    pub format_version: u32,        // Always FORMAT_VERSION (currently 1)
+    pub doc: Option<String>,        // The `//!` lines at the start of the file
     pub statements: Vec<Statement>,
     pub span: Span,
 }
 ```
 
-`format_version` is set automatically by the parser. Tools that
-deserialize serialized ASTs should check this field to detect
-wire-format incompatibilities.
+`doc` holds the `//!` doc comments at the start of the file, joined
+with newlines.
+
+The AST has no serialized form. To compare two trees, use
+`PartialEq` or `Debug`.
 
 ### Statement
 
@@ -82,11 +84,16 @@ pub enum Definition {
 }
 ```
 
+Each definition has a `doc: Option<String>` field. It holds the `///`
+lines before the definition, joined with `\n`. A `LetBinding`, a
+`StructField`, a `FieldDef` and a method `FnDef` have one too. A `use`
+statement drops its doc comment.
+
 ## Visibility
 
 ```rust
 pub enum Visibility {
     Public,   // pub keyword
-    Private,  // default (no modifier)
+    Private,  // default (no modifier); also the serde default
 }
 ```

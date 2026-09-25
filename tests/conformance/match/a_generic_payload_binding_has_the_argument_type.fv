@@ -1,0 +1,10 @@
+// expect: reject InvalidBinaryOp
+// The payload of `Option<I32>.some` is an I32, so `value + true` adds an
+// I32 and a Boolean.
+pub enum Option<T> { some(value: T), none }
+pub fn f(o: Option<I32>) -> I32 {
+    match o {
+        .some(value): value + true,
+        .none: 0
+    }
+}

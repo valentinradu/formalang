@@ -1,0 +1,6 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: a public signature names public types.
+mod m {
+    struct Hidden { x: I32 }
+    pub fn f() -> Hidden { Hidden(x: 1) }
+}

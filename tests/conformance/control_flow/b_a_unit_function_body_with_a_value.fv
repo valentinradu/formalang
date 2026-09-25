@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/functions.md: a function with no return type returns unit,
+// and its body may still end in a value.
+fn log_value(value: I32) {
+    value
+}
+
+pub fn run_checks() {
+    log_value(value: 1)
+    assert(condition: true)
+}

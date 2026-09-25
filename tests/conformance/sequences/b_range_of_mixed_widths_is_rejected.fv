@@ -1,0 +1,5 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: the two operands must have the same type.
+pub fn f() -> I32 {
+    for i in 0I32..3I64 { i }.count()
+}

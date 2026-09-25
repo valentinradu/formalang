@@ -1,0 +1,4 @@
+// expect: reject ArgumentCountMismatch
+// A trait method keeps its parameter count through the bound.
+pub trait Scale { fn scale(self, by: I32) -> I32 }
+fn f<T: Scale>(x: T) -> I32 { x.scale() }

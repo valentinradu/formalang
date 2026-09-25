@@ -1,6 +1,7 @@
 //! Pass 2: walk every definition and validate that the types it mentions
 //! actually exist (and respect generic constraints / trait-as-value rules).
 
+mod key_types;
 mod validate;
 
 pub(in crate::semantic) use validate::float_key_in;

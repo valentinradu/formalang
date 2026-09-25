@@ -1,0 +1,4 @@
+// expect: reject InvalidBinaryOp
+// from: swift test/Constraints/optional.swift. docs/user/expressions.md:
+// `<` takes two numbers of one type. An optional is not a number.
+pub fn f(a: I32?) -> Boolean { a < 1 }

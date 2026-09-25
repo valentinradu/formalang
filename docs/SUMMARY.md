@@ -17,7 +17,6 @@
 - [Generics](user/generics.md)
 - [Module System](user/modules.md)
 - [Extern Declarations](user/extern.md)
-- [Serde Stability](user/serde.md)
 - [Feature Checklist](user/checklist.md)
 
 # Architecture

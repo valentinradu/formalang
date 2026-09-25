@@ -1,0 +1,4 @@
+// expect: reject MissingGenericArguments
+// Container takes one type argument, and the bound gives none.
+pub trait Container<T> { fn get(self) -> T }
+fn read<T: Container>(b: T) -> I32 { 0 }

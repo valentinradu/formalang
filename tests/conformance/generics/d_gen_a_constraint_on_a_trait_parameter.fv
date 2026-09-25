@@ -1,0 +1,4 @@
+// expect: compile
+// docs/user/generics.md: a constraint on a trait field.
+pub trait Layout { width: I32 }
+pub trait Container<T: Layout> { items: [T] }

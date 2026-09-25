@@ -1,0 +1,5 @@
+// expect: reject GenericArityMismatch
+// docs/user/generics.md: type arguments must match the parameter count.
+pub struct Pair<A, B> { first: A, second: B }
+
+pub let p = Pair<I32>(first: 1, second: 2)

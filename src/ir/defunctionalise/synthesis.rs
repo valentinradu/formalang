@@ -43,9 +43,9 @@ pub(super) fn synthesise(
     shapes: Vec<Shape>,
 ) -> Result<Plan, Vec<CompilerError>> {
     let mut planned = Vec::new();
-    for (index, shape) in shapes.into_iter().enumerate() {
-        let enum_name = format!("{FN_ENUM_PREFIX}{index}");
-        let call_fn = format!("{CALL_FN_PREFIX}{index}");
+    let mut next: usize = 0;
+    for shape in shapes {
+        let (enum_name, call_fn) = fresh_names(module, &mut next);
 
         let mut variants = HashMap::new();
         let mut ir_variants = Vec::new();
@@ -110,6 +110,21 @@ pub(super) fn synthesise(
         ));
     }
     Ok(Plan { shapes: planned })
+}
+
+/// The next pair of names `__Fn<K>` and `__call_Fn<K>` that no
+/// definition in `module` has. A user may write a function called
+/// `__call_Fn0`; the pass then takes `__call_Fn1`, so a call to the
+/// user's function never reaches the dispatcher.
+fn fresh_names(module: &IrModule, next: &mut usize) -> (String, String) {
+    loop {
+        let enum_name = format!("{FN_ENUM_PREFIX}{next}");
+        let call_fn = format!("{CALL_FN_PREFIX}{next}");
+        *next = next.saturating_add(1);
+        if module.enum_id(&enum_name).is_none() && module.function_id(&call_fn).is_none() {
+            return (enum_name, call_fn);
+        }
+    }
 }
 
 /// Build `fn __call_Fn<K>(f, p0, p1, ...) -> R` as a `match` over the

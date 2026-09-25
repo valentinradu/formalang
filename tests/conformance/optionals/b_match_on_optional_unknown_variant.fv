@@ -1,0 +1,5 @@
+// expect: reject UnknownEnumVariant
+// docs/user/types.md: an optional has `.some` and `.none` only.
+pub fn f(a: I32?) -> I32 {
+    match a { .some(v): v, .none: 0, .other: 1 }
+}

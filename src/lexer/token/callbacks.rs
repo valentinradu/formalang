@@ -2,11 +2,13 @@
 
 use logos::Skip;
 
+use super::strings::record_bidi_controls;
 use super::Token;
 
 /// Strip the `///` prefix and a single leading space from a doc-comment
 /// slice. Returns the remaining text (trimmed of trailing whitespace).
-pub(super) fn parse_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+pub(super) fn parse_doc_comment(lex: &mut logos::Lexer<'_, Token>) -> String {
+    check_comment(lex);
     let raw = lex.slice();
     let body = raw.strip_prefix("///").unwrap_or(raw);
     let body = body.strip_prefix(' ').unwrap_or(body);
@@ -16,11 +18,26 @@ pub(super) fn parse_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
 /// Strip the `//!` prefix and a single leading space from an inner
 /// doc-comment slice. Returns the remaining text (trimmed of trailing
 /// whitespace).
-pub(super) fn parse_inner_doc_comment(lex: &logos::Lexer<'_, Token>) -> String {
+pub(super) fn parse_inner_doc_comment(lex: &mut logos::Lexer<'_, Token>) -> String {
+    check_comment(lex);
     let raw = lex.slice();
     let body = raw.strip_prefix("//!").unwrap_or(raw);
     let body = body.strip_prefix(' ').unwrap_or(body);
     body.trim_end().to_string()
+}
+
+/// Skip a plain line comment, after the check on its text.
+pub(super) fn skip_line_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
+    check_comment(lex);
+    Skip
+}
+
+/// Record each bidirectional control character in the comment that
+/// Logos has matched.
+fn check_comment(lex: &mut logos::Lexer<'_, Token>) {
+    let start = lex.span().start;
+    let text = lex.slice();
+    record_bidi_controls(lex, start, text);
 }
 
 /// Skip a nested block comment.
@@ -52,6 +69,9 @@ pub(super) fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
             depth = depth.saturating_sub(1);
             i = i.saturating_add(2);
             if depth == 0 {
+                let start = lex.span().end;
+                let text = remainder.get(..i).unwrap_or_default();
+                record_bidi_controls(lex, start, text);
                 lex.bump(i);
                 return Skip;
             }
@@ -64,6 +84,7 @@ pub(super) fn skip_block_comment(lex: &mut logos::Lexer<'_, Token>) -> Skip {
     // diagnostic, then consume the rest of the input so Logos doesn't
     // loop on it.
     let opening_span = lex.span();
+    record_bidi_controls(lex, opening_span.end, remainder);
     let end = opening_span.end.saturating_add(len);
     lex.extras
         .unterminated_block_comments
@@ -101,8 +122,8 @@ pub(super) fn parse_number(s: &str) -> Option<crate::ast::NumberLiteral> {
             // than an error, so `1e400` would parse. Reject it here,
             // the way the integer branch rejects a value too large for
             // `i128`. An infinity has no JSON form either, so letting
-            // one through makes the serialised `IrModule` — the format
-            // external consumers read — impossible to decode.
+            // one through makes the serialised `IrModule` (the `serde`
+            // feature) impossible to decode.
             //
             // Underflow is different and stays accepted: `1e-400`
             // becomes `0.0`, which is what IEEE 754 specifies and what
@@ -133,93 +154,4 @@ fn strip_numeric_suffix(s: &str) -> (&str, Option<crate::ast::NumericSuffix>) {
         .iter()
         .find_map(|&(text, suffix)| s.strip_suffix(text).map(|d| (d, Some(suffix))))
         .unwrap_or((s, None))
-}
-
-pub(super) fn parse_string(lex: &mut logos::Lexer<'_, Token>) -> String {
-    let s = lex.slice();
-    let content = s
-        .strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .unwrap_or_default();
-    let (text, bad) = process_escapes(content);
-    record_bad_escapes(lex, bad);
-    text
-}
-
-pub(super) fn parse_multiline_string(lex: &mut logos::Lexer<'_, Token>) -> String {
-    let s = lex.slice();
-    let content = s
-        .strip_prefix("\"\"\"")
-        .and_then(|s| s.strip_suffix("\"\"\""))
-        .unwrap_or_default();
-    let (text, bad) = process_escapes(content);
-    record_bad_escapes(lex, bad);
-    text
-}
-
-/// Push each bad `\uXXXX` hex string accumulated by [`process_escapes`]
-/// into the lexer's extras alongside the enclosing string literal's
-/// byte range, so the wrapping [`Lexer`](crate::lexer::Lexer) can surface a
-/// real [`CompilerError::InvalidUnicodeEscape`](crate::CompilerError).
-fn record_bad_escapes(lex: &mut logos::Lexer<'_, Token>, bad: Vec<String>) {
-    if bad.is_empty() {
-        return;
-    }
-    let span = lex.span();
-    for hex in bad {
-        lex.extras
-            .invalid_unicode_escapes
-            .push((span.start, span.end, hex));
-    }
-}
-
-/// Decode escape sequences in a string-literal body.
-///
-/// Returns the decoded text and a list of bad `\uXXXX` hex strings —
-/// any escape whose code point is invalid (e.g. a UTF-16 surrogate
-/// `\uD800..\uDFFF`). The replacement character `U+FFFD` is substituted
-/// in the decoded output for each bad escape so positions in the rest
-/// of the literal stay sensible.
-fn process_escapes(s: &str) -> (String, Vec<String>) {
-    let mut result = String::new();
-    let mut bad_escapes: Vec<String> = Vec::new();
-    let mut chars = s.chars();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            match chars.next() {
-                Some(c @ ('"' | '\\')) => result.push(c),
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('u') => {
-                    // The lexer regex guarantees four hex digits follow,
-                    // so `from_str_radix` won't fail; the only failure
-                    // mode is `from_u32` rejecting a surrogate code point
-                    // in 0xD800..=0xDFFF.
-                    let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
-                        if let Some(unicode_char) = char::from_u32(code) {
-                            result.push(unicode_char);
-                        } else {
-                            bad_escapes.push(hex);
-                            result.push('\u{FFFD}');
-                        }
-                    } else {
-                        bad_escapes.push(hex);
-                        result.push('\u{FFFD}');
-                    }
-                }
-                Some(c) => {
-                    result.push('\\');
-                    result.push(c);
-                }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    (result, bad_escapes)
 }

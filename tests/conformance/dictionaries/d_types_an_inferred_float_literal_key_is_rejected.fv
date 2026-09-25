@@ -1,0 +1,7 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: the float-key rule applies to the keys of a
+// literal that has no annotation.
+pub fn run_checks() {
+    let d = [1.5F32: "a"]
+    assert(condition: d.len() == 1)
+}

@@ -1,0 +1,3 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/types.md: the same rule holds for a dictionary's values.
+fn f(d: [String: I32?]) -> [String: I32] { d }

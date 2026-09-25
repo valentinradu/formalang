@@ -156,6 +156,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
                     trait_name: trait_ident.name.clone(),
                     struct_name: impl_def.name.name.clone(),
                     generics: impl_def.generics.clone(),
+                    trait_args: impl_def.trait_args.clone(),
                     span: impl_def.span,
                 });
         } else {
@@ -321,6 +322,14 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         use symbol_table::ImportError;
 
+        // Two imports cannot bind one name. Rust refuses this as E0252.
+        if let Some(kind) = self.symbols.get_symbol_kind(name) {
+            self.errors.push(CompilerError::DuplicateDefinition {
+                name: format!("{name} (already imported as {})", kind.as_str()),
+                span,
+            });
+            return;
+        }
         match self.symbols.import_symbol(
             name,
             module_symbols,

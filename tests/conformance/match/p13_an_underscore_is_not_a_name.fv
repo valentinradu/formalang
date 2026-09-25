@@ -1,0 +1,10 @@
+// expect: reject UndefinedReference
+// docs/user/control-flow.md: `_` binds nothing, so the arm cannot read
+// the name `_` or the name of the field.
+pub enum Message { image(url: String, size: I32) }
+
+pub fn size(message: Message) -> I32 {
+    match message {
+        .image(_, s): url.len() + s
+    }
+}

@@ -4,17 +4,22 @@ use crate::ast::{ExternAbi, FunctionAttribute, ParamConvention, Visibility};
 use crate::ir::{BindingId, IrExpr, IrSpan, ResolvedType};
 
 use super::IrGenericParam;
+#[cfg(feature = "serde")]
+use crate::ir::span::no_span;
 
 /// A function definition in the IR.
 ///
-/// Functions are methods defined in impl blocks. They operate on `self`
-/// and can take additional parameters.
+/// A standalone function in [`crate::ir::IrModule::functions`], or a
+/// method in an [`crate::ir::IrImpl`]. A method that takes `self` has
+/// `self` as its first parameter.
 ///
 /// # Example
 ///
 /// ```formalang
+/// struct Vec2 { x: F64, y: F64 }
+///
 /// impl Vec2 {
-///     fn length(self) -> F64 {
+///     fn length_squared(self) -> F64 {
 ///         self.x * self.x + self.y * self.y
 ///     }
 /// }
@@ -23,7 +28,8 @@ use super::IrGenericParam;
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrFunction {
     /// Function name
     pub name: String,
@@ -34,7 +40,7 @@ pub struct IrFunction {
     /// symbol the host can call by name, a private `fn` stays internal.
     /// Defaults to private, so a hand-built `IrFunction` and older
     /// serialised IR both stay internal rather than leaking.
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub visibility: Visibility,
 
     /// Generic type parameters declared on the function or method
@@ -59,26 +65,34 @@ pub struct IrFunction {
 
     /// Calling convention when this function is declared `extern` (no
     /// body, defined outside `FormaLang`). `None` for regular
-    /// functions. Tier-1 item E: replaces the previous `is_extern: bool`
-    /// flag so backends targeting languages with distinguished calling
-    /// conventions can emit the correct call sequence.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// functions. A backend for a target with more than one calling
+    /// convention reads it to emit the correct call sequence.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub extern_abi: Option<ExternAbi>,
 
     /// Codegen-hint attributes (`inline`, `no_inline`, `cold`) declared
     /// before the `fn` keyword. Empty when none are present. Round-
     /// trips serialised IR while remaining backwards-compatible with
     /// documents that predate this field.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     pub attributes: Vec<FunctionAttribute>,
 
     /// Joined `///` doc comments preceding this function.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub doc: Option<String>,
 
     /// Source span for DWARF / source-map emission. For DWARF
     /// `DW_TAG_subprogram` this is the function's declaration span.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }
 
@@ -96,7 +110,8 @@ impl IrFunction {
     clippy::exhaustive_structs,
     reason = "IR types are constructed directly by consumer code"
 )]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IrFunctionParam {
     /// Per-function-unique binding identifier; paired with the
     /// `BindingId` carried on uses of this parameter
@@ -126,6 +141,6 @@ pub struct IrFunctionParam {
     pub convention: ParamConvention,
 
     /// Source span for DWARF / source-map emission.
-    #[serde(default, skip_serializing_if = "IrSpan::is_default")]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "no_span"))]
     pub span: IrSpan,
 }

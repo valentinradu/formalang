@@ -11,6 +11,38 @@ use crate::error::CompilerError;
 use std::collections::{HashMap, HashSet};
 
 impl<R: ModuleResolver> SemanticAnalyzer<R> {
+    /// The error for a value of type `found` where `expected` is
+    /// declared and the value does not fit.
+    ///
+    /// A `nil`, or an optional whose inner type fits, is a missing
+    /// unwrap, and it has its own error. Any other value is a
+    /// `TypeMismatch`.
+    pub(in crate::semantic) fn value_mismatch(
+        &self,
+        expected: String,
+        found: &SemType,
+        span: crate::location::Span,
+    ) -> CompilerError {
+        let optional_expected = expected.ends_with('?');
+        if !optional_expected && matches!(found, SemType::Nil) {
+            return CompilerError::NilAssignedToNonOptional { expected, span };
+        }
+        if let SemType::Optional(inner) = found {
+            if !optional_expected && self.value_satisfies_declared(&expected, inner) {
+                return CompilerError::OptionalUsedAsNonOptional {
+                    actual: found.display(),
+                    expected,
+                    span,
+                };
+            }
+        }
+        CompilerError::TypeMismatch {
+            expected,
+            found: found.display(),
+            span,
+        }
+    }
+
     /// True for `Seq<T>`, the type a `for` expression produces.
     pub(in crate::semantic) fn is_sequence(ty: &SemType) -> bool {
         matches!(ty, SemType::Generic { base, .. } if base == "Seq")
@@ -148,13 +180,10 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
     ) {
         let declared = Self::type_to_string(type_ann);
         let inferred_sem = self.infer_type_sem(value, file);
-        let inferred = inferred_sem.display();
 
         if matches!(inferred_sem, SemType::Nil) && !declared.ends_with('?') {
-            self.errors.push(CompilerError::NilAssignedToNonOptional {
-                expected: declared,
-                span,
-            });
+            self.errors
+                .push(self.value_mismatch(declared, &inferred_sem, span));
             return;
         }
 
@@ -165,11 +194,8 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             matches!(type_ann, Type::Closure { .. }) && matches!(value, Expr::ClosureExpr { .. });
 
         if !is_closure_pair && !self.value_satisfies_declared(&declared, &inferred_sem) {
-            self.errors.push(CompilerError::TypeMismatch {
-                expected: declared,
-                found: inferred,
-                span,
-            });
+            self.errors
+                .push(self.value_mismatch(declared, &inferred_sem, span));
         }
     }
 
@@ -195,6 +221,35 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         span: crate::location::Span,
     ) {
         if mutable {
+            return;
+        }
+        // A dictionary's values follow the same rule as an array's
+        // elements.
+        if let (Type::Dictionary { key, value: slot }, Expr::DictLiteral { entries, .. }) =
+            (type_ann, value)
+        {
+            if let Type::Optional(inner) = &**slot {
+                let holds_nil = entries.iter().any(|(_, v)| {
+                    matches!(
+                        v,
+                        Expr::Literal {
+                            value: crate::ast::Literal::Nil,
+                            ..
+                        }
+                    )
+                });
+                if !entries.is_empty() && !holds_nil {
+                    self.errors.push(CompilerError::PointlessOptionalElement {
+                        declared: Self::type_to_string(type_ann),
+                        suggested: format!(
+                            "[{}: {}]",
+                            Self::type_to_string(key),
+                            Self::type_to_string(inner)
+                        ),
+                        span,
+                    });
+                }
+            }
             return;
         }
         let Type::Array(element) = type_ann else {
@@ -246,7 +301,18 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if annotation.is_some() {
             return;
         }
-        if !matches!(self.infer_type_sem(value, file), SemType::InferredEnum) {
+        let inferred = self.infer_type_sem(value, file);
+        // `nil` alone names no type: the binding needs an optional type
+        // written out, as `let x: I32? = nil`.
+        if matches!(inferred, SemType::Nil) {
+            self.errors.push(CompilerError::TypeMismatch {
+                expected: "a declared optional type".to_string(),
+                found: "Nil".to_string(),
+                span: value.span(),
+            });
+            return;
+        }
+        if !matches!(inferred, SemType::InferredEnum) {
             return;
         }
         let variant = if let Expr::InferredEnumInstantiation { variant, .. } = value {
@@ -273,7 +339,9 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             self.validate_type(type_ann, let_binding.span);
         }
         let expected = let_binding.type_annotation.as_ref().map(SemType::from_ast);
+        self.in_module_let = true;
         self.validate_expr_expecting(&let_binding.value, expected, file);
+        self.in_module_let = false;
         // Reject nil-into-nonopt and any other mismatch between the
         // inferred value type and the declared annotation.
         if let Some(type_ann) = &let_binding.type_annotation {

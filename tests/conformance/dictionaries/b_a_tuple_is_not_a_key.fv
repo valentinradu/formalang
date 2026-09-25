@@ -1,0 +1,6 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: a tuple is not on the list of key types.
+pub fn f() -> I32 {
+    let d: [(a: I32, b: I32): I32] = [:]
+    d.len()
+}

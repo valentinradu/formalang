@@ -1,0 +1,6 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a parameter can take a sequence only with
+// the `sink` convention.
+fn total(s: Seq<I32>) -> I32 {
+    s.count()
+}

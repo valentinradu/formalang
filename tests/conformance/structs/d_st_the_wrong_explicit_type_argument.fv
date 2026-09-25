@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// docs/user/structs.md: `Box<String>(value: "hello")`. The type argument
+// fixes the field type.
+pub struct Box<T> { value: T }
+
+pub let b = Box<String>(value: 1)

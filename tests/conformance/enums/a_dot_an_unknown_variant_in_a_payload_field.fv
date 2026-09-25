@@ -1,0 +1,6 @@
+// expect: reject UnknownEnumVariant
+// The payload field `inner` has the type S, so `.nope` names a variant
+// of S that does not exist.
+pub enum S { a, b }
+pub enum W { wrap(inner: S) }
+pub let w: W = .wrap(inner: .nope)

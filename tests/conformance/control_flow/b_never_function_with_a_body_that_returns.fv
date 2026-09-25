@@ -1,0 +1,4 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/types.md: `Never` has no values. A body that gives an `I32`
+// does not diverge.
+fn stop() -> Never { 1 }

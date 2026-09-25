@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/control-flow.md: the source is an array, a range, or another
+// sequence.
+pub fn run_checks() {
+    let s = for x in [1, 2, 3] { x * 2 }
+    let n: I32 = for y in s { y + 1 }.fold(initial: 0, f: (a, b) -> a + b)
+    assert(condition: n == 15)
+}

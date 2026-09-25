@@ -1,6 +1,7 @@
 mod insert;
 mod kinds;
 mod normalization;
+pub(crate) use normalization::ty_shape;
 
 pub use kinds::{
     EnumInfo, FieldInfo, FunctionInfo, ImplInfo, ImportError, LetInfo, ModuleInfo, ParamInfo,
@@ -34,9 +35,43 @@ pub struct SymbolTable {
     module_origins: HashMap<String, Option<PathBuf>>,
     /// Track the logical module path for imported symbols (e.g., `["utils", "helpers"]`)
     module_logical_paths: HashMap<String, Vec<String>>,
+    /// The overload that the analyzer chose for each call of an
+    /// overloaded function: the call's span and the function's name,
+    /// to the index of the overload among the functions of that name.
+    /// IR lowering reads it, so the two phases choose the same one.
+    overload_choices: HashMap<(usize, usize, String), usize>,
+    /// The imported names that a `pub use` exports again. Another
+    /// module may import these; a name of a private `use` stays in
+    /// this module.
+    reexports: std::collections::HashSet<String>,
+    /// Each name that a `use` of an inline module brings in, with the
+    /// qualified name of the item: `Vertical` to `alignment::Vertical`.
+    local_aliases: HashMap<String, String>,
 }
 
 impl SymbolTable {
+    /// Record that the call at `span` of the function `name` means the
+    /// overload at `index`.
+    pub(crate) fn record_overload_choice(
+        &mut self,
+        span: crate::location::Span,
+        name: &str,
+        index: usize,
+    ) {
+        self.overload_choices.insert(
+            (span.start.offset, span.end.offset, name.to_string()),
+            index,
+        );
+    }
+
+    /// The overload that the analyzer chose for the call at `span` of
+    /// the function `name`.
+    pub(crate) fn overload_choice(&self, span: crate::location::Span, name: &str) -> Option<usize> {
+        self.overload_choices
+            .get(&(span.start.offset, span.end.offset, name.to_string()))
+            .copied()
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -50,6 +85,9 @@ impl SymbolTable {
             modules: HashMap::new(),
             module_origins: HashMap::new(),
             module_logical_paths: HashMap::new(),
+            overload_choices: HashMap::new(),
+            reexports: std::collections::HashSet::new(),
+            local_aliases: HashMap::new(),
         }
     }
 
@@ -278,7 +316,49 @@ impl SymbolTable {
         self.traits.contains_key(name)
     }
 
-    /// Get all public symbols in this table
+    /// Bring the item `name` of the inline module `module_table` into
+    /// this table. `qualified` is the item's name with the path of its
+    /// module, the name that the IR gives it.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`Self::import_symbol`]: the item is private, or
+    /// the module has no item of that name.
+    pub(crate) fn alias_local(
+        &mut self,
+        name: &str,
+        module_table: &Self,
+        qualified: String,
+    ) -> Result<(), ImportError> {
+        self.import_symbol(name, module_table, PathBuf::new(), Vec::new())?;
+        self.module_origins.remove(name);
+        self.module_logical_paths.remove(name);
+        self.local_aliases.insert(name.to_string(), qualified);
+        Ok(())
+    }
+
+    /// The qualified name of the inline-module item that a `use` brings
+    /// in as `name`.
+    #[must_use]
+    pub(crate) fn local_alias(&self, name: &str) -> Option<&str> {
+        self.local_aliases.get(name).map(String::as_str)
+    }
+
+    /// Record that a `pub use` exports the imported `name` again.
+    pub(crate) fn mark_reexport(&mut self, name: &str) {
+        self.reexports.insert(name.to_string());
+    }
+
+    /// Whether another module may import `name` from this table: a
+    /// name of the prelude is in every module, and an imported name
+    /// leaves the module only through a `pub use`.
+    pub(crate) fn is_exportable(&self, name: &str) -> bool {
+        !crate::prelude_names().contains(name)
+            && (self.get_module_origin(name).is_none() || self.reexports.contains(name))
+    }
+
+    /// Get all public symbols in this table. The prelude's names and
+    /// the names of a private `use` are not in the list.
     #[must_use]
     pub fn all_public_symbols(&self) -> Vec<String> {
         let mut symbols = Vec::new();
@@ -314,6 +394,7 @@ impl SymbolTable {
             }
         }
 
+        symbols.retain(|name| self.is_exportable(name));
         symbols.sort();
         symbols
     }
@@ -334,6 +415,19 @@ impl SymbolTable {
     #[must_use]
     pub fn get_module_origin(&self, name: &str) -> Option<&PathBuf> {
         self.module_origins.get(name).and_then(|opt| opt.as_ref())
+    }
+
+    /// Each imported name, with the file of the module that defines
+    /// it, in the order of the names.
+    #[must_use]
+    pub(crate) fn imported_names(&self) -> Vec<(&str, &std::path::Path)> {
+        let mut names: Vec<(&str, &std::path::Path)> = self
+            .module_origins
+            .iter()
+            .filter_map(|(name, origin)| origin.as_ref().map(|p| (name.as_str(), p.as_path())))
+            .collect();
+        names.sort_unstable();
+        names
     }
 
     /// Get the logical module path for an imported symbol.

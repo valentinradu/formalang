@@ -16,9 +16,10 @@
 # targets that take source text, so a fresh clone starts from real
 # `FormaLang` source instead of noise.
 #
-# `-timeout=10` turns a slow input into a reported finding. That
-# matters here: the parser is exponential in nesting depth, so a hang
-# is a defect, not a slow machine.
+# `-timeout=10` turns a slow input into a reported finding. The parser
+# was exponential in nesting depth once, and a hang is how that showed.
+# Each phase must take time that grows with the length of the input, so
+# a slow input is a defect, not a slow machine.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

@@ -1,0 +1,6 @@
+// expect: reject SeqNotConsumed
+// docs/user/control-flow.md: a sequence is consumed at least once.
+pub fn f(o: I32?) -> I32 {
+    let s = for x in [1, 2] { x }
+    match o { .some(v): s.count(), .none: 0 }
+}

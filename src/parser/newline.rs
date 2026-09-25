@@ -14,10 +14,11 @@ use crate::lexer::Token;
 /// Newlines, in any number, ignored.
 ///
 /// The lexer keeps only the newlines that end a statement, so one
-/// reaching the parser is always a boundary. Inside a `{ ... }` list
-/// that is not a block — a struct's fields, an enum's variants, a
-/// trait's or an impl's items — a newline separates entries rather
-/// than statements, and the list absorbs it with this.
+/// reaching the parser is always a boundary. A `{ ... }` list that is
+/// not a block absorbs its newlines with this. In the fields of a
+/// struct and the variants of an enum, a `,` separates two entries,
+/// and a newline alone does not. In a trait, the `,` is optional. The
+/// items of an impl block and of a `mod` have no separator.
 pub(super) fn newlines<'tokens, I>(
 ) -> impl Parser<'tokens, I, (), extra::Err<Rich<'tokens, Token>>> + Clone
 where

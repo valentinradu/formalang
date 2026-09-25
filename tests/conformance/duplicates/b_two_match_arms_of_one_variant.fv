@@ -1,0 +1,7 @@
+// expect: reject DuplicateMatchArm
+// from: rust tests/ui/pattern/ (unreachable pattern).
+enum E { a, b }
+
+pub fn f(e: E) -> I32 {
+    match e { .a: 1, .a: 2, .b: 3 }
+}

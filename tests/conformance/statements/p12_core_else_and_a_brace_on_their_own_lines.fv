@@ -1,0 +1,18 @@
+// expect: run
+// docs/user/core.md: a line that starts with `else` or `{` continues
+// the line above.
+pub fn pick(big: Boolean) -> I32 {
+    if big
+    {
+        1
+    }
+    else
+    {
+        2
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: pick(big: true) == 1)
+    assert(condition: pick(big: false) == 2)
+}

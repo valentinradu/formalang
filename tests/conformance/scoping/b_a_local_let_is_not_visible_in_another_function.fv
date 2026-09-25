@@ -1,0 +1,6 @@
+// expect: reject UndefinedReference
+fn a() -> I32 {
+    let local: I32 = 1
+    local
+}
+fn b() -> I32 { local }

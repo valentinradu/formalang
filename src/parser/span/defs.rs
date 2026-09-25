@@ -59,6 +59,11 @@ fn fill_trait_def_spans(t: &mut crate::ast::TraitDef, index: &LineIndex<'_>) {
     for m in &mut t.methods {
         fill_span(&mut m.name.span, index);
         fill_attributes_spans(&mut m.attributes, index);
+        fill_generic_params_spans(&mut m.generics, index);
+        fill_params_spans(&mut m.params, index);
+        if let Some(ret) = &mut m.return_type {
+            fill_type_span(ret, index);
+        }
         fill_span(&mut m.span, index);
     }
     fill_span(&mut t.span, index);
@@ -90,16 +95,8 @@ fn fill_impl_def_spans(i: &mut crate::ast::ImplDef, index: &LineIndex<'_>) {
     for func in &mut i.functions {
         fill_span(&mut func.name.span, index);
         fill_attributes_spans(&mut func.attributes, index);
-        for p in &mut func.params {
-            if let Some(label) = &mut p.external_label {
-                fill_span(&mut label.span, index);
-            }
-            fill_span(&mut p.name.span, index);
-            if let Some(ty) = &mut p.ty {
-                fill_type_span(ty, index);
-            }
-            fill_span(&mut p.span, index);
-        }
+        fill_generic_params_spans(&mut func.generics, index);
+        fill_params_spans(&mut func.params, index);
         if let Some(ret) = &mut func.return_type {
             fill_type_span(ret, index);
         }
@@ -129,16 +126,8 @@ fn fill_enum_def_spans(e: &mut crate::ast::EnumDef, index: &LineIndex<'_>) {
 fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, index: &LineIndex<'_>) {
     fill_span(&mut f.name.span, index);
     fill_attributes_spans(&mut f.attributes, index);
-    for p in &mut f.params {
-        if let Some(label) = &mut p.external_label {
-            fill_span(&mut label.span, index);
-        }
-        fill_span(&mut p.name.span, index);
-        if let Some(ty) = &mut p.ty {
-            fill_type_span(ty, index);
-        }
-        fill_span(&mut p.span, index);
-    }
+    fill_generic_params_spans(&mut f.generics, index);
+    fill_params_spans(&mut f.params, index);
     if let Some(ret) = &mut f.return_type {
         fill_type_span(ret, index);
     }
@@ -146,6 +135,25 @@ fn fill_function_def_spans(f: &mut crate::ast::FunctionDef, index: &LineIndex<'_
         fill_expr_span(body, index);
     }
     fill_span(&mut f.span, index);
+}
+
+/// Fill the label, the name, the type and the default of each parameter.
+/// The lowering copies a default into each call site, so a default that
+/// keeps line 0 gives line 0 to every call that uses it.
+fn fill_params_spans(params: &mut [crate::ast::FnParam], index: &LineIndex<'_>) {
+    for p in params {
+        if let Some(label) = &mut p.external_label {
+            fill_span(&mut label.span, index);
+        }
+        fill_span(&mut p.name.span, index);
+        if let Some(ty) = &mut p.ty {
+            fill_type_span(ty, index);
+        }
+        if let Some(default) = &mut p.default {
+            fill_expr_span(default, index);
+        }
+        fill_span(&mut p.span, index);
+    }
 }
 
 pub(super) fn fill_type_span(ty: &mut Type, index: &LineIndex<'_>) {

@@ -1,0 +1,7 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/ (E0428). A trait declares `area` twice with one
+// signature.
+pub trait Shape {
+    fn area(self) -> I32
+    fn area(self) -> I32
+}

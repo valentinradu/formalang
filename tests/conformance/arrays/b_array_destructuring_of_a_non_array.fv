@@ -1,0 +1,6 @@
+// expect: reject ArrayDestructuringNotArray
+// docs/user/expressions.md: array destructuring takes an array.
+pub fn f() -> I32 {
+    let [a, b] = "ab"
+    0
+}

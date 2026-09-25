@@ -1,0 +1,6 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: a dictionary is not on the list of key types.
+pub fn f() -> I32 {
+    let d: [[String: I32]: I32] = [:]
+    d.len()
+}

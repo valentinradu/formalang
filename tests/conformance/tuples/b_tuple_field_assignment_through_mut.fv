@@ -1,0 +1,8 @@
+// expect: compile
+// docs/user/types.md: a struct field may be assigned through a `let mut`
+// binding. A tuple field is a field too.
+pub fn f() -> I32 {
+    let mut t = (x: 1, y: 2)
+    t.x = 5
+    t.x
+}

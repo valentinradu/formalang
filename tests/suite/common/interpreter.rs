@@ -35,6 +35,7 @@
     clippy::match_wildcard_for_single_variants,
     clippy::unused_self,
     clippy::float_cmp,
+    clippy::modulo_arithmetic,
     // A reference evaluator: the value and operator matches end in a
     // catch-all that reports the shape it met, mixed arithmetic
     // promotes to f64 the way the constant folder does, and lengths
@@ -48,10 +49,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use formalang::ast::{BinaryOperator, Literal, NumberValue, UnaryOperator};
+use formalang::ast::{BinaryOperator, Literal, NumberValue, ParamConvention, UnaryOperator};
 use formalang::ir::{
-    GenericBase, ImplTarget, IrBlockStatement, IrExpr, IrFunction, IrModule, MethodIdx,
-    ResolvedType,
+    DispatchKind, GenericBase, ImplTarget, IrBlockStatement, IrExpr, IrFunction, IrImpl, IrModule,
+    MethodIdx, ResolvedType,
 };
 
 // ---------------------------------------------------------------------------
@@ -61,8 +62,10 @@ use formalang::ir::{
 /// A runtime value.
 #[derive(Clone, Debug)]
 pub enum Value {
-    /// An integer of any width. Widths are a backend concern; the
-    /// semantic analyser has already checked the literal fits.
+    /// An integer. Arithmetic wraps at the width that the IR type
+    /// declares (`I32` or `I64`), as a real target does. So a value
+    /// always fits its type, and an answer that depends on the wrap
+    /// is the answer a backend gives.
     Int(i128),
     Float(f64),
     Bool(bool),
@@ -222,6 +225,10 @@ pub enum Fault {
     Unresolved(String),
     /// A shape the evaluator does not implement yet.
     Unsupported(String),
+    /// The module breaks the IR contract, so a backend that trusts
+    /// the ids and the types gets another program. See
+    /// `crate::common::verifier`.
+    IllFormed(String),
 }
 
 impl std::fmt::Display for Fault {
@@ -231,6 +238,7 @@ impl std::fmt::Display for Fault {
             Self::Type(m) => write!(f, "type fault: {m}"),
             Self::Unresolved(m) => write!(f, "unresolved: {m}"),
             Self::Unsupported(m) => write!(f, "not implemented by the interpreter: {m}"),
+            Self::IllFormed(m) => write!(f, "the IR breaks its own contract: {m}"),
         }
     }
 }
@@ -285,6 +293,23 @@ pub struct Interpreter<'m> {
     pub asserts_passed: usize,
     /// Guards against a runaway recursion in the interpreted program.
     depth: usize,
+    /// What the verifier found. [`Interpreter::run`] reports it before
+    /// it evaluates anything, so a runner that walks a corpus still
+    /// gives each case its own verdict.
+    problems: Vec<String>,
+    /// The final value of each `mut` parameter of the call that just
+    /// returned. The caller writes each one back to its argument, as
+    /// the `mut` convention says.
+    writeback: Vec<MutOut>,
+}
+
+/// One `mut` parameter at the end of a call.
+struct MutOut {
+    name: String,
+    label: Option<String>,
+    /// The position among the parameters other than `self`.
+    position: usize,
+    value: Value,
 }
 
 /// The deepest call chain the evaluator follows. Recursion in a test
@@ -293,8 +318,14 @@ pub struct Interpreter<'m> {
 const MAX_DEPTH: usize = 512;
 
 impl<'m> Interpreter<'m> {
+    /// Evaluate `module`. The module must keep the IR contract first:
+    /// an ill-formed module is a compiler defect even when this
+    /// evaluator happens to compute the expected answer, because it
+    /// looks things up by name where a backend uses the ids.
     pub fn new(module: &'m IrModule) -> Self {
         Self {
+            problems: super::verifier::verify(module),
+            writeback: Vec::new(),
             module,
             env: Env::default(),
             asserts_passed: 0,
@@ -304,6 +335,9 @@ impl<'m> Interpreter<'m> {
 
     /// Run the named function with no arguments and return its value.
     pub fn run(&mut self, function: &str) -> Result<Value, Fault> {
+        if !self.problems.is_empty() {
+            return Err(Fault::IllFormed(self.problems.join("; ")));
+        }
         let Some(f) = self.module.functions.iter().find(|f| f.name == function) else {
             return Err(Fault::Unresolved(format!("function `{function}`")));
         };
@@ -377,9 +411,117 @@ impl<'m> Interpreter<'m> {
         }
 
         let result = self.eval(&body);
+        let outputs = self.mut_outputs(f);
         self.env.pop();
+        self.writeback = outputs;
         self.depth = self.depth.saturating_sub(1);
         result
+    }
+
+    /// The final value of each `mut` parameter of `f`, read from the
+    /// scope of the call before it closes.
+    fn mut_outputs(&self, f: &IrFunction) -> Vec<MutOut> {
+        let mut out = Vec::new();
+        let others = f.params.iter().filter(|p| p.name != "self");
+        for (position, p) in others.enumerate() {
+            if p.convention == ParamConvention::Mut {
+                if let Some(v) = self.env.get(&p.name) {
+                    out.push(MutOut {
+                        name: p.name.clone(),
+                        label: p.external_label.clone(),
+                        position,
+                        value: v.clone(),
+                    });
+                }
+            }
+        }
+        let mut_self = f
+            .params
+            .iter()
+            .any(|p| p.name == "self" && p.convention == ParamConvention::Mut);
+        if mut_self {
+            if let Some(v) = self.env.get("self") {
+                out.push(MutOut {
+                    name: "self".to_string(),
+                    label: None,
+                    position: 0,
+                    value: v.clone(),
+                });
+            }
+        }
+        out
+    }
+
+    /// Write each `mut` output of the last call back to its argument.
+    /// An argument that is not a place (a literal, a call) has nowhere
+    /// to go, and the semantic pass refuses it for a `mut` parameter.
+    fn write_back(
+        &mut self,
+        args: &[(Option<String>, IrExpr)],
+        receiver: Option<&IrExpr>,
+    ) -> Result<(), Fault> {
+        let outputs = std::mem::take(&mut self.writeback);
+        for out in outputs {
+            let target = if out.name == "self" {
+                receiver
+            } else {
+                args.iter()
+                    .find(|(l, _)| {
+                        l.as_ref()
+                            .is_some_and(|l| *l == out.name || out.label.as_ref() == Some(l))
+                    })
+                    .or_else(|| args.get(out.position))
+                    .map(|(_, e)| e)
+            };
+            if let Some(place) = target {
+                if is_place(place) {
+                    self.assign_place(place, out.value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Store `value` in the place that `target` names: a binding, a
+    /// field of a place, or an element of a place.
+    fn assign_place(&mut self, target: &IrExpr, value: Value) -> Result<(), Fault> {
+        match target {
+            IrExpr::LetRef { name, .. } => {
+                if self.env.assign(name, value) {
+                    Ok(())
+                } else {
+                    Err(Fault::Unresolved(format!("assignment to `{name}`")))
+                }
+            }
+            IrExpr::Reference { path, .. } => {
+                let name = path.last().map_or("", String::as_str);
+                if self.env.assign(name, value) {
+                    Ok(())
+                } else {
+                    Err(Fault::Unresolved(format!("assignment to `{name}`")))
+                }
+            }
+            IrExpr::SelfFieldRef { field, .. } => {
+                let Some(receiver) = self.env.get("self").cloned() else {
+                    return Err(Fault::Unresolved(format!("self.{field}")));
+                };
+                let updated = with_field(receiver, field, value)?;
+                self.env.assign("self", updated);
+                Ok(())
+            }
+            IrExpr::FieldAccess { object, field, .. } => {
+                let whole = self.eval(object)?;
+                let updated = with_field(whole, field, value)?;
+                self.assign_place(object, updated)
+            }
+            IrExpr::DictAccess { dict, key, .. } => {
+                let container = self.eval(dict)?;
+                let k = self.eval(key)?;
+                let updated = with_element(container, k, value)?;
+                self.assign_place(dict, updated)
+            }
+            other => Err(Fault::Unsupported(format!("assignment target {other:?}"))),
+        }
     }
 
     // -----------------------------------------------------------------
@@ -387,7 +529,7 @@ impl<'m> Interpreter<'m> {
     // -----------------------------------------------------------------
     fn eval(&mut self, expr: &IrExpr) -> Result<Value, Fault> {
         match expr {
-            IrExpr::Literal { value, ty, .. } => Ok(literal_value(value, ty)),
+            IrExpr::Literal { value, ty, .. } => Ok(wrap(literal_value(value, ty), ty)),
 
             IrExpr::Array { elements, .. } => {
                 let mut out = Vec::with_capacity(elements.len());
@@ -451,6 +593,7 @@ impl<'m> Interpreter<'m> {
             }
 
             IrExpr::EnumInst {
+                enum_id,
                 variant,
                 fields,
                 ty,
@@ -460,6 +603,21 @@ impl<'m> Interpreter<'m> {
                 for (name, _, e) in fields {
                     out.push((name.clone(), self.eval(e)?));
                 }
+                // A call may name the payload fields in any order:
+                // `S.p(y: 2, x: 1)`. A match binds them by position, so
+                // keep them in the order that the variant declares.
+                let declared: Vec<String> = enum_id
+                    .or_else(|| enum_id_of(ty))
+                    .and_then(|id| self.module.get_enum(id))
+                    .and_then(|e| e.variants.iter().find(|v| v.name == *variant))
+                    .map(|v| v.fields.iter().map(|f| f.name.clone()).collect())
+                    .unwrap_or_default();
+                out.sort_by_key(|(name, _)| {
+                    declared
+                        .iter()
+                        .position(|d| d == name)
+                        .unwrap_or(usize::MAX)
+                });
                 Ok(Value::Enum {
                     enum_name: self.type_name(ty),
                     variant: variant.clone(),
@@ -502,13 +660,19 @@ impl<'m> Interpreter<'m> {
             }
 
             IrExpr::BinaryOp {
-                left, op, right, ..
-            } => self.binary(left, *op, right),
+                left,
+                op,
+                right,
+                ty,
+                ..
+            } => Ok(wrap(self.binary(left, *op, right)?, ty)),
 
-            IrExpr::UnaryOp { op, operand, .. } => {
+            IrExpr::UnaryOp {
+                op, operand, ty, ..
+            } => {
                 let v = self.eval(operand)?;
                 match (op, v) {
-                    (UnaryOperator::Neg, Value::Int(i)) => Ok(Value::Int(-i)),
+                    (UnaryOperator::Neg, Value::Int(i)) => Ok(wrap(Value::Int(-i), ty)),
                     (UnaryOperator::Neg, Value::Float(f)) => Ok(Value::Float(-f)),
                     (UnaryOperator::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
                     (op, other) => Err(Fault::Type(format!("cannot apply {op:?} to {other:?}"))),
@@ -668,13 +832,20 @@ impl<'m> Interpreter<'m> {
                 // name. That is what a backend does, so a call that
                 // names the wrong overload shows up here instead of
                 // being papered over by a second name lookup.
-                if let Some(f) = function_id.and_then(|id| self.module.get_function(id)) {
-                    if name != "assert" {
-                        let f = f.clone();
-                        return self.call_function(&f, values);
-                    }
-                }
-                self.call_named(name, values)
+                self.writeback.clear();
+                let result =
+                    if let Some(f) = function_id.and_then(|id| self.module.get_function(id)) {
+                        if name == "assert" {
+                            self.call_named(name, values)?
+                        } else {
+                            let f = f.clone();
+                            self.call_function(&f, values)?
+                        }
+                    } else {
+                        self.call_named(name, values)?
+                    };
+                self.write_back(args, None)?;
+                Ok(result)
             }
 
             IrExpr::MethodCall {
@@ -682,14 +853,33 @@ impl<'m> Interpreter<'m> {
                 method,
                 method_idx,
                 args,
+                dispatch,
                 ..
             } => {
-                let recv = self.eval(receiver)?;
+                // `Counter.zero()`: the receiver names the type, and a
+                // static method reads no value of it.
+                let recv = match &**receiver {
+                    IrExpr::Reference {
+                        path,
+                        ty: ResolvedType::Struct(id),
+                        ..
+                    } if path.last().is_some_and(|n| self.env.get(n).is_none()) => Value::Struct {
+                        name: self
+                            .module
+                            .get_struct(*id)
+                            .map_or_else(String::new, |s| s.name.clone()),
+                        fields: Vec::new(),
+                    },
+                    _ => self.eval(receiver)?,
+                };
                 let mut values = Vec::with_capacity(args.len());
                 for (label, e) in args {
                     values.push((label.clone().unwrap_or_default(), self.eval(e)?));
                 }
-                self.call_method(recv, method, *method_idx, values)
+                self.writeback.clear();
+                let result = self.call_method(recv, method, (*method_idx, dispatch), values)?;
+                self.write_back(args, Some(receiver))?;
+                Ok(result)
             }
 
             IrExpr::DictAccess { dict, key, .. } => {
@@ -724,22 +914,7 @@ impl<'m> Interpreter<'m> {
                 }
                 IrBlockStatement::Assign { target, value, .. } => {
                     let v = self.eval(value)?;
-                    match target {
-                        IrExpr::LetRef { name, .. } => {
-                            if !self.env.assign(name, v) {
-                                return Err(Fault::Unresolved(format!("assignment to `{name}`")));
-                            }
-                        }
-                        IrExpr::Reference { path, .. } => {
-                            let name = path.last().map_or("", String::as_str);
-                            if !self.env.assign(name, v) {
-                                return Err(Fault::Unresolved(format!("assignment to `{name}`")));
-                            }
-                        }
-                        other => {
-                            return Err(Fault::Unsupported(format!("assignment target {other:?}")))
-                        }
-                    }
+                    self.assign_place(target, v)?;
                 }
                 IrBlockStatement::Expr(e) => {
                     self.eval(e)?;
@@ -918,7 +1093,7 @@ impl<'m> Interpreter<'m> {
         &mut self,
         receiver: Value,
         method: &str,
-        method_idx: MethodIdx,
+        (method_idx, dispatch): (MethodIdx, &DispatchKind),
         args: Vec<(String, Value)>,
     ) -> Result<Value, Fault> {
         // A closure held in a struct field is called through the
@@ -937,8 +1112,38 @@ impl<'m> Interpreter<'m> {
         }
 
         let type_name = self.value_type_name(&receiver);
+        // One type can implement two instances of one generic trait,
+        // and both can declare a method of this name. The dispatch
+        // says which impl the call means: `Static` names it, and
+        // `Virtual` names the trait and its arguments.
+        let on_type = |imp: &&IrImpl| {
+            self.impl_target_name(imp.target) == type_name
+                && imp.functions.iter().any(|f| f.name == method)
+        };
+        let candidates = self.module.impls.iter().filter(on_type).count();
+        let chosen: Option<&IrImpl> = (candidates > 1)
+            .then(|| match dispatch {
+                DispatchKind::Static { impl_id } => self
+                    .module
+                    .impls
+                    .get(impl_id.0 as usize)
+                    .filter(|imp| on_type(imp)),
+                DispatchKind::Virtual {
+                    trait_id,
+                    trait_args,
+                    ..
+                } => self.module.impls.iter().filter(on_type).find(|imp| {
+                    imp.trait_ref
+                        .as_ref()
+                        .is_some_and(|t| t.trait_id == *trait_id && t.args == *trait_args)
+                }),
+            })
+            .flatten();
         let found = self.module.impls.iter().find_map(|imp| {
             if self.impl_target_name(imp.target) != type_name {
+                return None;
+            }
+            if chosen.is_some_and(|c| !std::ptr::eq(c, imp)) {
                 return None;
             }
             // `method_idx` is the position of the method inside this
@@ -994,7 +1199,9 @@ impl<'m> Interpreter<'m> {
             // `extern fn`.
             None => Ok(host_function(method, &args, f.return_type.as_ref())),
         };
+        let outputs = self.mut_outputs(&f);
         self.env.pop();
+        self.writeback = outputs;
         self.depth = self.depth.saturating_sub(1);
         result
     }
@@ -1272,6 +1479,91 @@ fn host_function(
     }
 }
 
+/// Whether `e` names a place that an assignment can store into.
+fn is_place(e: &IrExpr) -> bool {
+    match e {
+        IrExpr::LetRef { .. } | IrExpr::Reference { .. } | IrExpr::SelfFieldRef { .. } => true,
+        IrExpr::FieldAccess { object, .. } => is_place(object),
+        IrExpr::DictAccess { dict, .. } => is_place(dict),
+        _ => false,
+    }
+}
+
+/// `whole` with its field `field` replaced by `value`.
+fn with_field(whole: Value, field: &str, value: Value) -> Result<Value, Fault> {
+    let set = |fields: &mut Vec<(String, Value)>| -> Result<(), Fault> {
+        match fields.iter_mut().find(|(n, _)| n == field) {
+            Some(slot) => {
+                slot.1 = value;
+                Ok(())
+            }
+            None => Err(Fault::Unresolved(format!("field `{field}` to assign"))),
+        }
+    };
+    match whole {
+        Value::Struct { name, mut fields } => {
+            set(&mut fields)?;
+            Ok(Value::Struct { name, fields })
+        }
+        Value::Tuple(mut fields) => {
+            set(&mut fields)?;
+            Ok(Value::Tuple(fields))
+        }
+        other => Err(Fault::Type(format!(
+            "cannot assign field `{field}` of {other:?}"
+        ))),
+    }
+}
+
+/// `container` with the element at `key` replaced by `value`.
+fn with_element(container: Value, key: Value, value: Value) -> Result<Value, Fault> {
+    match container {
+        Value::Array(mut items) => {
+            let slot = key
+                .as_int()
+                .ok()
+                .and_then(|i| usize::try_from(i).ok())
+                .and_then(|i| items.get_mut(i));
+            match slot {
+                Some(slot) => {
+                    *slot = value;
+                    Ok(Value::Array(items))
+                }
+                None => Err(Fault::Type(
+                    "assignment past the end of an array".to_string(),
+                )),
+            }
+        }
+        Value::Dict(mut entries) => {
+            insert_entry(&mut entries, key, value);
+            Ok(Value::Dict(entries))
+        }
+        other => Err(Fault::Type(format!(
+            "cannot assign an element of {other:?}"
+        ))),
+    }
+}
+
+/// Wrap an integer to the width of `ty`, and round an `F32` to 32
+/// bits, the way a target register does. Other values stay as they
+/// are.
+fn wrap(value: Value, ty: &ResolvedType) -> Value {
+    use formalang::ast::PrimitiveType;
+    match (value, ty) {
+        (Value::Int(i), ResolvedType::Primitive(PrimitiveType::I32)) => {
+            Value::Int(i128::from(i as i32))
+        }
+        (Value::Int(i), ResolvedType::Primitive(PrimitiveType::I64)) => {
+            Value::Int(i128::from(i as i64))
+        }
+        // An `F32` is binary32, so each result rounds to 32 bits.
+        (Value::Float(f), ResolvedType::Primitive(PrimitiveType::F32)) => {
+            Value::Float(f64::from(f as f32))
+        }
+        (other, _) => other,
+    }
+}
+
 fn literal_value(value: &Literal, ty: &ResolvedType) -> Value {
     match value {
         Literal::String(s) => Value::Str(s.clone()),
@@ -1397,7 +1689,9 @@ fn float_op(a: f64, op: BinaryOperator, b: f64) -> Result<Value, Fault> {
         BinaryOperator::Sub => Value::Float(a - b),
         BinaryOperator::Mul => Value::Float(a * b),
         BinaryOperator::Div => Value::Float(a / b),
-        BinaryOperator::Mod => Value::Float(a.rem_euclid(b).copysign(a)),
+        // Truncated remainder, as IEEE `fmod` and Rust `%` give it:
+        // `-7.5 % 2.0` is `-1.5`.
+        BinaryOperator::Mod => Value::Float(a % b),
         BinaryOperator::Lt => Value::Bool(a < b),
         BinaryOperator::Gt => Value::Bool(a > b),
         BinaryOperator::Le => Value::Bool(a <= b),

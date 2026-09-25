@@ -1,0 +1,6 @@
+// expect: reject PrivateTypeInPublic
+// docs/user/modules.md: `Hidden?` names the same type a bare `Hidden`
+// does.
+enum Hidden { a }
+
+pub struct S { h: Hidden? }

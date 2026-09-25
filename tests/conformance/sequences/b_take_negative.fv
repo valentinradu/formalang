@@ -1,0 +1,5 @@
+// expect: run
+// `take` with a count below zero takes nothing.
+pub fn run_checks() {
+    assert(condition: for x in [1, 2, 3] { x }.take(count: -1).count() == 0)
+}

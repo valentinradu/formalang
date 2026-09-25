@@ -156,7 +156,7 @@ fn test_method_call_on_user_defined_struct() -> Result<(), Box<dyn std::error::E
     let source = r"
         struct Point { x: I32, y: I32 }
         impl Point {
-            fn magnitude() -> I32 { self.x }
+            fn magnitude(self) -> I32 { self.x }
         }
         struct Config {
             val: I32 = Point(x: 3, y: 4).magnitude()
@@ -880,7 +880,7 @@ fn test_self_field_chain_in_impl() -> Result<(), Box<dyn std::error::Error>> {
         struct Inner { val: I32 }
         struct Outer { inner: Inner }
         impl Outer {
-            fn get() -> I32 { self.inner.val }
+            fn get(self) -> I32 { self.inner.val }
         }
     ";
     compile(source).map_err(|e| format!("{e:?}"))?;
@@ -1054,7 +1054,7 @@ fn test_type_parameter_in_function_return() -> Result<(), Box<dyn std::error::Er
     let source = r"
         struct Box<T> { value: T }
         impl Box<T> {
-            fn get() -> T { self.value }
+            fn get(self) -> T { self.value }
         }
     ";
     compile(source).map_err(|e| format!("Type parameter in function return: {e:?}"))?;

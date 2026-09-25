@@ -83,19 +83,11 @@ impl Resizable for Box {
 #[test]
 fn test_composed_trait_only_requires_directly_declared_methods(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Audit #16: positive test locking in the composed-trait stance.
-    //
-    // `trait Extended: Base` declares Extended composes Base, but
-    // `impl Extended for T` only requires T to implement the methods
-    // *directly* declared on Extended. Inherited methods from Base are
-    // a separate concern: if the user wants Base's methods on T too,
-    // they must add an explicit `impl Base for T` block.
-    //
-    // This is the design choice fixed by audit #16. The alternative
-    // (auto-implying `impl Base for T` from `impl Extended for T`)
-    // would require collecting required methods transitively in
-    // `collect_all_trait_methods` and emitting an extra
-    // MissingTraitMethod for inherited methods.
+    // `trait Extended: Base` composes Base. `impl Extended for T`
+    // provides only the methods that Extended declares, and each trait
+    // of the hierarchy needs its own impl block (docs/user/traits.md).
+    // So `impl Extended` without `impl Base` misses Base's `id`: a bound
+    // `T: Extended` could call `id`, and nothing would implement it.
     let only_extended = r#"
         trait Base { fn id(self) -> I32 }
         trait Extended: Base { fn name(self) -> String }
@@ -104,11 +96,15 @@ fn test_composed_trait_only_requires_directly_declared_methods(
             fn name(self) -> String { "item" }
         }
     "#;
-    compile(only_extended).map_err(|e| {
-        format!(
-            "design intent: `impl Extended` without `impl Base` should compile cleanly, got: {e:?}"
-        )
-    })?;
+    let errors = compile(only_extended)
+        .err()
+        .ok_or("`impl Extended` without `impl Base` must be refused")?;
+    if !errors
+        .iter()
+        .any(|e| matches!(e, formalang::CompilerError::MissingTraitMethod { .. }))
+    {
+        return Err(format!("expected MissingTraitMethod, got {errors:?}").into());
+    }
 
     let both_impls = r#"
         trait Base { fn id(self) -> I32 }

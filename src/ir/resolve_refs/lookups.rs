@@ -7,7 +7,7 @@
 //! left a sentinel that the pass intentionally leaves alone).
 
 use crate::ir::IrExpr;
-use crate::ir::{DispatchKind, IrModule, ResolvedType};
+use crate::ir::{DispatchKind, GenericBase, IrModule, ResolvedType};
 
 pub(super) fn lookup_method_idx(
     dispatch: &DispatchKind,
@@ -22,6 +22,7 @@ pub(super) fn lookup_method_idx(
     // count say which is meant, the same way they do for a free
     // function.
     let labels: Vec<Option<String>> = args.iter().map(|(label, _)| label.clone()).collect();
+    let arg_types: Vec<ResolvedType> = args.iter().map(|(_, arg)| arg.ty().clone()).collect();
 
     #[expect(
         clippy::cast_possible_truncation,
@@ -36,7 +37,7 @@ pub(super) fn lookup_method_idx(
                 |f| f.params.as_slice(),
                 method,
                 &labels,
-                args.len(),
+                &arg_types,
             )
             .map(|i| i as u32)
         }
@@ -48,7 +49,7 @@ pub(super) fn lookup_method_idx(
                 |m| m.params.as_slice(),
                 method,
                 &labels,
-                args.len(),
+                &arg_types,
             )
             .map(|i| i as u32)
         }
@@ -56,7 +57,13 @@ pub(super) fn lookup_method_idx(
 }
 
 pub(super) fn struct_field_idx(ty: &ResolvedType, field: &str, module: &IrModule) -> Option<u32> {
-    let &ResolvedType::Struct(sid) = ty else {
+    // A generic struct, such as `Box<I32>`, has its fields on the base.
+    let (&ResolvedType::Struct(sid)
+    | &ResolvedType::Generic {
+        base: GenericBase::Struct(sid),
+        ..
+    }) = ty
+    else {
         return None;
     };
     let s = module.get_struct(sid)?;
@@ -75,7 +82,14 @@ pub(super) fn match_variant_idx(
     variant: &str,
     module: &IrModule,
 ) -> Option<u32> {
-    let &ResolvedType::Enum(enum_id) = scrutinee_ty else {
+    // An optional, such as `I32?`, and a generic enum, such as
+    // `Maybe<I32>`, have their variants on the base.
+    let (&ResolvedType::Enum(enum_id)
+    | &ResolvedType::Generic {
+        base: GenericBase::Enum(enum_id),
+        ..
+    }) = scrutinee_ty
+    else {
         return None;
     };
     let e = module.get_enum(enum_id)?;

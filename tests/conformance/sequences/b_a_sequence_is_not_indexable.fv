@@ -1,0 +1,7 @@
+// expect: reject NotIndexable
+// docs/user/types.md: three types take an index, and a sequence is not
+// one of them.
+pub fn f() -> I32? {
+    let s = for x in [1] { x }
+    s[0]
+}

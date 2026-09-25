@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/functions.md, Mode A: the overloads differ in a struct
+// type.
+pub struct A { n: I32 }
+pub struct B { n: I32 }
+fn which(v: A) -> I32 { 1 }
+fn which(v: B) -> I32 { 2 }
+pub fn run_checks() {
+    assert(condition: which(v: A(n: 0)) == 1)
+    assert(condition: which(v: B(n: 0)) == 2)
+}

@@ -64,4 +64,43 @@ impl IrLowerer<'_> {
             span: self.current_ir_span(),
         })
     }
+
+    /// Lower a call of the value of an expression, `make()(4)`, to
+    /// [`IrExpr::CallClosure`] on that value.
+    pub(in crate::ir::lower::expr) fn lower_value_call(
+        &mut self,
+        callee: &Expr,
+        args: &[(Option<crate::ast::Ident>, Expr)],
+    ) -> IrExpr {
+        let closure = self.lower_expr(callee);
+        let (param_tys, return_ty) = if let ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } = closure.ty()
+        {
+            (param_tys.clone(), (**return_ty).clone())
+        } else {
+            let other = closure.ty().clone();
+            let detail = format!("a called value lowered to the non-closure type {other:?}");
+            (
+                Vec::new(),
+                self.internal_error_type_if_concrete(&other, detail),
+            )
+        };
+        let lowered_args: Vec<(Option<String>, IrExpr)> = args
+            .iter()
+            .enumerate()
+            .map(|(i, (arg_name, expr))| {
+                let expected = param_tys.get(i).map(|(_, ty)| ty.clone());
+                let lowered = self.lower_with_expected_value(expr, expected.as_ref());
+                (arg_name.as_ref().map(|n| n.name.clone()), lowered)
+            })
+            .collect();
+        IrExpr::CallClosure {
+            closure: Box::new(closure),
+            args: lowered_args,
+            ty: return_ty,
+            span: self.current_ir_span(),
+        }
+    }
 }

@@ -5,6 +5,9 @@
 **Core Language**:
 
 - Comments (single-line `//`, multi-line `/* */`, doc `///` and `//!`)
+- One statement per line in a body; no terminator
+- Refusal of bidirectional control characters in comments and strings
+- A nesting depth limit
 - Visibility modifiers (`pub`)
 - Use statements (Rust-style imports with `::` and `{}`)
 
@@ -22,8 +25,9 @@
 
 **Definitions**:
 
-- Struct definitions
-- Inherent impl blocks (methods)
+- Struct definitions (with field defaults)
+- Inherent impl blocks (methods, and static methods without `self`,
+  called as `Type.method(...)`)
 - Trait definitions (field requirements and method signatures)
 - `impl Trait for Type` conformance blocks
 - Enum definitions (with associated data, generics)
@@ -41,9 +45,12 @@
 **Expressions**:
 
 - All literals (string, multi-line string, number with suffix, boolean, nil, array, dictionary)
-- Binary operators (arithmetic, comparison, equality, logical, concatenation)
+- Literal types from the position (`let x: I64 = 5`), with a range check
+- Unary operators (`-`, `!`) and binary operators (arithmetic,
+  comparison, equality, logical, concatenation)
 - Field access (including nested)
-- Destructuring (arrays, structs, enums)
+- Destructuring (arrays, tuples, structs); an enum value is read with
+  `match` or `if let`
 - Struct and enum instantiation
 - Closure expressions
 - Range operator (`..`)
@@ -51,9 +58,10 @@
 
 **Control Flow**:
 
-- For expressions (array iteration)
+- For expressions over arrays, ranges and sequences, which yield a
+  lazy `Seq<T>`
 - If expressions (with boolean and optional unwrapping)
-- Match expressions (exhaustive pattern matching)
+- Match expressions (exhaustive pattern matching, positional bindings)
 
 **Generics**:
 
@@ -71,7 +79,7 @@
 
 **Module System**:
 
-- Use statements and module path resolution
+- Use statements, `pub use` re-exports, and module path resolution
 - Visibility control
 - Nested modules (`mod` blocks)
 
@@ -83,21 +91,27 @@
 - Expression validation
 - Trait conformance validation
 - Cycle detection
-- Function overload resolution
+- Function overload resolution by labels, argument count and
+  argument types
 - Exclusive access: a `mut` or `sink` argument shares its value with no
   other argument of the same call
+- Sequences: each one consumed exactly once, and never stored
+- Private types in public signatures, and private items across modules
+- Monomorphisation depth limit (E148)
 
 **Source Spans** (for tooling / source maps / DWARF):
 
 - Every `IrExpr`, definition, and `IrBlockStatement` carries an
-  `IrSpan { start, end, file: FileId }`
+  `IrSpan { span: Span { start, end }, file: FileId }`
 - `IrModule.file_table` resolves `FileId` to a `PathBuf`; cross-module
   clones have their `FileId`s remapped onto the entry module's table
 
 **Serde**:
 
-- `format_version` on `File`
-- Full serialize/deserialize round-trip for all public AST types
+- The `serde` feature (off by default): serialize and deserialize
+  for `IrModule` and every type in it. The JSON form is not a stable
+  format.
+- The AST has no serialized form.
 - `#[non_exhaustive]` on public enums and structs
 
 ## Not Yet Implemented

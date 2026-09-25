@@ -1,0 +1,8 @@
+// expect: reject AmbiguousCall
+// docs/user/functions.md: an unresolvable call site produces
+// `AmbiguousCall`. Two overloads differ only in the label of a defaulted
+// parameter, and the call names neither.
+fn f(x: I32, a: I32 = 1) -> I32 { 1 }
+fn f(x: I32, b: I32 = 2) -> I32 { 2 }
+
+pub let n = f(x: 5)

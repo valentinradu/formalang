@@ -1,0 +1,8 @@
+// expect: run
+// The I64 range is -9223372036854775808 to 9223372036854775807. A
+// program must be able to write the lowest value as a literal.
+
+pub fn run_checks() {
+    let lowest: I64 = -9223372036854775808I64
+    assert(condition: lowest == -9223372036854775807I64 - 1I64)
+}

@@ -14,6 +14,8 @@ impl CompilerError {
             | Self::UnterminatedString { span }
             | Self::UnterminatedBlockComment { span }
             | Self::InvalidUnicodeEscape { span, .. }
+            | Self::InvalidEscape { span, .. }
+            | Self::BidirectionalControl { span, .. }
             | Self::InvalidNumber { span, .. }
             | Self::UnexpectedToken { span, .. }
             | Self::UnexpectedEof { span }
@@ -21,6 +23,7 @@ impl CompilerError {
             | Self::TypeMismatch { span, .. }
             | Self::DuplicateDefinition { span, .. }
             | Self::ModuleNotFound { span, .. }
+            | Self::AmbiguousModulePath { span, .. }
             | Self::ModuleReadError { span, .. }
             | Self::CircularImport { span, .. }
             | Self::PrivateImport { span, .. }
@@ -28,6 +31,7 @@ impl CompilerError {
             | Self::ParseError { span, .. }
             | Self::UndefinedType { span, .. }
             | Self::PrimitiveRedefinition { span, .. }
+            | Self::ImplOnPrimitive { span, .. }
             | Self::TraitUsedAsValueType { span, .. }
             | Self::UndefinedTrait { span, .. }
             | Self::NotATrait { span, .. }
@@ -74,7 +78,7 @@ impl CompilerError {
             | Self::NoMatchingOverload { span, .. }
             | Self::CannotInferEnumType { span, .. }
             | Self::ClosureParameterNeedsType { span, .. }
-            | Self::FloatDictionaryKey { span, .. }
+            | Self::InvalidDictionaryKey { span, .. }
             | Self::SeqNotConsumed { span }
             | Self::SeqUsedTwice { span, .. }
             | Self::SeqInvalidPosition { span, .. }
@@ -84,12 +88,14 @@ impl CompilerError {
             | Self::OverlappingArguments { span, .. }
             | Self::UseAfterSink { span, .. }
             | Self::ExpressionDepthExceeded { span }
+            | Self::InstantiationDepthExceeded { span, .. }
             | Self::TooManyDefinitions { span, .. }
             | Self::VisibilityViolation { span, .. }
-            | Self::ClosureCaptureEscapesLocalBinding { span, .. }
             | Self::InternalError { span, .. }
             | Self::NumericOverflow { span, .. }
-            | Self::PublicClosureField { span, .. } => *span,
+            | Self::PublicClosureField { span, .. }
+            | Self::LabelledClosureArgument { span, .. }
+            | Self::NotAStaticMethod { span, .. } => *span,
         }
     }
 }

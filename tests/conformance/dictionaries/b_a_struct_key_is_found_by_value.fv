@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/types.md: a struct may be a key, and equality is structural.
+// A second, equal struct finds the entry.
+pub struct K { a: I32, b: String }
+
+pub fn run_checks() {
+    let d: [K: I32] = [K(a: 1, b: "x"): 7]
+    if let v = d[K(a: 1, b: "x")] { assert(condition: v == 7) } else { assert(condition: false) }
+    assert(condition: d[K(a: 1, b: "y")] == nil)
+}

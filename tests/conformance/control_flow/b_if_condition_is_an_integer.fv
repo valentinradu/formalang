@@ -1,0 +1,5 @@
+// expect: reject InvalidIfCondition
+// from: go test/ (non-boolean condition in if statement).
+pub fn f() -> I32 {
+    if 1 { 1 } else { 0 }
+}

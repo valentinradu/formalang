@@ -12,14 +12,16 @@ external and plug in via the `IrPass`/`Backend` trait system.
 ## Single-Crate Design
 
 The compiler is a single Rust crate (`formalang`). All phases share
-types directly: no IPC, serialization, or process boundaries.
+types directly: no IPC, serialization, or process boundaries. The
+parser runs on a thread of its own, with a stack that fits the nesting
+of the program. The other phases run on the thread of the caller.
 
 ## Logic Model
 
 FormaLang logic is pure and declarative:
 
 - Conditionals (`if`/`else`, optional unwrapping)
-- Iteration (`for` over arrays)
+- Iteration (`for` over an array, a range or a sequence)
 - Pattern matching (`match` on enums)
 - Struct/enum/trait definitions with generics and constraints
 

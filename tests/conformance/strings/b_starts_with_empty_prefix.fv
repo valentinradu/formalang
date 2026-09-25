@@ -1,0 +1,7 @@
+// expect: run
+// Every string starts with the empty string, and contains it.
+pub fn run_checks() {
+    assert(condition: "".starts_with(prefix: ""))
+    assert(condition: "abc".starts_with(prefix: ""))
+    assert(condition: "".contains(needle: ""))
+}

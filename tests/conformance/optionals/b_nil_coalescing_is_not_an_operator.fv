@@ -1,0 +1,4 @@
+// expect: reject ParseError
+// docs/user/expressions.md lists the binary operators, and `??` is not
+// one of them.
+pub fn f(a: I32?) -> I32 { a ?? 0 }

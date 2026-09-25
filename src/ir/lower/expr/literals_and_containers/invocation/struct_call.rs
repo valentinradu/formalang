@@ -1,5 +1,6 @@
 use super::unify_type_args;
 use crate::ast::Expr;
+use crate::ir::lower::expr::type_params::substitute_typeparam_in_resolved;
 use crate::ir::lower::IrLowerer;
 use crate::ir::{IrExpr, ResolvedType};
 use std::collections::HashMap;
@@ -68,11 +69,18 @@ impl IrLowerer<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        let named_fields: Vec<(String, crate::ir::FieldIdx, IrExpr)> = args
+        // With `<...>` written, a field of a generic type expects the
+        // written type: in `Form<Event>(onChange: (x) -> .changed)`, the
+        // closure returns `Event`, not `E`.
+        let subs = self.struct_type_arg_subs(struct_id, &type_args_resolved);
+        let mut named_fields: Vec<(String, crate::ir::FieldIdx, IrExpr)> = args
             .iter()
             .filter_map(|(name_opt, expr)| {
                 name_opt.as_ref().map(|n| {
-                    let expected = field_target.get(&n.name).cloned();
+                    let expected = field_target.get(&n.name).cloned().map(|mut ty| {
+                        substitute_typeparam_in_resolved(&mut ty, &subs);
+                        ty
+                    });
                     let lowered = self.lower_with_expected_value(expr, expected.as_ref());
                     (n.name.clone(), crate::ir::FieldIdx(0), lowered)
                 })
@@ -90,6 +98,42 @@ impl IrLowerer<'_> {
         } else {
             type_args_resolved
         };
+        // An optional field with no default that the call leaves out is
+        // `nil`. The literal holds it, as if the call wrote
+        // `field: nil`, so a backend reads each optional field.
+        let optional_id = self.module.prelude_optional_id();
+        let is_optional = |f: &crate::ir::IrField| {
+            f.optional
+                || matches!(
+                    f.ty,
+                    ResolvedType::Generic {
+                        base: crate::ir::GenericBase::Enum(id),
+                        ..
+                    } if Some(id) == optional_id
+                )
+        };
+        let left_out: Vec<(String, ResolvedType)> = self
+            .module
+            .get_struct(struct_id)
+            .map(|s| {
+                s.fields
+                    .iter()
+                    .filter(|f| is_optional(f) && f.default.is_none())
+                    .filter(|f| named_fields.iter().all(|(n, _, _)| *n != f.name))
+                    .map(|f| (f.name.clone(), f.ty.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let inferred_subs = self.struct_type_arg_subs(struct_id, &inferred_type_args);
+        for (name, mut ty) in left_out {
+            substitute_typeparam_in_resolved(&mut ty, &inferred_subs);
+            let nil = Expr::Literal {
+                value: crate::ast::Literal::Nil,
+                span: self.current_span,
+            };
+            let lowered = self.lower_with_expected_value(&nil, Some(&ty));
+            named_fields.push((name, crate::ir::FieldIdx(0), lowered));
+        }
         let ty = if inferred_type_args.is_empty() {
             ResolvedType::Struct(struct_id)
         } else {
@@ -105,6 +149,26 @@ impl IrLowerer<'_> {
             ty,
             span: self.current_ir_span(),
         }
+    }
+
+    /// The map from each type parameter of the struct to its type
+    /// argument. Empty when the count of arguments does not match.
+    fn struct_type_arg_subs(
+        &self,
+        struct_id: crate::ir::StructId,
+        type_args: &[ResolvedType],
+    ) -> HashMap<String, ResolvedType> {
+        self.module
+            .get_struct(struct_id)
+            .filter(|s| s.generic_params.len() == type_args.len())
+            .map(|s| {
+                s.generic_params
+                    .iter()
+                    .zip(type_args)
+                    .map(|(p, a)| (p.name.clone(), a.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub(super) fn lower_external_invocation(

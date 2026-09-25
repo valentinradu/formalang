@@ -1,0 +1,16 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: `c.set(to: c.n)` is an error when `set` takes
+// `mut self`.
+pub struct C { n: I32 }
+
+impl C {
+    fn set(mut self, to: I32) {
+        self.n = to
+    }
+}
+
+pub fn run_checks() {
+    let mut c = C(n: 1)
+    c.set(to: c.n)
+    assert(condition: c.n == 1)
+}

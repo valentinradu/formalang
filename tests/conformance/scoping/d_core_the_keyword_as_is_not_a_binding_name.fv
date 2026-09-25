@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `as` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let as = 1
+    assert(condition: as == 1)
+}

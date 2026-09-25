@@ -1,0 +1,5 @@
+// expect: reject UnknownEnumVariant
+// The annotation names T, and `.a` is a variant of S only.
+pub enum S { a, b }
+pub enum T { c }
+pub let t: T = .a

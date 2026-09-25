@@ -1,0 +1,11 @@
+// expect: run
+// docs/user/expressions.md: a multi-line string literal holds more than
+// one line. It keeps at least one line break between them.
+pub fn run_checks() {
+    let s = """
+a
+b
+"""
+    assert(condition: s.contains(needle: "\n"))
+    assert(condition: s.contains(needle: "a"))
+}

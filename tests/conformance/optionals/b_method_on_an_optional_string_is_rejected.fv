@@ -1,0 +1,4 @@
+// expect: reject UndefinedReference
+// from: swift test/Constraints/optional.swift (value of optional type
+// must be unwrapped to refer to member).
+pub fn f(s: String?) -> I32 { s.len() }

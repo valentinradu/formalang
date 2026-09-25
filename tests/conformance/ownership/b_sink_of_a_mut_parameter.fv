@@ -1,0 +1,9 @@
+// expect: reject MutabilityMismatch
+// from: rust tests/ui/borrowck/ (cannot move out of a mutable reference).
+// A `mut` parameter belongs to the caller, who sees it after the call. So
+// the callee cannot give it away with `sink`.
+fn take(sink s: String) -> I32 { s.len() }
+
+fn f(mut s: String) -> I32 {
+    take(s: s)
+}

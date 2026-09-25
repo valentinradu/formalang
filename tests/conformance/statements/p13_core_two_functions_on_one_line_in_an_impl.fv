@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: one statement per line applies in an `impl` body.
+pub struct A { x: I32 }
+
+impl A {
+    fn one(self) -> I32 { 1 } fn two(self) -> I32 { 2 }
+}

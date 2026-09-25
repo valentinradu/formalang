@@ -1,0 +1,20 @@
+// expect: run
+// docs/user/modules.md: multiple levels of nested modules.
+mod ui {
+    pub mod layout {
+        pub enum Direction { horizontal, vertical }
+    }
+
+    pub struct Theme {
+        primary: String,
+        secondary: String
+    }
+}
+
+pub let direction: ui::layout::Direction = .horizontal
+pub let theme: ui::Theme = ui::Theme(primary: "#007AFF", secondary: "#5856D6")
+
+pub fn run_checks() {
+    assert(condition: theme.primary == "#007AFF")
+    assert(condition: direction == ui::layout::Direction.horizontal)
+}

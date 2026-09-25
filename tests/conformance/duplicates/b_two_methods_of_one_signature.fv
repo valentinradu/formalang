@@ -1,0 +1,9 @@
+// expect: reject DuplicateDefinition
+// docs/user/functions.md: a method overloads the same way a free function
+// does, so two methods of one signature are a duplicate.
+pub struct S { x: I32 }
+
+impl S {
+    fn m(self, a: I32) -> I32 { 1 }
+    fn m(self, a: I32) -> I32 { 2 }
+}

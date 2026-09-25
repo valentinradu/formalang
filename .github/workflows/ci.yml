@@ -112,6 +112,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # A test target turns on the `serde` feature through the
+      # dev-dependency on the crate itself. Check the library and the
+      # binary with no test target, so the build without the feature
+      # stays clean.
+      - name: Clippy without the serde feature
+        run: cargo clippy --lib --bins --no-default-features -- -D warnings
+
       - name: File-size ceiling (≤500 LOC, ratchet via allowlist)
         run: ./scripts/check_file_sizes.sh
 

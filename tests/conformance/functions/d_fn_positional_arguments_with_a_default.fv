@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/functions.md: `greet("world")` and `greet("world", "Hi there")`.
+fn greet(name: String, greeting: String = "Hello") -> String {
+    greeting + ", " + name
+}
+
+pub fn run_checks() {
+    assert(condition: greet("world") == "Hello, world")
+    assert(condition: greet("world", "Hi there") == "Hi there, world")
+}

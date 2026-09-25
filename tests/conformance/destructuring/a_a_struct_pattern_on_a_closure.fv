@@ -1,0 +1,16 @@
+// expect: reject StructDestructuringNotStruct
+// from: rust tests/ui/pattern/pat-tuple-bad-type.rs and
+// struct-pattern-on-non-struct-resolve-error.rs. A struct pattern does not fit
+// a closure. This must be an error the user can act on, not an
+// internal error.
+
+pub struct P {
+    a: I32,
+    b: I32
+}
+
+pub fn f() -> I32 {
+    let v: (I32) -> I32 = (x) -> x
+    let {a, b} = v
+    0
+}

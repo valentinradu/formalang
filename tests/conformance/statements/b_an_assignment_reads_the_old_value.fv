@@ -1,0 +1,7 @@
+// expect: run
+// The right side of an assignment reads the value before the change.
+pub fn run_checks() {
+    let mut x: I32 = 3
+    x = x * x + x
+    assert(condition: x == 12)
+}

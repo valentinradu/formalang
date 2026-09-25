@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: equality is structural.
+pub fn run_checks() {
+    let a = (x: 1, y: 2)
+    let b = (x: 1, y: 2)
+    let c = (x: 2, y: 1)
+    assert(condition: a == b)
+    assert(condition: a != c)
+}

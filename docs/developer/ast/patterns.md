@@ -26,6 +26,12 @@ pub enum Pattern {
 }
 ```
 
+`bindings` are positional. The first name binds the first field of the
+variant, the second name binds the second field, and so on. The names
+do not have to match the field names. The parser also makes a
+`Pattern::Variant` for each arm of an `if let`; see
+[Expressions](expressions.md#if-let).
+
 ## BindingPattern
 
 For destructuring in `let` bindings (file-level and inside blocks).
@@ -63,7 +69,6 @@ pub enum ArrayPatternElement {
 ```rust
 pub struct StructPatternField {
     pub name: Ident,
-    pub alias: Option<Ident>,  // field: alias
-    pub span: Span,
+    pub alias: Option<Ident>,  // field as alias
 }
 ```

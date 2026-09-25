@@ -1,0 +1,21 @@
+// expect: run
+// docs/user/traits.md: `Name.member(...)` is a static call only when
+// `Name` is a struct. On an enum it is a variant.
+pub enum Shape {
+    circle(radius: I32),
+    dot
+}
+
+impl Shape {
+    fn size(self) -> I32 {
+        match self {
+            .circle(r): r,
+            .dot: 0
+        }
+    }
+}
+
+pub fn run_checks() {
+    assert(condition: Shape.circle(radius: 4).size() == 4)
+    assert(condition: Shape.dot.size() == 0)
+}

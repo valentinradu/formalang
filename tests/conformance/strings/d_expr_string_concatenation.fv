@@ -1,0 +1,5 @@
+// expect: run
+// docs/user/expressions.md: `+` joins two strings.
+pub fn run_checks() {
+    assert(condition: "Hello, " + "World" == "Hello, World")
+}

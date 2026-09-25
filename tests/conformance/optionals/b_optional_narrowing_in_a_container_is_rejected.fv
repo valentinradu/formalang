@@ -1,0 +1,3 @@
+// expect: reject FunctionReturnTypeMismatch
+// docs/user/types.md: `[T]` fits `[T?]`. The other way does not fit.
+fn f(xs: [I32?]) -> [I32] { xs }

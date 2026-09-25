@@ -1,0 +1,9 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: a struct with a closure field is not
+// equatable.
+struct H { f: (I32) -> I32 }
+
+pub fn g() -> Boolean {
+    let a = H(f: (x) -> x)
+    a == a
+}

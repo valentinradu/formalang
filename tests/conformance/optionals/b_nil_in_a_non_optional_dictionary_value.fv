@@ -1,0 +1,3 @@
+// expect: reject TypeMismatch
+// A `[String: I32]` has no room for a `nil` value.
+pub let d: [String: I32] = ["a": nil]

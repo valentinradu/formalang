@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// from: rust tests/ui/pattern/ (`..` can only be used once per slice
+// pattern).
+pub fn f() -> I32 {
+    let [a, ...b, ...c] = [1, 2, 3]
+    a
+}

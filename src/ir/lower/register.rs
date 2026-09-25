@@ -39,13 +39,15 @@ impl IrLowerer<'_> {
         // different `IrModule.structs` order. Every such loop in this
         // file sorts for the same reason.
         imported_struct_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        // With the linker, the imported type is in the module already.
         for (name, source_path) in imported_struct_pairs {
-            if let Some(struct_info) = self.symbols.structs.get(&name).cloned() {
+            let info = self.symbols.structs.get(&name).filter(|_| !self.linked);
+            if let Some(struct_info) = info.cloned() {
                 self.imported_source_context = Some(source_path);
                 self.register_struct(&name, &struct_info);
                 self.imported_source_context = None;
-                self.try_track_imported_type(&name, ImportedKind::Struct);
             }
+            self.try_track_imported_type(&name, ImportedKind::Struct);
         }
 
         let mut imported_enum_pairs: Vec<(String, Vec<String>)> = self
@@ -60,12 +62,13 @@ impl IrLowerer<'_> {
             .collect();
         imported_enum_pairs.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, source_path) in imported_enum_pairs {
-            if let Some(enum_info) = self.symbols.enums.get(&name).cloned() {
+            let info = self.symbols.enums.get(&name).filter(|_| !self.linked);
+            if let Some(enum_info) = info.cloned() {
                 self.imported_source_context = Some(source_path);
                 self.register_enum(&name, &enum_info);
                 self.imported_source_context = None;
-                self.try_track_imported_type(&name, ImportedKind::Enum);
             }
+            self.try_track_imported_type(&name, ImportedKind::Enum);
         }
 
         // CM-J: Track imported standalone-function and module-let
@@ -97,6 +100,8 @@ impl IrLowerer<'_> {
 
         // Register types from imported nested modules (e.g., fill::Solid)
         let mut module_names: Vec<&String> = self.symbols.modules.keys().collect();
+        // With the linker, an imported module is in the module already.
+        module_names.retain(|name| !self.linked || self.symbols.get_module_origin(name).is_none());
         module_names.sort();
         let modules: Vec<(String, SymbolTable)> = module_names
             .into_iter()
@@ -238,7 +243,7 @@ impl IrLowerer<'_> {
                     methods,
                     generic_params,
                     doc: None,
-                    span: self.current_ir_span(),
+                    span: self.ir_span(trait_info.span),
                 },
             ) {
                 self.errors.push(e);
@@ -301,19 +306,16 @@ impl IrLowerer<'_> {
         // between two builds of the same program. Each entry carries
         // the span it was declared at, so sorting by that restores the
         // order the user wrote.
-        let mut variant_names: Vec<&String> = enum_info.variants.keys().collect();
-        variant_names.sort_by_key(|name| {
-            enum_info
-                .variants
-                .get(*name)
-                .map_or((usize::MAX, name.as_str()), |(_, span)| {
-                    (span.start.offset, name.as_str())
-                })
-        });
+        let mut variant_names: Vec<(&String, crate::location::Span)> = enum_info
+            .variants
+            .iter()
+            .map(|(name, (_, span))| (name, *span))
+            .collect();
+        variant_names.sort_by_key(|(name, span)| (span.start.offset, name.as_str()));
 
         let variants: Vec<IrEnumVariant> = variant_names
             .into_iter()
-            .map(|variant_name| {
+            .map(|(variant_name, variant_span)| {
                 let fields = enum_info
                     .variant_fields
                     .get(variant_name)
@@ -335,7 +337,7 @@ impl IrLowerer<'_> {
                 IrEnumVariant {
                     name: variant_name.clone(),
                     fields,
-                    span: self.current_ir_span(),
+                    span: self.ir_span(variant_span),
                 }
             })
             .collect();
@@ -350,7 +352,7 @@ impl IrLowerer<'_> {
                 variants,
                 generic_params,
                 doc: None,
-                span: self.current_ir_span(),
+                span: self.ir_span(enum_info.span),
             },
         ) {
             self.errors.push(e);
@@ -409,7 +411,7 @@ impl IrLowerer<'_> {
                 fields,
                 generic_params,
                 doc: None,
-                span: self.current_ir_span(),
+                span: self.ir_span(struct_info.span),
             },
         ) {
             self.errors.push(e);
@@ -432,7 +434,7 @@ impl IrLowerer<'_> {
                         methods: Vec::new(),
                         generic_params: Vec::new(),
                         doc: t.doc.clone(),
-                        span: self.current_ir_span(),
+                        span: self.ir_span(t.span),
                     },
                 ) {
                     self.errors.push(e);
@@ -449,7 +451,7 @@ impl IrLowerer<'_> {
                         fields: Vec::new(),
                         generic_params: Vec::new(),
                         doc: s.doc.clone(),
-                        span: self.current_ir_span(),
+                        span: self.ir_span(s.span),
                     },
                 ) {
                     self.errors.push(e);
@@ -465,7 +467,7 @@ impl IrLowerer<'_> {
                         variants: Vec::new(),
                         generic_params: Vec::new(),
                         doc: e.doc.clone(),
-                        span: self.current_ir_span(),
+                        span: self.ir_span(e.span),
                     },
                 ) {
                     self.errors.push(e);

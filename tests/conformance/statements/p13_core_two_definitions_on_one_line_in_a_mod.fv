@@ -1,0 +1,5 @@
+// expect: reject ParseError
+// docs/user/core.md: one statement per line applies in a `mod` body.
+pub mod m {
+    pub struct A { x: I32 } pub struct B { y: I32 }
+}

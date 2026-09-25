@@ -1,0 +1,7 @@
+// expect: reject MissingTraitField
+// docs/user/traits.md: struct fields required by the trait must be
+// present in the struct definition. An enum has no fields to satisfy
+// the requirement.
+pub trait Named { name: String }
+pub enum E { a, b }
+impl Named for E {}

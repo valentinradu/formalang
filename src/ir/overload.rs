@@ -13,7 +13,7 @@
 //! declaring two methods of one name had its second one silently
 //! unreachable: the call compiled, and answered from the first.
 
-use crate::ir::IrFunctionParam;
+use crate::ir::{IrFunctionParam, ResolvedType};
 
 /// A parameter, as the overload rule reads it. The IR's parameters and
 /// the AST's both have one, so semantic analysis and lowering choose
@@ -26,6 +26,11 @@ pub(crate) trait OverloadParam {
     fn call_label(&self) -> Option<&str>;
     /// Whether a call may leave it out.
     fn has_default(&self) -> bool;
+    /// The declared type, when the rule can read it. Only the IR's
+    /// parameters carry a [`ResolvedType`].
+    fn param_type(&self) -> Option<&ResolvedType> {
+        None
+    }
 }
 
 impl OverloadParam for IrFunctionParam {
@@ -37,6 +42,9 @@ impl OverloadParam for IrFunctionParam {
     }
     fn has_default(&self) -> bool {
         self.default.is_some()
+    }
+    fn param_type(&self) -> Option<&ResolvedType> {
+        self.ty.as_ref()
     }
 }
 
@@ -144,19 +152,75 @@ pub(crate) fn method_index<'a, T, P: OverloadParam + 'a>(
     params_of: impl Fn(&'a T) -> &'a [P],
     method_name: &str,
     arg_labels: &[Option<String>],
-    arg_count: usize,
+    arg_types: &[ResolvedType],
 ) -> Option<usize> {
-    let named = methods
+    let named: Vec<(usize, &'a T)> = methods
         .iter()
         .enumerate()
-        .filter(|&(_, m)| name_of(m) == method_name);
-    choose(named, params_of, arg_labels, arg_count)
+        .filter(|&(_, m)| name_of(m) == method_name)
+        .collect();
+    // The argument types decide between methods that differ only in
+    // their parameter types, as the semantic pass decides. When no
+    // method fits the types, the labels and the count decide alone.
+    let typed: Vec<(usize, &'a T)> = named
+        .iter()
+        .copied()
+        .filter(|&(_, m)| types_fit(params_of(m), arg_labels, arg_types))
+        .collect();
+    let pool = if typed.is_empty() { named } else { typed };
+    choose(pool.into_iter(), params_of, arg_labels, arg_types.len())
         .or_else(|| methods.iter().position(|m| name_of(m) == method_name))
+}
+
+/// Whether each argument type fits the type of the parameter that the
+/// argument fills. A parameter without a known type, a parameter typed
+/// by a type parameter, and an argument whose type is not known fit
+/// anything.
+fn types_fit<P: OverloadParam>(
+    params: &[P],
+    arg_labels: &[Option<String>],
+    arg_types: &[ResolvedType],
+) -> bool {
+    let params: Vec<&P> = params.iter().filter(|p| p.param_name() != "self").collect();
+    arg_types.iter().enumerate().all(|(position, arg)| {
+        let param = arg_labels
+            .get(position)
+            .and_then(Option::as_ref)
+            .map_or_else(
+                || params.get(position),
+                |label| {
+                    params
+                        .iter()
+                        .find(|p| p.param_name() == label || p.call_label() == Some(label.as_str()))
+                },
+            );
+        param.and_then(|p| p.param_type()).is_none_or(|declared| {
+            declared == arg || holds_an_unknown(declared) || holds_an_unknown(arg)
+        })
+    })
+}
+
+/// Whether `ty` holds a type parameter or an error type anywhere.
+fn holds_an_unknown(ty: &ResolvedType) -> bool {
+    match ty {
+        ResolvedType::TypeParam(_) | ResolvedType::Error => true,
+        ResolvedType::Tuple(fields) => fields.iter().any(|(_, t)| holds_an_unknown(t)),
+        ResolvedType::Generic { args, .. } => args.iter().any(holds_an_unknown),
+        ResolvedType::External { type_args, .. } => type_args.iter().any(holds_an_unknown),
+        ResolvedType::Closure {
+            param_tys,
+            return_ty,
+        } => param_tys.iter().any(|(_, t)| holds_an_unknown(t)) || holds_an_unknown(return_ty),
+        ResolvedType::Primitive(_)
+        | ResolvedType::Struct(_)
+        | ResolvedType::Trait(_)
+        | ResolvedType::Enum(_) => false,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{method_index, IrFunctionParam};
+    use super::{method_index, IrFunctionParam, ResolvedType};
     use crate::ir::BindingId;
 
     /// A stand-in for a method: a name and its parameters. The rule
@@ -215,7 +279,7 @@ mod tests {
             |m| m.params.as_slice(),
             method_name,
             &labels,
-            arg_count,
+            &vec![ResolvedType::Error; arg_count],
         )
     }
 

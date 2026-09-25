@@ -1,0 +1,7 @@
+// expect: reject ParseError
+// docs/user/core.md: `mod` is a reserved word and cannot be an
+// identifier.
+pub fn run_checks() {
+    let mod = 1
+    assert(condition: mod == 1)
+}

@@ -1,0 +1,16 @@
+// expect: run
+// docs/user/traits.md, Generic Traits: through the bound
+// `T: Container<I32>`, `b.get()` is an I32, so it can be an operand.
+pub trait Container<T> {
+    fn get(self) -> T
+}
+pub struct Box { value: I32 }
+impl Container<I32> for Box {
+    fn get(self) -> I32 { self.value }
+}
+fn twice<T: Container<I32>>(b: T) -> I32 {
+    b.get() + b.get()
+}
+pub fn run_checks() {
+    assert(condition: twice(b: Box(value: 4)) == 8)
+}

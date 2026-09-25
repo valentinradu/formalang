@@ -1,0 +1,6 @@
+// expect: reject ArgumentCountMismatch
+// docs/user/functions.md: a call gives each parameter that has no
+// default. An extern function is a function.
+extern fn ext(a: I32, b: I32) -> I32
+
+pub let r: I32 = ext(a: 1)

@@ -1,0 +1,8 @@
+// expect: run
+// docs/user/functions.md: `adder()(3)` calls `adder`, then calls its
+// result with 3.
+fn adder(n: I32) -> (I32) -> I32 { (y) -> y + 10 }
+
+pub fn run_checks() {
+    assert(condition: adder(n: 0)(3) == 13)
+}

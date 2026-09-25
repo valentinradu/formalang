@@ -1,0 +1,6 @@
+// expect: reject InvalidBinaryOp
+// docs/user/expressions.md: an array of closures is not equatable.
+pub fn f() -> Boolean {
+    let a: [(I32) -> I32] = [(x) -> x]
+    a == a
+}

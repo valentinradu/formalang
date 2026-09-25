@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/traits.md: a method without `self` is a static method. A
+// call through a value of the type reaches it.
+pub struct Counter { value: I32 }
+
+impl Counter {
+    fn zero() -> Counter { Counter(value: 0) }
+}
+
+pub fn run_checks() {
+    let c = Counter(value: 5)
+    assert(condition: c.zero().value == 0)
+}

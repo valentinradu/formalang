@@ -1,0 +1,11 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/closures/ (a closure that moves a capture).
+// The closure sinks the captured binding. A later read of the binding
+// reads a moved value.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f() -> I32 {
+    let s: String = "x"
+    let g: () -> I32 = () -> take(s: s)
+    g() + s.len()
+}

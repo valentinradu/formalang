@@ -1,0 +1,17 @@
+// expect: run
+// docs/user/enums.md: variants with data, one to a line, each line but
+// the last ending in a comma. A trailing comma after the last variant
+// is allowed too.
+pub enum Message {
+  text(content: String),
+  image(url: String, size: I32),
+}
+
+pub fn run_checks() {
+    let m: Message = .image(url: "u", size: 4)
+    let n = match m {
+        .text(content): content.len(),
+        .image(url, size): size
+    }
+    assert(condition: n == 4)
+}

@@ -1,0 +1,10 @@
+// expect: run
+// from: swift test/expr/postfix/dot/ (an implicit member on the right
+// of `==`). docs/user/enums.md: the leading-dot form takes its enum from
+// the context. The other operand of `==` gives that context.
+pub enum S { a, b }
+pub fn is_a(s: S) -> Boolean { s == .a }
+pub fn run_checks() {
+    assert(condition: is_a(s: S.a))
+    assert(condition: !is_a(s: S.b))
+}

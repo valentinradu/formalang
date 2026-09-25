@@ -1,0 +1,13 @@
+// expect: run
+// docs/user/traits.md: fields listed without `fn` are structural
+// requirements, so a bound gives access to them.
+pub trait Named { name: String }
+pub struct Circle { name: String, radius: I32 }
+
+impl Named for Circle {}
+
+fn name_of<T: Named>(t: T) -> String { t.name }
+
+pub fn run_checks() {
+    assert(condition: name_of(t: Circle(name: "c", radius: 1)) == "c")
+}

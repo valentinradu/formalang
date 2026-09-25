@@ -1,0 +1,6 @@
+// expect: reject SeqNotConsumed
+// docs/user/control-flow.md: dropping a sequence is E135.
+pub fn f() -> I32 {
+    let s = for x in [1, 2] { x }
+    0
+}

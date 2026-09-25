@@ -1,0 +1,17 @@
+// expect: reject OverlappingArguments
+// docs/user/functions.md: the receiver counts as an argument with the
+// convention of its `self`.
+pub struct In { v: I32 }
+pub struct C { i: In }
+
+impl C {
+    fn set(mut self, to: In) {
+        self.i = to
+    }
+}
+
+pub fn f() -> I32 {
+    let mut c = C(i: In(v: 1))
+    c.set(to: c.i)
+    c.i.v
+}

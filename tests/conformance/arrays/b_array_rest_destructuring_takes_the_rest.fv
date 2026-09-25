@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/expressions.md: `[x, ...rest]` binds the first element and
+// the rest.
+pub fn run_checks() {
+    let items = ["first", "second", "third"]
+    let [x, ...rest] = items
+    assert(condition: x == "first")
+    assert(condition: rest.len() == 2)
+}

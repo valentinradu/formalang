@@ -1,0 +1,4 @@
+// expect: reject FunctionReturnTypeMismatch
+// from: go test/ (missing return). A function that declares `I32` must
+// give an `I32`.
+fn f() -> I32 { }

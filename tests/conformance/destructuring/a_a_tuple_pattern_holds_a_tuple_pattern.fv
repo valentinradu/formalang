@@ -1,0 +1,9 @@
+// expect: run
+// A tuple pattern can hold a tuple pattern.
+pub fn f(t: (a: I32, b: (c: I32, d: I32))) -> I32 {
+    let (x, (y, z)) = t
+    x + y + z
+}
+pub fn run_checks() {
+    assert(condition: f(t: (a: 1, b: (c: 2, d: 3))) == 6)
+}

@@ -38,6 +38,7 @@ pub(in crate::semantic) mod invocation;
 mod let_and_block;
 mod let_expr_and_block;
 mod method_call;
+pub(in crate::semantic) mod outer_frames;
 mod private_in_public;
 mod public_closure_field;
 mod qualified_types;

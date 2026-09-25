@@ -1,0 +1,4 @@
+// expect: reject TypeMismatch
+// docs/user/types.md: a string takes an index by byte offset. A string
+// is not an offset.
+pub fn f() -> I32 { "abc"["a"] }

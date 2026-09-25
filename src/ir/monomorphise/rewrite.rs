@@ -38,6 +38,31 @@ pub(super) fn rewrite_module(module: &mut IrModule, mapping: &HashMap<Instantiat
     // its specialised trait id with the args slot cleared (the
     // specialised trait isn't generic any more).
     rewrite_trait_refs(module, mapping);
+    // A `Virtual` dispatch through a generic trait names its instance
+    // the same way: `trait_id` plus `trait_args`. Point it at the
+    // specialised trait, so that devirtualisation picks the impl of
+    // that one instance.
+    for_each_module_expr_mut(module, &mut |expr| {
+        if let IrExpr::MethodCall {
+            dispatch:
+                crate::ir::DispatchKind::Virtual {
+                    trait_id,
+                    trait_args,
+                    ..
+                },
+            ..
+        } = expr
+        {
+            if trait_args.is_empty() {
+                return;
+            }
+            let key = (GenericBase::Trait(*trait_id), trait_args.clone());
+            if let Some(GenericBase::Trait(new_id)) = mapping.get(&key).copied() {
+                *trait_id = new_id;
+                trait_args.clear();
+            }
+        }
+    });
 }
 
 fn rewrite_trait_ref(tr: &mut IrTraitRef, mapping: &HashMap<Instantiation, GenericBase>) {
@@ -147,18 +172,39 @@ pub(super) fn rewrite_type(ty: &mut ResolvedType, mapping: &HashMap<Instantiatio
 /// correctly here; Phase 2c (`rewrite_dispatch_impl_ids`) uses the
 /// returned [`ImplRemap`] to retarget `DispatchKind::Static { impl_id }`
 /// sites onto the cloned impl for each specialisation.
+///
+/// `is_new` picks the instantiations to copy impl blocks for. A second
+/// call after Phase 2d passes only the instantiations that Phase 2d
+/// added: the earlier ones already have their copies, and a second copy
+/// would give one type two impl blocks of the same methods.
 pub(super) fn specialise_impls(
     module: &mut IrModule,
     mapping: &HashMap<Instantiation, GenericBase>,
+    is_new: impl Fn(&Instantiation) -> bool,
 ) -> ImplRemap {
     // Group specialisations by original generic base.
     type Spec = (Vec<ResolvedType>, GenericBase);
     let mut by_base: HashMap<GenericBase, Vec<Spec>> = HashMap::new();
-    for ((orig_base, args), spec_base) in mapping {
+    for (inst, spec_base) in mapping {
+        if !is_new(inst) {
+            continue;
+        }
+        let (orig_base, args) = inst;
         by_base
             .entry(*orig_base)
             .or_default()
             .push((args.clone(), *spec_base));
+    }
+    // `mapping` is a `HashMap`, so its order changes between runs. Sort
+    // each group by the id of its specialisation, so the copies of the
+    // impl blocks, and so their indices, come out in one order.
+    let key = |base: &GenericBase| match *base {
+        GenericBase::Struct(id) => (0, id.0),
+        GenericBase::Enum(id) => (1, id.0),
+        GenericBase::Trait(id) => (2, id.0),
+    };
+    for specs in by_base.values_mut() {
+        specs.sort_by_key(|(_, spec)| key(spec));
     }
     let mut new_impls: Vec<IrImpl> = Vec::new();
     let mut impl_remap: ImplRemap = HashMap::new();
@@ -200,6 +246,10 @@ pub(super) fn specialise_impls(
                 .zip(args.iter().cloned())
                 .collect();
             let mut clone = imp.clone();
+            // The copy is for one concrete type, so it has no type
+            // parameters of its own. A method may still declare its own,
+            // as `map<U>` does; Phase 2d copies those.
+            clone.generic_params.clear();
             clone.target = match spec_base {
                 GenericBase::Struct(id) => crate::ir::ImplTarget::Struct(*id),
                 GenericBase::Enum(id) => crate::ir::ImplTarget::Enum(*id),
@@ -289,15 +339,43 @@ pub(super) fn rewrite_dispatch_impl_ids(module: &mut IrModule, impl_remap: &Impl
 /// function bodies) stay `Virtual` and are tolerated downstream —
 /// those bodies are dropped during compaction or never reached by a
 /// backend's specialisation root set.
-pub(super) fn devirtualise_concrete_receivers(module: &mut IrModule) {
+pub(super) fn devirtualise_concrete_receivers(
+    module: &mut IrModule,
+    mapping: &HashMap<Instantiation, GenericBase>,
+) {
+    // Each specialised trait, mapped back to its generic trait.
+    let trait_origin: HashMap<crate::ir::TraitId, crate::ir::TraitId> = mapping
+        .iter()
+        .filter_map(|((base, _), spec)| match (base, spec) {
+            (GenericBase::Trait(generic), GenericBase::Trait(specialised)) => {
+                Some((*specialised, *generic))
+            }
+            _ => None,
+        })
+        .collect();
     // Clone the impls table so we can read it while mutating function
     // bodies. impls don't change shape during devirt; we only consult
     // them for `(target, trait_id, method_name)` lookup.
     let impls_snapshot = module.impls.clone();
-    for_each_module_expr_mut(module, &mut |expr| devirtualise_node(expr, &impls_snapshot));
+    for_each_module_expr_mut(module, &mut |expr| {
+        devirtualise_node(expr, &impls_snapshot, &trait_origin);
+    });
 }
 
-fn devirtualise_node(expr: &mut IrExpr, impls: &[IrImpl]) {
+/// Resolve a `Virtual` dispatch on a concrete receiver to the impl of
+/// that receiver for the dispatch's trait.
+///
+/// A bound on a generic trait, `<T: Container<I32>>`, dispatches
+/// through the generic trait. The impl names the specialised trait,
+/// `Container<I32>`, so `trait_origin` maps it back to the generic one.
+/// A dispatch with trait arguments already names the specialised trait:
+/// `rewrite_module` points it there. When two impls of one receiver
+/// both match, the dispatch stays `Virtual`, and compaction reports it.
+fn devirtualise_node(
+    expr: &mut IrExpr,
+    impls: &[IrImpl],
+    trait_origin: &HashMap<crate::ir::TraitId, crate::ir::TraitId>,
+) {
     use crate::ir::{DispatchKind, ImplId};
     let IrExpr::MethodCall {
         receiver,
@@ -319,23 +397,27 @@ fn devirtualise_node(expr: &mut IrExpr, impls: &[IrImpl]) {
         return;
     };
     let virt_trait_id = *virt_trait_id;
-    let method_name_owned = method.clone();
-    if let Some(impl_idx) = impls.iter().position(|imp| match imp.target {
-        crate::ir::ImplTarget::Struct(id) => {
-            target_base == GenericBase::Struct(id)
-                && imp.trait_id() == Some(virt_trait_id)
-                && imp.functions.iter().any(|f| f.name == method_name_owned)
-        }
-        crate::ir::ImplTarget::Enum(id) => {
-            target_base == GenericBase::Enum(id)
-                && imp.trait_id() == Some(virt_trait_id)
-                && imp.functions.iter().any(|f| f.name == method_name_owned)
-        }
-        // Primitive impls don't carry a GenericBase target — no
-        // virtual-to-static devirtualisation applies.
-        crate::ir::ImplTarget::Primitive(_) => false,
-    }) {
-        let new_impl_id = ImplId(u32::try_from(impl_idx).unwrap_or(u32::MAX));
+    let names_the_trait = |imp: &IrImpl| {
+        imp.trait_id()
+            .is_some_and(|t| t == virt_trait_id || trait_origin.get(&t) == Some(&virt_trait_id))
+    };
+    let candidates: Vec<usize> = impls
+        .iter()
+        .enumerate()
+        .filter(|(_, imp)| {
+            let on_target = match imp.target {
+                crate::ir::ImplTarget::Struct(id) => target_base == GenericBase::Struct(id),
+                crate::ir::ImplTarget::Enum(id) => target_base == GenericBase::Enum(id),
+                // Primitive impls don't carry a GenericBase target — no
+                // virtual-to-static devirtualisation applies.
+                crate::ir::ImplTarget::Primitive(_) => false,
+            };
+            on_target && names_the_trait(imp) && imp.functions.iter().any(|f| &f.name == method)
+        })
+        .map(|(idx, _)| idx)
+        .collect();
+    if let [impl_idx] = candidates.as_slice() {
+        let new_impl_id = ImplId(u32::try_from(*impl_idx).unwrap_or(u32::MAX));
         *dispatch = DispatchKind::Static {
             impl_id: new_impl_id,
         };

@@ -1,0 +1,10 @@
+// expect: reject TypeMismatch
+// Decided (PLAN FD3): an enum value is not destructured. A tuple
+// pattern takes a tuple; read the payload with `match` or `if let`.
+// The enum holds no data, so there is nothing to destructure. This must
+// be an error the user can act on, not an internal error.
+pub enum Status { on, off }
+pub fn f(s: Status) -> I32 {
+    let (a) = s
+    0
+}

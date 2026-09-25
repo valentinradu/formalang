@@ -105,6 +105,20 @@ pub(super) fn module_not_found<'a>(
         .with_help("Check that the module file exists in the expected location")
 }
 
+pub(super) fn ambiguous_module_path<'a>(
+    filename: &'a str,
+    span: Span,
+    name: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E160")
+        .with_message(format!("Module path '{name}' is ambiguous"))
+        .with_label(label(filename, span).with_message(format!(
+            "'{}' names an inline module of this file and a module file",
+            name.fg(Color::Red)
+        )))
+        .with_help("Rename the inline module or the module file")
+}
+
 pub(super) fn circular_import<'a>(
     filename: &'a str,
     span: Span,
@@ -420,6 +434,22 @@ pub(super) fn primitive_redefinition<'a>(
             "'{}' is a built-in primitive and cannot be redefined",
             name.fg(Color::Red)
         )))
+}
+
+pub(super) fn impl_on_primitive<'a>(
+    filename: &'a str,
+    span: Span,
+    name: &'a str,
+) -> ReportBuilder<'a> {
+    report(filename, span, "E149")
+        .with_message(format!(
+            "An impl on the primitive type '{name}' must be an extern impl"
+        ))
+        .with_label(
+            label(filename, span)
+                .with_message(format!("'{}' is a built-in primitive", name.fg(Color::Red))),
+        )
+        .with_help("Write `extern impl`. The host gives the bodies of its methods")
 }
 
 pub(super) fn undefined_trait<'a>(

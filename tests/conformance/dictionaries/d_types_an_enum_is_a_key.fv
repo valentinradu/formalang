@@ -1,0 +1,9 @@
+// expect: run
+// docs/user/types.md: keys can be an enum.
+pub enum Color { red, green }
+
+pub fn run_checks() {
+    let d: [Color: I32] = [Color.red: 1, Color.green: 2]
+    let v: I32 = if let n = d[Color.green] { n } else { 0 }
+    assert(condition: v == 2)
+}

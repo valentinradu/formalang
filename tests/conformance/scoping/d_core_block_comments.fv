@@ -1,0 +1,12 @@
+// expect: run
+// docs/user/core.md: multi-line comments.
+/*
+ * This is a multi-line comment
+ * spanning several lines
+ */
+pub struct Post { title: String }
+
+pub fn run_checks() {
+    let p = Post(/* inline */ title: "t")
+    assert(condition: p.title == "t")
+}

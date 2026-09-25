@@ -1,0 +1,10 @@
+// expect: run
+// docs/user/types.md: an enum may be a key. Equality is structural, so the
+// payload is part of the key.
+pub enum K { a(n: I32), b }
+
+pub fn run_checks() {
+    let d: [K: I32] = [K.a(n: 1): 10, K.a(n: 2): 20]
+    assert(condition: d.len() == 2)
+    if let v = d[K.a(n: 2)] { assert(condition: v == 20) } else { assert(condition: false) }
+}

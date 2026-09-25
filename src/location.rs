@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-
 /// Source code location information for error reporting and LSP
 #[expect(clippy::exhaustive_structs, reason = "public API type")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Location {
     /// Byte offset from start of file
     pub offset: usize,
@@ -40,7 +39,8 @@ impl Default for Location {
 
 /// A span of source code between two locations
 #[expect(clippy::exhaustive_structs, reason = "public API type")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     pub start: Location,
     pub end: Location,

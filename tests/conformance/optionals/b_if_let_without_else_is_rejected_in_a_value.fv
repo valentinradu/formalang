@@ -1,0 +1,6 @@
+// expect: reject ParseError
+// docs/user/control-flow.md: `if let` needs both a `then` and an `else`
+// branch.
+pub fn f(a: I32?) -> I32? {
+    if let v = a { v }
+}

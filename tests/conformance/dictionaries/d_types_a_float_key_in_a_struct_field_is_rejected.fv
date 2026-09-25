@@ -1,0 +1,3 @@
+// expect: reject InvalidDictionaryKey
+// docs/user/types.md: F32 and F64 cannot be keys (E134).
+pub struct S { d: [F64: I32] }

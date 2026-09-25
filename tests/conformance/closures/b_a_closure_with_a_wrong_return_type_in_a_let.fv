@@ -1,0 +1,6 @@
+// expect: reject TypeMismatch
+// from: swift test/expr/closure/ (a closure body of the wrong type).
+pub fn f() -> I32 {
+    let g: (I32) -> String = (x) -> x + 1
+    0
+}

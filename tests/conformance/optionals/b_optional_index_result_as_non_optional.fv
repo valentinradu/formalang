@@ -1,0 +1,6 @@
+// expect: reject OptionalUsedAsNonOptional
+// docs/user/expressions.md: an index gives `T?`, not `T`.
+pub fn f(xs: [I32]) -> I32 {
+    let x: I32 = xs[0]
+    x
+}

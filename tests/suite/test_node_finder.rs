@@ -698,7 +698,7 @@ fn test_find_function_def_fallback() -> Result<(), Box<dyn std::error::Error>> {
 fn test_find_type_array() -> Result<(), Box<dyn std::error::Error>> {
     // Primitive types have no spans, so the node finder returns StructDef for array of primitives.
     // Use a named type instead to exercise the Array type path with a span.
-    let source = r"struct Elem { } struct A { items: [Elem] }";
+    let source = "struct Elem { }\nstruct A { items: [Elem] }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let usages: Vec<_> = source.match_indices("Elem").collect();
     // Second occurrence is in the array type
@@ -720,7 +720,7 @@ fn test_find_type_array() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_find_type_optional() -> Result<(), Box<dyn std::error::Error>> {
     // Use a named type for Optional to exercise type visitor properly
-    let source = r"struct Inner { } struct A { opt: Inner? }";
+    let source = "struct Inner { }\nstruct A { opt: Inner? }";
     let file = parse_only(source).map_err(|e| format!("parse failed: {e:?}"))?;
     let usages: Vec<_> = source.match_indices("Inner").collect();
     let off = usages.get(1).ok_or("index out of bounds")?.0;

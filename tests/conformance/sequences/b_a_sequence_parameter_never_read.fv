@@ -1,0 +1,4 @@
+// expect: reject SeqNotConsumed
+// docs/user/control-flow.md: dropping a sequence is E135. A `sink`
+// parameter of a sequence type that the body never reads drops it.
+fn drop_it(sink s: Seq<I32>) -> I32 { 0 }

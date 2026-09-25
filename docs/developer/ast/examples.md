@@ -118,7 +118,7 @@ File
         └── fields:
             ├── [0] StructField
             │   ├── name: "content"
-            │   ├── ty: Type::TypeParameter("T")
+            │   ├── ty: Type::Ident("T")
             │   └── optional: false
             └── [1] StructField
                 ├── name: "label"
@@ -181,13 +181,17 @@ File
 **FormaLang source:**
 
 ```formalang
+pub struct Counter {
+    count: I32
+}
+
 pub trait Drawable {
     fn draw(self) -> String
 }
 
 impl Drawable for Counter {
     fn draw(self) -> String {
-        "Counter: " + self.count
+        "Counter"
     }
 }
 ```
@@ -196,7 +200,7 @@ impl Drawable for Counter {
 
 ```text
 File
-└── statements[1]: Statement::Definition
+└── statements[2]: Statement::Definition
     └── Definition::Impl
         ├── trait_name: Some("Drawable")
         ├── trait_args: []
@@ -207,7 +211,7 @@ File
                 ├── name: "draw"
                 ├── params: [FnParam { name: "self", ty: None }]
                 ├── return_type: Some(Type::Primitive(String))
-                └── body: Expr::BinaryOp { ... }
+                └── body: Expr::Literal { value: Literal::String("Counter") }
 ```
 
 ## Match Expression with Wildcard
@@ -215,14 +219,23 @@ File
 **FormaLang source:**
 
 ```formalang
-match status {
-    .active: Label(text: "Online"),
-    .inactive: Label(text: "Offline"),
-    _: Label(text: "Unknown")
+pub enum Status {
+    active,
+    inactive,
+    pending
+}
+
+pub fn label(status: Status) -> String {
+    match status {
+        .active: "Online",
+        .inactive: "Offline",
+        _: "Unknown"
+    }
 }
 ```
 
-**AST structure:**
+**AST structure** (the `body` of `label`; a body with one expression
+and no statement is that expression, not a `Block`):
 
 ```text
 Expr::MatchExpr
@@ -230,13 +243,13 @@ Expr::MatchExpr
 └── arms:
     ├── [0] MatchArm
     │   ├── pattern: Pattern::Variant { name: "active", bindings: [] }
-    │   └── body: Expr::Invocation { path: ["Label"], ... }
+    │   └── body: Expr::Literal { value: Literal::String("Online") }
     ├── [1] MatchArm
     │   ├── pattern: Pattern::Variant { name: "inactive", bindings: [] }
-    │   └── body: Expr::Invocation { path: ["Label"], ... }
+    │   └── body: Expr::Literal { value: Literal::String("Offline") }
     └── [2] MatchArm
         ├── pattern: Pattern::Wildcard
-        └── body: Expr::Invocation { path: ["Label"], ... }
+        └── body: Expr::Literal { value: Literal::String("Unknown") }
 ```
 
 ## Block Expression
@@ -244,14 +257,22 @@ Expr::MatchExpr
 **FormaLang source:**
 
 ```formalang
-{
+pub struct Output {
+    value: I32
+}
+
+fn compute_value() -> I32 {
+    21
+}
+
+pub fn make() -> Output {
     let x = compute_value()
     let y = x * 2
-    Result(value: y)
+    Output(value: y)
 }
 ```
 
-**AST structure:**
+**AST structure** (the `body` of `make`):
 
 ```text
 Expr::Block
@@ -264,7 +285,7 @@ Expr::Block
 │       ├── mutable: false
 │       ├── pattern: BindingPattern::Simple("y")
 │       └── value: Expr::BinaryOp { left: "x", op: Mul, right: 2 }
-└── result: Expr::Invocation { path: ["Result"], args: [("value", "y")] }
+└── result: Expr::Invocation { path: ["Output"], args: [(Some("value"), "y")] }
 ```
 
 ## For Expression
@@ -272,20 +293,30 @@ Expr::Block
 **FormaLang source:**
 
 ```formalang
-for item in items {
-    ListItem(text: item)
+pub struct ListItem {
+    text: String
+}
+
+pub fn list(items: [String]) -> [ListItem] {
+    for item in items {
+        ListItem(text: item)
+    }.collect()
 }
 ```
 
-**AST structure:**
+**AST structure** (the `body` of `list`). A `for` gives a `Seq`, so
+`.collect()` makes the array:
 
 ```text
-Expr::ForExpr
-├── var: "item"
-├── collection: Expr::Reference { path: ["items"] }
-└── body: Expr::Invocation
-    ├── path: ["ListItem"]
-    └── args: [(Some("text"), Expr::Reference { path: ["item"] })]
+Expr::MethodCall
+├── receiver: Expr::ForExpr
+│   ├── var: "item"
+│   ├── collection: Expr::Reference { path: ["items"] }
+│   └── body: Expr::Invocation
+│       ├── path: ["ListItem"]
+│       └── args: [(Some("text"), Expr::Reference { path: ["item"] })]
+├── method: "collect"
+└── args: []
 ```
 
 ## Closure Expression

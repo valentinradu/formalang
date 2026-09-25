@@ -1,0 +1,10 @@
+// expect: run
+// A closure body is one expression. A block is one expression, and it
+// may hold `let` statements.
+pub fn run_checks() {
+    let g: (I32) -> I32 = (x) -> {
+        let y = x * 2
+        y + 1
+    }
+    assert(condition: g(3) == 7)
+}

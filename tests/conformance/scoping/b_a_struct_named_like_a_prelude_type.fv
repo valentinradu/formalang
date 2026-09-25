@@ -1,0 +1,4 @@
+// expect: reject DuplicateDefinition
+// The prelude declares `Optional`, `Array`, `Seq`, `Dictionary` and
+// `Range`. A user type of the same name makes the name mean two things.
+struct Seq { x: I32 }

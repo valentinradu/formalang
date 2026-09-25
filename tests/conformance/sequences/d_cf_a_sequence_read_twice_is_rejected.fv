@@ -1,0 +1,8 @@
+// expect: reject SeqUsedTwice
+// docs/user/control-flow.md: reading a sequence twice is E136.
+pub fn run_checks() {
+    let s = for x in [1, 2] { x }
+    let a: I32 = s.count()
+    let b: I32 = s.count()
+    assert(condition: a == b)
+}

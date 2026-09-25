@@ -23,11 +23,15 @@ pub(super) fn fill_expr_span(expr: &mut Expr, index: &LineIndex<'_>) {
         }
         Expr::EnumInstantiation {
             enum_name,
+            type_args,
             variant,
             data,
             span,
         } => {
             fill_span(&mut enum_name.span, index);
+            for ty_arg in type_args {
+                fill_type_span(ty_arg, index);
+            }
             fill_span(&mut variant.span, index);
             fill_named_expr_list_spans(data, span, index);
         }
@@ -148,6 +152,16 @@ pub(super) fn fill_expr_span(expr: &mut Expr, index: &LineIndex<'_>) {
             ..
         } => {
             fill_let_expr_spans(pattern, ty, value, body, span, index);
+        }
+        Expr::Call { callee, args, span } => {
+            fill_expr_span(callee, index);
+            for (label, arg_expr) in args {
+                if let Some(label_ident) = label {
+                    fill_span(&mut label_ident.span, index);
+                }
+                fill_expr_span(arg_expr, index);
+            }
+            fill_span(span, index);
         }
         Expr::MethodCall {
             receiver,

@@ -1,0 +1,11 @@
+// expect: reject ImplOnPrimitive
+// Only an `extern impl` adds methods to a primitive: the IR has no
+// other impl on a primitive (`ImplTarget::Primitive`). So the compiler
+// refuses `impl Doubled for I32`, and a bound never meets a
+// conformance that the compiler accepted but cannot build.
+pub trait Doubled { fn doubled(self) -> I32 }
+impl Doubled for I32 { fn doubled(self) -> I32 { self * 2 } }
+fn f<T: Doubled>(x: T) -> I32 { x.doubled() }
+pub fn run_checks() {
+    assert(condition: f(x: 21) == 42)
+}

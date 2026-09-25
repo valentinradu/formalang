@@ -1,0 +1,9 @@
+// expect: reject UnknownField
+// from: rust tests/ui/traits/. The bound `T: Named` gives `T` the field
+// `name` only.
+pub trait Named {
+    name: String
+}
+fn f<T: Named>(x: T) -> I32 {
+    x.age
+}

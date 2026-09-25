@@ -1,0 +1,10 @@
+// expect: reject TypeMismatch
+// The payload of `Option<String>.some` is a String, and the function
+// answers an I32.
+pub enum Option<T> { some(value: T), none }
+pub fn f(o: Option<String>) -> I32 {
+    match o {
+        .some(value): value,
+        .none: 0
+    }
+}

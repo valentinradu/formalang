@@ -1,0 +1,8 @@
+// expect: reject TraitMethodSignatureMismatch
+// docs/user/traits.md: the return type must match exactly.
+pub trait Shape { fn area(self) -> I32 }
+pub struct Sq { s: I32 }
+
+impl Shape for Sq {
+    fn area(self) -> I64 { 1I64 }
+}

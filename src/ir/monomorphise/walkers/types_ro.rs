@@ -178,7 +178,17 @@ pub(in crate::ir::monomorphise) fn walk_expr_types(
                 walk_expr_types(a, visit);
             }
         }
-        IrExpr::MethodCall { receiver, args, .. } => {
+        IrExpr::MethodCall {
+            receiver,
+            args,
+            dispatch,
+            ..
+        } => {
+            if let crate::ir::DispatchKind::Virtual { trait_args, .. } = dispatch {
+                for t in trait_args {
+                    visit(t);
+                }
+            }
             walk_expr_types(receiver, visit);
             for (_, a) in args {
                 walk_expr_types(a, visit);

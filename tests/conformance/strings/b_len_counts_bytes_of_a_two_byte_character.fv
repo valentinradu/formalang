@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/types.md: a string takes an index by byte offset, so its
+// length counts bytes. `é` is two bytes in UTF-8.
+pub fn run_checks() {
+    assert(condition: "é".len() == 2)
+}

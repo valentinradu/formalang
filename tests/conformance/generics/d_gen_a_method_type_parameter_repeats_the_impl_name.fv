@@ -1,0 +1,8 @@
+// expect: reject DuplicateGenericParam
+// docs/user/generics.md: a method type parameter cannot repeat a name of
+// its impl block (E084).
+pub struct Box<T> { value: T }
+
+impl Box<T> {
+    fn map<T>(self, f: (T) -> T) -> T { f(self.value) }
+}

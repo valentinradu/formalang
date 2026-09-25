@@ -1,0 +1,6 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/resolve/ (a name defined twice in one module).
+// Module-level `let` is not a sequence of statements, so a second one of
+// the same name is a duplicate, not a shadow.
+let A: I32 = 1
+let A: I32 = 2

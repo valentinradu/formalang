@@ -1,0 +1,10 @@
+// expect: reject NonExhaustiveMatch
+// docs/user/control-flow.md: a match must cover all variants.
+pub enum Status { pending, active, completed }
+
+fn f(s: Status) -> I32 {
+    match s {
+        .pending: 0,
+        .active: 1
+    }
+}

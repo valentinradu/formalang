@@ -1,0 +1,7 @@
+// expect: reject SeqInvalidPosition
+// docs/user/control-flow.md: a sequence holds nothing to store. An
+// optional sequence may be dropped on one path.
+pub fn f() -> I32 {
+    let s: Seq<I32>? = for x in [1] { x }
+    0
+}

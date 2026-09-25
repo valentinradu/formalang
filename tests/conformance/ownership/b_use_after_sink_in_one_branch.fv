@@ -1,0 +1,10 @@
+// expect: reject UseAfterSink
+// from: rust tests/ui/moves/ (a move in one branch of an `if`).
+// A value that one branch sinks is not available after the `if`.
+fn take(sink s: String) -> I32 { s.len() }
+
+pub fn f(c: Boolean) -> I32 {
+    let s: String = "x"
+    let n = if c { take(s: s) } else { 0 }
+    n + s.len()
+}

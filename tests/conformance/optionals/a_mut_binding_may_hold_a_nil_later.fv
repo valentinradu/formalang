@@ -4,13 +4,12 @@
 // future, not about the literal.
 
 pub fn run_checks() {
+    // An index into `[I32?]` gives an `I32?`: the optional of the
+    // position and the optional of the element are one optional. So
+    // `if let` unwraps it once.
     let mut xs: [I32?] = [3]
     if let first = xs[0] {
-        if let v = first {
-            assert(condition: v == 3)
-        } else {
-            assert(condition: false)
-        }
+        assert(condition: first == 3)
     } else {
         assert(condition: false)
     }

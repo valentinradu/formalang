@@ -1,0 +1,3 @@
+// expect: reject UndefinedReference
+fn a(p: I32) -> I32 { p }
+fn b() -> I32 { p }

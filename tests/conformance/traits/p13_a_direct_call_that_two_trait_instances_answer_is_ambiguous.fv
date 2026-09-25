@@ -1,0 +1,21 @@
+// expect: reject AmbiguousCall
+// PLAN.md phase 13 item 4: `Container<I32>` and `Container<String>` both
+// give `fn get(self)`. A call on the type fits both. Only a bound says
+// which instance a call means.
+pub trait Container<T> {
+    fn get(self) -> T
+}
+
+pub struct Box { n: I32, s: String }
+
+impl Container<I32> for Box {
+    fn get(self) -> I32 { self.n }
+}
+
+impl Container<String> for Box {
+    fn get(self) -> String { self.s }
+}
+
+pub fn f(b: Box) -> String {
+    b.get()
+}

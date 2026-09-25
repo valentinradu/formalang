@@ -1,0 +1,8 @@
+// expect: reject SeqNotConsumed
+// docs/user/large-data.md: `for x in xs { emit(id: x) }` is E135.
+extern fn emit(id: I32)
+
+pub fn run_checks() {
+    for x in [1] { emit(id: x) }
+    assert(condition: true)
+}

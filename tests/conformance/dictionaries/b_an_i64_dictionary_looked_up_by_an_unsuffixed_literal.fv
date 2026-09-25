@@ -1,0 +1,7 @@
+// expect: run
+// The key type gives the literal its type, as the annotation of a `let`
+// does.
+pub fn run_checks() {
+    let d: [I64: String] = [1I64: "a"]
+    assert(condition: d[1] != nil)
+}

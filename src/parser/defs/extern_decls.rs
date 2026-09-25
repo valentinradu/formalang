@@ -8,8 +8,10 @@ use crate::lexer::Token;
 
 use super::super::newlines;
 use super::super::{ident_parser, span_from_simple, types::type_parser, visibility_parser};
+use super::bodies::item_end;
 use super::{
-    fn_attributes_parser, fn_def_parser, fn_params_parser, fn_sig_parser, generic_params_parser,
+    fn_attributes_parser, fn_def_parser, fn_sig_parser, free_fn_params_parser,
+    generic_params_parser,
 };
 
 /// Parse the optional ABI string after `extern`. Defaults to `"C"` when
@@ -46,7 +48,7 @@ where
         .then_ignore(just(Token::Fn))
         .then(ident_parser())
         .then(generic_params_parser())
-        .then(fn_params_parser())
+        .then(free_fn_params_parser())
         .then(just(Token::Arrow).ignore_then(type_parser()).or_not())
         .map_with(
             |((((((visibility, attributes), abi), name), generics), params), return_type), e| {
@@ -107,8 +109,10 @@ where
         .then(ident_parser())
         .then(generic_params_parser())
         .then(
-            extern_impl_item
-                .padded_by(newlines())
+            newlines()
+                .ignore_then(extern_impl_item)
+                .then_ignore(item_end())
+                .then_ignore(newlines())
                 .repeated()
                 .collect::<Vec<_>>()
                 .padded_by(newlines())

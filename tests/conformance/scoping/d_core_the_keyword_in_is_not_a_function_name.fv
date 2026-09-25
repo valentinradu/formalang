@@ -1,0 +1,4 @@
+// expect: reject ParseError
+// docs/user/core.md: `in` is a reserved word and cannot be an
+// identifier.
+fn in() -> I32 { 1 }

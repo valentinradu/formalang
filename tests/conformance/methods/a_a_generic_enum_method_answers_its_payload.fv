@@ -1,0 +1,16 @@
+// expect: run
+// A generic enum can have a method that answers its payload type.
+pub enum Opt<T> { some(value: T), none }
+impl Opt<T> {
+    fn or(self, d: T) -> T {
+        match self {
+            .some(value): value,
+            .none: d
+        }
+    }
+}
+pub fn run_checks() {
+    assert(condition: Opt.some(value: 4).or(d: 0) == 4)
+    let n: Opt<I32> = .none
+    assert(condition: n.or(d: 9) == 9)
+}

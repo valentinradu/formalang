@@ -167,6 +167,13 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if receiver_type.is_indeterminate() {
             return SemType::Unknown;
         }
+        // A closure in a field of a tuple: `t.f(1)` answers what the
+        // closure returns.
+        if let Some(SemType::Closure { return_ty, .. }) =
+            Self::tuple_closure_field(receiver_type, method_name)
+        {
+            return *return_ty;
+        }
         // The four built-in compound shapes (`Array<T>`, `Optional<T>`,
         // `Dictionary<K, V>`, `Range<T>`) route to the prelude-defined
         // generic structs/enum so methods declared in `extern impl` for
@@ -264,7 +271,7 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
             .find(|found| !found.is_empty());
         if let Some((fn_def, impl_generics)) = overloads
             .as_deref()
-            .and_then(|found| Self::choose_method_overload(found, args))
+            .and_then(|found| self.choose_method_overload(found, args, file))
         {
             // The receiver's type arguments and the method's own type
             // parameters: `K` and `V` in
@@ -293,8 +300,16 @@ impl<R: ModuleResolver> SemanticAnalyzer<R> {
         if let Some(ret) = self.find_trait_method_return(lookup_name, method_name) {
             return wrap_if_optional(ret);
         }
-        // Generic type parameter: look up its trait bounds in the active
-        // generic-scope stack, then search those traits for the method.
+        // Generic type parameter: the method of a bound, with the
+        // trait's own type parameters read as the bound gives them.
+        if let Some(bound) = self.bound_method(lookup_name, method_name) {
+            let ret = bound
+                .sig
+                .return_type
+                .as_ref()
+                .map_or(SemType::Nil, |ty| bound.resolve(ty));
+            return wrap_if_optional(ret);
+        }
         if let Some(constraints) = self.get_type_parameter_constraints(lookup_name) {
             for trait_name in &constraints {
                 if let Some(ret) = self.find_trait_method_return(trait_name, method_name) {

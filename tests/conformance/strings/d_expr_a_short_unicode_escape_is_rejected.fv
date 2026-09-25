@@ -1,0 +1,3 @@
+// expect: reject InvalidUnicodeEscape
+// docs/user/expressions.md: the escape is `\uXXXX`, four hex digits.
+pub let s = "\u41"

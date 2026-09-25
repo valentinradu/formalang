@@ -1,0 +1,7 @@
+// expect: reject TypeMismatch
+// from: rust tests/ui/pattern/pat-tuple-overfield.rs. The tuple holds
+// two fields, and the pattern binds three names.
+pub fn f(t: (a: I32, b: I32)) -> I32 {
+    let (x, y, z) = t
+    x
+}

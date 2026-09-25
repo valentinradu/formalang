@@ -1,0 +1,5 @@
+// expect: reject TypeMismatch
+// docs/user/enums.md: `let r: Result<String, I32> = .ok(value: ...)`.
+// The payload of `ok` is a String here, and the value is an I32.
+pub enum Result<T, E> { ok(value: T), error(err: E) }
+pub let r: Result<String, I32> = .ok(value: 1)

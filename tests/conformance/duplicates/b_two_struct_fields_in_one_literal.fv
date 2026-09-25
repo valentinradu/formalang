@@ -1,0 +1,5 @@
+// expect: reject DuplicateDefinition
+// from: rust tests/ui/structs/ (E0062, field specified more than once).
+pub struct P { x: I32 }
+
+pub let p = P(x: 1, x: 2)

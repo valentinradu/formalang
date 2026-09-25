@@ -590,7 +590,7 @@ fn test_lower_public_enum() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { } struct B { } struct C { }";
+    let source = "struct A { }\nstruct B { }\nstruct C { }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -611,7 +611,7 @@ fn test_struct_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_trait_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait X { } trait Y { }";
+    let source = "trait X { }\ntrait Y { }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -629,7 +629,7 @@ fn test_trait_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_enum_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum E1 { a } enum E2 { b }";
+    let source = "enum E1 { a }\nenum E2 { b }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -647,7 +647,7 @@ fn test_enum_id_lookup() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_get_struct_by_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct First { a: I32 } struct Second { b: String }";
+    let source = "struct First { a: I32 }\nstruct Second { b: String }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -673,7 +673,7 @@ fn test_get_struct_by_id() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_get_trait_by_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait TraitA { } trait TraitB { }";
+    let source = "trait TraitA { }\ntrait TraitB { }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -693,7 +693,7 @@ fn test_get_trait_by_id() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_get_enum_by_id() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum EnumA { x } enum EnumB { y }";
+    let source = "enum EnumA { x }\nenum EnumB { y }";
     let result = compile_to_ir(source);
     let module = result.map_err(|e| format!("{e:?}"))?;
 
@@ -1251,7 +1251,7 @@ fn test_lower_undefined_type_returns_error() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn test_lower_duplicate_struct_returns_error() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Dup { } struct Dup { }";
+    let source = "struct Dup { }\nstruct Dup { }";
     let result = compile_to_ir(source);
     if result.is_ok() {
         return Err("expected compile error for duplicate struct".into());
@@ -1348,7 +1348,7 @@ impl IrVisitor for TypeCounter<'_> {
 
 #[test]
 fn test_visitor_counts_structs() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct A { } struct B { } struct C { }";
+    let source = "struct A { }\nstruct B { }\nstruct C { }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new(&module);
@@ -1366,7 +1366,7 @@ fn test_visitor_counts_structs() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_visitor_counts_traits() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "trait X { } trait Y { }";
+    let source = "trait X { }\ntrait Y { }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new(&module);
@@ -1384,7 +1384,7 @@ fn test_visitor_counts_traits() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_visitor_counts_enums() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum E1 { a } enum E2 { b } enum E3 { c }";
+    let source = "enum E1 { a }\nenum E2 { b }\nenum E3 { c }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let mut counter = TypeCounter::new(&module);
@@ -1953,7 +1953,7 @@ fn test_resolved_type_display_optional() -> Result<(), Box<dyn std::error::Error
 
 #[test]
 fn test_resolved_type_display_struct_ref() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Inner { } struct Outer { inner: Inner }";
+    let source = "struct Inner { }\nstruct Outer { inner: Inner }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let outer = module
@@ -1986,7 +1986,7 @@ fn test_resolved_type_display_struct_ref() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn test_resolved_type_display_enum_ref() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "enum Status { active } struct S { status: Status }";
+    let source = "enum Status { active }\nstruct S { status: Status }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let s = module
@@ -2962,7 +2962,7 @@ fn test_resolved_type_display_type_param() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn test_resolved_type_display_generic() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "struct Box<T> { value: T } struct Container { item: Box<String> }";
+    let source = "struct Box<T> { value: T }\nstruct Container { item: Box<String> }";
     let module = compile_to_ir(source).map_err(|e| format!("{e:?}"))?;
 
     let container = module
@@ -4029,7 +4029,7 @@ fn test_method_call_resolve_normalize() -> Result<(), Box<dyn std::error::Error>
         }
         extern fn get_velocity() -> Vec3
         impl Particle {
-            fn direction() -> Vec3 {
+            fn direction(self) -> Vec3 {
                 self.velocity.normalize()
             }
         }
@@ -4091,7 +4091,7 @@ fn test_method_call_resolve_length() -> Result<(), Box<dyn std::error::Error>> {
         }
         extern fn get_canvas() -> Canvas
         impl Renderer {
-            fn area() -> I32 {
+            fn area(self) -> I32 {
                 self.canvas.size()
             }
         }
@@ -4155,7 +4155,7 @@ fn test_method_call_chained() -> Result<(), Box<dyn std::error::Error>> {
         }
         extern fn make_handle() -> Handle
         impl Particle {
-            fn normalized_velocity() -> Handle {
+            fn normalized_velocity(self) -> Handle {
                 self.velocity.normalize()
             }
         }
@@ -4432,11 +4432,11 @@ pub enum Color {
 
 impl Color {
     fn transparent() -> Color {
-        .rgba(r: 0.0, g: 0.0, b: 0.0, a: 0.0)
+        .rgba(r: 0, g: 0, b: 0, a: 0)
     }
 
     fn red() -> Color {
-        .rgb(r: 255.0, g: 0.0, b: 0.0)
+        .rgb(r: 255, g: 0, b: 0)
     }
 }
 ";

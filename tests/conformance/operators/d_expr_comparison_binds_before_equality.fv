@@ -1,0 +1,6 @@
+// expect: run
+// docs/user/expressions.md: comparison is above equality.
+pub fn run_checks() {
+    assert(condition: 1 < 2 == true)
+    assert(condition: 3 > 4 == false)
+}
